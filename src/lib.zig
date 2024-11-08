@@ -50,10 +50,7 @@ pub const BitBoard = enum(u64) {
         if (square.len != 2) return error.InvalidSquare;
         const col = std.ascii.toLower(square[0]);
         const row = std.ascii.toLower(square[1]);
-        if (square.len != 2) return error.InvalidSquare;
-        if (!('a' <= col and col <= 'h')) return error.InvalidColumn;
-        if (!('1' <= row and row <= '8')) return error.InvalidRow;
-        return BitBoard.init(@as(u64, 1) << @intCast(8 * (row - '1') + col - 'a'));
+        return init(getSquare(try Row.init(row - '1'), try Col.init(col - 'a')));
     }
 
     pub fn fromSquareUnchecked(square: []const u8) BitBoard {
@@ -70,7 +67,7 @@ pub const BitBoard = enum(u64) {
     }
 
     pub fn setUnchecked(self: *Self, row: Row, col: Col) void {
-        self.* = BitBoard.init(self.data() | getSquare(row, col));
+        self.* = init(self.data() | getSquare(row, col));
     }
 
     pub fn get(self: Self, row: Row, col: Col) bool {
@@ -79,12 +76,12 @@ pub const BitBoard = enum(u64) {
 
     // gives bitboard of all the values that are in either `self` or `other`
     pub fn combine(self: Self, other: BitBoard) BitBoard {
-        return BitBoard.init(self.data() | other.data());
+        return init(self.data() | other.data());
     }
 
     // gives bitboard of all the values that are in both `self` and `other`
     pub fn collision(self: Self, other: BitBoard) BitBoard {
-        return BitBoard.init(self.data() & other.data());
+        return init(self.data() & other.data());
     }
 
     // adds in all the set squares from `other` to `self`
@@ -97,7 +94,7 @@ pub const BitBoard = enum(u64) {
     }
 
     pub fn flip(self: Self) BitBoard {
-        return BitBoard.init(@byteSwap(self.data()));
+        return init(@byteSwap(self.data()));
     }
 };
 
@@ -143,6 +140,17 @@ pub const Board = struct {
                 else => return error.InvalidCharacter,
             };
             try board.set(row, col);
+        }
+
+        fn flip(self: Side) Side {
+            return .{
+                .pawns = self.pawns.flip(),
+                .knights = self.knights.flip(),
+                .bishops = self.bishops.flip(),
+                .rooks = self.rooks.flip(),
+                .queens = self.queens.flip(),
+                .king = self.king.flip(),
+            };
         }
     };
 
@@ -220,9 +228,9 @@ pub const Board = struct {
 
         const en_passant_target_square_string = iter.next() orelse return error.MissingEnPassantTarget;
         if (std.mem.eql(u8, en_passant_target_square_string, "-")) {
-            res.castling_squares = BitBoard.initEmpty();
+            res.last_pawn_move = BitBoard.initEmpty();
         } else {
-            res.castling_squares = try BitBoard.fromSquare(en_passant_target_square_string);
+            res.last_pawn_move = try BitBoard.fromSquare(en_passant_target_square_string);
         }
 
         const halfmove_clock_string = iter.next() orelse return error.MissingHalfMoveClock;
@@ -235,53 +243,69 @@ pub const Board = struct {
         return res;
     }
 
+    pub fn flip(self: Self) Board {
+        return Board{
+            .white = self.white.flip(),
+            .black = self.black.flip(),
+            .last_pawn_move = self.last_pawn_move.flip(),
+            .castling_squares = self.castling_squares.flip(),
+            .turn = self.turn,
+            .halfmove_clock = self.halfmove_clock,
+            .fullmove_clock = self.fullmove_clock,
+        };
+    }
+
     pub fn toString(self: Self) [8][8]u8 {
         var res: [8][8]u8 = .{.{' '} ** 8} ** 8;
         for (0..8) |r| {
             for (0..8) |c| {
                 if (self.white.pawns.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'P';
+                    res[r][c] = 'P';
                 }
                 if (self.black.pawns.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'p';
+                    res[r][c] = 'p';
                 }
 
                 if (self.white.knights.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'N';
+                    res[r][c] = 'N';
                 }
                 if (self.black.knights.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'n';
+                    res[r][c] = 'n';
                 }
 
                 if (self.white.bishops.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'B';
+                    res[r][c] = 'B';
                 }
                 if (self.black.bishops.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'b';
+                    res[r][c] = 'b';
                 }
 
                 if (self.white.rooks.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'R';
+                    res[r][c] = 'R';
                 }
                 if (self.black.rooks.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'r';
+                    res[r][c] = 'r';
                 }
 
                 if (self.white.queens.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'Q';
+                    res[r][c] = 'Q';
                 }
                 if (self.black.queens.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'q';
+                    res[r][c] = 'q';
                 }
 
                 if (self.white.king.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'K';
+                    res[r][c] = 'K';
                 }
                 if (self.black.king.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable)) {
-                    res[7 - r][c] = 'k';
+                    res[r][c] = 'k';
                 }
             }
         }
         return res;
     }
 };
+
+test "parse empty string as FEN" {
+    try std.testing.expectError(error.NotEnoughRows, Board.fromFen(""));
+}
