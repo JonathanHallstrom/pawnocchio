@@ -120,7 +120,7 @@ pub const BitBoard = enum(u64) {
 
     fn getRowMask(self: Self) u64 {
         const idx = @ctz(self.toInt());
-        return 255 * (1 << (idx & ~@as(u64, 7)));
+        return 255 * (@as(u64, 1) << @intCast(idx & ~@as(u64, 7)));
     }
 
     pub fn forward(self: Self, steps: u6) BitBoard {
@@ -195,19 +195,21 @@ pub const BitBoard = enum(u64) {
     }
 
     pub fn allLeft(self: Self) BitBoard {
+        const mask = self.getRowMask();
         var res = self;
-        res.add(res.left(1));
-        res.add(res.left(2));
-        res.add(res.left(4));
-        return res;
+        res.add(res.leftUnchecked(1));
+        res.add(res.leftUnchecked(2));
+        res.add(res.leftUnchecked(4));
+        return init(res.toInt() & mask);
     }
 
     pub fn allRight(self: Self) BitBoard {
+        const mask = self.getRowMask();
         var res = self;
-        res.add(res.right(1));
-        res.add(res.right(2));
-        res.add(res.right(4));
-        return res;
+        res.add(res.rightUnchecked(1));
+        res.add(res.rightUnchecked(2));
+        res.add(res.rightUnchecked(4));
+        return init(res.toInt() & mask);
     }
 
     comptime {
