@@ -744,6 +744,17 @@ test "pawn captures" {
         )},
         buf[0..1],
     );
+    // https://lichess.org/editor/8/k7/8/8/3pP3/8/K7/8_b_-_e3_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("8/k7/8/8/3pP3/8/K7/8 b - e3 0 1").getPawnCaptures(&buf));
+    try testing.expectEqualSlices(
+        Move,
+        &.{Move.init(
+            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D4")),
+            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E3")),
+            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")),
+        )},
+        buf[0..1],
+    );
 }
 
 test "fen parsing" {
