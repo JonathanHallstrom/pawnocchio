@@ -1,0 +1,18 @@
+#!/bin/sh
+# Run zig build
+if ! zig build; then
+    echo "zig build failed. Commit aborted."
+    exit 1
+fi
+
+# Run zig build test
+if ! zig build test; then
+    echo "zig build test failed. Commit aborted."
+    exit 1
+fi
+
+# Check formatting
+if ! zig fmt --check .; then
+    echo "Formatting check failed. Commit aborted."
+    exit 1
+fi
