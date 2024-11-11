@@ -618,11 +618,19 @@ pub const Board = struct {
         var move_count: usize = 0;
         var iter = pawns.iterator();
         const third_row = BitBoard.fromSquareUnchecked("A3");
+        const eigth_row = BitBoard.fromSquareUnchecked("A8").allRight();
         while (iter.next()) |pawn| {
             const forward_one = pawn.forward(1);
             if (!forward_one.overlaps(all_pieces) and forward_one != BitBoard.initEmpty()) {
-                move_buffer[move_count] = Move.init(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(forward_one), null);
-                move_count += 1;
+                if (forward_one.overlaps(eigth_row)) {
+                    for ([_]PieceType{ .knight, .bishop, .rook, .queen }) |piece_type| {
+                        move_buffer[move_count] = Move.init(Piece.pawnFromBitBoard(pawn), Piece.init(piece_type, forward_one), null);
+                        move_count += 1;
+                    }
+                } else {
+                    move_buffer[move_count] = Move.init(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(forward_one), null);
+                    move_count += 1;
+                }
             }
             if (pawn.toInt() < third_row.toInt()) {
                 const forward_two = pawn.forward(2);
@@ -677,6 +685,7 @@ pub const Board = struct {
                 move_count += 1;
             }
 
+            // TODO: this can be done in O(1) before the loop using by moving en_passant_target to the left and right and checking collisions
             if (forward_left.overlaps(en_passant_target)) {
                 move_buffer[move_count] = Move.init(
                     Piece.pawnFromBitBoard(pawn),
@@ -716,6 +725,9 @@ test "quiet pawn moves" {
 
     // https://lichess.org/editor/8/8/p7/P7/2K2k2/2P5/8/8_w_-_-_0_1?color=white
     try testing.expectEqual(0, Board.fromFenUnchecked("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1").getQuietPawnMoves(&buf));
+
+    // https://lichess.org/editor/8/P7/8/8/2K2k2/8/8/8_w_-_-_0_1?color=white
+    try testing.expectEqual(4, Board.fromFenUnchecked("8/P7/8/8/2K2k2/8/8/8 w - - 0 1").getQuietPawnMoves(&buf));
 }
 
 test "pawn captures" {
