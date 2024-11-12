@@ -884,6 +884,7 @@ pub const Board = struct {
     pub fn getAllKnightMoves(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
         const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
+
         const opponent_side = if (should_flip) self.white.flipped() else self.black;
 
         const opponents_pieces = opponent_side.all();
@@ -897,9 +898,24 @@ pub const Board = struct {
             const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
             inline for (row_offsets, col_offsets) |dr, dc| {
                 var moved = knight;
-                moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
-                moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
-                if (!moved.overlaps(own_pieces) and moved != BitBoard.initEmpty()) {
+                const valid_squares_col = switch (dc) {
+                    -1 => BitBoard.fromSquareUnchecked("B1").allForward().allRight(),
+                    -2 => BitBoard.fromSquareUnchecked("C1").allForward().allRight(),
+                    1 => BitBoard.fromSquareUnchecked("G1").allForward().allLeft(),
+                    2 => BitBoard.fromSquareUnchecked("F1").allForward().allLeft(),
+                    else => unreachable,
+                };
+                const valid_squares_row = switch (dr) {
+                    -1 => BitBoard.fromSquareUnchecked("A2").allRight().allForward(),
+                    -2 => BitBoard.fromSquareUnchecked("A3").allRight().allForward(),
+                    1 => BitBoard.fromSquareUnchecked("A7").allRight().allBackward(),
+                    2 => BitBoard.fromSquareUnchecked("A6").allRight().allBackward(),
+                    else => unreachable,
+                };
+                const valid_squares = valid_squares_col.getOverlap(valid_squares_row);
+                moved = if (dr < 0) moved.backwardUnchecked(-dr) else moved.forwardUnchecked(dr);
+                moved = if (dc < 0) moved.leftUnchecked(-dc) else moved.rightUnchecked(dc);
+                if (!moved.overlaps(own_pieces) and knight.overlaps(valid_squares)) {
                     move_buffer[move_count] = Move.init(
                         Piece.knightFromBitBoard(knight),
                         Piece.knightFromBitBoard(moved),
@@ -1028,6 +1044,12 @@ test "knight captures" {
 
     // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
     try testing.expectEqual(4, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getKnightCaptures(&buf));
+
+    // https://lichess.org/editor/K1k5/8/8/8/8/8/6p1/N7_w_-_-_0_1?color=white
+    try testing.expectEqual(0, Board.fromFenUnchecked("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1").getKnightCaptures(&buf));
+
+    // https://lichess.org/editor/K1k4N/8/8/8/8/8/6p1/8_w_-_-_0_1?color=white
+    try testing.expectEqual(0, Board.fromFenUnchecked("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1").getKnightCaptures(&buf));
 }
 
 test "all knight moves" {
@@ -1035,9 +1057,6 @@ test "all knight moves" {
 
     // starting position
     try testing.expectEqual(4, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllKnightMoves(&buf));
-
-    // https://lichess.org/editor/8/6k1/8/8/8/3N4/1K6/8_w_-_-_0_1?color=white
-    try testing.expectEqual(7, Board.fromFenUnchecked("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1").getAllKnightMoves(&buf));
 
     // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
     try testing.expectEqual(15, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getAllKnightMoves(&buf));
@@ -1052,6 +1071,12 @@ test "all knight moves" {
 
     // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
     try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getAllKnightMoves(&buf));
+
+    // https://lichess.org/editor/K1k5/8/8/8/8/8/6p1/N7_w_-_-_0_1?color=white
+    try testing.expectEqual(2, Board.fromFenUnchecked("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1").getAllKnightMoves(&buf));
+
+    // https://lichess.org/editor/K1k4N/8/8/8/8/8/6p1/8_w_-_-_0_1?color=white
+    try testing.expectEqual(2, Board.fromFenUnchecked("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1").getAllKnightMoves(&buf));
 }
 
 test "fen parsing" {
