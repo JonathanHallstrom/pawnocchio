@@ -52,7 +52,7 @@ pub const BitBoard = enum(u64) {
         if (square.len != 2) return error.InvalidSquare;
         const col = std.ascii.toLower(square[0]);
         const row = std.ascii.toLower(square[1]);
-        return init(getSquare(try Row.init(row - '1'), try Col.init(col - 'a')));
+        return init(getSquare(try Row.init(row -% '1'), try Col.init(col -% 'a')));
     }
 
     pub fn fromSquareUnchecked(square: []const u8) BitBoard {
