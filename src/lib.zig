@@ -157,7 +157,8 @@ pub const BitBoard = enum(u64) {
 
     pub fn left(self: Self, steps: u6) BitBoard {
         assert(@popCount(self.toInt()) <= 1);
-        return init(self.toInt() >> steps & self.getRowMask());
+        const mask = @as(u64, @as(u8, 255) >> @intCast(steps)) * (std.math.maxInt(u64) / 255);
+        return init(self.toInt() >> steps & mask);
     }
 
     pub fn leftUnchecked(self: Self, steps: u6) BitBoard {
@@ -166,7 +167,8 @@ pub const BitBoard = enum(u64) {
 
     pub fn right(self: Self, steps: u6) BitBoard {
         assert(@popCount(self.toInt()) <= 1);
-        return init(self.toInt() << steps & self.getRowMask());
+        const mask = @as(u64, @as(u8, 255) << @intCast(steps)) * (std.math.maxInt(u64) / 255);
+        return init(self.toInt() << steps & mask);
     }
 
     pub fn rightUnchecked(self: Self, steps: u6) BitBoard {
@@ -209,21 +211,19 @@ pub const BitBoard = enum(u64) {
     }
 
     pub fn allLeft(self: Self) BitBoard {
-        const mask = self.getRowMask();
         var res = self;
-        res.add(res.leftUnchecked(1));
-        res.add(res.leftUnchecked(2));
-        res.add(res.leftUnchecked(4));
-        return init(res.toInt() & mask);
+        res.add(res.leftUnchecked(1).getOverlap(BitBoard.init(0b01111111 * (std.math.maxInt(u64) / 255))));
+        res.add(res.leftUnchecked(2).getOverlap(BitBoard.init(0b00111111 * (std.math.maxInt(u64) / 255))));
+        res.add(res.leftUnchecked(4).getOverlap(BitBoard.init(0b00001111 * (std.math.maxInt(u64) / 255))));
+        return init(res.toInt());
     }
 
     pub fn allRight(self: Self) BitBoard {
-        const mask = self.getRowMask();
         var res = self;
-        res.add(res.rightUnchecked(1));
-        res.add(res.rightUnchecked(2));
-        res.add(res.rightUnchecked(4));
-        return init(res.toInt() & mask);
+        res.add(res.rightUnchecked(1).getOverlap(BitBoard.init(0b11111110 * (std.math.maxInt(u64) / 255))));
+        res.add(res.rightUnchecked(2).getOverlap(BitBoard.init(0b11111100 * (std.math.maxInt(u64) / 255))));
+        res.add(res.rightUnchecked(4).getOverlap(BitBoard.init(0b11110000 * (std.math.maxInt(u64) / 255))));
+        return init(res.toInt());
     }
 
     comptime {
@@ -740,8 +740,8 @@ pub const Board = struct {
         }) |TargetPieceType| {
             const opponents_pieces = opponent_side.getBoard(TargetPieceType);
 
-            const can_be_left_captures = BitBoard.fromSquareUnchecked("A8").allRight().getCombination(BitBoard.fromSquareUnchecked("A8").allBackward()).complement();
-            const can_be_right_captures = BitBoard.fromSquareUnchecked("H8").allLeft().getCombination(BitBoard.fromSquareUnchecked("H8").allBackward()).complement();
+            const can_be_left_captures = BitBoard.fromSquareUnchecked("B7").allRight().allBackward();
+            const can_be_right_captures = BitBoard.fromSquareUnchecked("G7").allLeft().allBackward();
             const forward_left_captures = pawns.getOverlap(can_be_left_captures).forwardUnchecked(1).leftUnchecked(1).getOverlap(opponents_pieces).rightUnchecked(1).backwardUnchecked(1);
             const forward_right_captures = pawns.getOverlap(can_be_right_captures).forwardUnchecked(1).rightUnchecked(1).getOverlap(opponents_pieces).leftUnchecked(1).backwardUnchecked(1);
 
