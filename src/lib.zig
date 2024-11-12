@@ -662,36 +662,33 @@ pub const Board = struct {
         const pawns = if (should_flip) self.black.pawns.flipped() else self.white.pawns;
 
         var move_count: usize = 0;
-        var iter = pawns.iterator();
-        const third_row = BitBoard.fromSquareUnchecked("A3");
-        const eigth_row = BitBoard.fromSquareUnchecked("A8").allRight();
-        while (iter.next()) |pawn| {
-            const forward_one = pawn.forward(1);
-            if (!forward_one.overlaps(all_pieces) and forward_one != BitBoard.initEmpty()) {
-                if (forward_one.overlaps(eigth_row)) {
-                    for ([_]PieceType{ .knight, .bishop, .rook, .queen }) |piece_type| {
-                        move_buffer[move_count] = Move.initQuiet(
-                            Piece.pawnFromBitBoard(pawn),
-                            Piece.init(piece_type, forward_one),
-                        );
-                        move_count += 1;
-                    }
-                } else {
-                    move_buffer[move_count] = Move.initQuiet(
-                        Piece.pawnFromBitBoard(pawn),
-                        Piece.pawnFromBitBoard(forward_one),
-                    );
-                    move_count += 1;
-                }
-            }
-            if (pawn.toInt() < third_row.toInt()) {
-                const forward_two = pawn.forward(2);
-                if (!forward_two.overlaps(all_pieces) and forward_two != BitBoard.initEmpty()) {
-                    move_buffer[move_count] = Move.init(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(forward_two), null);
-                    move_count += 1;
-                }
+        const allowed_squares = all_pieces.complement();
+
+        const seventh_row = BitBoard.fromSquareUnchecked("A7").allRight();
+
+        const pawns_that_can_move = pawns.forward(1).getOverlap(allowed_squares).backward(1);
+
+        var promotion_pawns = pawns_that_can_move.getOverlap(seventh_row).iterator();
+        while (promotion_pawns.next()) |pawn_to_promote| {
+            for ([_]PieceType{ .knight, .bishop, .rook, .queen }) |piece_type| {
+                move_buffer[move_count] = Move.initQuiet(Piece.pawnFromBitBoard(pawn_to_promote), Piece.init(piece_type, pawn_to_promote.forward(1)));
+                move_count += 1;
             }
         }
+
+        const second_row = BitBoard.fromSquareUnchecked("A2").allRight();
+        var double_move_pawns = pawns_that_can_move.getOverlap(second_row).forward(2).getOverlap(allowed_squares).backward(2).iterator();
+        while (double_move_pawns.next()) |pawn| {
+            move_buffer[move_count] = Move.initQuiet(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(pawn.forward(2)));
+            move_count += 1;
+        }
+
+        var last_pawns = pawns_that_can_move.getOverlap(seventh_row.complement()).iterator();
+        while (last_pawns.next()) |pawn| {
+            move_buffer[move_count] = Move.initQuiet(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(pawn.forward(1)));
+            move_count += 1;
+        }
+
         if (should_flip) {
             for (move_buffer[0..move_count]) |*move| {
                 move.* = move.flipped();
