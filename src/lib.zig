@@ -760,30 +760,15 @@ pub const Board = struct {
 
         var move_count: usize = 0;
 
-        // 00000000
-        // 00000000
-        // 00111100
-        // 00111100
-        // 00111100
-        // 00111100
-        // 00000000
-        // 00000000
-        const far_from_edges = BitBoard.init(0b00111100 * (1 << 16) * ((1 << 0) + (1 << 8) + (1 << 16) + (1 << 24)));
         var iter = knights.iterator();
         while (iter.next()) |knight| {
             const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
             const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
-            const is_far = knight.overlaps(far_from_edges);
             inline for (row_offsets, col_offsets) |dr, dc| {
                 var moved = knight;
-                if (is_far) {
-                    moved = if (dr < 0) moved.backwardUnchecked(-dr) else moved.forwardUnchecked(dr);
-                    moved = if (dc < 0) moved.leftUnchecked(-dc) else moved.rightUnchecked(dc);
-                } else {
-                    moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
-                    moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
-                }
-                if (!moved.overlaps(all_pieces) and (is_far or moved != BitBoard.initEmpty())) {
+                moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
+                moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
+                if (!moved.overlaps(all_pieces) and moved != BitBoard.initEmpty()) {
                     move_buffer[move_count] = Move.initQuiet(
                         Piece.knightFromBitBoard(knight),
                         Piece.knightFromBitBoard(moved),
@@ -810,29 +795,14 @@ pub const Board = struct {
 
         var move_count: usize = 0;
 
-        // 00000000
-        // 00000000
-        // 00111100
-        // 00111100
-        // 00111100
-        // 00111100
-        // 00000000
-        // 00000000
-        const far_from_edges = BitBoard.init(0b00111100 * (1 << 16) * ((1 << 0) + (1 << 8) + (1 << 16) + (1 << 24)));
         var iter = knights.iterator();
         while (iter.next()) |knight| {
             const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
             const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
-            const is_far = knight.overlaps(far_from_edges);
             inline for (row_offsets, col_offsets) |dr, dc| {
                 var moved = knight;
-                if (is_far) {
-                    moved = if (dr < 0) moved.backwardUnchecked(-dr) else moved.forwardUnchecked(dr);
-                    moved = if (dc < 0) moved.leftUnchecked(-dc) else moved.rightUnchecked(dc);
-                } else {
-                    moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
-                    moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
-                }
+                moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
+                moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
                 if (moved.overlaps(opponents_pieces)) {
                     move_buffer[move_count] = Move.initCapture(
                         Piece.knightFromBitBoard(knight),
@@ -861,30 +831,15 @@ pub const Board = struct {
 
         var move_count: usize = 0;
 
-        // 00000000
-        // 00000000
-        // 00111100
-        // 00111100
-        // 00111100
-        // 00111100
-        // 00000000
-        // 00000000
-        const far_from_edges = BitBoard.init(0b00111100 * (1 << 16) * ((1 << 0) + (1 << 8) + (1 << 16) + (1 << 24)));
         var iter = knights.iterator();
         while (iter.next()) |knight| {
             const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
             const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
-            const is_far = knight.overlaps(far_from_edges);
             inline for (row_offsets, col_offsets) |dr, dc| {
                 var moved = knight;
-                if (is_far) {
-                    moved = if (dr < 0) moved.backwardUnchecked(-dr) else moved.forwardUnchecked(dr);
-                    moved = if (dc < 0) moved.leftUnchecked(-dc) else moved.rightUnchecked(dc);
-                } else {
-                    moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
-                    moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
-                }
-                if (!moved.overlaps(own_pieces) and (is_far or moved != BitBoard.initEmpty())) {
+                moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
+                moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
+                if (!moved.overlaps(own_pieces) and moved != BitBoard.initEmpty()) {
                     move_buffer[move_count] = Move.init(
                         Piece.knightFromBitBoard(knight),
                         Piece.knightFromBitBoard(moved),
