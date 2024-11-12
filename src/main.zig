@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const lib = @import("lib.zig");
+
 test {
     _ = lib;
 }
@@ -22,8 +23,15 @@ pub fn main() !void {
     }
     std.debug.print("--------\n", .{});
 
-    var move_buf: [400]lib.Move = undefined;
-    const num_moves = board.getQuietPawnMoves(&move_buf);
-    const moves = move_buf[0..num_moves];
-    std.debug.print("{any}\n", .{moves});
+    var move_buf: [100]lib.Move = undefined;
+    {
+        const num_moves = board.getQuietPawnMoves(&move_buf);
+        const moves = move_buf[0..num_moves];
+        std.debug.print("{any}\n", .{moves});
+    }
+    {
+        const num_moves = board.getQuietKnightMoves(&move_buf);
+        const moves = move_buf[0..num_moves];
+        std.debug.print("{any}\n", .{moves});
+    }
 }

@@ -95,6 +95,10 @@ pub const BitBoard = enum(u64) {
         self.* = self.getCombination(other);
     }
 
+    pub fn complement(self: Self) BitBoard {
+        return init(~self.toInt());
+    }
+
     fn getSquare(row: Row, col: Col) u64 {
         return @as(u64, 1) << (8 * row.toInt() + col.toInt());
     }
@@ -119,7 +123,7 @@ pub const BitBoard = enum(u64) {
     }
 
     fn getRowMask(self: Self) u64 {
-        const idx = @ctz(self.toInt());
+        const idx = @ctz(self.toInt()) & 63;
         return 255 * (@as(u64, 1) << @intCast(idx & ~@as(u64, 7)));
     }
 
@@ -300,6 +304,26 @@ pub const Piece = struct {
         return init(.pawn, b);
     }
 
+    pub fn knightFromBitBoard(b: BitBoard) Piece {
+        return init(.knight, b);
+    }
+
+    pub fn bishopFromBitBoard(b: BitBoard) Piece {
+        return init(.bishop, b);
+    }
+
+    pub fn rookFromBitBoard(b: BitBoard) Piece {
+        return init(.rook, b);
+    }
+
+    pub fn queenFromBitBoard(b: BitBoard) Piece {
+        return init(.queen, b);
+    }
+
+    pub fn kingFromBitBoard(b: BitBoard) Piece {
+        return init(.king, b);
+    }
+
     pub fn format(self: anytype, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
@@ -338,6 +362,22 @@ pub const Move = struct {
     captured: ?Piece,
 
     pub fn init(from: Piece, to: Piece, captured: ?Piece) Move {
+        return .{
+            .from = from,
+            .to = to,
+            .captured = captured,
+        };
+    }
+
+    pub fn initQuiet(from: Piece, to: Piece) Move {
+        return .{
+            .from = from,
+            .to = to,
+            .captured = null,
+        };
+    }
+
+    pub fn initCapture(from: Piece, to: Piece, captured: Piece) Move {
         return .{
             .from = from,
             .to = to,
@@ -624,11 +664,17 @@ pub const Board = struct {
             if (!forward_one.overlaps(all_pieces) and forward_one != BitBoard.initEmpty()) {
                 if (forward_one.overlaps(eigth_row)) {
                     for ([_]PieceType{ .knight, .bishop, .rook, .queen }) |piece_type| {
-                        move_buffer[move_count] = Move.init(Piece.pawnFromBitBoard(pawn), Piece.init(piece_type, forward_one), null);
+                        move_buffer[move_count] = Move.initQuiet(
+                            Piece.pawnFromBitBoard(pawn),
+                            Piece.init(piece_type, forward_one),
+                        );
                         move_count += 1;
                     }
                 } else {
-                    move_buffer[move_count] = Move.init(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(forward_one), null);
+                    move_buffer[move_count] = Move.initQuiet(
+                        Piece.pawnFromBitBoard(pawn),
+                        Piece.pawnFromBitBoard(forward_one),
+                    );
                     move_count += 1;
                 }
             }
@@ -663,7 +709,7 @@ pub const Board = struct {
             const forward_left = forward_one.left(1);
             const forward_right = forward_one.right(1);
             if (forward_left.overlaps(opponents_pieces)) {
-                move_buffer[move_count] = Move.init(
+                move_buffer[move_count] = Move.initCapture(
                     Piece.pawnFromBitBoard(pawn),
                     Piece.pawnFromBitBoard(forward_left),
                     Piece.init(
@@ -710,6 +756,62 @@ pub const Board = struct {
         }
         return move_count;
     }
+
+    pub fn getQuietKnightMoves(self: Self, move_buffer: []Move) usize {
+        const should_flip = self.turn == .black;
+        const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
+        const opponents_pieces = if (should_flip) self.white.all().flipped() else self.black.all();
+        const all_pieces = own_pieces.getCombination(opponents_pieces);
+        const knights = if (should_flip) self.black.knights.flipped() else self.white.knights;
+
+        var move_count: usize = 0;
+
+        // 00000000
+        // 00000000
+        // 00111100
+        // 00111100
+        // 00111100
+        // 00111100
+        // 00000000
+        // 00000000
+        const far_from_edges = BitBoard.init(0b00111100 * (1 << 16) * ((1 << 0) + (1 << 8) + (1 << 16) + (1 << 24)));
+        var iter = knights.iterator();
+        while (iter.next()) |knight| {
+            const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
+            const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
+            const is_far = knight.overlaps(far_from_edges);
+            inline for (row_offsets, col_offsets) |dr, dc| {
+                var moved = knight;
+                if (is_far) {
+                    moved = if (dr < 0) moved.backwardUnchecked(-dr) else moved.forwardUnchecked(dr);
+                    moved = if (dc < 0) moved.leftUnchecked(-dc) else moved.rightUnchecked(dc);
+                    if (!moved.overlaps(all_pieces)) {
+                        move_buffer[move_count] = Move.initQuiet(
+                            Piece.knightFromBitBoard(knight),
+                            Piece.knightFromBitBoard(moved),
+                        );
+                        move_count += 1;
+                    }
+                } else {
+                    moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
+                    moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
+                    if (!moved.overlaps(all_pieces) and moved != BitBoard.initEmpty()) {
+                        move_buffer[move_count] = Move.initQuiet(
+                            Piece.knightFromBitBoard(knight),
+                            Piece.knightFromBitBoard(moved),
+                        );
+                        move_count += 1;
+                    }
+                }
+            }
+        }
+        if (should_flip) {
+            for (move_buffer[0..move_count]) |*move| {
+                move.* = move.flipped();
+            }
+        }
+        return move_count;
+    }
 };
 
 const testing = std.testing;
@@ -728,6 +830,36 @@ test "quiet pawn moves" {
 
     // https://lichess.org/editor/8/P7/8/8/2K2k2/8/8/8_w_-_-_0_1?color=white
     try testing.expectEqual(4, Board.fromFenUnchecked("8/P7/8/8/2K2k2/8/8/8 w - - 0 1").getQuietPawnMoves(&buf));
+}
+
+test "quiet knight moves" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(4, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQuietKnightMoves(&buf));
+
+    // https://lichess.org/editor/8/6k1/8/8/8/3N4/1K6/8_w_-_-_0_1?color=white
+    try testing.expectEqual(7, Board.fromFenUnchecked("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1").getQuietKnightMoves(&buf));
+
+    // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
+    try testing.expectEqual(14, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getQuietKnightMoves(&buf));
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getQuietKnightMoves(&buf));
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(0, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getQuietKnightMoves(&buf));
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getQuietKnightMoves(&buf));
+    try testing.expectEqualSlices(
+        Move,
+        &.{Move.initQuiet(
+            Piece.knightFromBitBoard(BitBoard.fromSquareUnchecked("A1")),
+            Piece.knightFromBitBoard(BitBoard.fromSquareUnchecked("C2")),
+        )},
+        buf[0..1],
+    );
 }
 
 test "pawn captures" {
