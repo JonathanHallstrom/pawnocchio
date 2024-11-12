@@ -86,6 +86,12 @@ pub const BitBoard = enum(u64) {
         return init(self.toInt() & other.toInt());
     }
 
+    // gives bitboard of all the values that are in both `self` and `other`
+    pub fn getOverlapNonEmpty(self: Self, other: BitBoard) ?BitBoard {
+        const res = self.toInt() & other.toInt();
+        return if (res != 0) init(res) else null;
+    }
+
     pub fn overlaps(self: Self, other: BitBoard) bool {
         return self.getOverlap(other).toInt() != 0;
     }
@@ -704,6 +710,18 @@ pub const Board = struct {
         var move_count: usize = 0;
         var iter = pawns.iterator();
         const en_passant_target = if (should_flip) self.en_passant_target.flipped() else self.en_passant_target;
+        const en_passant_pawn = en_passant_target.backward(1);
+        for ([_]BitBoard{ en_passant_pawn.left(1), en_passant_pawn.right(1) }) |capturing_pawn| {
+            if (pawns.overlaps(capturing_pawn)) {
+                move_buffer[move_count] = Move.initCapture(
+                    Piece.pawnFromBitBoard(capturing_pawn),
+                    Piece.pawnFromBitBoard(en_passant_target),
+                    Piece.pawnFromBitBoard(en_passant_pawn),
+                );
+                move_count += 1;
+            }
+        }
+
         while (iter.next()) |pawn| {
             const forward_one = pawn.forward(1);
             const forward_left = forward_one.left(1);
@@ -721,24 +739,6 @@ pub const Board = struct {
                     Piece.pawnFromBitBoard(pawn),
                     Piece.pawnFromBitBoard(forward_right),
                     Piece.init(opponent_side.whichType(forward_right), forward_right),
-                );
-                move_count += 1;
-            }
-
-            // TODO: this can be done in O(1) before the loop using by moving en_passant_target to the left and right and checking collisions
-            if (forward_left.overlaps(en_passant_target)) {
-                move_buffer[move_count] = Move.init(
-                    Piece.pawnFromBitBoard(pawn),
-                    Piece.pawnFromBitBoard(forward_left),
-                    Piece.pawnFromBitBoard(en_passant_target.backward(1)),
-                );
-                move_count += 1;
-            }
-            if (forward_right.overlaps(en_passant_target)) {
-                move_buffer[move_count] = Move.init(
-                    Piece.pawnFromBitBoard(pawn),
-                    Piece.pawnFromBitBoard(forward_right),
-                    Piece.pawnFromBitBoard(en_passant_target.backward(1)),
                 );
                 move_count += 1;
             }
