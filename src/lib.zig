@@ -281,7 +281,7 @@ pub const PieceType = enum {
     queen,
     king,
 
-    pub fn format(self: anytype, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: PieceType, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
         return try writer.print("{s}", .{@tagName(self)});
@@ -324,7 +324,7 @@ pub const Piece = struct {
         return init(.king, b);
     }
 
-    pub fn format(self: anytype, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: Piece, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
         const row = @as(u8, self.pos / 8) + '1';
@@ -385,7 +385,7 @@ pub const Move = struct {
         };
     }
 
-    pub fn format(self: anytype, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: Move, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
         if (self.captured) |cap| {
@@ -712,10 +712,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initCapture(
                     Piece.pawnFromBitBoard(pawn),
                     Piece.pawnFromBitBoard(forward_left),
-                    Piece.init(
-                        opponent_side.whichType(forward_left.getOverlap(opponents_pieces)),
-                        forward_left,
-                    ),
+                    Piece.init(opponent_side.whichType(forward_left), forward_left),
                 );
                 move_count += 1;
             }
@@ -723,10 +720,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.init(
                     Piece.pawnFromBitBoard(pawn),
                     Piece.pawnFromBitBoard(forward_right),
-                    Piece.init(
-                        opponent_side.whichType(forward_right.getOverlap(opponents_pieces)),
-                        forward_right,
-                    ),
+                    Piece.init(opponent_side.whichType(forward_right), forward_right),
                 );
                 move_count += 1;
             }
@@ -785,23 +779,118 @@ pub const Board = struct {
                 if (is_far) {
                     moved = if (dr < 0) moved.backwardUnchecked(-dr) else moved.forwardUnchecked(dr);
                     moved = if (dc < 0) moved.leftUnchecked(-dc) else moved.rightUnchecked(dc);
-                    if (!moved.overlaps(all_pieces)) {
-                        move_buffer[move_count] = Move.initQuiet(
-                            Piece.knightFromBitBoard(knight),
-                            Piece.knightFromBitBoard(moved),
-                        );
-                        move_count += 1;
-                    }
                 } else {
                     moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
                     moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
-                    if (!moved.overlaps(all_pieces) and moved != BitBoard.initEmpty()) {
-                        move_buffer[move_count] = Move.initQuiet(
-                            Piece.knightFromBitBoard(knight),
-                            Piece.knightFromBitBoard(moved),
-                        );
-                        move_count += 1;
-                    }
+                }
+                if (!moved.overlaps(all_pieces) and (is_far or moved != BitBoard.initEmpty())) {
+                    move_buffer[move_count] = Move.initQuiet(
+                        Piece.knightFromBitBoard(knight),
+                        Piece.knightFromBitBoard(moved),
+                    );
+                    move_count += 1;
+                }
+            }
+        }
+        if (should_flip) {
+            for (move_buffer[0..move_count]) |*move| {
+                move.* = move.flipped();
+            }
+        }
+        return move_count;
+    }
+
+    pub fn getKnightCaptures(self: Self, move_buffer: []Move) usize {
+        const should_flip = self.turn == .black;
+
+        const opponent_side = if (should_flip) self.white.flipped() else self.black;
+
+        const opponents_pieces = opponent_side.all();
+        const knights = if (should_flip) self.black.knights.flipped() else self.white.knights;
+
+        var move_count: usize = 0;
+
+        // 00000000
+        // 00000000
+        // 00111100
+        // 00111100
+        // 00111100
+        // 00111100
+        // 00000000
+        // 00000000
+        const far_from_edges = BitBoard.init(0b00111100 * (1 << 16) * ((1 << 0) + (1 << 8) + (1 << 16) + (1 << 24)));
+        var iter = knights.iterator();
+        while (iter.next()) |knight| {
+            const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
+            const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
+            const is_far = knight.overlaps(far_from_edges);
+            inline for (row_offsets, col_offsets) |dr, dc| {
+                var moved = knight;
+                if (is_far) {
+                    moved = if (dr < 0) moved.backwardUnchecked(-dr) else moved.forwardUnchecked(dr);
+                    moved = if (dc < 0) moved.leftUnchecked(-dc) else moved.rightUnchecked(dc);
+                } else {
+                    moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
+                    moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
+                }
+                if (moved.overlaps(opponents_pieces)) {
+                    move_buffer[move_count] = Move.initCapture(
+                        Piece.knightFromBitBoard(knight),
+                        Piece.knightFromBitBoard(moved),
+                        Piece.init(opponent_side.whichType(moved), moved),
+                    );
+                    move_count += 1;
+                }
+            }
+        }
+        if (should_flip) {
+            for (move_buffer[0..move_count]) |*move| {
+                move.* = move.flipped();
+            }
+        }
+        return move_count;
+    }
+
+    pub fn getAllKnightMoves(self: Self, move_buffer: []Move) usize {
+        const should_flip = self.turn == .black;
+        const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
+        const opponent_side = if (should_flip) self.white.flipped() else self.black;
+
+        const opponents_pieces = opponent_side.all();
+        const knights = if (should_flip) self.black.knights.flipped() else self.white.knights;
+
+        var move_count: usize = 0;
+
+        // 00000000
+        // 00000000
+        // 00111100
+        // 00111100
+        // 00111100
+        // 00111100
+        // 00000000
+        // 00000000
+        const far_from_edges = BitBoard.init(0b00111100 * (1 << 16) * ((1 << 0) + (1 << 8) + (1 << 16) + (1 << 24)));
+        var iter = knights.iterator();
+        while (iter.next()) |knight| {
+            const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
+            const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
+            const is_far = knight.overlaps(far_from_edges);
+            inline for (row_offsets, col_offsets) |dr, dc| {
+                var moved = knight;
+                if (is_far) {
+                    moved = if (dr < 0) moved.backwardUnchecked(-dr) else moved.forwardUnchecked(dr);
+                    moved = if (dc < 0) moved.leftUnchecked(-dc) else moved.rightUnchecked(dc);
+                } else {
+                    moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
+                    moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
+                }
+                if (!moved.overlaps(own_pieces) and (is_far or moved != BitBoard.initEmpty())) {
+                    move_buffer[move_count] = Move.init(
+                        Piece.knightFromBitBoard(knight),
+                        Piece.knightFromBitBoard(moved),
+                        if (moved.overlaps(opponents_pieces)) Piece.init(opponent_side.whichType(moved), moved) else null,
+                    );
+                    move_count += 1;
                 }
             }
         }
@@ -899,6 +988,49 @@ test "pawn captures" {
         )},
         buf[0..1],
     );
+}
+
+test "knight captures" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getKnightCaptures(&buf));
+
+    // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getKnightCaptures(&buf));
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(0, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getKnightCaptures(&buf));
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getKnightCaptures(&buf));
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(4, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getKnightCaptures(&buf));
+}
+
+test "all knight moves" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(4, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllKnightMoves(&buf));
+
+    // https://lichess.org/editor/8/6k1/8/8/8/3N4/1K6/8_w_-_-_0_1?color=white
+    try testing.expectEqual(7, Board.fromFenUnchecked("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1").getAllKnightMoves(&buf));
+
+    // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
+    try testing.expectEqual(15, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getAllKnightMoves(&buf));
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getAllKnightMoves(&buf));
+    for (buf[0..5]) |move| try testing.expectEqual(null, move.captured);
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getAllKnightMoves(&buf));
+    for (buf[0..5]) |move| try testing.expect(move.captured != null);
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getAllKnightMoves(&buf));
 }
 
 test "fen parsing" {
