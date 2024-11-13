@@ -4,12 +4,12 @@ const assert = std.debug.assert;
 pub const Row = enum(u8) {
     _,
 
-    pub fn init(int: anytype) !Row {
+    pub inline fn init(int: anytype) !Row {
         if (int >= 8) return error.OutOfRange;
         return @enumFromInt(int);
     }
 
-    pub fn toInt(self: @This()) u6 {
+    pub inline fn toInt(self: @This()) u6 {
         const res: u8 = @intFromEnum(self);
         assert(res < 8);
         return @intCast(res);
@@ -19,12 +19,12 @@ pub const Row = enum(u8) {
 pub const Col = enum(u8) {
     _,
 
-    pub fn init(int: anytype) !Col {
+    pub inline fn init(int: anytype) !Col {
         if (int >= 8) return error.OutOfRange;
         return @enumFromInt(int);
     }
 
-    pub fn toInt(self: @This()) u6 {
+    pub inline fn toInt(self: @This()) u6 {
         const res: u8 = @intFromEnum(self);
         assert(res < 8);
         return @intCast(res);
@@ -296,13 +296,13 @@ pub const BitBoard = enum(u64) {
     };
 };
 
-pub const PieceType = enum {
-    pawn,
-    knight,
-    bishop,
-    rook,
-    queen,
-    king,
+pub const PieceType = enum(u8) {
+    pawn = 0,
+    knight = 1,
+    bishop = 2,
+    rook = 3,
+    queen = 4,
+    king = 5,
 
     pub fn format(self: PieceType, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
@@ -451,32 +451,31 @@ pub const Board = struct {
     // 1  0  1  2  3  4  5  6  7
     //    A  B  C  D  E  F  G  H
 
-    const PieceSet = struct {
-        pawns: BitBoard = BitBoard.initEmpty(),
-        knights: BitBoard = BitBoard.initEmpty(),
-        bishops: BitBoard = BitBoard.initEmpty(),
-        rooks: BitBoard = BitBoard.initEmpty(),
-        queens: BitBoard = BitBoard.initEmpty(),
+    const PieceSet = packed struct {
+        pawn: BitBoard = BitBoard.initEmpty(),
+        knight: BitBoard = BitBoard.initEmpty(),
+        bishop: BitBoard = BitBoard.initEmpty(),
+        rook: BitBoard = BitBoard.initEmpty(),
+        queen: BitBoard = BitBoard.initEmpty(),
         king: BitBoard = BitBoard.initEmpty(),
 
-        fn getBoard(self: PieceSet, pt: PieceType) BitBoard {
-            return switch (pt) {
-                .pawn => self.pawns,
-                .knight => self.knights,
-                .bishop => self.bishops,
-                .rook => self.rooks,
-                .queen => self.queens,
-                .king => self.king,
+        // kinda ugly but makes for much better assembly than the naive implementation
+        // https://godbolt.org/z/se5zaWv5r
+        fn getBoard(self: *const PieceSet, pt: PieceType) BitBoard {
+            const base: [*]const BitBoard = @ptrCast(self);
+            const offset: usize = switch (pt) {
+                inline else => |tp| @offsetOf(PieceSet, @tagName(tp)),
             };
+            return base[offset / @sizeOf(BitBoard)];
         }
 
         fn addPieceFen(self: *PieceSet, which: u8, row: Row, col: Col) !void {
             const board: *BitBoard = switch (std.ascii.toLower(which)) {
-                'p' => &self.pawns,
-                'n' => &self.knights,
-                'b' => &self.bishops,
-                'r' => &self.rooks,
-                'q' => &self.queens,
+                'p' => &self.pawn,
+                'n' => &self.knight,
+                'b' => &self.bishop,
+                'r' => &self.rook,
+                'q' => &self.queen,
                 'k' => &self.king,
                 else => return error.InvalidCharacter,
             };
@@ -485,42 +484,35 @@ pub const Board = struct {
 
         fn flipped(self: PieceSet) PieceSet {
             return .{
-                .pawns = self.pawns.flipped(),
-                .knights = self.knights.flipped(),
-                .bishops = self.bishops.flipped(),
-                .rooks = self.rooks.flipped(),
-                .queens = self.queens.flipped(),
+                .pawn = self.pawn.flipped(),
+                .knight = self.knight.flipped(),
+                .bishop = self.bishop.flipped(),
+                .rook = self.rook.flipped(),
+                .queen = self.queen.flipped(),
                 .king = self.king.flipped(),
             };
         }
 
         fn all(self: PieceSet) BitBoard {
-            var res = self.pawns;
-            res.add(self.knights);
-            res.add(self.bishops);
-            res.add(self.rooks);
-            res.add(self.queens);
+            var res = self.pawn;
+            res.add(self.knight);
+            res.add(self.bishop);
+            res.add(self.rook);
+            res.add(self.queen);
             res.add(self.king);
             return res;
         }
 
         fn whichType(self: PieceSet, needle: BitBoard) PieceType {
             inline for (.{
-                "pawns",
-                "knights",
-                "bishops",
-                "rooks",
-                "queens",
-                "king",
-            }, .{
                 .pawn,
                 .knight,
                 .bishop,
                 .rook,
                 .queen,
                 .king,
-            }) |s, e| {
-                if (@field(self, s).overlaps(needle)) {
+            }) |e| {
+                if (@field(self, @tagName(e)).overlaps(needle)) {
                     return e;
                 }
             }
@@ -617,7 +609,7 @@ pub const Board = struct {
                 en_passant_target_square_string[1] != correct_row)
                 return error.InvalidEnPassantTarget;
             const board = try BitBoard.fromSquare(en_passant_target_square_string);
-            const should_overlap = if (res.turn == .white) res.black.pawns.forward(1) else res.white.pawns.backward(1);
+            const should_overlap = if (res.turn == .white) res.black.pawn.forward(1) else res.white.pawn.backward(1);
             if (!board.overlaps(should_overlap)) return error.EnPassantTargetDoesntExist;
             res.en_passant_target = board;
         }
@@ -649,29 +641,29 @@ pub const Board = struct {
         var res: [8][8]u8 = .{.{' '} ** 8} ** 8;
         for (0..8) |r| {
             for (0..8) |c| {
-                if (self.white.pawns.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.white.pawn.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'P';
-                if (self.black.pawns.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.black.pawn.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'p';
 
-                if (self.white.knights.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.white.knight.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'N';
-                if (self.black.knights.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.black.knight.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'n';
 
-                if (self.white.bishops.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.white.bishop.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'B';
-                if (self.black.bishops.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.black.bishop.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'b';
 
-                if (self.white.rooks.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.white.rook.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'R';
-                if (self.black.rooks.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.black.rook.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'r';
 
-                if (self.white.queens.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.white.queen.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'Q';
-                if (self.black.queens.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
+                if (self.black.queen.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
                     res[7 - r][c] = 'q';
 
                 if (self.white.king.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
@@ -683,9 +675,15 @@ pub const Board = struct {
         return res;
     }
 
+    // pub fn playMove(self: *Self, move: Move) !void {
+    //     if (move.from.tp == move.to.tp) {
+
+    //     }
+    // }
+
     pub fn getQuietPawnMoves(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
-        const pawns = if (should_flip) self.black.pawns.flipped() else self.white.pawns;
+        const pawns = if (should_flip) self.black.pawn.flipped() else self.white.pawn;
         if (pawns.isEmpty()) return 0;
 
         const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
@@ -730,7 +728,7 @@ pub const Board = struct {
 
     pub fn getPawnCaptures(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
-        const pawns = if (should_flip) self.black.pawns.flipped() else self.white.pawns;
+        const pawns = if (should_flip) self.black.pawn.flipped() else self.white.pawn;
         if (pawns.isEmpty()) return 0;
         const opponent_side = if (should_flip) self.white.flipped() else self.black;
 
@@ -829,7 +827,7 @@ pub const Board = struct {
 
     pub fn getQuietKnightMoves(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
-        const knights = if (should_flip) self.black.knights else self.white.knights;
+        const knights = if (should_flip) self.black.knight else self.white.knight;
         if (knights.isEmpty()) return 0;
 
         const own_pieces = if (should_flip) self.black.all() else self.white.all();
@@ -860,7 +858,7 @@ pub const Board = struct {
 
     pub fn getKnightCaptures(self: Self, move_buffer: []Move) usize {
         const is_black_turn = self.turn == .black;
-        const knights = if (is_black_turn) self.black.knights else self.white.knights;
+        const knights = if (is_black_turn) self.black.knight else self.white.knight;
         if (knights.isEmpty()) return 0;
 
         const opponent_side = if (is_black_turn) self.white else self.black;
@@ -893,7 +891,7 @@ pub const Board = struct {
     pub fn getAllKnightMoves(self: Self, move_buffer: []Move) usize {
         const is_white_turn = self.turn == .white;
         const own_side = if (is_white_turn) self.white else self.black;
-        const knights = own_side.knights;
+        const knights = own_side.knight;
         if (knights.isEmpty()) return 0;
         const opponent_side = if (is_white_turn) self.black else self.white;
         const own_pieces = own_side.all();
@@ -939,7 +937,7 @@ pub const Board = struct {
 
     pub fn getAllBishopMoves(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
-        const bishops = if (should_flip) self.black.bishops.flipped() else self.white.bishops;
+        const bishops = if (should_flip) self.black.bishop.flipped() else self.white.bishop;
         if (bishops.isEmpty()) return 0;
 
         const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
@@ -964,6 +962,42 @@ pub const Board = struct {
                     move_buffer[move_count] = Move.initCapture(
                         Piece.bishopFromBitBoard(bishop),
                         Piece.bishopFromBitBoard(moved),
+                        Piece.init(opponent_side.whichType(moved), moved),
+                    );
+                    move_count += 1;
+                }
+            }
+        }
+        return move_count;
+    }
+
+    pub fn getAllRookMoves(self: Self, move_buffer: []Move) usize {
+        const should_flip = self.turn == .black;
+        const rooks = if (should_flip) self.black.rook.flipped() else self.white.rook;
+        if (rooks.isEmpty()) return 0;
+
+        const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
+        const opponent_side = if (should_flip) self.white.flipped() else self.black;
+        const opponents_pieces = if (should_flip) self.white.all().flipped() else self.black.all();
+        const all_pieces = own_pieces.getCombination(opponents_pieces);
+
+        var move_count: usize = 0;
+
+        var iter = rooks.iterator();
+        while (iter.next()) |bishop| {
+            inline for ([_]comptime_int{ 1, -1, 0, 0 }, [_]comptime_int{ 0, 0, 1, -1 }) |dr, dc| {
+                var moved = bishop.move(dr, dc);
+                while (!moved.isEmpty() and !moved.overlaps(all_pieces)) : (moved = moved.move(dr, dc)) {
+                    move_buffer[move_count] = Move.initQuiet(
+                        Piece.rookFromBitBoard(bishop),
+                        Piece.rookFromBitBoard(moved),
+                    );
+                    move_count += 1;
+                }
+                if (moved.overlaps(opponents_pieces)) {
+                    move_buffer[move_count] = Move.initCapture(
+                        Piece.rookFromBitBoard(bishop),
+                        Piece.rookFromBitBoard(moved),
                         Piece.init(opponent_side.whichType(moved), moved),
                     );
                     move_count += 1;
@@ -1160,6 +1194,13 @@ test "all knight moves" {
 test "all bishop moves" {
     var buf: [100]Move = undefined;
 
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllBishopMoves(&buf));
+
+    // https://lichess.org/editor?fen=r1bqkbnr%2Fpppp1ppp%2F2n5%2F4p3%2F4P3%2F5N2%2FPPPP1PPP%2FRNBQKB1R+w+KQkq+-+2+3&variant=fromPosition&color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3").getAllBishopMoves(&buf));
+    try expectNumCaptures(buf[0..5], 0);
+
     // https://lichess.org/editor/k7/8/8/8/8/3B4/8/K7_w_-_-_0_1?color=white
     try testing.expectEqual(11, Board.fromFenUnchecked("k7/8/8/8/8/3B4/8/K7 w - - 0 1").getAllBishopMoves(&buf));
     try expectNumCaptures(buf[0..11], 0);
@@ -1167,4 +1208,19 @@ test "all bishop moves" {
     // https://lichess.org/editor/k7/8/8/5p2/8/3B4/8/K7_w_-_-_0_1?color=white
     try testing.expectEqual(9, Board.fromFenUnchecked("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1").getAllBishopMoves(&buf));
     try expectNumCaptures(buf[0..9], 1);
+}
+
+test "all rook moves" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllRookMoves(&buf));
+
+    // https://lichess.org/editor/k7/8/8/3R1p2/8/8/8/K7_w_-_-_0_1?color=white
+    try testing.expectEqual(12, Board.fromFenUnchecked("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1").getAllRookMoves(&buf));
+    try expectNumCaptures(buf[0..12], 1);
+
+    // https://lichess.org/editor/k7/8/8/3RRp2/8/8/8/K7_w_-_-_0_1?color=white
+    try testing.expectEqual(18, Board.fromFenUnchecked("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1").getAllRookMoves(&buf));
+    try expectNumCaptures(buf[0..18], 1);
 }
