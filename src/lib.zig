@@ -898,7 +898,7 @@ pub const Board = struct {
         const own_side = if (is_white_turn) self.white else self.black;
         const knights = own_side.knights;
         if (knights.isEmpty()) return 0;
-        const opponent_side = if (is_white_turn) self.black  else self.white;
+        const opponent_side = if (is_white_turn) self.black else self.white;
         const own_pieces = own_side.all();
         const opponents_pieces = opponent_side.all();
 
@@ -985,7 +985,7 @@ fn expectNumCaptures(moves: []Move, count: usize) !void {
     var actual_count: usize = 0;
     for (moves) |move| actual_count += @intFromBool(move.captured != null);
     if (count != actual_count) {
-        std.log.err("Expected {} captures, found {}. Captures found:\n", .{count, actual_count});
+        std.log.err("Expected {} captures, found {}. Captures found:\n", .{ count, actual_count });
         for (moves) |move| {
             if (move.captured != null) {
                 std.log.err("{}\n", .{move});

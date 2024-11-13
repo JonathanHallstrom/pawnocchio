@@ -1,7 +1,5 @@
 #!/bin/sh
 
-zig fmt **/*.zig
-
 if ! zig build check; then
     echo "zig build failed. Commit aborted."
     exit 1
@@ -9,5 +7,10 @@ fi
 
 if ! zig build test; then
     echo "zig build test failed. Commit aborted."
+    exit 1
+fi
+
+if ! zig fmt --check .; then
+    echo "Formatting check failed. Commit aborted."
     exit 1
 fi
