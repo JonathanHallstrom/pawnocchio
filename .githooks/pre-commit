@@ -1,16 +1,16 @@
 #!/bin/sh
 
 if ! zig build check; then
-    echo "zig build failed. Commit aborted."
+    echo "building failed"
     exit 1
 fi
 
 if ! zig build test; then
-    echo "zig build test failed. Commit aborted."
+    echo "tests failed"
     exit 1
 fi
 
 if ! zig fmt --check .; then
-    echo "Formatting check failed. Commit aborted."
+    echo "formatting failed"
     exit 1
 fi
