@@ -1,8 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const Allocator = std.mem.Allocator;
-
 pub const Row = enum(u8) {
     _,
 
@@ -63,6 +61,10 @@ pub const BitBoard = enum(u64) {
         return init(0);
     }
 
+    pub fn isEmpty(self: Self) bool {
+        return self == initEmpty();
+    }
+
     pub fn set(self: *Self, row: Row, col: Col) !void {
         if (self.get(row, col)) return error.AlreadySet;
         self.setUnchecked(row, col);
@@ -120,9 +122,8 @@ pub const BitBoard = enum(u64) {
     fn getColMask(self: Self) u64 {
         const idx = @ctz(self.toInt());
         const masks = comptime blk: {
-            const first_col = 1 << 0 | 1 << 8 | 1 << 16 | 1 << 24 | 1 << 32 | 1 << 40 | 1 << 48 | 1 << 56;
             var res: [8]u64 = undefined;
-            for (0..8) |i| res[i] = first_col << i;
+            for (0..8) |i| res[i] = std.math.maxInt(u64) / 255 << i;
             break :blk res;
         };
         return masks[idx % 8];
@@ -175,6 +176,15 @@ pub const BitBoard = enum(u64) {
         return init(self.toInt() << steps);
     }
 
+    pub fn move(self: Self, dr: anytype, dc: anytype) BitBoard {
+        assert(-7 <= dr and dr <= 7);
+        assert(-7 <= dc and dc <= 7);
+        var res = self;
+        res = if (dr < 0) res.backward(@abs(dr)) else res.forward(dr);
+        res = if (dc < 0) res.left(@abs(dc)) else res.right(dc);
+        return res;
+    }
+
     comptime {
         assert(fromSquareUnchecked("A1").forward(1) == fromSquareUnchecked("A2"));
         assert(fromSquareUnchecked("B1").forward(4) == fromSquareUnchecked("B5"));
@@ -188,10 +198,10 @@ pub const BitBoard = enum(u64) {
         assert(fromSquareUnchecked("A1").right(1) == fromSquareUnchecked("B1"));
         assert(fromSquareUnchecked("D1").right(4) == fromSquareUnchecked("H1"));
 
-        assert(fromSquareUnchecked("D8").forward(1) == initEmpty());
-        assert(fromSquareUnchecked("D1").backward(1) == initEmpty());
-        assert(fromSquareUnchecked("A4").left(1) == initEmpty());
-        assert(fromSquareUnchecked("H4").right(1) == initEmpty());
+        assert(fromSquareUnchecked("D8").forward(1).isEmpty());
+        assert(fromSquareUnchecked("D1").backward(1).isEmpty());
+        assert(fromSquareUnchecked("A4").left(1).isEmpty());
+        assert(fromSquareUnchecked("H4").right(1).isEmpty());
     }
 
     pub fn allForward(self: Self) BitBoard {
@@ -224,6 +234,12 @@ pub const BitBoard = enum(u64) {
         res.add(res.rightUnchecked(2).getOverlap(BitBoard.init(0b11111100 * (std.math.maxInt(u64) / 255))));
         res.add(res.rightUnchecked(4).getOverlap(BitBoard.init(0b11110000 * (std.math.maxInt(u64) / 255))));
         return init(res.toInt());
+    }
+
+    pub fn prettyPrint(self: Self) void {
+        for (0..8) |i| {
+            std.debug.print("{b:0>8}\n", .{self.toInt() >> @intCast(8 * i) & 255});
+        }
     }
 
     comptime {
@@ -300,13 +316,13 @@ pub const PieceType = enum {
 
 pub const Piece = struct {
     tp: PieceType,
-    pos: u6,
+    board: BitBoard,
 
     pub fn init(tp: PieceType, b: BitBoard) Piece {
         assert(@popCount(b.toInt()) == 1);
         return .{
             .tp = tp,
-            .pos = @intCast(@ctz(b.toInt())),
+            .board = b,
         };
     }
 
@@ -337,8 +353,9 @@ pub const Piece = struct {
     pub fn format(self: Piece, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
-        const row = @as(u8, self.pos / 8) + '1';
-        const col = @as(u8, self.pos % 8) + 'A';
+        const pos = @ctz(self.board.toInt());
+        const row = @as(u8, pos / 8) + '1';
+        const col = @as(u8, pos % 8) + 'A';
         return try writer.print("({s} on {c}{c})", .{ @tagName(self.tp), col, row });
     }
 
@@ -357,7 +374,7 @@ pub const Piece = struct {
     pub fn flipped(self: Piece) Piece {
         return .{
             .tp = self.tp,
-            .pos = flipPos(self.pos),
+            .board = self.board.flipped(),
         };
     }
 };
@@ -671,10 +688,12 @@ pub const Board = struct {
 
     pub fn getQuietPawnMoves(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
+        const pawns = if (should_flip) self.black.pawns.flipped() else self.white.pawns;
+        if (pawns.isEmpty()) return 0;
+
         const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
         const opponents_pieces = if (should_flip) self.white.all().flipped() else self.black.all();
         const all_pieces = own_pieces.getCombination(opponents_pieces);
-        const pawns = if (should_flip) self.black.pawns.flipped() else self.white.pawns;
 
         var move_count: usize = 0;
         const allowed_squares = all_pieces.complement();
@@ -714,9 +733,9 @@ pub const Board = struct {
 
     pub fn getPawnCaptures(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
-        const opponent_side = if (should_flip) self.white.flipped() else self.black;
-
         const pawns = if (should_flip) self.black.pawns.flipped() else self.white.pawns;
+        if (pawns.isEmpty()) return 0;
+        const opponent_side = if (should_flip) self.white.flipped() else self.black;
 
         var move_count: usize = 0;
         const en_passant_target = if (should_flip) self.en_passant_target.flipped() else self.en_passant_target;
@@ -813,10 +832,12 @@ pub const Board = struct {
 
     pub fn getQuietKnightMoves(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
-        const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
-        const opponents_pieces = if (should_flip) self.white.all().flipped() else self.black.all();
+        const knights = if (should_flip) self.black.knights else self.white.knights;
+        if (knights.isEmpty()) return 0;
+
+        const own_pieces = if (should_flip) self.black.all() else self.white.all();
+        const opponents_pieces = if (should_flip) self.white.all() else self.black.all();
         const all_pieces = own_pieces.getCombination(opponents_pieces);
-        const knights = if (should_flip) self.black.knights.flipped() else self.white.knights;
 
         var move_count: usize = 0;
 
@@ -828,7 +849,7 @@ pub const Board = struct {
                 var moved = knight;
                 moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
                 moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
-                if (!moved.overlaps(all_pieces) and moved != BitBoard.initEmpty()) {
+                if (!moved.overlaps(all_pieces) and !moved.isEmpty()) {
                     move_buffer[move_count] = Move.initQuiet(
                         Piece.knightFromBitBoard(knight),
                         Piece.knightFromBitBoard(moved),
@@ -837,21 +858,17 @@ pub const Board = struct {
                 }
             }
         }
-        if (should_flip) {
-            for (move_buffer[0..move_count]) |*move| {
-                move.* = move.flipped();
-            }
-        }
         return move_count;
     }
 
     pub fn getKnightCaptures(self: Self, move_buffer: []Move) usize {
-        const should_flip = self.turn == .black;
+        const is_black_turn = self.turn == .black;
+        const knights = if (is_black_turn) self.black.knights else self.white.knights;
+        if (knights.isEmpty()) return 0;
 
-        const opponent_side = if (should_flip) self.white.flipped() else self.black;
+        const opponent_side = if (is_black_turn) self.white else self.black;
 
-        const opponents_pieces = opponent_side.all();
-        const knights = if (should_flip) self.black.knights.flipped() else self.white.knights;
+        const opponents_pieces = if (is_black_turn) self.white.all() else self.black.all();
 
         var move_count: usize = 0;
 
@@ -873,22 +890,17 @@ pub const Board = struct {
                 }
             }
         }
-        if (should_flip) {
-            for (move_buffer[0..move_count]) |*move| {
-                move.* = move.flipped();
-            }
-        }
         return move_count;
     }
 
     pub fn getAllKnightMoves(self: Self, move_buffer: []Move) usize {
-        const should_flip = self.turn == .black;
-        const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
-
-        const opponent_side = if (should_flip) self.white.flipped() else self.black;
-
+        const is_white_turn = self.turn == .white;
+        const own_side = if (is_white_turn) self.white else self.black;
+        const knights = own_side.knights;
+        if (knights.isEmpty()) return 0;
+        const opponent_side = if (is_white_turn) self.black  else self.white;
+        const own_pieces = own_side.all();
         const opponents_pieces = opponent_side.all();
-        const knights = if (should_flip) self.black.knights.flipped() else self.white.knights;
 
         var move_count: usize = 0;
 
@@ -925,9 +937,42 @@ pub const Board = struct {
                 }
             }
         }
-        if (should_flip) {
-            for (move_buffer[0..move_count]) |*move| {
-                move.* = move.flipped();
+        return move_count;
+    }
+
+    pub fn getAllBishopMoves(self: Self, move_buffer: []Move) usize {
+        const should_flip = self.turn == .black;
+        const bishops = if (should_flip) self.black.bishops.flipped() else self.white.bishops;
+        if (bishops.isEmpty()) return 0;
+
+        const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
+        const opponent_side = if (should_flip) self.white.flipped() else self.black;
+        const opponents_pieces = if (should_flip) self.white.all().flipped() else self.black.all();
+        const all_pieces = own_pieces.getCombination(opponents_pieces);
+
+        var move_count: usize = 0;
+
+        // const board_border = BitBoard.init(std.math.maxInt(u64) / 255 * 0b10000001 | 0b11111111 * (1 << 0 | 1 << 56));
+        // _ = board_border; // autofix
+        var iter = bishops.iterator();
+        while (iter.next()) |bishop| {
+            inline for ([_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }) |dr, dc| {
+                var moved = bishop.move(dr, dc);
+                while (!moved.isEmpty() and !moved.overlaps(all_pieces)) : (moved = moved.move(dr, dc)) {
+                    move_buffer[move_count] = Move.initQuiet(
+                        Piece.bishopFromBitBoard(bishop),
+                        Piece.bishopFromBitBoard(moved),
+                    );
+                    move_count += 1;
+                }
+                if (moved.overlaps(opponents_pieces)) {
+                    move_buffer[move_count] = Move.initCapture(
+                        Piece.bishopFromBitBoard(bishop),
+                        Piece.bishopFromBitBoard(moved),
+                        Piece.init(opponent_side.whichType(moved), moved),
+                    );
+                    move_count += 1;
+                }
             }
         }
         return move_count;
@@ -936,50 +981,43 @@ pub const Board = struct {
 
 const testing = std.testing;
 
+fn expectNumCaptures(moves: []Move, count: usize) !void {
+    var actual_count: usize = 0;
+    for (moves) |move| actual_count += @intFromBool(move.captured != null);
+    if (count != actual_count) {
+        std.log.err("Expected {} captures, found {}. Captures found:\n", .{count, actual_count});
+        for (moves) |move| {
+            if (move.captured != null) {
+                std.log.err("{}\n", .{move});
+            }
+        }
+        return error.WrongNumberCaptures;
+    }
+}
+
+test "fen parsing" {
+    try testing.expectError(error.NotEnoughRows, Board.fromFen(""));
+    try testing.expectError(error.EnPassantTargetDoesntExist, Board.fromFen("8/k7/8/4P3/8/8/K7/8 w - d6 0 1"));
+    try testing.expect(!std.meta.isError(Board.fromFen("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1")));
+}
+
 test "quiet pawn moves" {
     var buf: [100]Move = undefined;
 
     // starting position
     try testing.expectEqual(16, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQuietPawnMoves(&buf));
+    try expectNumCaptures(buf[0..16], 0);
 
     // https://lichess.org/editor/8/8/p7/P1P5/2K2kP1/5P2/2P4P/8_w_-_-_0_1?color=white
     try testing.expectEqual(5, Board.fromFenUnchecked("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1").getQuietPawnMoves(&buf));
+    try expectNumCaptures(buf[0..5], 0);
 
     // https://lichess.org/editor/8/8/p7/P7/2K2k2/2P5/8/8_w_-_-_0_1?color=white
     try testing.expectEqual(0, Board.fromFenUnchecked("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1").getQuietPawnMoves(&buf));
 
     // https://lichess.org/editor/8/P7/8/8/2K2k2/8/8/8_w_-_-_0_1?color=white
     try testing.expectEqual(4, Board.fromFenUnchecked("8/P7/8/8/2K2k2/8/8/8 w - - 0 1").getQuietPawnMoves(&buf));
-}
-
-test "quiet knight moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(4, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQuietKnightMoves(&buf));
-
-    // https://lichess.org/editor/8/6k1/8/8/8/3N4/1K6/8_w_-_-_0_1?color=white
-    try testing.expectEqual(7, Board.fromFenUnchecked("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1").getQuietKnightMoves(&buf));
-
-    // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
-    try testing.expectEqual(14, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getQuietKnightMoves(&buf));
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getQuietKnightMoves(&buf));
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(0, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getQuietKnightMoves(&buf));
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getQuietKnightMoves(&buf));
-    try testing.expectEqualSlices(
-        Move,
-        &.{Move.initQuiet(
-            Piece.knightFromBitBoard(BitBoard.fromSquareUnchecked("A1")),
-            Piece.knightFromBitBoard(BitBoard.fromSquareUnchecked("C2")),
-        )},
-        buf[0..1],
-    );
+    try expectNumCaptures(buf[0..4], 0);
 }
 
 test "pawn captures" {
@@ -996,6 +1034,7 @@ test "pawn captures" {
 
     // https://lichess.org/editor/8/8/p1q5/1P1P4/2K2k2/2P5/8/8_w_-_-_0_1?color=white
     try testing.expectEqual(3, Board.fromFenUnchecked("8/8/p1q5/1P1P4/2K2k2/2P5/8/8 w - - 0 1").getPawnCaptures(&buf));
+    try expectNumCaptures(buf[0..3], 3);
 
     // https://lichess.org/editor/8/k7/8/3pP3/8/8/K7/8_w_-_d6_0_1?color=white
     try testing.expectEqual(1, Board.fromFenUnchecked("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1").getPawnCaptures(&buf));
@@ -1022,9 +1061,45 @@ test "pawn captures" {
 
     // https://lichess.org/editor/1p6/P7/8/8/2K2k2/8/8/8_w_-_-_0_1?color=white
     try testing.expectEqual(4, Board.fromFenUnchecked("1p6/P7/8/8/2K2k2/8/8/8 w - - 0 1").getPawnCaptures(&buf));
+    try expectNumCaptures(buf[0..4], 4);
 
     // https://lichess.org/editor/p1p5/1P6/8/8/2K2k2/8/8/8_w_-_-_0_1?color=white
     try testing.expectEqual(8, Board.fromFenUnchecked("p1p5/1P6/8/8/2K2k2/8/8/8 w - - 0 1").getPawnCaptures(&buf));
+    try expectNumCaptures(buf[0..8], 8);
+}
+
+test "quiet knight moves" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(4, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQuietKnightMoves(&buf));
+    try expectNumCaptures(buf[0..4], 0);
+
+    // https://lichess.org/editor/8/6k1/8/8/8/3N4/1K6/8_w_-_-_0_1?color=white
+    try testing.expectEqual(7, Board.fromFenUnchecked("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1").getQuietKnightMoves(&buf));
+    try expectNumCaptures(buf[0..7], 0);
+
+    // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
+    try testing.expectEqual(14, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getQuietKnightMoves(&buf));
+    try expectNumCaptures(buf[0..14], 0);
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getQuietKnightMoves(&buf));
+    try expectNumCaptures(buf[0..5], 0);
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(0, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getQuietKnightMoves(&buf));
+
+    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getQuietKnightMoves(&buf));
+    try testing.expectEqualSlices(
+        Move,
+        &.{Move.initQuiet(
+            Piece.knightFromBitBoard(BitBoard.fromSquareUnchecked("A1")),
+            Piece.knightFromBitBoard(BitBoard.fromSquareUnchecked("C2")),
+        )},
+        buf[0..1],
+    );
 }
 
 test "knight captures" {
@@ -1035,15 +1110,18 @@ test "knight captures" {
 
     // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
     try testing.expectEqual(1, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getKnightCaptures(&buf));
+    try expectNumCaptures(buf[0..1], 1);
 
     // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
     try testing.expectEqual(0, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getKnightCaptures(&buf));
 
     // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
     try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getKnightCaptures(&buf));
+    try expectNumCaptures(buf[0..5], 5);
 
     // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
     try testing.expectEqual(4, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getKnightCaptures(&buf));
+    try expectNumCaptures(buf[0..4], 4);
 
     // https://lichess.org/editor/K1k5/8/8/8/8/8/6p1/N7_w_-_-_0_1?color=white
     try testing.expectEqual(0, Board.fromFenUnchecked("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1").getKnightCaptures(&buf));
@@ -1057,30 +1135,41 @@ test "all knight moves" {
 
     // starting position
     try testing.expectEqual(4, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllKnightMoves(&buf));
+    try expectNumCaptures(buf[0..4], 0);
 
     // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
     try testing.expectEqual(15, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getAllKnightMoves(&buf));
+    try expectNumCaptures(buf[0..15], 1);
 
     // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
     try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getAllKnightMoves(&buf));
-    for (buf[0..5]) |move| try testing.expectEqual(null, move.captured);
+    try expectNumCaptures(buf[0..5], 0);
 
     // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
     try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getAllKnightMoves(&buf));
-    for (buf[0..5]) |move| try testing.expect(move.captured != null);
+    try expectNumCaptures(buf[0..5], 5);
 
     // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
     try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getAllKnightMoves(&buf));
+    try expectNumCaptures(buf[0..5], 4);
 
     // https://lichess.org/editor/K1k5/8/8/8/8/8/6p1/N7_w_-_-_0_1?color=white
     try testing.expectEqual(2, Board.fromFenUnchecked("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1").getAllKnightMoves(&buf));
+    try expectNumCaptures(buf[0..2], 0);
 
     // https://lichess.org/editor/K1k4N/8/8/8/8/8/6p1/8_w_-_-_0_1?color=white
     try testing.expectEqual(2, Board.fromFenUnchecked("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1").getAllKnightMoves(&buf));
+    try expectNumCaptures(buf[0..2], 0);
 }
 
-test "fen parsing" {
-    try testing.expectError(error.NotEnoughRows, Board.fromFen(""));
-    try testing.expectError(error.EnPassantTargetDoesntExist, Board.fromFen("8/k7/8/4P3/8/8/K7/8 w - d6 0 1"));
-    try testing.expect(!std.meta.isError(Board.fromFen("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1")));
+test "all bishop moves" {
+    var buf: [100]Move = undefined;
+
+    // https://lichess.org/editor/k7/8/8/8/8/3B4/8/K7_w_-_-_0_1?color=white
+    try testing.expectEqual(11, Board.fromFenUnchecked("k7/8/8/8/8/3B4/8/K7 w - - 0 1").getAllBishopMoves(&buf));
+    try expectNumCaptures(buf[0..11], 0);
+
+    // https://lichess.org/editor/k7/8/8/5p2/8/3B4/8/K7_w_-_-_0_1?color=white
+    try testing.expectEqual(9, Board.fromFenUnchecked("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1").getAllBishopMoves(&buf));
+    try expectNumCaptures(buf[0..9], 1);
 }
