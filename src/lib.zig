@@ -38,150 +38,147 @@ pub const BitBoard = enum(u64) {
 
     const Self = @This();
 
-    pub fn toInt(self: Self) u64 {
+    pub inline fn toInt(self: Self) u64 {
         return @intFromEnum(self);
     }
 
-    pub fn init(value: u64) BitBoard {
+    pub inline fn init(value: u64) BitBoard {
         return @enumFromInt(value);
     }
 
-    pub fn fromSquare(square: []const u8) !BitBoard {
+    pub inline fn fromSquare(square: []const u8) !BitBoard {
         if (square.len != 2) return error.InvalidSquare;
         const col = std.ascii.toLower(square[0]);
         const row = std.ascii.toLower(square[1]);
         return init(getSquare(try Row.init(row -% '1'), try Col.init(col -% 'a')));
     }
 
-    pub fn fromSquareUnchecked(square: []const u8) BitBoard {
+    pub inline fn fromSquareUnchecked(square: []const u8) BitBoard {
         return fromSquare(square) catch unreachable;
     }
 
-    pub fn initEmpty() BitBoard {
+    pub inline fn initEmpty() BitBoard {
         return init(0);
     }
 
-    pub fn isEmpty(self: Self) bool {
+    pub inline fn isEmpty(self: Self) bool {
         return self == initEmpty();
     }
 
-    pub fn set(self: *Self, row: Row, col: Col) !void {
+    pub inline fn set(self: *Self, row: Row, col: Col) !void {
         if (self.get(row, col)) return error.AlreadySet;
         self.setUnchecked(row, col);
     }
 
-    pub fn setUnchecked(self: *Self, row: Row, col: Col) void {
+    pub inline fn setUnchecked(self: *Self, row: Row, col: Col) void {
         self.* = init(self.toInt() | getSquare(row, col));
     }
 
-    pub fn get(self: Self, row: Row, col: Col) bool {
+    pub inline fn get(self: Self, row: Row, col: Col) bool {
         return self.toInt() & getSquare(row, col) != 0;
     }
 
     // gives bitboard of all the values that are in either `self` or `other`
-    pub fn getCombination(self: Self, other: BitBoard) BitBoard {
+    pub inline fn getCombination(self: Self, other: BitBoard) BitBoard {
         return init(self.toInt() | other.toInt());
     }
 
     // gives bitboard of all the values that are in both `self` and `other`
-    pub fn getOverlap(self: Self, other: BitBoard) BitBoard {
+    pub inline fn getOverlap(self: Self, other: BitBoard) BitBoard {
         return init(self.toInt() & other.toInt());
     }
 
     // gives bitboard of all the values that are in both `self` and `other`
-    pub fn getOverlapNonEmpty(self: Self, other: BitBoard) ?BitBoard {
+    pub inline fn getOverlapNonEmpty(self: Self, other: BitBoard) ?BitBoard {
         const res = self.toInt() & other.toInt();
         return if (res != 0) init(res) else null;
     }
 
-    pub fn overlaps(self: Self, other: BitBoard) bool {
+    pub inline fn overlaps(self: Self, other: BitBoard) bool {
         return self.getOverlap(other).toInt() != 0;
     }
 
     // adds in all the set squares from `other` to `self`
-    pub fn add(self: *Self, other: BitBoard) void {
+    pub inline fn add(self: *Self, other: BitBoard) void {
         self.* = self.getCombination(other);
     }
 
-    pub fn complement(self: Self) BitBoard {
+    pub inline fn complement(self: Self) BitBoard {
         return init(~self.toInt());
     }
 
-    fn getSquare(row: Row, col: Col) u64 {
+    inline fn getSquare(row: Row, col: Col) u64 {
         return @as(u64, 1) << (8 * row.toInt() + col.toInt());
     }
 
-    pub fn flipped(self: Self) BitBoard {
+    pub inline fn flipped(self: Self) BitBoard {
         return init(@byteSwap(self.toInt()));
     }
 
-    pub fn iterator(self: Self) PieceIterator {
+    pub inline fn iterator(self: Self) PieceIterator {
         return PieceIterator.init(self);
     }
 
-    fn getColMask(self: Self) u64 {
-        const idx = @ctz(self.toInt());
-        const masks = comptime blk: {
-            var res: [8]u64 = undefined;
-            for (0..8) |i| res[i] = std.math.maxInt(u64) / 255 << i;
-            break :blk res;
-        };
-        return masks[idx % 8];
-    }
-
-    fn getRowMask(self: Self) u64 {
-        const idx = @ctz(self.toInt()) & 63;
-        return 255 * (@as(u64, 1) << @intCast(idx & ~@as(u64, 7)));
-    }
-
-    pub fn forward(self: Self, steps: u6) BitBoard {
+    pub inline fn forward(self: Self, steps: u6) BitBoard {
         assert(@popCount(self.toInt()) <= 1);
-        // not needed, will just go to zero if we go above the board
-        // return init(self.toInt() << 8 * steps & self.getColMask());
+        return self.forwardMasked(steps);
+    }
+
+    pub inline fn forwardMasked(self: Self, steps: u6) BitBoard {
         return init(self.toInt() << 8 * steps);
     }
 
-    pub fn forwardUnchecked(self: Self, steps: u6) BitBoard {
+    pub inline fn forwardUnchecked(self: Self, steps: u6) BitBoard {
         return init(self.toInt() << 8 * steps);
     }
 
-    pub fn backward(self: Self, steps: u6) BitBoard {
+    pub inline fn backward(self: Self, steps: u6) BitBoard {
         assert(@popCount(self.toInt()) <= 1);
-        // not needed, will just go to zero if we go below the board
-        // return init(self.toInt() >> 8 * steps & self.getColMask());
+        return self.backwardMasked(steps);
+    }
+
+    pub inline fn backwardMasked(self: Self, steps: u6) BitBoard {
         return init(self.toInt() >> 8 * steps);
     }
 
-    pub fn backwardUnchecked(self: Self, steps: u6) BitBoard {
+    pub inline fn backwardUnchecked(self: Self, steps: u6) BitBoard {
         return init(self.toInt() >> 8 * steps);
     }
 
-    pub fn left(self: Self, steps: u6) BitBoard {
+    pub inline fn left(self: Self, steps: u6) BitBoard {
         assert(@popCount(self.toInt()) <= 1);
+        return self.leftMasked(steps);
+    }
+
+    pub inline fn leftMasked(self: Self, steps: u6) BitBoard {
         const mask = @as(u64, @as(u8, 255) >> @intCast(steps)) * (std.math.maxInt(u64) / 255);
         return init(self.toInt() >> steps & mask);
     }
 
-    pub fn leftUnchecked(self: Self, steps: u6) BitBoard {
+    pub inline fn leftUnchecked(self: Self, steps: u6) BitBoard {
         return init(self.toInt() >> steps);
     }
 
-    pub fn right(self: Self, steps: u6) BitBoard {
+    pub inline fn right(self: Self, steps: u6) BitBoard {
         assert(@popCount(self.toInt()) <= 1);
+        return self.rightMasked(steps);
+    }
+
+    pub inline fn rightMasked(self: Self, steps: u6) BitBoard {
         const mask = @as(u64, @as(u8, 255) << @intCast(steps)) * (std.math.maxInt(u64) / 255);
         return init(self.toInt() << steps & mask);
     }
 
-    pub fn rightUnchecked(self: Self, steps: u6) BitBoard {
+    pub inline fn rightUnchecked(self: Self, steps: u6) BitBoard {
         return init(self.toInt() << steps);
     }
 
-    pub fn move(self: Self, dr: anytype, dc: anytype) BitBoard {
+    pub inline fn move(self: Self, dr: anytype, dc: anytype) BitBoard {
         assert(-7 <= dr and dr <= 7);
         assert(-7 <= dc and dc <= 7);
         var res = self;
-        res = if (dr < 0) res.backward(@abs(dr)) else res.forward(dr);
-        res = if (dc < 0) res.left(@abs(dc)) else res.right(dc);
+        res = if (dr < 0) res.backwardMasked(@abs(dr)) else res.forwardMasked(dr);
+        res = if (dc < 0) res.leftMasked(@abs(dc)) else res.rightMasked(dc);
         return res;
     }
 
@@ -952,8 +949,6 @@ pub const Board = struct {
 
         var move_count: usize = 0;
 
-        // const board_border = BitBoard.init(std.math.maxInt(u64) / 255 * 0b10000001 | 0b11111111 * (1 << 0 | 1 << 56));
-        // _ = board_border; // autofix
         var iter = bishops.iterator();
         while (iter.next()) |bishop| {
             inline for ([_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }) |dr, dc| {
