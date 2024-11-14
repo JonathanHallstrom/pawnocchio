@@ -1260,7 +1260,7 @@ fn expectNumCastling(moves: []Move, count: usize) !void {
     if (count != actual_count) {
         std.log.err("Expected {} castling moves, found {}. Castling moves found:\n", .{ count, actual_count });
         for (moves) |move| {
-            if (move.captured != null) {
+            if (move.isCastlingMove()) {
                 std.log.err("{}\n", .{move});
             }
         }
