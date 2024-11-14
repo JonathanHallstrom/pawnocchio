@@ -444,11 +444,11 @@ pub const Move = struct {
     }
 
     pub fn isQuiet(self: Move) bool {
-        return self.captured == null;
+        return self.captured() == null;
     }
 
     pub fn isCapture(self: Move) bool {
-        return self.captured != null;
+        return self.captured() != null;
     }
 
     pub fn isCastlingMove(self: Move) bool {
@@ -794,7 +794,7 @@ pub const Board = struct {
                 moved_side.rook.remove(move.to().getBoard().leftUnchecked(1));
             }
         }
-        if (move.captured) |cap| {
+        if (move.captured()) |cap| {
             const capture_side = if (self.turn == .black) &self.black else &self.white;
             const capture_board = capture_side.getBoardPtr(cap.getType());
             capture_board.* = capture_board.getCombination(cap.getBoard());
