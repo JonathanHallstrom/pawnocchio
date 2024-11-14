@@ -1011,12 +1011,12 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getBishopCaptures(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, true, [_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }, .bishop);
-    }
-
     pub fn getAllBishopMoves(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, false, [_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }, .bishop);
+    }
+
+    pub fn getBishopCaptures(self: Self, move_buffer: []Move) usize {
+        return getStraightLineMoves(self, move_buffer, true, [_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }, .bishop);
     }
 
     pub fn getAllRookMoves(self: Self, move_buffer: []Move) usize {
