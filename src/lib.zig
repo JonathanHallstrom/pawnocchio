@@ -423,6 +423,20 @@ pub const Move = struct {
         };
     }
 
+    pub fn isQuiet(self: Move) bool {
+        return self.captured == null;
+    }
+
+    pub fn isCapture(self: Move) bool {
+        return self.captured != null;
+    }
+
+    pub fn isCastlingMove(self: Move) bool {
+        const left = self.from.board.left(2);
+        const right = self.from.board.right(2);
+        return self.from.tp == .king and left.getCombination(right).overlaps(self.to.board);
+    }
+
     pub fn initQuiet(from: Piece, to: Piece) Move {
         return .{
             .from = from,
@@ -569,14 +583,17 @@ pub const Board = struct {
     halfmove_clock: u8 = 0,
     fullmove_clock: u64 = 1,
 
-    const queenside_white_castle = BitBoard.fromSquareUnchecked("C1");
-    const kingside_white_castle = BitBoard.fromSquareUnchecked("G1");
-    const queenside_black_castle = BitBoard.fromSquareUnchecked("C8");
-    const kingside_black_castle = BitBoard.fromSquareUnchecked("G8");
+    const white_king_start = BitBoard.fromSquareUnchecked("E1");
+    const black_king_start = BitBoard.fromSquareUnchecked("E8");
+    const queenside_white_castle_destination = BitBoard.fromSquareUnchecked("C1");
+    const kingside_white_castle_destination = BitBoard.fromSquareUnchecked("G1");
+    const queenside_black_castle_destination = BitBoard.fromSquareUnchecked("C8");
+    const kingside_black_castle_destination = BitBoard.fromSquareUnchecked("G8");
 
     comptime {
-        assert(queenside_white_castle == queenside_black_castle.flipped());
-        assert(kingside_white_castle == kingside_black_castle.flipped());
+        assert(queenside_white_castle_destination == queenside_black_castle_destination.flipped());
+        assert(kingside_white_castle_destination == kingside_black_castle_destination.flipped());
+        assert(white_king_start == black_king_start.flipped());
     }
 
     const Self = @This();
@@ -629,10 +646,10 @@ pub const Board = struct {
         if (!std.mem.eql(u8, "-", castling_string)) {
             for (castling_string) |castle_ch| {
                 res.castling_squares.add(switch (castle_ch) {
-                    'Q' => queenside_white_castle,
-                    'q' => queenside_black_castle,
-                    'K' => kingside_white_castle,
-                    'k' => kingside_black_castle,
+                    'Q' => queenside_white_castle_destination,
+                    'q' => queenside_black_castle_destination,
+                    'K' => kingside_white_castle_destination,
+                    'k' => kingside_black_castle_destination,
                     else => return error.InvalidCharacter,
                 });
             }
@@ -759,7 +776,7 @@ pub const Board = struct {
 
         const seventh_row = BitBoard.fromSquareUnchecked("A7").allRight();
 
-        const pawns_that_can_move = pawns.forwardUnchecked(1).getOverlap(allowed_squares).backwardUnchecked(1);
+        const pawns_that_can_move = pawns.forwardMasked(1).getOverlap(allowed_squares).backwardMasked(1);
 
         var promotion_pawns = pawns_that_can_move.getOverlap(seventh_row).iterator();
         while (promotion_pawns.next()) |pawn_to_promote| {
@@ -770,7 +787,7 @@ pub const Board = struct {
         }
 
         const second_row = BitBoard.fromSquareUnchecked("A2").allRight();
-        var double_move_pawns = pawns_that_can_move.getOverlap(second_row).forwardUnchecked(2).getOverlap(allowed_squares).backwardUnchecked(2).iterator();
+        var double_move_pawns = pawns_that_can_move.getOverlap(second_row).forwardMasked(2).getOverlap(allowed_squares).backwardMasked(2).iterator();
         while (double_move_pawns.next()) |pawn| {
             move_buffer[move_count] = Move.initQuiet(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(pawn.forward(2)));
             move_count += 1;
@@ -889,6 +906,12 @@ pub const Board = struct {
         return move_count;
     }
 
+    pub fn getAllPawnMoves(self: Self, move_buffer: []Move) usize {
+        const first_move_count = self.getQuietPawnMoves(move_buffer);
+        const second_move_count = self.getPawnCaptures(move_buffer[first_move_count..]);
+        return first_move_count + second_move_count;
+    }
+
     pub fn getQuietKnightMoves(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
         const knights = if (should_flip) self.black.knight else self.white.knight;
@@ -952,19 +975,29 @@ pub const Board = struct {
         const opponent_side = if (is_white_turn) self.black else self.white;
         const own_pieces = own_side.all();
         const opponents_pieces = opponent_side.all();
-        const allowed_squares = own_pieces.complement();
+        const all_pieces = own_pieces.getCombination(opponents_pieces);
+        const empty_squares = all_pieces.complement();
 
         var move_count: usize = 0;
         const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
         const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
         inline for (row_offsets, col_offsets) |dr, dc| {
-            var iter = knights.move(dr, dc).getOverlap(allowed_squares).move(-dr, -dc).iterator();
-            while (iter.next()) |knight| {
+            var quiet = knights.move(dr, dc).getOverlap(empty_squares).move(-dr, -dc).iterator();
+            while (quiet.next()) |knight| {
                 const moved = knight.move(dr, dc);
-                move_buffer[move_count] = Move.init(
+                move_buffer[move_count] = Move.initQuiet(
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
-                    if (moved.overlaps(opponents_pieces)) Piece.init(opponent_side.whichType(moved), moved) else null,
+                );
+                move_count += 1;
+            }
+            var captures = knights.move(dr, dc).getOverlap(opponents_pieces).move(-dr, -dc).iterator();
+            while (captures.next()) |knight| {
+                const moved = knight.move(dr, dc);
+                move_buffer[move_count] = Move.initCapture(
+                    Piece.knightFromBitBoard(knight),
+                    Piece.knightFromBitBoard(moved),
+                    Piece.init(opponent_side.whichType(moved), moved),
                 );
                 move_count += 1;
             }
@@ -1040,15 +1073,192 @@ pub const Board = struct {
     pub fn getQueenCaptures(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, true, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
     }
+
+    pub fn getQuietKingMoves(self: Self, move_buffer: []Move) usize {
+        const is_black_turn = self.turn == .black;
+        const king = if (is_black_turn) self.black.king else self.white.king;
+        assert(!king.isEmpty());
+
+        const own_side = if (is_black_turn) &self.black else &self.white;
+        const own_pieces = own_side.all();
+        const opponents_pieces = if (is_black_turn) self.white.all() else self.black.all();
+        const all_pieces = own_pieces.getCombination(opponents_pieces);
+        const empty_squares = all_pieces.complement();
+
+        var move_count: usize = 0;
+
+        var possible_places_to_move = king;
+        possible_places_to_move.add(king.leftMasked(1));
+        possible_places_to_move.add(king.rightMasked(1));
+        possible_places_to_move.add(possible_places_to_move.forwardMasked(1));
+        possible_places_to_move.add(possible_places_to_move.backwardMasked(1));
+        var iter = possible_places_to_move.getOverlap(empty_squares).iterator();
+        while (iter.next()) |moved| {
+            move_buffer[move_count] = Move.initQuiet(
+                Piece.kingFromBitBoard(king),
+                Piece.kingFromBitBoard(moved),
+            );
+            move_count += 1;
+        }
+
+        // castling
+        const starting_square = if (self.turn == .white) BitBoard.fromSquareUnchecked("E1") else BitBoard.fromSquareUnchecked("E8");
+        if (king.overlaps(starting_square)) {
+            // TODO: check square in between where the king ends up and where it starts for pieces attacking that square
+
+            // queenside
+            if (!king.leftUnchecked(1)
+                .getCombination(king.leftUnchecked(2))
+                .getCombination(king.leftUnchecked(3))
+                .overlaps(all_pieces) and
+                king.leftUnchecked(4).overlaps(own_side.rook))
+            {
+                move_buffer[move_count] = Move.initQuiet(
+                    Piece.kingFromBitBoard(king),
+                    Piece.kingFromBitBoard(king.leftUnchecked(2)),
+                );
+                move_count += 1;
+            }
+
+            // kingside
+            if (!king.rightUnchecked(1)
+                .getCombination(king.rightUnchecked(2))
+                .overlaps(all_pieces) and
+                king.rightUnchecked(3).overlaps(own_side.rook))
+            {
+                move_buffer[move_count] = Move.initQuiet(
+                    Piece.kingFromBitBoard(king),
+                    Piece.kingFromBitBoard(king.rightUnchecked(2)),
+                );
+                move_count += 1;
+            }
+        }
+
+        return move_count;
+    }
+
+    pub fn getKingCaptures(self: Self, move_buffer: []Move) usize {
+        const should_flip = self.turn == .black;
+        const king = if (should_flip) self.black.king else self.white.king;
+        assert(!king.isEmpty());
+
+        const opponent_side = if (should_flip) &self.white else &self.black;
+        const opponents_pieces = opponent_side.all();
+
+        var move_count: usize = 0;
+
+        var possible_places_to_move = king;
+        possible_places_to_move.add(king.leftMasked(1));
+        possible_places_to_move.add(king.rightMasked(1));
+        possible_places_to_move.add(possible_places_to_move.forwardMasked(1));
+        possible_places_to_move.add(possible_places_to_move.backwardMasked(1));
+        var iter = possible_places_to_move.getOverlap(opponents_pieces).iterator();
+        while (iter.next()) |moved| {
+            move_buffer[move_count] = Move.initCapture(
+                Piece.kingFromBitBoard(king),
+                Piece.kingFromBitBoard(moved),
+                Piece.init(opponent_side.whichType(moved), moved),
+            );
+            move_count += 1;
+        }
+        return move_count;
+    }
+
+    pub fn getAllKingMoves(self: Self, move_buffer: []Move) usize {
+        const is_black_turn = self.turn == .black;
+        const king = if (is_black_turn) self.black.king else self.white.king;
+        assert(!king.isEmpty());
+
+        const own_side = if (is_black_turn) &self.black else &self.white;
+        const own_pieces = own_side.all();
+        const opponent_side = if (is_black_turn) &self.white else &self.black;
+        const opponents_pieces = opponent_side.all();
+        const all_pieces = own_pieces.getCombination(opponents_pieces);
+        const empty_squares = all_pieces.complement();
+
+        var move_count: usize = 0;
+
+        var possible_places_to_move = king;
+        possible_places_to_move.add(king.leftMasked(1));
+        possible_places_to_move.add(king.rightMasked(1));
+        possible_places_to_move.add(possible_places_to_move.forwardMasked(1));
+        possible_places_to_move.add(possible_places_to_move.backwardMasked(1));
+        var captures = possible_places_to_move.getOverlap(opponents_pieces).iterator();
+        while (captures.next()) |moved| {
+            move_buffer[move_count] = Move.initCapture(
+                Piece.kingFromBitBoard(king),
+                Piece.kingFromBitBoard(moved),
+                Piece.init(opponent_side.whichType(moved), moved),
+            );
+            move_count += 1;
+        }
+        var quiet = possible_places_to_move.getOverlap(empty_squares).iterator();
+        while (quiet.next()) |moved| {
+            move_buffer[move_count] = Move.initQuiet(
+                Piece.kingFromBitBoard(king),
+                Piece.kingFromBitBoard(moved),
+            );
+            move_count += 1;
+        }
+
+        // castling
+        const starting_square = if (self.turn == .white) BitBoard.fromSquareUnchecked("E1") else BitBoard.fromSquareUnchecked("E8");
+        if (king.overlaps(starting_square)) {
+            // TODO: check square in between where the king ends up and where it starts for pieces attacking that square
+
+            // queenside
+            if (!king.leftUnchecked(1)
+                .getCombination(king.leftUnchecked(2))
+                .getCombination(king.leftUnchecked(3))
+                .overlaps(all_pieces) and
+                king.leftUnchecked(4).overlaps(own_side.rook))
+            {
+                move_buffer[move_count] = Move.initQuiet(
+                    Piece.kingFromBitBoard(king),
+                    Piece.kingFromBitBoard(king.leftUnchecked(2)),
+                );
+                move_count += 1;
+            }
+
+            // kingside
+            if (!king.rightUnchecked(1)
+                .getCombination(king.rightUnchecked(2))
+                .overlaps(all_pieces) and
+                king.rightUnchecked(3).overlaps(own_side.rook))
+            {
+                move_buffer[move_count] = Move.initQuiet(
+                    Piece.kingFromBitBoard(king),
+                    Piece.kingFromBitBoard(king.rightUnchecked(2)),
+                );
+                move_count += 1;
+            }
+        }
+
+        return move_count;
+    }
 };
 
 const testing = std.testing;
 
 fn expectNumCaptures(moves: []Move, count: usize) !void {
     var actual_count: usize = 0;
-    for (moves) |move| actual_count += @intFromBool(move.captured != null);
+    for (moves) |move| actual_count += @intFromBool(move.isCapture());
     if (count != actual_count) {
         std.log.err("Expected {} captures, found {}. Captures found:\n", .{ count, actual_count });
+        for (moves) |move| {
+            if (move.isCapture()) {
+                std.log.err("{}\n", .{move});
+            }
+        }
+        return error.WrongNumberCaptures;
+    }
+}
+
+fn expectNumCastling(moves: []Move, count: usize) !void {
+    var actual_count: usize = 0;
+    for (moves) |move| actual_count += @intFromBool(move.isCastlingMove());
+    if (count != actual_count) {
+        std.log.err("Expected {} castling moves, found {}. Castling moves found:\n", .{ count, actual_count });
         for (moves) |move| {
             if (move.captured != null) {
                 std.log.err("{}\n", .{move});
@@ -1324,4 +1534,67 @@ test "all queen moves" {
     // https://lichess.org/editor/7k/8/8/3q2P1/8/8/7K/8_b_-_-_0_1?color=black
     try testing.expectEqual(26, Board.fromFenUnchecked("7k/8/8/3q2P1/8/8/7K/8 b - - 0 1").getAllQueenMoves(&buf));
     try expectNumCaptures(buf[0..26], 1);
+}
+
+test "quiet king moves" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQuietKingMoves(&buf));
+
+    // https://lichess.org/editor/8/1k6/8/8/8/8/PPP5/1K6_w_-_-_0_1?color=white
+    try testing.expectEqual(2, Board.fromFenUnchecked("8/1k6/8/8/8/8/PPP5/1K6 w - - 0 1").getQuietKingMoves(&buf));
+}
+
+test "king captures" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getKingCaptures(&buf));
+
+    // https://lichess.org/editor/8/1k6/8/8/8/8/1p6/1K6_w_-_-_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1").getKingCaptures(&buf));
+
+    // https://lichess.org/editor/8/1k6/8/8/8/2pKp3/2p1p3/8_w_-_-_0_1?color=white
+    try testing.expectEqual(4, Board.fromFenUnchecked("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1").getKingCaptures(&buf));
+
+    // https://lichess.org/editor/8/1k6/8/8/2p5/2pKp3/2p1p3/8_w_-_-_0_1?color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1").getKingCaptures(&buf));
+}
+
+test "all king moves" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllKingMoves(&buf));
+
+    // https://lichess.org/editor/8/1k6/8/8/8/8/1p6/1K6_w_-_-_0_1?color=white
+    try testing.expectEqual(5, Board.fromFenUnchecked("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1").getAllKingMoves(&buf));
+    try expectNumCaptures(buf[0..5], 1);
+
+    // https://lichess.org/editor/8/1k6/8/8/8/2pKp3/2p1p3/8_w_-_-_0_1?color=white
+    try testing.expectEqual(8, Board.fromFenUnchecked("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1").getAllKingMoves(&buf));
+    try expectNumCaptures(buf[0..8], 4);
+
+    // https://lichess.org/editor/8/1k6/8/8/2p5/2pKp3/2p1p3/8_w_-_-_0_1?color=white
+    try testing.expectEqual(8, Board.fromFenUnchecked("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1").getAllKingMoves(&buf));
+    try expectNumCaptures(buf[0..8], 5);
+
+    // https://lichess.org/editor/4k3/8/8/8/8/8/8/R3K3_w_Q_-_0_1?color=white
+    try testing.expectEqual(6, Board.fromFenUnchecked("4k3/8/8/8/8/8/8/R3K3 w Q - 0 1").getAllKingMoves(&buf));
+    try expectNumCaptures(buf[0..6], 0);
+
+    // https://lichess.org/editor/r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R_w_KQkq_-_4_4?color=white
+    try testing.expectEqual(3, Board.fromFenUnchecked("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4").getAllKingMoves(&buf));
+    try expectNumCaptures(buf[0..3], 0);
+
+    // https://lichess.org/editor/3k4/8/8/8/8/8/3PPPPP/3QK2R_w_-_-_0_1?color=white
+    try testing.expectEqual(2, Board.fromFenUnchecked("3k4/8/8/8/8/8/3PPPPP/3QK2R w - - 0 1").getAllKingMoves(&buf));
+    try expectNumCaptures(buf[0..2], 0);
+    try expectNumCastling(buf[0..2], 1);
+
+    // https://lichess.org/editor/3k4/8/8/8/8/8/8/R3K2R_w_KQ_-_0_1?color=white
+    try testing.expectEqual(7, Board.fromFenUnchecked("3k4/8/8/8/8/8/8/R3K2R w KQ - 0 1").getAllKingMoves(&buf));
+    try expectNumCaptures(buf[0..7], 0);
+    try expectNumCastling(buf[0..7], 2);
 }
