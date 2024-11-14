@@ -31,7 +31,7 @@ pub const Col = enum(u8) {
     }
 };
 
-pub const Side = enum {
+pub const Side = enum(u8) {
     black,
     white,
 
@@ -324,12 +324,12 @@ pub const BitBoard = enum(u64) {
 };
 
 pub const PieceType = enum(u8) {
-    pawn = 0,
-    knight = 1,
-    bishop = 2,
-    rook = 3,
-    queen = 4,
-    king = 5,
+    pawn,
+    knight,
+    bishop,
+    rook,
+    queen,
+    king,
 
     pub fn format(self: PieceType, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
