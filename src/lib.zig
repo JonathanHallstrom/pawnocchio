@@ -110,6 +110,11 @@ pub const BitBoard = enum(u64) {
         self.* = self.getCombination(other);
     }
 
+    // removes all the set squares in `other` from `self`
+    pub inline fn remove(self: *Self, other: BitBoard) void {
+        self.* = self.getOverlap(other.complement());
+    }
+
     pub inline fn complement(self: Self) BitBoard {
         return init(~self.toInt());
     }
@@ -738,6 +743,15 @@ pub const Board = struct {
         const to_board = moved_side.getBoardPtr(move.to.getType());
         assert(!to_board.overlaps(move.to.getBoard()));
         to_board.* = to_board.getCombination(move.to.getBoard());
+        if (move.isCastlingMove()) {
+            if (move.from.board.leftUnchecked(2) == move.to.board) {
+                moved_side.rook.remove(move.to.board.leftUnchecked(2));
+                moved_side.rook.add(move.to.board.rightUnchecked(1));
+            } else {
+                moved_side.rook.remove(move.to.board.rightUnchecked(1));
+                moved_side.rook.add(move.to.board.leftUnchecked(1));
+            }
+        }
         if (move.captured) |cap| {
             const capture_side = if (self.turn == .white) &self.black else &self.white;
             const capture_board = capture_side.getBoardPtr(cap.getType());
@@ -754,6 +768,15 @@ pub const Board = struct {
         const to_board = moved_side.getBoardPtr(move.to.getType());
         assert(to_board.overlaps(move.to.getBoard()));
         to_board.* = to_board.getOverlap(move.to.getBoard().complement());
+        if (move.isCastlingMove()) {
+            if (move.from.board.leftUnchecked(2) == move.to.board) {
+                moved_side.rook.add(move.to.board.leftUnchecked(2));
+                moved_side.rook.remove(move.to.board.rightUnchecked(1));
+            } else {
+                moved_side.rook.add(move.to.board.rightUnchecked(1));
+                moved_side.rook.remove(move.to.board.leftUnchecked(1));
+            }
+        }
         if (move.captured) |cap| {
             const capture_side = if (self.turn == .black) &self.black else &self.white;
             const capture_board = capture_side.getBoardPtr(cap.getType());
@@ -1264,8 +1287,30 @@ fn expectNumCastling(moves: []Move, count: usize) !void {
                 std.log.err("{}\n", .{move});
             }
         }
-        return error.WrongNumberCaptures;
+        return error.WrongNumberCastling;
     }
+}
+
+fn expectMovesInvertible(board: Board, moves: []Move) !void {
+    _ = board; // autofix
+    _ = moves; // autofix
+    // for (moves) |move| {
+    //     var tmp = board;
+    //     try tmp.playMove(move);
+    //     try tmp.undoMove(move);
+    //     try std.testing.expectEqualDeep(board, tmp);
+    // }
+}
+
+fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_captures: usize, expected_castling: usize) !void {
+    var buf: [400]Move = undefined;
+    const board = try Board.fromFen(fen);
+    const num_moves = func(board, &buf);
+    try testing.expectEqual(expected_moves, num_moves);
+    const moves = buf[0..num_moves];
+    try expectNumCaptures(moves, expected_captures);
+    try expectNumCastling(moves, expected_castling);
+    try expectMovesInvertible(board, moves);
 }
 
 test "fen parsing" {
@@ -1275,326 +1320,112 @@ test "fen parsing" {
 }
 
 test "quiet pawn moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(16, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQuietPawnMoves(&buf));
-    try expectNumCaptures(buf[0..16], 0);
-
-    // https://lichess.org/editor/8/8/p7/P1P5/2K2kP1/5P2/2P4P/8_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1").getQuietPawnMoves(&buf));
-    try expectNumCaptures(buf[0..5], 0);
-
-    // https://lichess.org/editor/8/8/p7/P7/2K2k2/2P5/8/8_w_-_-_0_1?color=white
-    try testing.expectEqual(0, Board.fromFenUnchecked("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1").getQuietPawnMoves(&buf));
-
-    // https://lichess.org/editor/8/P7/8/8/2K2k2/8/8/8_w_-_-_0_1?color=white
-    try testing.expectEqual(4, Board.fromFenUnchecked("8/P7/8/8/2K2k2/8/8/8 w - - 0 1").getQuietPawnMoves(&buf));
-    try expectNumCaptures(buf[0..4], 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietPawnMoves, 16, 0, 0);
+    try testCase("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1", Board.getQuietPawnMoves, 5, 0, 0);
+    try testCase("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1", Board.getQuietPawnMoves, 0, 0, 0);
+    try testCase("8/P7/8/8/2K2k2/8/8/8 w - - 0 1", Board.getQuietPawnMoves, 4, 0, 0);
 }
 
 test "pawn captures" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getPawnCaptures(&buf));
-
-    // https://lichess.org/editor/8/8/p7/P1P5/2K2kP1/5P2/2P4P/8_w_-_-_0_1?color=white
-    try testing.expectEqual(0, Board.fromFenUnchecked("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1").getPawnCaptures(&buf));
-
-    // https://lichess.org/editor/8/8/p7/P7/2K2k2/2P5/8/8_w_-_-_0_1?color=white
-    try testing.expectEqual(0, Board.fromFenUnchecked("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1").getPawnCaptures(&buf));
-
-    // https://lichess.org/editor/8/8/p1q5/1P1P4/2K2k2/2P5/8/8_w_-_-_0_1?color=white
-    try testing.expectEqual(3, Board.fromFenUnchecked("8/8/p1q5/1P1P4/2K2k2/2P5/8/8 w - - 0 1").getPawnCaptures(&buf));
-    try expectNumCaptures(buf[0..3], 3);
-
-    // https://lichess.org/editor/8/k7/8/3pP3/8/8/K7/8_w_-_d6_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1").getPawnCaptures(&buf));
-    try testing.expectEqualSlices(
-        Move,
-        &.{Move.init(
-            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")),
-            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D6")),
-            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D5")),
-        )},
-        buf[0..1],
-    );
-    // https://lichess.org/editor/8/k7/8/8/3pP3/8/K7/8_b_-_e3_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("8/k7/8/8/3pP3/8/K7/8 b - e3 0 1").getPawnCaptures(&buf));
-    try testing.expectEqualSlices(
-        Move,
-        &.{Move.init(
-            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D4")),
-            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E3")),
-            Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")),
-        )},
-        buf[0..1],
-    );
-
-    // https://lichess.org/editor/1p6/P7/8/8/2K2k2/8/8/8_w_-_-_0_1?color=white
-    try testing.expectEqual(4, Board.fromFenUnchecked("1p6/P7/8/8/2K2k2/8/8/8 w - - 0 1").getPawnCaptures(&buf));
-    try expectNumCaptures(buf[0..4], 4);
-
-    // https://lichess.org/editor/p1p5/1P6/8/8/2K2k2/8/8/8_w_-_-_0_1?color=white
-    try testing.expectEqual(8, Board.fromFenUnchecked("p1p5/1P6/8/8/2K2k2/8/8/8 w - - 0 1").getPawnCaptures(&buf));
-    try expectNumCaptures(buf[0..8], 8);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getPawnCaptures, 0, 0, 0);
+    try testCase("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1", Board.getPawnCaptures, 0, 0, 0);
+    try testCase("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1", Board.getPawnCaptures, 0, 0, 0);
+    try testCase("8/8/p1q5/1P1P4/2K2k2/2P5/8/8 w - - 0 1", Board.getPawnCaptures, 3, 3, 0);
+    try testCase("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1", Board.getPawnCaptures, 1, 1, 0);
+    try testCase("8/k7/8/8/3pP3/8/K7/8 b - e3 0 1", Board.getPawnCaptures, 1, 1, 0);
+    try testCase("1p6/P7/8/8/2K2k2/8/8/8 w - - 0 1", Board.getPawnCaptures, 4, 4, 0);
+    try testCase("p1p5/1P6/8/8/2K2k2/8/8/8 w - - 0 1", Board.getPawnCaptures, 8, 8, 0);
 }
 
 test "quiet knight moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(4, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQuietKnightMoves(&buf));
-    try expectNumCaptures(buf[0..4], 0);
-
-    // https://lichess.org/editor/8/6k1/8/8/8/3N4/1K6/8_w_-_-_0_1?color=white
-    try testing.expectEqual(7, Board.fromFenUnchecked("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1").getQuietKnightMoves(&buf));
-    try expectNumCaptures(buf[0..7], 0);
-
-    // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
-    try testing.expectEqual(14, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getQuietKnightMoves(&buf));
-    try expectNumCaptures(buf[0..14], 0);
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getQuietKnightMoves(&buf));
-    try expectNumCaptures(buf[0..5], 0);
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(0, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getQuietKnightMoves(&buf));
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getQuietKnightMoves(&buf));
-    try testing.expectEqualSlices(
-        Move,
-        &.{Move.initQuiet(
-            Piece.knightFromBitBoard(BitBoard.fromSquareUnchecked("A1")),
-            Piece.knightFromBitBoard(BitBoard.fromSquareUnchecked("C2")),
-        )},
-        buf[0..1],
-    );
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietKnightMoves, 4, 0, 0);
+    try testCase("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1", Board.getQuietKnightMoves, 7, 0, 0);
+    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getQuietKnightMoves, 14, 0, 0);
+    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getQuietKnightMoves, 5, 0, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getQuietKnightMoves, 0, 0, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getQuietKnightMoves, 1, 0, 0);
 }
 
 test "knight captures" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getKnightCaptures(&buf));
-
-    // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getKnightCaptures(&buf));
-    try expectNumCaptures(buf[0..1], 1);
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(0, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getKnightCaptures(&buf));
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getKnightCaptures(&buf));
-    try expectNumCaptures(buf[0..5], 5);
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(4, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getKnightCaptures(&buf));
-    try expectNumCaptures(buf[0..4], 4);
-
-    // https://lichess.org/editor/K1k5/8/8/8/8/8/6p1/N7_w_-_-_0_1?color=white
-    try testing.expectEqual(0, Board.fromFenUnchecked("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1").getKnightCaptures(&buf));
-
-    // https://lichess.org/editor/K1k4N/8/8/8/8/8/6p1/8_w_-_-_0_1?color=white
-    try testing.expectEqual(0, Board.fromFenUnchecked("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1").getKnightCaptures(&buf));
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getKnightCaptures, 0, 0, 0);
+    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getKnightCaptures, 1, 1, 0);
+    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getKnightCaptures, 0, 0, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getKnightCaptures, 5, 5, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getKnightCaptures, 4, 4, 0);
+    try testCase("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1", Board.getKnightCaptures, 0, 0, 0);
+    try testCase("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1", Board.getKnightCaptures, 0, 0, 0);
 }
 
 test "all knight moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(4, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllKnightMoves(&buf));
-    try expectNumCaptures(buf[0..4], 0);
-
-    // https://lichess.org/editor/8/6k1/8/5p2/8/3NN3/1K6/8_w_-_-_0_1?color=white
-    try testing.expectEqual(15, Board.fromFenUnchecked("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1").getAllKnightMoves(&buf));
-    try expectNumCaptures(buf[0..15], 1);
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/8/8/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/8/8/NN6 w - - 0 1").getAllKnightMoves(&buf));
-    try expectNumCaptures(buf[0..5], 0);
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/2pp4/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1").getAllKnightMoves(&buf));
-    try expectNumCaptures(buf[0..5], 5);
-
-    // https://lichess.org/editor/K7/6k1/8/8/8/ppp5/3p4/NN6_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1").getAllKnightMoves(&buf));
-    try expectNumCaptures(buf[0..5], 4);
-
-    // https://lichess.org/editor/K1k5/8/8/8/8/8/6p1/N7_w_-_-_0_1?color=white
-    try testing.expectEqual(2, Board.fromFenUnchecked("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1").getAllKnightMoves(&buf));
-    try expectNumCaptures(buf[0..2], 0);
-
-    // https://lichess.org/editor/K1k4N/8/8/8/8/8/6p1/8_w_-_-_0_1?color=white
-    try testing.expectEqual(2, Board.fromFenUnchecked("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1").getAllKnightMoves(&buf));
-    try expectNumCaptures(buf[0..2], 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllKnightMoves, 4, 0, 0);
+    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getAllKnightMoves, 15, 1, 0);
+    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getAllKnightMoves, 5, 0, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getAllKnightMoves, 5, 5, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getAllKnightMoves, 5, 4, 0);
+    try testCase("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1", Board.getAllKnightMoves, 2, 0, 0);
+    try testCase("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1", Board.getAllKnightMoves, 2, 0, 0);
 }
 
 test "bishop captures" {
-    var buf: [100]Move = undefined;
-
-    // https://lichess.org/editor/k7/8/8/5p2/8/3B4/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1").getBishopCaptures(&buf));
-
-    // https://lichess.org/editor/7r/2k3p1/8/b7/8/2B5/8/1K6_w_-_-_0_1?color=white
-    try testing.expectEqual(2, Board.fromFenUnchecked("7r/2k3p1/8/b7/8/2B5/8/1K6 w - - 0 1").getBishopCaptures(&buf));
-
-    // https://lichess.org/editor/7r/2k3p1/8/b7/8/2B5/8/1K6_b_-_-_0_1?color=black
-    try testing.expectEqual(1, Board.fromFenUnchecked("7r/2k3p1/8/b7/8/2B5/8/1K6 b - - 0 1").getBishopCaptures(&buf));
+    try testCase("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1", Board.getBishopCaptures, 1, 1, 0);
+    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 w - - 0 1", Board.getBishopCaptures, 2, 2, 0);
+    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 b - - 0 1", Board.getBishopCaptures, 1, 1, 0);
 }
 
 test "all bishop moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllBishopMoves(&buf));
-
-    // https://lichess.org/editor?fen=r1bqkbnr%2Fpppp1ppp%2F2n5%2F4p3%2F4P3%2F5N2%2FPPPP1PPP%2FRNBQKB1R+w+KQkq+-+2+3&variant=fromPosition&color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3").getAllBishopMoves(&buf));
-    try expectNumCaptures(buf[0..5], 0);
-
-    // https://lichess.org/editor/k7/8/8/8/8/3B4/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(11, Board.fromFenUnchecked("k7/8/8/8/8/3B4/8/K7 w - - 0 1").getAllBishopMoves(&buf));
-    try expectNumCaptures(buf[0..11], 0);
-
-    // https://lichess.org/editor/k7/8/8/5p2/8/3B4/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(9, Board.fromFenUnchecked("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1").getAllBishopMoves(&buf));
-    try expectNumCaptures(buf[0..9], 1);
-
-    // https://lichess.org/editor/7r/2k3p1/8/b7/8/2B5/8/1K6_b_-_-_0_1?color=black
-    try testing.expectEqual(3, Board.fromFenUnchecked("7r/2k3p1/8/b7/8/2B5/8/1K6 b - - 0 1").getAllBishopMoves(&buf));
-    try expectNumCaptures(buf[0..3], 1);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllBishopMoves, 0, 0, 0);
+    try testCase("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3", Board.getAllBishopMoves, 5, 0, 0);
+    try testCase("k7/8/8/8/8/3B4/8/K7 w - - 0 1", Board.getAllBishopMoves, 11, 0, 0);
+    try testCase("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1", Board.getAllBishopMoves, 9, 1, 0);
+    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 b - - 0 1", Board.getAllBishopMoves, 3, 1, 0);
 }
 
 test "rook captures" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getRookCaptures(&buf));
-
-    // https://lichess.org/editor/k7/8/8/3R1p2/8/8/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1").getRookCaptures(&buf));
-
-    // https://lichess.org/editor/k7/8/8/3RRp2/8/8/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1").getRookCaptures(&buf));
-
-    // https://lichess.org/editor/7k/8/8/8/3rrP2/8/8/7K_b_-_-_0_1?color=black
-    try testing.expectEqual(1, Board.fromFenUnchecked("7k/8/8/8/3rrP2/8/8/7K b - - 0 1").getRookCaptures(&buf));
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getRookCaptures, 0, 0, 0);
+    try testCase("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1", Board.getRookCaptures, 1, 1, 0);
+    try testCase("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1", Board.getRookCaptures, 1, 1, 0);
+    try testCase("7k/8/8/8/3rrP2/8/8/7K b - - 0 1", Board.getRookCaptures, 1, 1, 0);
 }
 
 test "all rook moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllRookMoves(&buf));
-
-    // https://lichess.org/editor/k7/8/8/3R1p2/8/8/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(12, Board.fromFenUnchecked("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1").getAllRookMoves(&buf));
-    try expectNumCaptures(buf[0..12], 1);
-
-    // https://lichess.org/editor/k7/8/8/3RRp2/8/8/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(18, Board.fromFenUnchecked("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1").getAllRookMoves(&buf));
-    try expectNumCaptures(buf[0..18], 1);
-
-    // https://lichess.org/editor/7k/8/8/8/3rrP2/8/8/7K_b_-_-_0_1?color=black
-    try testing.expectEqual(18, Board.fromFenUnchecked("7k/8/8/8/3rrP2/8/8/7K b - - 0 1").getAllRookMoves(&buf));
-    try expectNumCaptures(buf[0..18], 1);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllRookMoves, 0, 0, 0);
+    try testCase("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1", Board.getAllRookMoves, 12, 1, 0);
+    try testCase("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1", Board.getAllRookMoves, 18, 1, 0);
+    try testCase("7k/8/8/8/3rrP2/8/8/7K b - - 0 1", Board.getAllRookMoves, 18, 1, 0);
 }
 
 test "queen captures" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQueenCaptures(&buf));
-
-    // https://lichess.org/editor/8/k7/8/3Q1p2/8/8/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("8/k7/8/3Q1p2/8/8/8/K7 w - - 0 1").getQueenCaptures(&buf));
-
-    // https://lichess.org/editor/8/k7/8/3QQp2/8/8/8/K7_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("8/k7/8/3QQp2/8/8/8/K7 w - - 0 1").getQueenCaptures(&buf));
-
-    // https://lichess.org/editor/7k/8/8/8/3qqP2/8/7K/8_b_-_-_0_1?color=black
-    try testing.expectEqual(1, Board.fromFenUnchecked("7k/8/8/8/3qqP2/8/7K/8 b - - 0 1").getQueenCaptures(&buf));
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQueenCaptures, 0, 0, 0);
+    try testCase("8/k7/8/3Q1p2/8/8/8/K7 w - - 0 1", Board.getQueenCaptures, 1, 1, 0);
+    try testCase("8/k7/8/3QQp2/8/8/8/K7 w - - 0 1", Board.getQueenCaptures, 1, 1, 0);
+    try testCase("7k/8/8/8/3qqP2/8/7K/8 b - - 0 1", Board.getQueenCaptures, 1, 1, 0);
 }
 
 test "all queen moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllQueenMoves(&buf));
-
-    // https://lichess.org/editor/7k/8/8/3q4/8/8/7K/8_b_-_-_0_1?color=black
-    try testing.expectEqual(27, Board.fromFenUnchecked("7k/8/8/3q4/8/8/7K/8 b - - 0 1").getAllQueenMoves(&buf));
-
-    // https://lichess.org/editor/7k/8/8/3q2P1/8/8/7K/8_b_-_-_0_1?color=black
-    try testing.expectEqual(26, Board.fromFenUnchecked("7k/8/8/3q2P1/8/8/7K/8 b - - 0 1").getAllQueenMoves(&buf));
-    try expectNumCaptures(buf[0..26], 1);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllQueenMoves, 0, 0, 0);
+    try testCase("7k/8/8/3q4/8/8/7K/8 b - - 0 1", Board.getAllQueenMoves, 27, 0, 0);
+    try testCase("7k/8/8/3q2P1/8/8/7K/8 b - - 0 1", Board.getAllQueenMoves, 26, 1, 0);
 }
 
 test "quiet king moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQuietKingMoves(&buf));
-
-    // https://lichess.org/editor/8/1k6/8/8/8/8/PPP5/1K6_w_-_-_0_1?color=white
-    try testing.expectEqual(2, Board.fromFenUnchecked("8/1k6/8/8/8/8/PPP5/1K6 w - - 0 1").getQuietKingMoves(&buf));
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietKingMoves, 0, 0, 0);
+    try testCase("8/1k6/8/8/8/8/PPP5/1K6 w - - 0 1", Board.getQuietKingMoves, 2, 0, 0);
 }
 
 test "king captures" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getKingCaptures(&buf));
-
-    // https://lichess.org/editor/8/1k6/8/8/8/8/1p6/1K6_w_-_-_0_1?color=white
-    try testing.expectEqual(1, Board.fromFenUnchecked("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1").getKingCaptures(&buf));
-
-    // https://lichess.org/editor/8/1k6/8/8/8/2pKp3/2p1p3/8_w_-_-_0_1?color=white
-    try testing.expectEqual(4, Board.fromFenUnchecked("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1").getKingCaptures(&buf));
-
-    // https://lichess.org/editor/8/1k6/8/8/2p5/2pKp3/2p1p3/8_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1").getKingCaptures(&buf));
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getKingCaptures, 0, 0, 0);
+    try testCase("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1", Board.getKingCaptures, 1, 1, 0);
+    try testCase("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1", Board.getKingCaptures, 4, 4, 0);
+    try testCase("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1", Board.getKingCaptures, 5, 5, 0);
 }
 
 test "all king moves" {
-    var buf: [100]Move = undefined;
-
-    // starting position
-    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllKingMoves(&buf));
-
-    // https://lichess.org/editor/8/1k6/8/8/8/8/1p6/1K6_w_-_-_0_1?color=white
-    try testing.expectEqual(5, Board.fromFenUnchecked("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1").getAllKingMoves(&buf));
-    try expectNumCaptures(buf[0..5], 1);
-
-    // https://lichess.org/editor/8/1k6/8/8/8/2pKp3/2p1p3/8_w_-_-_0_1?color=white
-    try testing.expectEqual(8, Board.fromFenUnchecked("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1").getAllKingMoves(&buf));
-    try expectNumCaptures(buf[0..8], 4);
-
-    // https://lichess.org/editor/8/1k6/8/8/2p5/2pKp3/2p1p3/8_w_-_-_0_1?color=white
-    try testing.expectEqual(8, Board.fromFenUnchecked("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1").getAllKingMoves(&buf));
-    try expectNumCaptures(buf[0..8], 5);
-
-    // https://lichess.org/editor/4k3/8/8/8/8/8/8/R3K3_w_Q_-_0_1?color=white
-    try testing.expectEqual(6, Board.fromFenUnchecked("4k3/8/8/8/8/8/8/R3K3 w Q - 0 1").getAllKingMoves(&buf));
-    try expectNumCaptures(buf[0..6], 0);
-
-    // https://lichess.org/editor/r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R_w_KQkq_-_4_4?color=white
-    try testing.expectEqual(3, Board.fromFenUnchecked("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4").getAllKingMoves(&buf));
-    try expectNumCaptures(buf[0..3], 0);
-
-    // https://lichess.org/editor/3k4/8/8/8/8/8/3PPPPP/3QK2R_w_-_-_0_1?color=white
-    try testing.expectEqual(2, Board.fromFenUnchecked("3k4/8/8/8/8/8/3PPPPP/3QK2R w - - 0 1").getAllKingMoves(&buf));
-    try expectNumCaptures(buf[0..2], 0);
-    try expectNumCastling(buf[0..2], 1);
-
-    // https://lichess.org/editor/3k4/8/8/8/8/8/8/R3K2R_w_KQ_-_0_1?color=white
-    try testing.expectEqual(7, Board.fromFenUnchecked("3k4/8/8/8/8/8/8/R3K2R w KQ - 0 1").getAllKingMoves(&buf));
-    try expectNumCaptures(buf[0..7], 0);
-    try expectNumCastling(buf[0..7], 2);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllKingMoves, 0, 0, 0);
+    try testCase("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1", Board.getAllKingMoves, 5, 1, 0);
+    try testCase("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1", Board.getAllKingMoves, 8, 4, 0);
+    try testCase("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1", Board.getAllKingMoves, 8, 5, 0);
+    try testCase("4k3/8/8/8/8/8/8/R3K3 w Q - 0 1", Board.getAllKingMoves, 6, 0, 1);
+    try testCase("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", Board.getAllKingMoves, 3, 0, 1);
+    try testCase("3k4/8/8/8/8/8/3PPPPP/3QK2R w - - 0 1", Board.getAllKingMoves, 2, 0, 1);
+    try testCase("3k4/8/8/8/8/8/8/R3K2R w KQ - 0 1", Board.getAllKingMoves, 7, 0, 2);
 }
