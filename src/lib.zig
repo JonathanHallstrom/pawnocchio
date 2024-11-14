@@ -897,24 +897,20 @@ pub const Board = struct {
         const own_pieces = if (should_flip) self.black.all() else self.white.all();
         const opponents_pieces = if (should_flip) self.white.all() else self.black.all();
         const all_pieces = own_pieces.getCombination(opponents_pieces);
+        const allowed_squares = all_pieces.complement();
 
         var move_count: usize = 0;
-
-        var iter = knights.iterator();
-        while (iter.next()) |knight| {
-            const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
-            const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
-            inline for (row_offsets, col_offsets) |dr, dc| {
-                var moved = knight;
-                moved = if (dr < 0) moved.backward(-dr) else moved.forward(dr);
-                moved = if (dc < 0) moved.left(-dc) else moved.right(dc);
-                if (!moved.overlaps(all_pieces) and !moved.isEmpty()) {
-                    move_buffer[move_count] = Move.initQuiet(
-                        Piece.knightFromBitBoard(knight),
-                        Piece.knightFromBitBoard(moved),
-                    );
-                    move_count += 1;
-                }
+        const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
+        const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
+        inline for (row_offsets, col_offsets) |dr, dc| {
+            var iter = knights.move(dr, dc).getOverlap(allowed_squares).move(-dr, -dc).iterator();
+            while (iter.next()) |knight| {
+                const moved = knight.move(dr, dc);
+                move_buffer[move_count] = Move.initQuiet(
+                    Piece.knightFromBitBoard(knight),
+                    Piece.knightFromBitBoard(moved),
+                );
+                move_count += 1;
             }
         }
         return move_count;
@@ -931,20 +927,18 @@ pub const Board = struct {
 
         var move_count: usize = 0;
 
-        var iter = knights.iterator();
-        while (iter.next()) |knight| {
-            const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
-            const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
-            inline for (row_offsets, col_offsets) |dr, dc| {
+        const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
+        const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
+        inline for (row_offsets, col_offsets) |dr, dc| {
+            var iter = knights.move(dr, dc).getOverlap(opponents_pieces).move(-dr, -dc).iterator();
+            while (iter.next()) |knight| {
                 const moved = knight.move(dr, dc);
-                if (moved.overlaps(opponents_pieces)) {
-                    move_buffer[move_count] = Move.initCapture(
-                        Piece.knightFromBitBoard(knight),
-                        Piece.knightFromBitBoard(moved),
-                        Piece.init(opponent_side.whichType(moved), moved),
-                    );
-                    move_count += 1;
-                }
+                move_buffer[move_count] = Move.initCapture(
+                    Piece.knightFromBitBoard(knight),
+                    Piece.knightFromBitBoard(moved),
+                    Piece.init(opponent_side.whichType(moved), moved),
+                );
+                move_count += 1;
             }
         }
         return move_count;
@@ -961,21 +955,18 @@ pub const Board = struct {
         const allowed_squares = own_pieces.complement();
 
         var move_count: usize = 0;
-
-        var iter = knights.iterator();
-        while (iter.next()) |knight| {
-            const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
-            const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
-            inline for (row_offsets, col_offsets) |dr, dc| {
+        const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
+        const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
+        inline for (row_offsets, col_offsets) |dr, dc| {
+            var iter = knights.move(dr, dc).getOverlap(allowed_squares).move(-dr, -dc).iterator();
+            while (iter.next()) |knight| {
                 const moved = knight.move(dr, dc);
-                if (moved.overlaps(allowed_squares)) {
-                    move_buffer[move_count] = Move.init(
-                        Piece.knightFromBitBoard(knight),
-                        Piece.knightFromBitBoard(moved),
-                        if (moved.overlaps(opponents_pieces)) Piece.init(opponent_side.whichType(moved), moved) else null,
-                    );
-                    move_count += 1;
-                }
+                move_buffer[move_count] = Move.init(
+                    Piece.knightFromBitBoard(knight),
+                    Piece.knightFromBitBoard(moved),
+                    if (moved.overlaps(opponents_pieces)) Piece.init(opponent_side.whichType(moved), moved) else null,
+                );
+                move_count += 1;
             }
         }
         return move_count;
