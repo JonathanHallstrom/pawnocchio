@@ -973,10 +973,10 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getBishopCaptures(self: Self, move_buffer: []Move) usize {
+    fn getStraightLineMoves(self: Self, move_buffer: []Move, comptime captures_only: bool, comptime drs: anytype, comptime dcs: anytype, comptime piece: PieceType) usize {
         const should_flip = self.turn == .black;
-        const bishops = if (should_flip) self.black.bishop else self.white.bishop;
-        if (bishops.isEmpty()) return 0;
+        const pieces_of_interest = if (should_flip) self.black.getBoard(piece) else self.white.getBoard(piece);
+        if (pieces_of_interest.isEmpty()) return 0;
 
         const own_pieces = if (should_flip) self.black.all() else self.white.all();
         const opponent_side = if (should_flip) self.white else self.black;
@@ -986,15 +986,19 @@ pub const Board = struct {
 
         var move_count: usize = 0;
 
-        var iter = bishops.iterator();
-
+        var iter = pieces_of_interest.iterator();
         while (iter.next()) |bishop| {
-            var bishop_parity = BitBoard.init((255 / 3 << 8 | 255 / 3 << 1) * (1 << 0 | 1 << 16 | 1 << 32 | 1 << 48));
-            if (!bishop.overlaps(bishop_parity)) bishop_parity = bishop_parity.complement();
-
-            inline for ([_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }) |dr, dc| {
+            inline for (drs, dcs) |dr, dc| {
                 var moved = bishop.move(dr, dc);
-                while (moved.overlaps(allowed_squares)) : (moved = moved.moveUnchecked(dr, dc).getOverlap(bishop_parity)) {}
+                while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
+                    if (!captures_only) {
+                        move_buffer[move_count] = Move.initQuiet(
+                            Piece.bishopFromBitBoard(bishop),
+                            Piece.bishopFromBitBoard(moved),
+                        );
+                        move_count += 1;
+                    }
+                }
                 if (moved.overlaps(opponents_pieces)) {
                     move_buffer[move_count] = Move.initCapture(
                         Piece.bishopFromBitBoard(bishop),
@@ -1006,83 +1010,30 @@ pub const Board = struct {
             }
         }
         return move_count;
+    }
+
+    pub fn getBishopCaptures(self: Self, move_buffer: []Move) usize {
+        return getStraightLineMoves(self, move_buffer, true, [_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }, .bishop);
     }
 
     pub fn getAllBishopMoves(self: Self, move_buffer: []Move) usize {
-        const should_flip = self.turn == .black;
-        const bishops = if (should_flip) self.black.bishop else self.white.bishop;
-        if (bishops.isEmpty()) return 0;
-
-        const own_pieces = if (should_flip) self.black.all() else self.white.all();
-        const opponent_side = if (should_flip) self.white else self.black;
-        const opponents_pieces = if (should_flip) self.white.all() else self.black.all();
-        const all_pieces = own_pieces.getCombination(opponents_pieces);
-        const allowed_squares = all_pieces.complement();
-
-        var move_count: usize = 0;
-
-        var iter = bishops.iterator();
-        while (iter.next()) |bishop| {
-            var bishop_parity = BitBoard.init((255 / 3 << 8 | 255 / 3 << 1) * (1 << 0 | 1 << 16 | 1 << 32 | 1 << 48));
-            if (!bishop.overlaps(bishop_parity)) bishop_parity = bishop_parity.complement();
-
-            inline for ([_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }) |dr, dc| {
-                var moved = bishop.move(dr, dc);
-                while (moved.overlaps(allowed_squares)) : (moved = moved.moveUnchecked(dr, dc).getOverlap(bishop_parity)) {
-                    move_buffer[move_count] = Move.initQuiet(
-                        Piece.bishopFromBitBoard(bishop),
-                        Piece.bishopFromBitBoard(moved),
-                    );
-                    move_count += 1;
-                }
-                if (moved.overlaps(opponents_pieces)) {
-                    move_buffer[move_count] = Move.initCapture(
-                        Piece.bishopFromBitBoard(bishop),
-                        Piece.bishopFromBitBoard(moved),
-                        Piece.init(opponent_side.whichType(moved), moved),
-                    );
-                    move_count += 1;
-                }
-            }
-        }
-        return move_count;
+        return getStraightLineMoves(self, move_buffer, false, [_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }, .bishop);
     }
 
     pub fn getAllRookMoves(self: Self, move_buffer: []Move) usize {
-        const should_flip = self.turn == .black;
-        const rooks = if (should_flip) self.black.rook else self.white.rook;
-        if (rooks.isEmpty()) return 0;
+        return getStraightLineMoves(self, move_buffer, false, [_]comptime_int{ 1, -1, 0, 0 }, [_]comptime_int{ 0, 0, 1, -1 }, .rook);
+    }
 
-        const own_pieces = if (should_flip) self.black.all() else self.white.all();
-        const opponent_side = if (should_flip) self.white else self.black;
-        const opponents_pieces = if (should_flip) self.white.all() else self.black.all();
-        const all_pieces = own_pieces.getCombination(opponents_pieces);
-        const allowed_squares = all_pieces.complement();
+    pub fn getRookCaptures(self: Self, move_buffer: []Move) usize {
+        return getStraightLineMoves(self, move_buffer, true, [_]comptime_int{ 1, -1, 0, 0 }, [_]comptime_int{ 0, 0, 1, -1 }, .rook);
+    }
 
-        var move_count: usize = 0;
+    pub fn getAllQueenMoves(self: Self, move_buffer: []Move) usize {
+        return getStraightLineMoves(self, move_buffer, false, [_]comptime_int{ 1, -1, 0, 0, 1, 1, -1, -1 }, [_]comptime_int{ 0, 0, 1, -1, 1, -1, 1, -1 }, .queen);
+    }
 
-        var iter = rooks.iterator();
-        while (iter.next()) |bishop| {
-            inline for ([_]comptime_int{ 1, -1, 0, 0 }, [_]comptime_int{ 0, 0, 1, -1 }) |dr, dc| {
-                var moved = bishop.move(dr, dc);
-                while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
-                    move_buffer[move_count] = Move.initQuiet(
-                        Piece.rookFromBitBoard(bishop),
-                        Piece.rookFromBitBoard(moved),
-                    );
-                    move_count += 1;
-                }
-                if (moved.overlaps(opponents_pieces)) {
-                    move_buffer[move_count] = Move.initCapture(
-                        Piece.rookFromBitBoard(bishop),
-                        Piece.rookFromBitBoard(moved),
-                        Piece.init(opponent_side.whichType(moved), moved),
-                    );
-                    move_count += 1;
-                }
-            }
-        }
-        return move_count;
+    pub fn getQueenCaptures(self: Self, move_buffer: []Move) usize {
+        return getStraightLineMoves(self, move_buffer, true, [_]comptime_int{ 1, -1, 0, 0, 1, 1, -1, -1 }, [_]comptime_int{ 0, 0, 1, -1, 1, -1, 1, -1 }, .queen);
     }
 };
 
@@ -1305,6 +1256,22 @@ test "all bishop moves" {
     try expectNumCaptures(buf[0..3], 1);
 }
 
+test "rook captures" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getRookCaptures(&buf));
+
+    // https://lichess.org/editor/k7/8/8/3R1p2/8/8/8/K7_w_-_-_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1").getRookCaptures(&buf));
+
+    // https://lichess.org/editor/k7/8/8/3RRp2/8/8/8/K7_w_-_-_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1").getRookCaptures(&buf));
+
+    // https://lichess.org/editor/7k/8/8/8/3rrP2/8/8/7K_b_-_-_0_1?color=black
+    try testing.expectEqual(1, Board.fromFenUnchecked("7k/8/8/8/3rrP2/8/8/7K b - - 0 1").getRookCaptures(&buf));
+}
+
 test "all rook moves" {
     var buf: [100]Move = undefined;
 
@@ -1322,4 +1289,34 @@ test "all rook moves" {
     // https://lichess.org/editor/7k/8/8/8/3rrP2/8/8/7K_b_-_-_0_1?color=black
     try testing.expectEqual(18, Board.fromFenUnchecked("7k/8/8/8/3rrP2/8/8/7K b - - 0 1").getAllRookMoves(&buf));
     try expectNumCaptures(buf[0..18], 1);
+}
+
+test "queen captures" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getQueenCaptures(&buf));
+
+    // https://lichess.org/editor/8/k7/8/3Q1p2/8/8/8/K7_w_-_-_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("8/k7/8/3Q1p2/8/8/8/K7 w - - 0 1").getQueenCaptures(&buf));
+
+    // https://lichess.org/editor/8/k7/8/3QQp2/8/8/8/K7_w_-_-_0_1?color=white
+    try testing.expectEqual(1, Board.fromFenUnchecked("8/k7/8/3QQp2/8/8/8/K7 w - - 0 1").getQueenCaptures(&buf));
+
+    // https://lichess.org/editor/7k/8/8/8/3qqP2/8/7K/8_b_-_-_0_1?color=black
+    try testing.expectEqual(1, Board.fromFenUnchecked("7k/8/8/8/3qqP2/8/7K/8 b - - 0 1").getQueenCaptures(&buf));
+}
+
+test "all queen moves" {
+    var buf: [100]Move = undefined;
+
+    // starting position
+    try testing.expectEqual(0, Board.fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").getAllQueenMoves(&buf));
+
+    // https://lichess.org/editor/7k/8/8/3q4/8/8/7K/8_b_-_-_0_1?color=black
+    try testing.expectEqual(27, Board.fromFenUnchecked("7k/8/8/3q4/8/8/7K/8 b - - 0 1").getAllQueenMoves(&buf));
+
+    // https://lichess.org/editor/7k/8/8/3q2P1/8/8/7K/8_b_-_-_0_1?color=black
+    try testing.expectEqual(26, Board.fromFenUnchecked("7k/8/8/3q2P1/8/8/7K/8 b - - 0 1").getAllQueenMoves(&buf));
+    try expectNumCaptures(buf[0..26], 1);
 }
