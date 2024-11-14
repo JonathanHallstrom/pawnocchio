@@ -1028,9 +1028,9 @@ pub const Board = struct {
         return move_count;
     }
 
-    fn getStraightLineMoves(self: Self, move_buffer: []Move, comptime captures_only: bool, comptime drs: anytype, comptime dcs: anytype, comptime piece: PieceType) usize {
+    fn getStraightLineMoves(self: Self, move_buffer: []Move, comptime captures_only: bool, comptime drs: anytype, comptime dcs: anytype, comptime piece_type: PieceType) usize {
         const should_flip = self.turn == .black;
-        const pieces_of_interest = if (should_flip) self.black.getBoard(piece) else self.white.getBoard(piece);
+        const pieces_of_interest = if (should_flip) self.black.getBoard(piece_type) else self.white.getBoard(piece_type);
         if (pieces_of_interest.isEmpty()) return 0;
 
         const own_pieces = if (should_flip) self.black.all() else self.white.all();
@@ -1048,16 +1048,16 @@ pub const Board = struct {
                 while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
                     if (!captures_only) {
                         move_buffer[move_count] = Move.initQuiet(
-                            Piece.init(piece, curr),
-                            Piece.init(piece, moved),
+                            Piece.init(piece_type, curr),
+                            Piece.init(piece_type, moved),
                         );
                         move_count += 1;
                     }
                 }
                 if (moved.overlaps(opponents_pieces)) {
                     move_buffer[move_count] = Move.initCapture(
-                        Piece.init(piece, curr),
-                        Piece.init(piece, moved),
+                        Piece.init(piece_type, curr),
+                        Piece.init(piece_type, moved),
                         Piece.init(opponent_side.whichType(moved), moved),
                     );
                     move_count += 1;
