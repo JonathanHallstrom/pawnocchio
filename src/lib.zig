@@ -217,34 +217,42 @@ pub const BitBoard = enum(u64) {
 
     pub fn allForward(self: Self) BitBoard {
         var res = self;
-        res.add(res.forwardUnchecked(1));
-        res.add(res.forwardUnchecked(2));
-        res.add(res.forwardUnchecked(4));
+        res.add(res.forwardMasked(1));
+        res.add(res.forwardMasked(2));
+        res.add(res.forwardMasked(4));
         return res;
     }
 
     pub fn allBackward(self: Self) BitBoard {
         var res = self;
-        res.add(res.backwardUnchecked(1));
-        res.add(res.backwardUnchecked(2));
-        res.add(res.backwardUnchecked(4));
+        res.add(res.backwardMasked(1));
+        res.add(res.backwardMasked(2));
+        res.add(res.backwardMasked(4));
         return res;
     }
 
     pub fn allLeft(self: Self) BitBoard {
         var res = self;
-        res.add(res.leftUnchecked(1).getOverlap(BitBoard.init(0b01111111 * (std.math.maxInt(u64) / 255))));
-        res.add(res.leftUnchecked(2).getOverlap(BitBoard.init(0b00111111 * (std.math.maxInt(u64) / 255))));
-        res.add(res.leftUnchecked(4).getOverlap(BitBoard.init(0b00001111 * (std.math.maxInt(u64) / 255))));
-        return init(res.toInt());
+        res.add(res.leftMasked(1));
+        res.add(res.leftMasked(2));
+        res.add(res.leftMasked(4));
+        return res;
     }
 
     pub fn allRight(self: Self) BitBoard {
         var res = self;
-        res.add(res.rightUnchecked(1).getOverlap(BitBoard.init(0b11111110 * (std.math.maxInt(u64) / 255))));
-        res.add(res.rightUnchecked(2).getOverlap(BitBoard.init(0b11111100 * (std.math.maxInt(u64) / 255))));
-        res.add(res.rightUnchecked(4).getOverlap(BitBoard.init(0b11110000 * (std.math.maxInt(u64) / 255))));
-        return init(res.toInt());
+        res.add(res.rightMasked(1));
+        res.add(res.rightMasked(2));
+        res.add(res.rightMasked(4));
+        return res;
+    }
+
+    pub fn allDirection(self: Self, dr: anytype, dc: anytype) BitBoard {
+        var res = self;
+        res.add(res.move(dr * 1, dc * 1));
+        res.add(res.move(dr * 2, dc * 2));
+        res.add(res.move(dr * 4, dc * 4));
+        return res;
     }
 
     pub fn prettyPrint(self: Self) void {
@@ -987,13 +995,13 @@ pub const Board = struct {
         var move_count: usize = 0;
 
         var iter = pieces_of_interest.iterator();
-        while (iter.next()) |bishop| {
+        while (iter.next()) |curr| {
             inline for (drs, dcs) |dr, dc| {
-                var moved = bishop.move(dr, dc);
+                var moved = curr.move(dr, dc);
                 while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
                     if (!captures_only) {
                         move_buffer[move_count] = Move.initQuiet(
-                            Piece.bishopFromBitBoard(bishop),
+                            Piece.bishopFromBitBoard(curr),
                             Piece.bishopFromBitBoard(moved),
                         );
                         move_count += 1;
@@ -1001,7 +1009,7 @@ pub const Board = struct {
                 }
                 if (moved.overlaps(opponents_pieces)) {
                     move_buffer[move_count] = Move.initCapture(
-                        Piece.bishopFromBitBoard(bishop),
+                        Piece.bishopFromBitBoard(curr),
                         Piece.bishopFromBitBoard(moved),
                         Piece.init(opponent_side.whichType(moved), moved),
                     );
