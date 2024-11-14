@@ -1048,16 +1048,16 @@ pub const Board = struct {
                 while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
                     if (!captures_only) {
                         move_buffer[move_count] = Move.initQuiet(
-                            Piece.bishopFromBitBoard(curr),
-                            Piece.bishopFromBitBoard(moved),
+                            Piece.init(piece, curr),
+                            Piece.init(piece, moved),
                         );
                         move_count += 1;
                     }
                 }
                 if (moved.overlaps(opponents_pieces)) {
                     move_buffer[move_count] = Move.initCapture(
-                        Piece.bishopFromBitBoard(curr),
-                        Piece.bishopFromBitBoard(moved),
+                        Piece.init(piece, curr),
+                        Piece.init(piece, moved),
                         Piece.init(opponent_side.whichType(moved), moved),
                     );
                     move_count += 1;
@@ -1292,14 +1292,12 @@ fn expectNumCastling(moves: []Move, count: usize) !void {
 }
 
 fn expectMovesInvertible(board: Board, moves: []Move) !void {
-    _ = board; // autofix
-    _ = moves; // autofix
-    // for (moves) |move| {
-    //     var tmp = board;
-    //     try tmp.playMove(move);
-    //     try tmp.undoMove(move);
-    //     try std.testing.expectEqualDeep(board, tmp);
-    // }
+    for (moves) |move| {
+        var tmp = board;
+        try tmp.playMove(move);
+        try tmp.undoMove(move);
+        try std.testing.expectEqualDeep(board, tmp);
+    }
 }
 
 fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_captures: usize, expected_castling: usize) !void {
