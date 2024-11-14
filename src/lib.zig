@@ -318,7 +318,7 @@ pub const BitBoard = enum(u64) {
         }
 
         pub fn peek(self: *const PieceIterator) ?BitBoard {
-            return if (self.data == 0) null else BitBoard.init(self.data & -self.data);
+            return if (self.data == 0) null else BitBoard.init(self.data & -%self.data);
         }
     };
 };
@@ -1426,4 +1426,8 @@ test "all king moves" {
     try testCase("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", Board.getAllKingMoves, 3, 0, 1);
     try testCase("3k4/8/8/8/8/8/3PPPPP/3QK2R w - - 0 1", Board.getAllKingMoves, 2, 0, 1);
     try testCase("3k4/8/8/8/8/8/8/R3K2R w KQ - 0 1", Board.getAllKingMoves, 7, 0, 2);
+}
+
+comptime {
+    std.testing.refAllDeclsRecursive(@This());
 }
