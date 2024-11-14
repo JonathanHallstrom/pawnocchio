@@ -1011,28 +1011,34 @@ pub const Board = struct {
         return move_count;
     }
 
+    const bishop_drs = [_]comptime_int{ 1, 1, -1, -1 };
+    const bishop_dcs = [_]comptime_int{ 1, -1, 1, -1 };
+
+    const rook_drs = [_]comptime_int{ 1, -1, 0, 0 };
+    const rook_dcs = [_]comptime_int{ 0, 0, 1, -1 };
+
     pub fn getAllBishopMoves(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, false, [_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }, .bishop);
+        return getStraightLineMoves(self, move_buffer, false, bishop_drs, bishop_dcs, .bishop);
     }
 
     pub fn getBishopCaptures(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, true, [_]comptime_int{ 1, 1, -1, -1 }, [_]comptime_int{ 1, -1, 1, -1 }, .bishop);
+        return getStraightLineMoves(self, move_buffer, true, bishop_drs, bishop_dcs, .bishop);
     }
 
     pub fn getAllRookMoves(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, false, [_]comptime_int{ 1, -1, 0, 0 }, [_]comptime_int{ 0, 0, 1, -1 }, .rook);
+        return getStraightLineMoves(self, move_buffer, false, rook_drs, rook_dcs, .rook);
     }
 
     pub fn getRookCaptures(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, true, [_]comptime_int{ 1, -1, 0, 0 }, [_]comptime_int{ 0, 0, 1, -1 }, .rook);
+        return getStraightLineMoves(self, move_buffer, true, rook_drs, rook_dcs, .rook);
     }
 
     pub fn getAllQueenMoves(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, false, [_]comptime_int{ 1, -1, 0, 0, 1, 1, -1, -1 }, [_]comptime_int{ 0, 0, 1, -1, 1, -1, 1, -1 }, .queen);
+        return getStraightLineMoves(self, move_buffer, false, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
     }
 
     pub fn getQueenCaptures(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, true, [_]comptime_int{ 1, -1, 0, 0, 1, 1, -1, -1 }, [_]comptime_int{ 0, 0, 1, -1, 1, -1, 1, -1 }, .queen);
+        return getStraightLineMoves(self, move_buffer, true, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
     }
 };
 
