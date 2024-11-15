@@ -802,6 +802,56 @@ pub const Board = struct {
         self.turn = self.turn.flipped();
     }
 
+    pub fn isSquareAttacked(self: Self, square: BitBoard, comptime turn_mode: enum { auto, flip, white, black }) bool {
+        const is_white_turn = switch (turn_mode) {
+            .auto => self.turn == .white,
+            .flip => self.turn == .black,
+            .white => true,
+            .black => false,
+        };
+
+        const own_pieces = if (is_white_turn) self.white.all() else self.black.all();
+        const opponent_side = if (is_white_turn) self.black else self.white;
+        const opponents_pieces = opponent_side.all();
+        const all_pieces = own_pieces.getCombination(opponents_pieces);
+
+        const pawn_dr: i8 = if (is_white_turn) 1 else -1;
+        var pawn_mask = BitBoard.initEmpty();
+        pawn_mask.add(square.move(pawn_dr, 1));
+        pawn_mask.add(square.move(pawn_dr, -1));
+        if (pawn_mask.overlaps(opponent_side.pawn)) return true;
+
+        var knight_mask = BitBoard.initEmpty();
+        for (knight_drs, knight_dcs) |dr, dc| knight_mask.add(square.move(dr, dc));
+        if (knight_mask.overlaps(opponent_side.knight)) return true;
+
+        var bishop_mask = BitBoard.initEmpty();
+        for (bishop_drs, bishop_dcs) |dr, dc| bishop_mask.add(square.getFirstOverLappingInDir(all_pieces, dr, dc));
+        if (bishop_mask.overlaps(opponent_side.bishop.getCombination(opponent_side.queen))) return true;
+
+        var rook_mask = BitBoard.initEmpty();
+        for (rook_drs, rook_dcs) |dr, dc| rook_mask.add(square.getFirstOverLappingInDir(all_pieces, dr, dc));
+        if (rook_mask.overlaps(opponent_side.rook.getCombination(opponent_side.queen))) return true;
+
+        var king_mask = square;
+        king_mask.add(square.leftMasked(1));
+        king_mask.add(square.rightMasked(1));
+        king_mask.add(king_mask.forwardMasked(1));
+        king_mask.add(king_mask.backwardMasked(1));
+        if (king_mask.overlaps(opponent_side.king)) return true;
+
+        return false;
+    }
+
+    const knight_drs = [_]i8{ 2, 2, -2, -2, 1, 1, -1, -1 };
+    const knight_dcs = [_]i8{ 1, -1, 1, -1, 2, -2, 2, -2 };
+
+    const bishop_drs = [_]i8{ 1, 1, -1, -1 };
+    const bishop_dcs = [_]i8{ 1, -1, 1, -1 };
+
+    const rook_drs = [_]i8{ 1, -1, 0, 0 };
+    const rook_dcs = [_]i8{ 0, 0, 1, -1 };
+
     pub fn getQuietPawnMoves(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
         const pawns = if (should_flip) self.black.pawn.flipped() else self.white.pawn;
@@ -884,7 +934,7 @@ pub const Board = struct {
             var promote_captures_left = forward_left_captures.getOverlap(seventh_row).iterator();
             var promote_captures_right = forward_right_captures.getOverlap(seventh_row).iterator();
             while (promote_captures_left.next()) |from| {
-                const to = from.forward(1).left(1);
+                const to = from.forwardUnchecked(1).leftUnchecked(1);
                 for ([_]PieceType{
                     .knight,
                     .bishop,
@@ -900,7 +950,7 @@ pub const Board = struct {
                 }
             }
             while (promote_captures_right.next()) |from| {
-                const to = from.forward(1).right(1);
+                const to = from.forwardUnchecked(1).rightUnchecked(1);
                 for ([_]PieceType{
                     .knight,
                     .bishop,
@@ -919,7 +969,7 @@ pub const Board = struct {
             var captures_left = forward_left_captures.getOverlap(seventh_row.complement()).iterator();
             var captures_right = forward_right_captures.getOverlap(seventh_row.complement()).iterator();
             while (captures_left.next()) |from| {
-                const to = from.forward(1).left(1);
+                const to = from.forwardUnchecked(1).leftUnchecked(1);
                 move_buffer[move_count] = Move.initCapture(
                     Piece.pawnFromBitBoard(from),
                     Piece.pawnFromBitBoard(to),
@@ -928,7 +978,7 @@ pub const Board = struct {
                 move_count += 1;
             }
             while (captures_right.next()) |from| {
-                const to = from.forward(1).right(1);
+                const to = from.forwardUnchecked(1).rightUnchecked(1);
                 move_buffer[move_count] = Move.initCapture(
                     Piece.pawnFromBitBoard(from),
                     Piece.pawnFromBitBoard(to),
@@ -1019,9 +1069,7 @@ pub const Board = struct {
         const empty_squares = all_pieces.complement();
 
         var move_count: usize = 0;
-        const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
-        const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
-        inline for (row_offsets, col_offsets) |dr, dc| {
+        inline for (knight_drs, knight_dcs) |dr, dc| {
             var quiet = knights.move(dr, dc).getOverlap(empty_squares).move(-dr, -dc).iterator();
             while (quiet.next()) |knight| {
                 const moved = knight.move(dr, dc);
@@ -1083,12 +1131,6 @@ pub const Board = struct {
         }
         return move_count;
     }
-
-    const bishop_drs = [_]i8{ 1, 1, -1, -1 };
-    const bishop_dcs = [_]i8{ 1, -1, 1, -1 };
-
-    const rook_drs = [_]i8{ 1, -1, 0, 0 };
-    const rook_dcs = [_]i8{ 0, 0, 1, -1 };
 
     pub fn getAllBishopMoves(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, false, bishop_drs, bishop_dcs, .bishop);
@@ -1328,6 +1370,14 @@ fn expectMovesInvertible(board: Board, moves: []Move) !void {
     }
 }
 
+fn expectCapturesImplyAttacked(board: Board, moves: []Move) !void {
+    for (moves) |move| {
+        if (move.isCapture()) {
+            try std.testing.expect(board.isSquareAttacked(move.to().getBoard(), .flip));
+        }
+    }
+}
+
 fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_captures: usize, expected_castling: usize) !void {
     var buf: [400]Move = undefined;
     const board = try Board.fromFen(fen);
@@ -1337,6 +1387,12 @@ fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_capt
     try expectNumCaptures(moves, expected_captures);
     try expectNumCastling(moves, expected_castling);
     try expectMovesInvertible(board, moves);
+    if (expected_captures > 0)
+        try expectCapturesImplyAttacked(board, moves);
+}
+
+test "failing" {
+    try testCase("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1", Board.getKingCaptures, 1, 1, 0);
 }
 
 test "fen parsing" {
