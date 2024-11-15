@@ -1387,8 +1387,7 @@ fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_capt
     try expectNumCaptures(moves, expected_captures);
     try expectNumCastling(moves, expected_castling);
     try expectMovesInvertible(board, moves);
-    if (expected_captures > 0)
-        try expectCapturesImplyAttacked(board, moves);
+    try expectCapturesImplyAttacked(board, moves);
 }
 
 test "failing" {
