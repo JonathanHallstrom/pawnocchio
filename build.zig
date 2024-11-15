@@ -41,20 +41,27 @@ pub fn build(b: *std.Build) void {
     // step when running `zig build`).
     b.installArtifact(exe);
 
-    const exe_check = b.addExecutable(.{
+    const check_compiles = b.addExecutable(.{
         .name = "pawnocchio",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    // Any other code to define dependencies would
-    // probably be here.
-
-    // These two lines you might want to copy
-    // (make sure to rename 'exe_check')
     const check = b.step("check", "Check if pawnocchio compiles");
-    check.dependOn(&exe_check.step);
+    check.dependOn(&check_compiles.step);
+
+    const bench = b.addExecutable(.{
+        .name = "pawnocchio_perft_bench",
+        .root_source_file =  b.path("src/perft_bench.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const bench_step = b.step("bench", "Benchmark move generation");
+    b.installArtifact(bench);
+    const bench_cmd = b.addRunArtifact(bench);
+    bench_cmd.step.dependOn(b.getInstallStep());
+    bench_step.dependOn(&bench_cmd.step);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish

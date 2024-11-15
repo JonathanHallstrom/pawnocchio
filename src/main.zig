@@ -4,6 +4,7 @@ const lib = @import("lib.zig");
 
 const Board = lib.Board;
 const Move = lib.Move;
+const MoveInverse = lib.MoveInverse;
 
 pub fn main() !void {
     const stdin = std.io.getStdIn().reader();
@@ -14,8 +15,8 @@ pub fn main() !void {
 
     var move_buf: [1024]Move = undefined;
 
-    var previous_moves = std.ArrayList(Move).init(allocator);
-    defer previous_moves.deinit();
+    var previous_move_inverses = std.ArrayList(MoveInverse).init(allocator);
+    defer previous_move_inverses.deinit();
     var board = try lib.Board.fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     while (true) {
         std.debug.print("Turn: {s}\n", .{@tagName(board.turn)});
@@ -52,8 +53,7 @@ pub fn main() !void {
             }
         }
         const chosen_move = moves[choice.?];
-        board.playMove(chosen_move);
-        try previous_moves.append(chosen_move);
+        try previous_move_inverses.append(board.playMove(chosen_move));
         std.debug.print("\n", .{});
     }
 }
