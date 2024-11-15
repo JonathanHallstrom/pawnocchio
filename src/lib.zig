@@ -494,6 +494,19 @@ pub const Move = struct {
     }
 };
 
+pub const GameResult = enum {
+    tie,
+    white,
+    black,
+
+    pub fn from(turn: Side) GameResult {
+        return switch (turn) {
+            .white => .white,
+            .black => .black,
+        };
+    }
+};
+
 pub const Board = struct {
     // starting pos
     // 8 r n b q k b n r
@@ -702,6 +715,18 @@ pub const Board = struct {
         return res;
     }
 
+    pub fn gameOver(self: Self) ?GameResult {
+        var tmp_buf: [400]Move = undefined;
+        if (self.getAllMoves(&tmp_buf) == 0) {
+            if (self.isInCheck(.auto)) {
+                return GameResult.from(self.turn.flipped());
+            } else {
+                return .tie;
+            }
+        }
+        return null;
+    }
+
     pub fn flipped(self: Self) Board {
         return Board{
             .white = self.white.flipped(),
@@ -752,7 +777,7 @@ pub const Board = struct {
         return res;
     }
 
-    pub fn playMove(self: *Self, move: Move) !void {
+    pub fn playMove(self: *Self, move: Move) void {
         const moved_side = if (self.turn == .white) &self.white else &self.black;
         const from_board = moved_side.getBoardPtr(move.from().getType());
         assert(from_board.overlaps(move.from().getBoard()));
@@ -777,7 +802,7 @@ pub const Board = struct {
         self.turn = self.turn.flipped();
     }
 
-    pub fn undoMove(self: *Self, move: Move) !void {
+    pub fn undoMove(self: *Self, move: Move) void {
         const moved_side = if (self.turn == .black) &self.white else &self.black;
         const from_board = moved_side.getBoardPtr(move.from().getType());
         assert(!from_board.overlaps(move.from().getBoard()));
@@ -802,7 +827,9 @@ pub const Board = struct {
         self.turn = self.turn.flipped();
     }
 
-    pub fn isSquareAttacked(self: Self, square: BitBoard, comptime turn_mode: enum { auto, flip, white, black }) bool {
+    pub const TurnMode = enum { auto, flip, white, black };
+
+    pub fn isSquareAttacked(self: Self, square: BitBoard, comptime turn_mode: TurnMode) bool {
         const is_white_turn = switch (turn_mode) {
             .auto => self.turn == .white,
             .flip => self.turn == .black,
@@ -841,6 +868,19 @@ pub const Board = struct {
         if (king_mask.overlaps(opponent_side.king)) return true;
 
         return false;
+    }
+
+    pub fn isInCheck(self: Self, comptime turn_mode: TurnMode) bool {
+        const is_white_turn = switch (turn_mode) {
+            .auto => self.turn == .white,
+            .flip => self.turn == .black,
+            .white => true,
+            .black => false,
+        };
+
+        const own_side = if (is_white_turn) self.white else self.black;
+
+        return self.isSquareAttacked(own_side.king, turn_mode);
     }
 
     const knight_drs = [_]i8{ 2, 2, -2, -2, 1, 1, -1, -1 };
@@ -1319,7 +1359,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getAllMovesUnchecked(self: Self, move_buffer: []Move) usize {
         var res: usize = 0;
         res += self.getAllPawnMoves(move_buffer[res..]);
         res += self.getAllKnightMoves(move_buffer[res..]);
@@ -1328,6 +1368,22 @@ pub const Board = struct {
         res += self.getAllQueenMoves(move_buffer[res..]);
         res += self.getAllKingMoves(move_buffer[res..]);
         return res;
+    }
+
+    pub fn getAllMoves(self: Self, move_buffer: []Move) usize {
+        const unfiltered_count = getAllMovesUnchecked(self, move_buffer);
+        var filtered_count: usize = 0;
+        var board = self;
+        const own_side = if (self.turn == .white) &board.white else &board.black;
+        for (move_buffer[0..unfiltered_count]) |move| {
+            board.playMove(move);
+            if (!board.isSquareAttacked(own_side.king, .flip)) {
+                move_buffer[filtered_count] = move;
+                filtered_count += 1;
+            }
+            board.undoMove(move);
+        }
+        return filtered_count;
     }
 };
 
@@ -1364,8 +1420,8 @@ fn expectNumCastling(moves: []Move, count: usize) !void {
 fn expectMovesInvertible(board: Board, moves: []Move) !void {
     for (moves) |move| {
         var tmp = board;
-        try tmp.playMove(move);
-        try tmp.undoMove(move);
+        tmp.playMove(move);
+        tmp.undoMove(move);
         try std.testing.expectEqualDeep(board, tmp);
     }
 }

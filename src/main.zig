@@ -15,17 +15,26 @@ pub fn main() !void {
     var move_buf: [1024]Move = undefined;
 
     var previous_moves = std.ArrayList(Move).init(allocator);
+    defer previous_moves.deinit();
     var board = try lib.Board.fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     while (true) {
         std.debug.print("Turn: {s}\n", .{@tagName(board.turn)});
-
-        const num_moves = board.getAllMoves(&move_buf);
-        const moves = move_buf[0..num_moves];
-
         std.debug.print("Board state:\n", .{});
         for (board.toString()) |row| {
             std.debug.print("{s}\n", .{row});
         }
+
+        if (board.gameOver()) |result| {
+            if (result == .tie) {
+                std.debug.print("Result: tie\n", .{});
+            } else {
+                std.debug.print("Result: {s} won!\n", .{@tagName(result)});
+            }
+            break;
+        }
+
+        const num_moves = board.getAllMoves(&move_buf);
+        const moves = move_buf[0..num_moves];
 
         std.debug.print("Available moves:\n", .{});
         for (0..num_moves, moves) |i, move| {
@@ -43,7 +52,7 @@ pub fn main() !void {
             }
         }
         const chosen_move = moves[choice.?];
-        try board.playMove(chosen_move);
+        board.playMove(chosen_move);
         try previous_moves.append(chosen_move);
         std.debug.print("\n", .{});
     }
