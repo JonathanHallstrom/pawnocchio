@@ -24,24 +24,34 @@ fn perft(board: *Board, depth_remaining: usize) usize {
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
-            if (depth_remaining == 1) {
-                res += 1;
-            } else {
-                const next = perft(board, depth_remaining - 1);
-                res += next;
-            }
+
+            const next = if (depth_remaining == 1) 1 else perft(board, depth_remaining - 1);
+            // if (board.fullmove_clock == 2) {
+            //     std.debug.print("{s}{s}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), next });
+            // }
+            res += next;
         }
     }
     return res;
 }
 
 pub fn main() !void {
-    // var board = try lib.Board.fromFen("rnbqkbnr/1ppppppp/p7/P7/8/8/1PPPPPPP/RNBQKBNR b KQkq - 0 1");
-    var board = Board.init();
+    var args = try std.process.argsWithAllocator(std.heap.page_allocator);
+    defer args.deinit();
+    _ = args.next();
+    var parsed_board: ?Board = null;
+    var fen: []const u8 = &.{};
+    defer std.heap.page_allocator.free(fen);
+    while (args.next()) |arg| {
+        std.debug.print("arg: {s}\n", .{arg});
+        fen = try std.mem.join(std.heap.page_allocator, " ", &.{ fen, arg });
+        parsed_board = Board.fromFen(fen) catch null;
+    }
+    std.debug.print("{s}\n", .{fen});
+    var board = parsed_board orelse Board.init();
     const stdout = std.io.getStdOut().writer();
+    _ = &stdout;
 
-    // const max_depth = 5;
-    // std.debug.print("{}\n", .{perft(&board, max_depth)});
     for (1..8) |max_depth| {
         var timer = try std.time.Timer.start();
         const num_moves = perft(&board, max_depth);

@@ -518,6 +518,7 @@ pub const Move = struct {
 
 pub const MoveInverse = struct {
     move: Move,
+    halfmove: u8,
     castling: BitBoard,
     en_passant: BitBoard,
 };
@@ -812,21 +813,31 @@ pub const Board = struct {
     pub fn playMove(self: *Self, move: Move) MoveInverse {
         const res = MoveInverse{
             .move = move,
+            .halfmove = self.halfmove_clock,
             .castling = self.castling_squares,
             .en_passant = self.en_passant_target,
         };
-        const moved_side = if (self.turn == .white) &self.white else &self.black;
+        self.halfmove_clock += 1;
+        self.fullmove_clock += @intFromBool(self.turn == .black);
+        const turn = self.turn;
+        self.turn = self.turn.flipped();
+        const moved_side = if (turn == .white) &self.white else &self.black;
         const from_board = moved_side.getBoardPtr(move.from().getType());
         assert(from_board.overlaps(move.from().getBoard()));
         from_board.* = from_board.getOverlap(move.from().getBoard().complement());
         const to_board = moved_side.getBoardPtr(move.to().getType());
         assert(!to_board.overlaps(move.to().getBoard()));
         to_board.* = to_board.getCombination(move.to().getBoard());
-        if (move.isEnPassantTarget()) {
-            self.en_passant_target = move.getEnPassantTarget();
+        if (move.from().getType() == .pawn) {
+            if (move.isEnPassantTarget()) {
+                self.en_passant_target = move.getEnPassantTarget();
+            } else {
+                self.en_passant_target = BitBoard.initEmpty();
+            }
         } else {
             self.en_passant_target = BitBoard.initEmpty();
-        } 
+        }
+
         if (move.isCastlingMove()) {
             if (move.from().getBoard().leftUnchecked(2) == move.to().getBoard()) {
                 moved_side.rook.remove(move.to().getBoard().leftUnchecked(2));
@@ -837,11 +848,11 @@ pub const Board = struct {
             }
         }
         if (move.captured()) |cap| {
-            const capture_side = if (self.turn == .white) &self.black else &self.white;
+            self.halfmove_clock = 0;
+            const capture_side = if (turn == .white) &self.black else &self.white;
             const capture_board = capture_side.getBoardPtr(cap.getType());
             capture_board.* = capture_board.getOverlap(cap.getBoard().complement());
         }
-        self.turn = self.turn.flipped();
         return res;
     }
 
@@ -882,6 +893,8 @@ pub const Board = struct {
         self.turn = self.turn.flipped();
         self.castling_squares = inv.castling;
         self.en_passant_target = inv.en_passant;
+        self.halfmove_clock = inv.halfmove;
+        self.fullmove_clock -= @intFromBool(self.turn == .black);
     }
 
     pub const TurnMode = enum { auto, flip, white, black };
@@ -1290,7 +1303,9 @@ pub const Board = struct {
                 .getCombination(king.leftUnchecked(2))
                 .getCombination(king.leftUnchecked(3))
                 .overlaps(all_pieces) and
-                king.leftUnchecked(4).overlaps(own_side.rook))
+                king.leftUnchecked(4).overlaps(own_side.rook) and
+                !self.isInCheck(.auto) and
+                !self.isSquareAttacked(king.leftUnchecked(1), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1298,12 +1313,14 @@ pub const Board = struct {
                 );
                 move_count += 1;
             }
-
             // kingside
             if (!king.rightUnchecked(1)
                 .getCombination(king.rightUnchecked(2))
                 .overlaps(all_pieces) and
-                king.rightUnchecked(3).overlaps(own_side.rook))
+                king.rightUnchecked(3).overlaps(own_side.rook) and
+                !self.isInCheck(.auto) and
+                !self.isSquareAttacked(king.rightUnchecked(1), .auto) and
+                !self.isSquareAttacked(king.rightUnchecked(2), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1390,7 +1407,9 @@ pub const Board = struct {
                 .getCombination(king.leftUnchecked(2))
                 .getCombination(king.leftUnchecked(3))
                 .overlaps(all_pieces) and
-                king.leftUnchecked(4).overlaps(own_side.rook))
+                king.leftUnchecked(4).overlaps(own_side.rook) and
+                !self.isInCheck(.auto) and
+                !self.isSquareAttacked(king.leftUnchecked(1), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1403,7 +1422,9 @@ pub const Board = struct {
             if (!king.rightUnchecked(1)
                 .getCombination(king.rightUnchecked(2))
                 .overlaps(all_pieces) and
-                king.rightUnchecked(3).overlaps(own_side.rook))
+                king.rightUnchecked(3).overlaps(own_side.rook) and
+                !self.isInCheck(.auto) and
+                !self.isSquareAttacked(king.rightUnchecked(1), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1412,7 +1433,6 @@ pub const Board = struct {
                 move_count += 1;
             }
         }
-
         return move_count;
     }
 
@@ -1479,6 +1499,12 @@ fn expectMovesInvertible(board: Board, moves: []Move) !void {
         var tmp = board;
         const inv = tmp.playMove(move);
         tmp.undoMove(inv);
+        try std.testing.expectEqual(board.fullmove_clock, tmp.fullmove_clock);
+        try std.testing.expectEqual(board.halfmove_clock, tmp.halfmove_clock);
+        try std.testing.expectEqual(board.turn, tmp.turn);
+        try std.testing.expectEqual(board.castling_squares, tmp.castling_squares);
+        try std.testing.expectEqual(board.white, tmp.white);
+        try std.testing.expectEqual(board.black, tmp.black);
         try std.testing.expectEqualDeep(board, tmp);
     }
 }
@@ -1649,7 +1675,6 @@ test "en passant on a6" {
     var buf: [400]Move = undefined;
     const pawn_captures = board.getPawnCaptures(&buf);
     try testing.expectEqual(1, pawn_captures);
-    std.debug.print("{}", .{buf[0]});
     try expectMovesInvertible(board, buf[0..pawn_captures]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_captures]);
 }
@@ -1679,11 +1704,10 @@ test "en passant on d3" {
     try testing.expectEqual(16, pawn_moves);
     try expectMovesInvertible(board, buf[0..pawn_moves]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_moves]);
-    for (buf[0..pawn_moves]) |move| {
-        if (move.isCapture()) {
-            std.debug.print("{}", .{move});
-        }
-    }
+}
+
+test "cant castle when in between square is attacked by knight" {
+    try testCase("r3k2r/p1ppqpb1/bnN1pnp1/3P4/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 1 1", Board.getAllMoves, 41, 8, 1);
 }
 
 comptime {

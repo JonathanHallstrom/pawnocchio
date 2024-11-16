@@ -41,26 +41,24 @@ pub fn build(b: *std.Build) void {
     // step when running `zig build`).
     b.installArtifact(exe);
 
-    const check_compiles = b.addExecutable(.{
-        .name = "pawnocchio",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const check = b.step("check", "Check if pawnocchio compiles");
-    check.dependOn(&check_compiles.step);
-
     const bench = b.addExecutable(.{
         .name = "pawnocchio_perft_bench",
-        .root_source_file =  b.path("src/perft_bench.zig"),
+        .root_source_file = b.path("src/perft_bench.zig"),
         .target = target,
         .optimize = optimize,
     });
+
+    const check_step = b.step("check", "Check if project compiles");
+    check_step.dependOn(&bench.step);
+    check_step.dependOn(&exe.step);
+
     const bench_step = b.step("bench", "Benchmark move generation");
     b.installArtifact(bench);
     const bench_cmd = b.addRunArtifact(bench);
     bench_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        bench_cmd.addArgs(args);
+    }
     bench_step.dependOn(&bench_cmd.step);
 
     // This *creates* a Run step in the build graph, to be executed when another
