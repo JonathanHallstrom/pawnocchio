@@ -55,7 +55,7 @@ pub fn build(b: *std.Build) void {
     const bench_step = b.step("bench", "Benchmark move generation");
     b.installArtifact(bench);
     const bench_cmd = b.addRunArtifact(bench);
-    bench_cmd.step.dependOn(b.getInstallStep());
+    bench_cmd.step.dependOn(&bench.step);
     if (b.args) |args| {
         bench_cmd.addArgs(args);
     }

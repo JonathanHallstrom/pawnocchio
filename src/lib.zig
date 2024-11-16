@@ -202,7 +202,22 @@ pub const BitBoard = enum(u64) {
     }
 
     fn getFirstOverLappingInDir(self: Self, overlap: BitBoard, dr: anytype, dc: anytype) BitBoard {
+        assert(@popCount(self.toInt()) <= 1);
         var moved = self.move(dr, dc).allDirection(dr, dc).getOverlap(overlap).allDirection(dr, dc);
+        moved.remove(moved.move(dr, dc));
+        return moved;
+    }
+
+    fn getFirstOverLappingInDirUnchecked(self: Self, overlap: BitBoard, dr: anytype, dc: anytype) BitBoard {
+        var moved = self.move(dr, dc).allDirection(dr, dc).getOverlap(overlap).allDirection(dr, dc);
+        moved.remove(moved.move(dr, dc));
+        return moved;
+    }
+
+    fn getFirstOverLappingInDirMasked(self: Self, overlap: BitBoard, dr: anytype, dc: anytype) BitBoard {
+        var cleaned = self;
+        cleaned.remove(self.move(-dr, -dc).allDirection(-dr, -dc));
+        var moved = cleaned.move(dr, dc).allDirection(dr, dc).getOverlap(overlap).allDirection(dr, dc);
         moved.remove(moved.move(dr, dc));
         return moved;
     }
@@ -829,6 +844,7 @@ pub const Board = struct {
         assert(!to_board.overlaps(move.to().getBoard()));
         to_board.* = to_board.getCombination(move.to().getBoard());
         if (move.from().getType() == .pawn) {
+            self.halfmove_clock = 0;
             if (move.isEnPassantTarget()) {
                 self.en_passant_target = move.getEnPassantTarget();
             } else {
@@ -836,6 +852,11 @@ pub const Board = struct {
             }
         } else {
             self.en_passant_target = BitBoard.initEmpty();
+
+            if (move.from().getType() == .king or move.from().getType() == .rook) {
+                self.castling_squares.remove(move.from().getBoard().leftMasked(2));
+                self.castling_squares.remove(move.from().getBoard().rightMasked(2));
+            }
         }
 
         if (move.isCastlingMove()) {
@@ -899,7 +920,9 @@ pub const Board = struct {
 
     pub const TurnMode = enum { auto, flip, white, black };
 
-    pub fn isSquareAttacked(self: Self, square: BitBoard, comptime turn_mode: TurnMode) bool {
+    // careful with lined up pieces!
+    // remember the castling bug
+    fn areSquaresAttacked(self: Self, squares: BitBoard, comptime turn_mode: TurnMode) bool {
         const is_white_turn = switch (turn_mode) {
             .auto => self.turn == .white,
             .flip => self.turn == .black,
@@ -914,29 +937,41 @@ pub const Board = struct {
 
         const pawn_dr: i8 = if (is_white_turn) 1 else -1;
         var pawn_mask = BitBoard.initEmpty();
-        pawn_mask.add(square.move(pawn_dr, 1));
-        pawn_mask.add(square.move(pawn_dr, -1));
-        if (pawn_mask.overlaps(opponent_side.pawn)) return true;
-
+        pawn_mask.add(squares.move(pawn_dr, 1));
+        pawn_mask.add(squares.move(pawn_dr, -1));
+        if (pawn_mask.overlaps(opponent_side.pawn)) {
+            return true;
+        }
         var knight_mask = BitBoard.initEmpty();
-        for (knight_drs, knight_dcs) |dr, dc| knight_mask.add(square.move(dr, dc));
-        if (knight_mask.overlaps(opponent_side.knight)) return true;
+        for (knight_drs, knight_dcs) |dr, dc| knight_mask.add(squares.move(dr, dc));
+        if (knight_mask.overlaps(opponent_side.knight)) {
+            // std.debug.print("knight\n", .{});
+            return true;
+        }
 
         var bishop_mask = BitBoard.initEmpty();
-        for (bishop_drs, bishop_dcs) |dr, dc| bishop_mask.add(square.getFirstOverLappingInDir(all_pieces, dr, dc));
-        if (bishop_mask.overlaps(opponent_side.bishop.getCombination(opponent_side.queen))) return true;
+        for (bishop_drs, bishop_dcs) |dr, dc| bishop_mask.add(squares.getFirstOverLappingInDirUnchecked(all_pieces, dr, dc));
+        if (bishop_mask.overlaps(opponent_side.bishop.getCombination(opponent_side.queen))) {
+            // std.debug.print("bishop\n", .{});
+            return true;
+        }
 
         var rook_mask = BitBoard.initEmpty();
-        for (rook_drs, rook_dcs) |dr, dc| rook_mask.add(square.getFirstOverLappingInDir(all_pieces, dr, dc));
-        if (rook_mask.overlaps(opponent_side.rook.getCombination(opponent_side.queen))) return true;
+        for (rook_drs, rook_dcs) |dr, dc| rook_mask.add(squares.getFirstOverLappingInDirUnchecked(all_pieces, dr, dc));
+        if (rook_mask.overlaps(opponent_side.rook.getCombination(opponent_side.queen))) {
+            // std.debug.print("rook\n", .{});
+            return true;
+        }
 
-        var king_mask = square;
-        king_mask.add(square.leftMasked(1));
-        king_mask.add(square.rightMasked(1));
+        var king_mask = squares;
+        king_mask.add(squares.leftMasked(1));
+        king_mask.add(squares.rightMasked(1));
         king_mask.add(king_mask.forwardMasked(1));
         king_mask.add(king_mask.backwardMasked(1));
-        if (king_mask.overlaps(opponent_side.king)) return true;
-
+        if (king_mask.overlaps(opponent_side.king)) {
+            // std.debug.print("king\n", .{});
+            return true;
+        }
         return false;
     }
 
@@ -950,7 +985,7 @@ pub const Board = struct {
 
         const own_side = if (is_white_turn) self.white else self.black;
 
-        return self.isSquareAttacked(own_side.king, turn_mode);
+        return self.areSquaresAttacked(own_side.king, turn_mode);
     }
 
     const knight_drs = [_]i8{ 2, 2, -2, -2, 1, 1, -1, -1 };
@@ -962,7 +997,7 @@ pub const Board = struct {
     const rook_drs = [_]i8{ 1, -1, 0, 0 };
     const rook_dcs = [_]i8{ 0, 0, 1, -1 };
 
-    pub fn getQuietPawnMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getQuietPawnMovesUnchecked(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
         const pawns = if (should_flip) self.black.pawn.flipped() else self.white.pawn;
         if (pawns.isEmpty()) return 0;
@@ -1007,7 +1042,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getPawnCaptures(self: Self, move_buffer: []Move) usize {
+    pub fn getPawnCapturesUnchecked(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
         const pawns = if (should_flip) self.black.pawn.flipped() else self.white.pawn;
         if (pawns.isEmpty()) return 0;
@@ -1106,13 +1141,13 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllPawnMoves(self: Self, move_buffer: []Move) usize {
-        const first_move_count = self.getQuietPawnMoves(move_buffer);
-        const second_move_count = self.getPawnCaptures(move_buffer[first_move_count..]);
+    pub fn getAllPawnMovesUnchecked(self: Self, move_buffer: []Move) usize {
+        const first_move_count = self.getQuietPawnMovesUnchecked(move_buffer);
+        const second_move_count = self.getPawnCapturesUnchecked(move_buffer[first_move_count..]);
         return first_move_count + second_move_count;
     }
 
-    pub fn getQuietKnightMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getQuietKnightMovesUnchecked(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
         const knights = if (should_flip) self.black.knight else self.white.knight;
         if (knights.isEmpty()) return 0;
@@ -1139,7 +1174,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getKnightCaptures(self: Self, move_buffer: []Move) usize {
+    pub fn getKnightCapturesUnchecked(self: Self, move_buffer: []Move) usize {
         const is_black_turn = self.turn == .black;
         const knights = if (is_black_turn) self.black.knight else self.white.knight;
         if (knights.isEmpty()) return 0;
@@ -1167,7 +1202,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllKnightMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getAllKnightMovesUnchecked(self: Self, move_buffer: []Move) usize {
         const is_white_turn = self.turn == .white;
         const own_side = if (is_white_turn) self.white else self.black;
         const knights = own_side.knight;
@@ -1242,31 +1277,31 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllBishopMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getAllBishopMovesUnchecked(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, false, bishop_drs, bishop_dcs, .bishop);
     }
 
-    pub fn getBishopCaptures(self: Self, move_buffer: []Move) usize {
+    pub fn getBishopCapturesUnchecked(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, true, bishop_drs, bishop_dcs, .bishop);
     }
 
-    pub fn getAllRookMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getAllRookMovesUnchecked(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, false, rook_drs, rook_dcs, .rook);
     }
 
-    pub fn getRookCaptures(self: Self, move_buffer: []Move) usize {
+    pub fn getRookCapturesUnchecked(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, true, rook_drs, rook_dcs, .rook);
     }
 
-    pub fn getAllQueenMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getAllQueenMovesUnchecked(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, false, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
     }
 
-    pub fn getQueenCaptures(self: Self, move_buffer: []Move) usize {
+    pub fn getQueenCapturesUnchecked(self: Self, move_buffer: []Move) usize {
         return getStraightLineMoves(self, move_buffer, true, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
     }
 
-    pub fn getQuietKingMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getQuietKingMovesUnchecked(self: Self, move_buffer: []Move) usize {
         const is_black_turn = self.turn == .black;
         const king = if (is_black_turn) self.black.king else self.white.king;
         assert(!king.isEmpty());
@@ -1295,17 +1330,16 @@ pub const Board = struct {
 
         // castling
         const starting_square = if (self.turn == .white) BitBoard.fromSquareUnchecked("E1") else BitBoard.fromSquareUnchecked("E8");
-        if (king.overlaps(starting_square)) {
-            // TODO: check square in between where the king ends up and where it starts for pieces attacking that square
-
+        if (king.overlaps(starting_square) and !self.castling_squares.isEmpty()) {
             // queenside
-            if (!king.leftUnchecked(1)
+            if (king.leftUnchecked(2).overlaps(self.castling_squares) and
+                !king.leftUnchecked(1)
                 .getCombination(king.leftUnchecked(2))
                 .getCombination(king.leftUnchecked(3))
                 .overlaps(all_pieces) and
                 king.leftUnchecked(4).overlaps(own_side.rook) and
-                !self.isInCheck(.auto) and
-                !self.isSquareAttacked(king.leftUnchecked(1), .auto))
+                !self.areSquaresAttacked(king.getCombination(king.leftUnchecked(1)).getCombination(king.leftUnchecked(2)), .auto) and
+                !self.areSquaresAttacked(king, .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1313,14 +1347,15 @@ pub const Board = struct {
                 );
                 move_count += 1;
             }
+
             // kingside
-            if (!king.rightUnchecked(1)
+            if (king.rightUnchecked(2).overlaps(self.castling_squares) and
+                !king.rightUnchecked(1)
                 .getCombination(king.rightUnchecked(2))
                 .overlaps(all_pieces) and
                 king.rightUnchecked(3).overlaps(own_side.rook) and
-                !self.isInCheck(.auto) and
-                !self.isSquareAttacked(king.rightUnchecked(1), .auto) and
-                !self.isSquareAttacked(king.rightUnchecked(2), .auto))
+                !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto) and
+                !self.areSquaresAttacked(king, .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1333,7 +1368,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getKingCaptures(self: Self, move_buffer: []Move) usize {
+    pub fn getKingCapturesUnchecked(self: Self, move_buffer: []Move) usize {
         const should_flip = self.turn == .black;
         const king = if (should_flip) self.black.king else self.white.king;
         assert(!king.isEmpty());
@@ -1360,7 +1395,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllKingMoves(self: Self, move_buffer: []Move) usize {
+    pub fn getAllKingMovesUnchecked(self: Self, move_buffer: []Move) usize {
         const is_black_turn = self.turn == .black;
         const king = if (is_black_turn) self.black.king else self.white.king;
         assert(!king.isEmpty());
@@ -1400,16 +1435,14 @@ pub const Board = struct {
         // castling
         const starting_square = if (self.turn == .white) BitBoard.fromSquareUnchecked("E1") else BitBoard.fromSquareUnchecked("E8");
         if (king.overlaps(starting_square)) {
-            // TODO: check square in between where the king ends up and where it starts for pieces attacking that square
-
-            // queenside
-            if (!king.leftUnchecked(1)
+            if (king.leftUnchecked(2).overlaps(self.castling_squares) and
+                !king.leftUnchecked(1)
                 .getCombination(king.leftUnchecked(2))
                 .getCombination(king.leftUnchecked(3))
                 .overlaps(all_pieces) and
                 king.leftUnchecked(4).overlaps(own_side.rook) and
-                !self.isInCheck(.auto) and
-                !self.isSquareAttacked(king.leftUnchecked(1), .auto))
+                !self.areSquaresAttacked(king.getCombination(king.leftUnchecked(1)).getCombination(king.leftUnchecked(2)), .auto) and
+                !self.areSquaresAttacked(king, .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1419,12 +1452,13 @@ pub const Board = struct {
             }
 
             // kingside
-            if (!king.rightUnchecked(1)
+            if (king.rightUnchecked(2).overlaps(self.castling_squares) and
+                !king.rightUnchecked(1)
                 .getCombination(king.rightUnchecked(2))
                 .overlaps(all_pieces) and
                 king.rightUnchecked(3).overlaps(own_side.rook) and
-                !self.isInCheck(.auto) and
-                !self.isSquareAttacked(king.rightUnchecked(1), .auto))
+                !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto) and
+                !self.areSquaresAttacked(king, .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1436,29 +1470,47 @@ pub const Board = struct {
         return move_count;
     }
 
+    pub fn getAllKingMoves(self: Self, move_buffer: []Move) usize {
+        const unfiltered_count = self.getAllKingMovesUnchecked(move_buffer);
+        return self.filterMoves(move_buffer[0..unfiltered_count]);
+    }
+
     pub fn getAllMovesUnchecked(self: Self, move_buffer: []Move) usize {
         var res: usize = 0;
-        res += self.getAllPawnMoves(move_buffer[res..]);
-        res += self.getAllKnightMoves(move_buffer[res..]);
-        res += self.getAllBishopMoves(move_buffer[res..]);
-        res += self.getAllRookMoves(move_buffer[res..]);
-        res += self.getAllQueenMoves(move_buffer[res..]);
-        res += self.getAllKingMoves(move_buffer[res..]);
+        res += self.getAllPawnMovesUnchecked(move_buffer[res..]);
+        res += self.getAllKnightMovesUnchecked(move_buffer[res..]);
+        res += self.getAllBishopMovesUnchecked(move_buffer[res..]);
+        res += self.getAllRookMovesUnchecked(move_buffer[res..]);
+        res += self.getAllQueenMovesUnchecked(move_buffer[res..]);
+        res += self.getAllKingMovesUnchecked(move_buffer[res..]);
         return res;
+    }
+
+    pub fn filterMoves(self: Self, move_buffer: []Move) usize {
+        var filtered_count: usize = 0;
+        var board = self;
+        for (move_buffer) |move| {
+            const res = board.playMovePossibleSelfCheck(move);
+            if (res) |inv| {
+                move_buffer[filtered_count] = move;
+                filtered_count += 1;
+                board.undoMove(inv);
+            }
+        }
+        return filtered_count;
     }
 
     pub fn getAllMoves(self: Self, move_buffer: []Move) usize {
         const unfiltered_count = getAllMovesUnchecked(self, move_buffer);
         var filtered_count: usize = 0;
         var board = self;
-        const own_side = if (self.turn == .white) &board.white else &board.black;
         for (move_buffer[0..unfiltered_count]) |move| {
-            const inv = board.playMove(move);
-            if (!board.isSquareAttacked(own_side.king, .flip)) {
+            const res = board.playMovePossibleSelfCheck(move);
+            if (res) |inv| {
                 move_buffer[filtered_count] = move;
                 filtered_count += 1;
+                board.undoMove(inv);
             }
-            board.undoMove(inv);
         }
         return filtered_count;
     }
@@ -1512,7 +1564,7 @@ fn expectMovesInvertible(board: Board, moves: []Move) !void {
 fn expectCapturesImplyAttacked(board: Board, moves: []Move) !void {
     for (moves) |move| {
         if (move.isCapture()) {
-            try std.testing.expect(board.isSquareAttacked(move.to().getBoard(), .flip));
+            try std.testing.expect(board.areSquaresAttacked(move.to().getBoard(), .flip));
         }
     }
 }
@@ -1521,7 +1573,12 @@ fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_capt
     var buf: [400]Move = undefined;
     const board = try Board.fromFen(fen);
     const num_moves = func(board, &buf);
-    try testing.expectEqual(expected_moves, num_moves);
+    testing.expectEqual(expected_moves, num_moves) catch |e| {
+        for (buf[0..num_moves]) |move| {
+            std.debug.print("{}\n", .{move});
+        }
+        return e;
+    };
     const moves = buf[0..num_moves];
     try expectNumCaptures(moves, expected_captures);
     try expectNumCastling(moves, expected_castling);
@@ -1530,7 +1587,7 @@ fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_capt
 }
 
 test "failing" {
-    try testCase("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1", Board.getKingCaptures, 1, 1, 0);
+    try testCase("rnN2k1r/pp2bppp/2p5/8/2B5/8/PPP1NnPP/RNBqK2R w KQ - 0 9", Board.getAllKingMoves, 1, 1, 0);
 }
 
 test "fen parsing" {
@@ -1540,117 +1597,119 @@ test "fen parsing" {
 }
 
 test "quiet pawn moves" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietPawnMoves, 16, 0, 0);
-    try testCase("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1", Board.getQuietPawnMoves, 5, 0, 0);
-    try testCase("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1", Board.getQuietPawnMoves, 0, 0, 0);
-    try testCase("8/P7/8/8/2K2k2/8/8/8 w - - 0 1", Board.getQuietPawnMoves, 4, 0, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietPawnMovesUnchecked, 16, 0, 0);
+    try testCase("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1", Board.getQuietPawnMovesUnchecked, 5, 0, 0);
+    try testCase("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1", Board.getQuietPawnMovesUnchecked, 0, 0, 0);
+    try testCase("8/P7/8/8/2K2k2/8/8/8 w - - 0 1", Board.getQuietPawnMovesUnchecked, 4, 0, 0);
 }
 
 test "pawn captures" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getPawnCaptures, 0, 0, 0);
-    try testCase("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1", Board.getPawnCaptures, 0, 0, 0);
-    try testCase("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1", Board.getPawnCaptures, 0, 0, 0);
-    try testCase("8/8/p1q5/1P1P4/2K2k2/2P5/8/8 w - - 0 1", Board.getPawnCaptures, 3, 3, 0);
-    try testCase("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1", Board.getPawnCaptures, 1, 1, 0);
-    try testCase("8/k7/8/8/3pP3/8/K7/8 b - e3 0 1", Board.getPawnCaptures, 1, 1, 0);
-    try testCase("1p6/P7/8/8/2K2k2/8/8/8 w - - 0 1", Board.getPawnCaptures, 4, 4, 0);
-    try testCase("p1p5/1P6/8/8/2K2k2/8/8/8 w - - 0 1", Board.getPawnCaptures, 8, 8, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getPawnCapturesUnchecked, 0, 0, 0);
+    try testCase("8/8/p7/P1P5/2K2kP1/5P2/2P4P/8 w - - 0 1", Board.getPawnCapturesUnchecked, 0, 0, 0);
+    try testCase("8/8/p7/P7/2K2k2/2P5/8/8 w - - 0 1", Board.getPawnCapturesUnchecked, 0, 0, 0);
+    try testCase("8/8/p1q5/1P1P4/2K2k2/2P5/8/8 w - - 0 1", Board.getPawnCapturesUnchecked, 3, 3, 0);
+    try testCase("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1", Board.getPawnCapturesUnchecked, 1, 1, 0);
+    try testCase("8/k7/8/8/3pP3/8/K7/8 b - e3 0 1", Board.getPawnCapturesUnchecked, 1, 1, 0);
+    try testCase("1p6/P7/8/8/2K2k2/8/8/8 w - - 0 1", Board.getPawnCapturesUnchecked, 4, 4, 0);
+    try testCase("p1p5/1P6/8/8/2K2k2/8/8/8 w - - 0 1", Board.getPawnCapturesUnchecked, 8, 8, 0);
 }
 
 test "quiet knight moves" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietKnightMoves, 4, 0, 0);
-    try testCase("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1", Board.getQuietKnightMoves, 7, 0, 0);
-    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getQuietKnightMoves, 14, 0, 0);
-    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getQuietKnightMoves, 5, 0, 0);
-    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getQuietKnightMoves, 0, 0, 0);
-    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getQuietKnightMoves, 1, 0, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietKnightMovesUnchecked, 4, 0, 0);
+    try testCase("8/6k1/8/8/8/3N4/1K6/8 w - - 0 1", Board.getQuietKnightMovesUnchecked, 7, 0, 0);
+    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getQuietKnightMovesUnchecked, 14, 0, 0);
+    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getQuietKnightMovesUnchecked, 5, 0, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getQuietKnightMovesUnchecked, 0, 0, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getQuietKnightMovesUnchecked, 1, 0, 0);
 }
 
 test "knight captures" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getKnightCaptures, 0, 0, 0);
-    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getKnightCaptures, 1, 1, 0);
-    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getKnightCaptures, 0, 0, 0);
-    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getKnightCaptures, 5, 5, 0);
-    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getKnightCaptures, 4, 4, 0);
-    try testCase("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1", Board.getKnightCaptures, 0, 0, 0);
-    try testCase("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1", Board.getKnightCaptures, 0, 0, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getKnightCapturesUnchecked, 0, 0, 0);
+    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getKnightCapturesUnchecked, 1, 1, 0);
+    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getKnightCapturesUnchecked, 0, 0, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getKnightCapturesUnchecked, 5, 5, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getKnightCapturesUnchecked, 4, 4, 0);
+    try testCase("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1", Board.getKnightCapturesUnchecked, 0, 0, 0);
+    try testCase("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1", Board.getKnightCapturesUnchecked, 0, 0, 0);
 }
 
 test "all knight moves" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllKnightMoves, 4, 0, 0);
-    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getAllKnightMoves, 15, 1, 0);
-    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getAllKnightMoves, 5, 0, 0);
-    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getAllKnightMoves, 5, 5, 0);
-    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getAllKnightMoves, 5, 4, 0);
-    try testCase("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1", Board.getAllKnightMoves, 2, 0, 0);
-    try testCase("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1", Board.getAllKnightMoves, 2, 0, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllKnightMovesUnchecked, 4, 0, 0);
+    try testCase("8/6k1/8/5p2/8/3NN3/1K6/8 w - - 0 1", Board.getAllKnightMovesUnchecked, 15, 1, 0);
+    try testCase("K7/6k1/8/8/8/8/8/NN6 w - - 0 1", Board.getAllKnightMovesUnchecked, 5, 0, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/2pp4/NN6 w - - 0 1", Board.getAllKnightMovesUnchecked, 5, 5, 0);
+    try testCase("K7/6k1/8/8/8/ppp5/3p4/NN6 w - - 0 1", Board.getAllKnightMovesUnchecked, 5, 4, 0);
+    try testCase("K1k5/8/8/8/8/8/6p1/N7 w - - 0 1", Board.getAllKnightMovesUnchecked, 2, 0, 0);
+    try testCase("K1k4N/8/8/8/8/8/6p1/8 w - - 0 1", Board.getAllKnightMovesUnchecked, 2, 0, 0);
 }
 
 test "bishop captures" {
-    try testCase("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1", Board.getBishopCaptures, 1, 1, 0);
-    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 w - - 0 1", Board.getBishopCaptures, 2, 2, 0);
-    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 b - - 0 1", Board.getBishopCaptures, 1, 1, 0);
+    try testCase("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1", Board.getBishopCapturesUnchecked, 1, 1, 0);
+    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 w - - 0 1", Board.getBishopCapturesUnchecked, 2, 2, 0);
+    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 b - - 0 1", Board.getBishopCapturesUnchecked, 1, 1, 0);
 }
 
 test "all bishop moves" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllBishopMoves, 0, 0, 0);
-    try testCase("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3", Board.getAllBishopMoves, 5, 0, 0);
-    try testCase("k7/8/8/8/8/3B4/8/K7 w - - 0 1", Board.getAllBishopMoves, 11, 0, 0);
-    try testCase("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1", Board.getAllBishopMoves, 9, 1, 0);
-    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 b - - 0 1", Board.getAllBishopMoves, 3, 1, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllBishopMovesUnchecked, 0, 0, 0);
+    try testCase("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3", Board.getAllBishopMovesUnchecked, 5, 0, 0);
+    try testCase("k7/8/8/8/8/3B4/8/K7 w - - 0 1", Board.getAllBishopMovesUnchecked, 11, 0, 0);
+    try testCase("k7/8/8/5p2/8/3B4/8/K7 w - - 0 1", Board.getAllBishopMovesUnchecked, 9, 1, 0);
+    try testCase("7r/2k3p1/8/b7/8/2B5/8/1K6 b - - 0 1", Board.getAllBishopMovesUnchecked, 3, 1, 0);
 }
 
 test "rook captures" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getRookCaptures, 0, 0, 0);
-    try testCase("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1", Board.getRookCaptures, 1, 1, 0);
-    try testCase("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1", Board.getRookCaptures, 1, 1, 0);
-    try testCase("7k/8/8/8/3rrP2/8/8/7K b - - 0 1", Board.getRookCaptures, 1, 1, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getRookCapturesUnchecked, 0, 0, 0);
+    try testCase("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1", Board.getRookCapturesUnchecked, 1, 1, 0);
+    try testCase("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1", Board.getRookCapturesUnchecked, 1, 1, 0);
+    try testCase("7k/8/8/8/3rrP2/8/8/7K b - - 0 1", Board.getRookCapturesUnchecked, 1, 1, 0);
 }
 
 test "all rook moves" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllRookMoves, 0, 0, 0);
-    try testCase("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1", Board.getAllRookMoves, 12, 1, 0);
-    try testCase("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1", Board.getAllRookMoves, 18, 1, 0);
-    try testCase("7k/8/8/8/3rrP2/8/8/7K b - - 0 1", Board.getAllRookMoves, 18, 1, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllRookMovesUnchecked, 0, 0, 0);
+    try testCase("k7/8/8/3R1p2/8/8/8/K7 w - - 0 1", Board.getAllRookMovesUnchecked, 12, 1, 0);
+    try testCase("k7/8/8/3RRp2/8/8/8/K7 w - - 0 1", Board.getAllRookMovesUnchecked, 18, 1, 0);
+    try testCase("7k/8/8/8/3rrP2/8/8/7K b - - 0 1", Board.getAllRookMovesUnchecked, 18, 1, 0);
 }
 
 test "queen captures" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQueenCaptures, 0, 0, 0);
-    try testCase("8/k7/8/3Q1p2/8/8/8/K7 w - - 0 1", Board.getQueenCaptures, 1, 1, 0);
-    try testCase("8/k7/8/3QQp2/8/8/8/K7 w - - 0 1", Board.getQueenCaptures, 1, 1, 0);
-    try testCase("7k/8/8/8/3qqP2/8/7K/8 b - - 0 1", Board.getQueenCaptures, 1, 1, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQueenCapturesUnchecked, 0, 0, 0);
+    try testCase("8/k7/8/3Q1p2/8/8/8/K7 w - - 0 1", Board.getQueenCapturesUnchecked, 1, 1, 0);
+    try testCase("8/k7/8/3QQp2/8/8/8/K7 w - - 0 1", Board.getQueenCapturesUnchecked, 1, 1, 0);
+    try testCase("7k/8/8/8/3qqP2/8/7K/8 b - - 0 1", Board.getQueenCapturesUnchecked, 1, 1, 0);
 }
 
 test "all queen moves" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllQueenMoves, 0, 0, 0);
-    try testCase("7k/8/8/3q4/8/8/7K/8 b - - 0 1", Board.getAllQueenMoves, 27, 0, 0);
-    try testCase("7k/8/8/3q2P1/8/8/7K/8 b - - 0 1", Board.getAllQueenMoves, 26, 1, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllQueenMovesUnchecked, 0, 0, 0);
+    try testCase("7k/8/8/3q4/8/8/7K/8 b - - 0 1", Board.getAllQueenMovesUnchecked, 27, 0, 0);
+    try testCase("7k/8/8/3q2P1/8/8/7K/8 b - - 0 1", Board.getAllQueenMovesUnchecked, 26, 1, 0);
 }
 
 test "quiet king moves" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietKingMoves, 0, 0, 0);
-    try testCase("8/1k6/8/8/8/8/PPP5/1K6 w - - 0 1", Board.getQuietKingMoves, 2, 0, 0);
-    try testCase("k7/8/8/3K4/8/8/8/8 w - - 0 1", Board.getQuietKingMoves, 8, 0, 0);
-    try testCase("K7/8/8/3k4/8/8/8/8 b - - 0 1", Board.getQuietKingMoves, 8, 0, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getQuietKingMovesUnchecked, 0, 0, 0);
+    try testCase("8/1k6/8/8/8/8/PPP5/1K6 w - - 0 1", Board.getQuietKingMovesUnchecked, 2, 0, 0);
+    try testCase("k7/8/8/3K4/8/8/8/8 w - - 0 1", Board.getQuietKingMovesUnchecked, 8, 0, 0);
+    try testCase("K7/8/8/3k4/8/8/8/8 b - - 0 1", Board.getQuietKingMovesUnchecked, 8, 0, 0);
 }
 
 test "king captures" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getKingCaptures, 0, 0, 0);
-    try testCase("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1", Board.getKingCaptures, 1, 1, 0);
-    try testCase("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1", Board.getKingCaptures, 4, 4, 0);
-    try testCase("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1", Board.getKingCaptures, 5, 5, 0);
-    try testCase("K7/8/8/2Pk4/8/8/8/8 b - - 0 1", Board.getKingCaptures, 1, 1, 0);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getKingCapturesUnchecked, 0, 0, 0);
+    try testCase("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1", Board.getKingCapturesUnchecked, 1, 1, 0);
+    try testCase("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1", Board.getKingCapturesUnchecked, 4, 4, 0);
+    try testCase("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1", Board.getKingCapturesUnchecked, 5, 5, 0);
+    try testCase("K7/8/8/2Pk4/8/8/8/8 b - - 0 1", Board.getKingCapturesUnchecked, 1, 1, 0);
 }
 
 test "all king moves" {
-    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllKingMoves, 0, 0, 0);
-    try testCase("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1", Board.getAllKingMoves, 5, 1, 0);
-    try testCase("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1", Board.getAllKingMoves, 8, 4, 0);
-    try testCase("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1", Board.getAllKingMoves, 8, 5, 0);
-    try testCase("4k3/8/8/8/8/8/8/R3K3 w Q - 0 1", Board.getAllKingMoves, 6, 0, 1);
-    try testCase("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", Board.getAllKingMoves, 3, 0, 1);
-    try testCase("3k4/8/8/8/8/8/3PPPPP/3QK2R w - - 0 1", Board.getAllKingMoves, 2, 0, 1);
-    try testCase("3k4/8/8/8/8/8/8/R3K2R w KQ - 0 1", Board.getAllKingMoves, 7, 0, 2);
+    try testCase("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Board.getAllKingMovesUnchecked, 0, 0, 0);
+    try testCase("8/1k6/8/8/8/8/1p6/1K6 w - - 0 1", Board.getAllKingMovesUnchecked, 5, 1, 0);
+    try testCase("8/1k6/8/8/8/2pKp3/2p1p3/8 w - - 0 1", Board.getAllKingMovesUnchecked, 8, 4, 0);
+    try testCase("8/1k6/8/8/2p5/2pKp3/2p1p3/8 w - - 0 1", Board.getAllKingMovesUnchecked, 8, 5, 0);
+    try testCase("4k3/8/8/8/8/8/8/R3K3 w Q - 0 1", Board.getAllKingMovesUnchecked, 6, 0, 1);
+    try testCase("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", Board.getAllKingMovesUnchecked, 3, 0, 1);
+    try testCase("3k4/8/8/8/8/8/3PPPPP/3QK2R w - - 0 1", Board.getAllKingMovesUnchecked, 1, 0, 0);
+    try testCase("3k4/8/8/8/8/8/3PPPPP/3QK2R w K - 0 1", Board.getAllKingMovesUnchecked, 2, 0, 1);
+    try testCase("3k4/8/8/8/8/8/8/R3K2R w KQ - 0 1", Board.getAllKingMovesUnchecked, 7, 0, 2);
+    try testCase("rnN2k1r/pp2bppp/2p5/8/2B5/8/PPP1NnPP/RNBqK2R w KQ - 0 9", Board.getAllKingMoves, 1, 1, 0);
 }
 
 test "en passant on d6" {
@@ -1660,7 +1719,7 @@ test "en passant on d6" {
     _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5"))));
     _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D5"))));
     var buf: [400]Move = undefined;
-    const pawn_captures = board.getPawnCaptures(&buf);
+    const pawn_captures = board.getPawnCapturesUnchecked(&buf);
     try testing.expectEqual(1, pawn_captures);
     try expectMovesInvertible(board, buf[0..pawn_captures]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_captures]);
@@ -1673,7 +1732,7 @@ test "en passant on a6" {
     _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B5"))));
     _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A5"))));
     var buf: [400]Move = undefined;
-    const pawn_captures = board.getPawnCaptures(&buf);
+    const pawn_captures = board.getPawnCapturesUnchecked(&buf);
     try testing.expectEqual(1, pawn_captures);
     try expectMovesInvertible(board, buf[0..pawn_captures]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_captures]);
@@ -1686,7 +1745,7 @@ test "en passant on h6" {
     _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G5"))));
     _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H5"))));
     var buf: [400]Move = undefined;
-    const pawn_captures = board.getPawnCaptures(&buf);
+    const pawn_captures = board.getPawnCapturesUnchecked(&buf);
     try testing.expectEqual(1, pawn_captures);
     try expectMovesInvertible(board, buf[0..pawn_captures]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_captures]);
@@ -1700,7 +1759,7 @@ test "en passant on d3" {
     _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4"))));
     _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D4"))));
     var buf: [400]Move = undefined;
-    const pawn_moves = board.getAllPawnMoves(&buf);
+    const pawn_moves = board.getAllPawnMovesUnchecked(&buf);
     try testing.expectEqual(16, pawn_moves);
     try expectMovesInvertible(board, buf[0..pawn_moves]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_moves]);

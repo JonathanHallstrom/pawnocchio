@@ -11,24 +11,34 @@ fn getMovesAlloc(board: *const Board, allocator: Allocator) ![]Move {
     return try allocator.dupe(Move, buf[0..num_moves]);
 }
 
-var move_buf: [1 << 20]Move = undefined;
-var move_buf_len: usize = 0;
-
-fn perft(board: *Board, depth_remaining: usize) usize {
+var cur_depth: usize = 0;
+fn perft(board: *Board, move_buf: []Move, depth_remaining: usize) usize {
     if (depth_remaining == 0) return 0;
-    const num_moves = board.getAllMovesUnchecked(move_buf[move_buf_len..]);
-    const moves = move_buf[move_buf_len..][0..num_moves];
-    move_buf_len += num_moves;
-    defer move_buf_len -= num_moves;
+    cur_depth += 1;
+    defer cur_depth -= 1;
+    const num_moves = board.getAllMovesUnchecked(move_buf);
+    const moves = move_buf[0..num_moves];
     var res: usize = 0;
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
 
-            const next = if (depth_remaining == 1) 1 else perft(board, depth_remaining - 1);
-            // if (board.fullmove_clock == 2) {
-            //     std.debug.print("{s}{s}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), next });
-            // }
+            const next = if (depth_remaining == 1) 1 else perft(board, move_buf[num_moves..], depth_remaining - 1);
+            if (cur_depth == 1) {
+                if (move.from().getType() != move.to().getType()) {
+                    const promoted_type = move.to().getType();
+                    const promoted_pretty: u8 = switch (promoted_type) {
+                        .bishop => 'b',
+                        .knight => 'n',
+                        .rook => 'r',
+                        .queen => 'q',
+                        else => unreachable,
+                    };
+                    std.debug.print("{s}{s}{c}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), promoted_pretty, next });
+                } else {
+                    std.debug.print("{s}{s}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), next });
+                }
+            }
             res += next;
         }
     }
@@ -36,27 +46,31 @@ fn perft(board: *Board, depth_remaining: usize) usize {
 }
 
 pub fn main() !void {
-    var args = try std.process.argsWithAllocator(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
     _ = args.next();
     var parsed_board: ?Board = null;
     var fen: []const u8 = &.{};
-    defer std.heap.page_allocator.free(fen);
     while (args.next()) |arg| {
         std.debug.print("arg: {s}\n", .{arg});
-        fen = try std.mem.join(std.heap.page_allocator, " ", &.{ fen, arg });
+        fen = try std.mem.join(allocator, " ", &.{ fen, arg });
         parsed_board = Board.fromFen(fen) catch null;
     }
     std.debug.print("{s}\n", .{fen});
     var board = parsed_board orelse Board.init();
-    const stdout = std.io.getStdOut().writer();
-    _ = &stdout;
+    const outfile = try std.fs.cwd().openFile("out.txt", .{ .mode = .write_only });
+    const output = outfile.writer();
 
-    for (1..8) |max_depth| {
+    const move_buf: []Move = try allocator.alloc(Move, 1 << 20);
+    for (1..6) |max_depth| {
         var timer = try std.time.Timer.start();
-        const num_moves = perft(&board, max_depth);
+        const num_moves = perft(&board, move_buf, max_depth);
         const elapsed = timer.lap();
-        try stdout.print("{}\n", .{num_moves});
+        try output.print("{}\n", .{num_moves});
         std.debug.print("{}\n", .{num_moves});
         std.debug.print("time : {}\n", .{std.fmt.fmtDuration(elapsed)});
         std.debug.print("Moves/s: {}\n", .{num_moves * 1000_000_000 / elapsed});
