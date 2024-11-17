@@ -26,15 +26,7 @@ fn perft(board: *Board, move_buf: []Move, depth_remaining: usize) usize {
             const next = if (depth_remaining == 1) 1 else perft(board, move_buf[num_moves..], depth_remaining - 1);
             if (cur_depth == 1) {
                 if (move.from().getType() != move.to().getType()) {
-                    const promoted_type = move.to().getType();
-                    const promoted_pretty: u8 = switch (promoted_type) {
-                        .bishop => 'b',
-                        .knight => 'n',
-                        .rook => 'r',
-                        .queen => 'q',
-                        else => unreachable,
-                    };
-                    std.debug.print("{s}{s}{c}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), promoted_pretty, next });
+                    std.debug.print("{s}{s}{c}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter(), next });
                 } else {
                     std.debug.print("{s}{s}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), next });
                 }
@@ -56,17 +48,15 @@ pub fn main() !void {
     var parsed_board: ?Board = null;
     var fen: []const u8 = &.{};
     while (args.next()) |arg| {
-        std.debug.print("arg: {s}\n", .{arg});
         fen = try std.mem.join(allocator, " ", &.{ fen, arg });
         parsed_board = Board.fromFen(fen) catch null;
     }
-    std.debug.print("{s}\n", .{fen});
     var board = parsed_board orelse Board.init();
     const outfile = try std.fs.cwd().openFile("out.txt", .{ .mode = .write_only });
     const output = outfile.writer();
 
     const move_buf: []Move = try allocator.alloc(Move, 1 << 20);
-    for (1..6) |max_depth| {
+    for (1..7) |max_depth| {
         var timer = try std.time.Timer.start();
         const num_moves = perft(&board, move_buf, max_depth);
         const elapsed = timer.lap();
