@@ -43,24 +43,10 @@ fn stockfishPerft(fen: []const u8, depth: usize, allocator: Allocator) !usize {
     return try std.fmt.parseInt(usize, std.mem.trim(u8, proc.stdout, "\n\t "), 10);
 }
 
-fn perft(board: *Board, move_buf: []Move, depth_remaining: usize) usize {
-    if (depth_remaining == 0) return 0;
-    const num_moves = board.getAllMovesUnchecked(move_buf);
-    const moves = move_buf[0..num_moves];
-    var res: usize = 0;
-    for (moves) |move| {
-        if (board.playMovePossibleSelfCheck(move)) |inv| {
-            defer board.undoMove(inv);
-            res += if (depth_remaining == 1) 1 else perft(board, move_buf[num_moves..], depth_remaining - 1);
-        }
-    }
-    return res;
-}
-
 fn findPerftErrorPos(fen: []const u8, move_buf: []Move, depth: usize, allocator: Allocator) !void {
     var board = try Board.fromFen(fen);
 
-    const my_perft = perft(&board, move_buf, depth);
+    const my_perft = try board.perftMultiThreaded(move_buf, depth);
     const correct_perft = try stockfishPerft(fen, depth, allocator);
     if (my_perft == correct_perft) return;
 
@@ -104,7 +90,7 @@ pub fn main() !void {
     }
     const move_buf: []Move = try allocator.alloc(Move, 1 << 20);
 
-    const max_depth = 6;
+    const max_depth = 7;
     for (1..max_depth) |depth| {
         try findPerftErrorPos(fen, move_buf, depth, allocator);
         std.debug.print("no errors found at a depth of {}\n", .{depth});

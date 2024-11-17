@@ -1608,6 +1608,64 @@ pub const Board = struct {
         }
         return filtered_count;
     }
+
+    pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) usize {
+        if (depth_remaining == 0) return 0;
+        const num_moves = self.getAllMovesUnchecked(move_buf);
+        const moves = move_buf[0..num_moves];
+        var res: usize = 0;
+        for (moves) |move| {
+            if (self.playMovePossibleSelfCheck(move)) |inv| {
+                defer self.undoMove(inv);
+                res += if (depth_remaining == 1) 1 else perftSingleThreaded(self, move_buf[num_moves..], depth_remaining - 1);
+            }
+        }
+        return res;
+    }
+
+    pub fn perftMultiThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) !usize {
+        if (depth_remaining < 5) return self.perftSingleThreaded(move_buf, depth_remaining);
+        if (depth_remaining == 0) return 0;
+        const num_moves = self.getAllMovesUnchecked(move_buf);
+        const moves = move_buf[0..num_moves];
+        var res = std.atomic.Value(usize).init(0);
+
+        const thread_count = 400;
+        assert(thread_count > num_moves);
+        const buf = try std.heap.page_allocator.alloc(u8, thread_count * @sizeOf(std.Thread) * 2);
+        defer std.heap.page_allocator.free(buf);
+        var fba = std.heap.FixedBufferAllocator.init(buf);
+        var threads: std.Thread.Pool = undefined;
+        try threads.init(.{ .n_jobs = @intCast(num_moves), .allocator = fba.allocator() });
+        var boards: [thread_count]Board = .{self.*} ** thread_count;
+        var needs_joining = std.StaticBitSet(thread_count).initEmpty();
+        var move_buf_to_pass = move_buf[num_moves..];
+        const amount_per_thread = move_buf_to_pass.len / num_moves;
+
+        const worker_fn = struct {
+            fn impl(res_: *std.atomic.Value(usize), board_: *Self, move_buf_: []Move, depth_remaining_: usize) void {
+                _ = res_.fetchAdd(board_.perftMultiThreaded(move_buf_, depth_remaining_) catch |e| {
+                    std.debug.panic("Error: {any}\n", .{e});
+                }, .acq_rel);
+            }
+        }.impl;
+
+        for (0..num_moves) |i| {
+            const board = &boards[i];
+            const move = moves[i];
+            const cur_move_buf = move_buf_to_pass[0..amount_per_thread];
+            move_buf_to_pass = move_buf_to_pass[amount_per_thread..];
+
+            if (board.playMovePossibleSelfCheck(move)) |inv| {
+                defer self.undoMove(inv);
+                needs_joining.set(i);
+                try threads.spawn(worker_fn, .{ &res, board, cur_move_buf, depth_remaining - 1 });
+            }
+        }
+        threads.deinit();
+
+        return res.load(.seq_cst);
+    }
 };
 
 const testing = std.testing;
@@ -1872,6 +1930,8 @@ test "castling blocked by bishop" {
     try testCase("5k2/8/8/3b4/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 10, 0, 1);
     try testCase("5k2/8/8/3b4/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 10, 0, 1);
 }
+
+test "perft tests" {}
 
 comptime {
     std.testing.refAllDeclsRecursive(@This());
