@@ -64,6 +64,14 @@ pub const BitBoard = enum(u64) {
         return fromSquare(square) catch unreachable;
     }
 
+    pub inline fn toSquare(self: Self) [2]u8 {
+        assert(@popCount(self.toInt()) == 1);
+        const pos = @ctz(self.toInt());
+        const row = pos / 8;
+        const col = pos % 8;
+        return .{ 'a' + col, '1' + row };
+    }
+
     pub inline fn initEmpty() BitBoard {
         return init(0);
     }
@@ -357,6 +365,26 @@ pub const PieceType = enum(u8) {
         _ = options;
         return try writer.print("{s}", .{@tagName(self)});
     }
+
+    pub fn letter(self: PieceType) u8 {
+        return switch (self) {
+            .pawn => 'p',
+            .knight => 'n',
+            .bishop => 'b',
+            .rook => 'r',
+            .queen => 'q',
+            .king => 'k',
+        };
+    }
+
+    const all = [_]PieceType{
+        .pawn,
+        .knight,
+        .bishop,
+        .rook,
+        .queen,
+        .king,
+    };
 };
 
 pub const Piece = struct {
@@ -634,20 +662,17 @@ pub const Board = struct {
             return res;
         }
 
-        fn whichType(self: PieceSet, needle: BitBoard) PieceType {
-            inline for (.{
-                .pawn,
-                .knight,
-                .bishop,
-                .rook,
-                .queen,
-                .king,
-            }) |e| {
+        fn whichTypeUnchecked(self: PieceSet, needle: BitBoard) PieceType {
+            return self.whichType(needle).?;
+        }
+
+        fn whichType(self: PieceSet, needle: BitBoard) ?PieceType {
+            inline for (PieceType.all) |e| {
                 if (@field(self, @tagName(e)).overlaps(needle)) {
                     return e;
                 }
             }
-            unreachable;
+            return null;
         }
     };
 
@@ -759,6 +784,62 @@ pub const Board = struct {
         if (fullmove == 0)
             return error.InvalidFullMove;
         res.fullmove_clock = fullmove;
+
+        return res;
+    }
+
+    pub fn toFen(self: Self) std.BoundedArray(u8, 127) {
+        var res = std.BoundedArray(u8, 127).init(0) catch unreachable;
+        _ = &res;
+
+        var count: u8 = 0;
+        inline for (0..8) |ir| {
+            inline for (0..8) |c| {
+                const r = 7 - ir;
+                const letter_opt: ?u8 = if (self.white.whichType(BitBoard.init(1 << r * 8 + c))) |piece_type|
+                    std.ascii.toUpper(piece_type.letter())
+                else if (self.black.whichType(BitBoard.init(1 << r * 8 + c))) |piece_type|
+                    std.ascii.toLower(piece_type.letter())
+                else
+                    null;
+
+                if (letter_opt) |letter| {
+                    if (count != 0) {
+                        res.appendAssumeCapacity(count + '0');
+                        count = 0;
+                    }
+                    res.appendAssumeCapacity(letter);
+                } else {
+                    count += 1;
+                }
+            }
+            if (count != 0) {
+                res.appendAssumeCapacity(count + '0');
+                count = 0;
+            }
+            if (ir != 7)
+                res.appendAssumeCapacity('/');
+        }
+        res.appendAssumeCapacity(' ');
+        res.appendAssumeCapacity(std.ascii.toLower(@tagName(self.turn)[0]));
+        res.appendAssumeCapacity(' ');
+        if (self.castling_squares.isEmpty()) {
+            res.appendAssumeCapacity('-');
+        } else {
+            if (self.castling_squares.overlaps(kingside_white_castle_destination)) res.appendAssumeCapacity('K');
+            if (self.castling_squares.overlaps(queenside_white_castle_destination)) res.appendAssumeCapacity('Q');
+            if (self.castling_squares.overlaps(kingside_black_castle_destination)) res.appendAssumeCapacity('k');
+            if (self.castling_squares.overlaps(queenside_black_castle_destination)) res.appendAssumeCapacity('q');
+        }
+        res.appendAssumeCapacity(' ');
+        if (self.en_passant_target.isEmpty()) {
+            res.appendAssumeCapacity('-');
+        } else {
+            res.appendSliceAssumeCapacity(&self.en_passant_target.toSquare());
+        }
+        res.appendAssumeCapacity(' ');
+        var clock_buf: [32]u8 = undefined;
+        res.appendSliceAssumeCapacity(std.fmt.bufPrint(&clock_buf, "{d} {d}", .{ self.halfmove_clock, self.fullmove_clock }) catch unreachable);
 
         return res;
     }
@@ -1194,7 +1275,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initCapture(
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
-                    Piece.init(opponent_side.whichType(moved), moved),
+                    Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
                 );
                 move_count += 1;
             }
@@ -1230,7 +1311,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initCapture(
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
-                    Piece.init(opponent_side.whichType(moved), moved),
+                    Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
                 );
                 move_count += 1;
             }
@@ -1268,7 +1349,7 @@ pub const Board = struct {
                     move_buffer[move_count] = Move.initCapture(
                         Piece.init(piece_type, curr),
                         Piece.init(piece_type, moved),
-                        Piece.init(opponent_side.whichType(moved), moved),
+                        Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
                     );
                     move_count += 1;
                 }
@@ -1388,7 +1469,7 @@ pub const Board = struct {
             move_buffer[move_count] = Move.initCapture(
                 Piece.kingFromBitBoard(king),
                 Piece.kingFromBitBoard(moved),
-                Piece.init(opponent_side.whichType(moved), moved),
+                Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
             );
             move_count += 1;
         }
@@ -1419,7 +1500,7 @@ pub const Board = struct {
             move_buffer[move_count] = Move.initCapture(
                 Piece.kingFromBitBoard(king),
                 Piece.kingFromBitBoard(moved),
-                Piece.init(opponent_side.whichType(moved), moved),
+                Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
             );
             move_count += 1;
         }
@@ -1572,6 +1653,7 @@ fn expectCapturesImplyAttacked(board: Board, moves: []Move) !void {
 fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_captures: usize, expected_castling: usize) !void {
     var buf: [400]Move = undefined;
     const board = try Board.fromFen(fen);
+    try testing.expectEqualSlices(u8, fen, board.toFen().slice());
     const num_moves = func(board, &buf);
     testing.expectEqual(expected_moves, num_moves) catch |e| {
         for (buf[0..num_moves]) |move| {
@@ -1710,6 +1792,7 @@ test "all king moves" {
     try testCase("3k4/8/8/8/8/8/3PPPPP/3QK2R w K - 0 1", Board.getAllKingMovesUnchecked, 2, 0, 1);
     try testCase("3k4/8/8/8/8/8/8/R3K2R w KQ - 0 1", Board.getAllKingMovesUnchecked, 7, 0, 2);
     try testCase("rnN2k1r/pp2bppp/2p5/8/2B5/8/PPP1NnPP/RNBqK2R w KQ - 0 9", Board.getAllKingMoves, 1, 1, 0);
+    try testCase("5k2/8/8/8/8/8/5n2/3qK2R w K - 0 9", Board.getAllMoves, 1, 1, 0);
 }
 
 test "en passant on d6" {
@@ -1767,6 +1850,14 @@ test "en passant on d3" {
 
 test "cant castle when in between square is attacked by knight" {
     try testCase("r3k2r/p1ppqpb1/bnN1pnp1/3P4/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 1 1", Board.getAllMoves, 41, 8, 1);
+}
+
+test "castling blocked by bishop" {
+    try testCase("5k2/8/b7/8/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 7, 0, 0);
+    try testCase("5k2/8/1b6/8/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 8, 0, 0);
+    try testCase("5k2/8/8/b7/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 4, 0, 0);
+    try testCase("5k2/8/8/3b4/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 10, 0, 1);
+    try testCase("5k2/8/8/3b4/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 10, 0, 1);
 }
 
 comptime {
