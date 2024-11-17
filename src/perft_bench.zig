@@ -11,32 +11,6 @@ fn getMovesAlloc(board: *const Board, allocator: Allocator) ![]Move {
     return try allocator.dupe(Move, buf[0..num_moves]);
 }
 
-var cur_depth: usize = 0;
-fn perft(board: *Board, move_buf: []Move, depth_remaining: usize) usize {
-    if (depth_remaining == 0) return 0;
-    cur_depth += 1;
-    defer cur_depth -= 1;
-    const num_moves = board.getAllMovesUnchecked(move_buf);
-    const moves = move_buf[0..num_moves];
-    var res: usize = 0;
-    for (moves) |move| {
-        if (board.playMovePossibleSelfCheck(move)) |inv| {
-            defer board.undoMove(inv);
-
-            const next = if (depth_remaining == 1) 1 else perft(board, move_buf[num_moves..], depth_remaining - 1);
-            if (cur_depth == 1) {
-                if (move.from().getType() != move.to().getType()) {
-                    std.debug.print("{s}{s}{c}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter(), next });
-                } else {
-                    std.debug.print("{s}{s}: {}\n", .{ move.from().prettyPos(), move.to().prettyPos(), next });
-                }
-            }
-            res += next;
-        }
-    }
-    return res;
-}
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -61,6 +35,7 @@ pub fn main() !void {
     for (1..8) |depth| {
         var timer = try std.time.Timer.start();
         const num_moves = try board.perftMultiThreaded(move_buf, depth, allocator);
+        // const num_moves = board.perftSingleThreaded(move_buf, depth);
         const elapsed = timer.lap();
         try output.print("{}\n", .{num_moves});
         std.debug.print("{}\n", .{num_moves});

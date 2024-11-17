@@ -34,7 +34,7 @@ pub fn main() !void {
             break;
         }
 
-        const num_moves = board.getAllMoves(&move_buf);
+        const num_moves = board.getAllMoves(&move_buf, board.getSelfCheckSquares());
         const moves = move_buf[0..num_moves];
 
         std.debug.print("Available moves:\n", .{});

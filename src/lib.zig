@@ -80,6 +80,10 @@ pub const BitBoard = enum(u64) {
         return self == initEmpty();
     }
 
+    pub inline fn isNonEmpty(self: Self) bool {
+        return self != initEmpty();
+    }
+
     pub inline fn set(self: *Self, row: Row, col: Col) !void {
         if (self.get(row, col)) return error.AlreadySet;
         self.setUnchecked(row, col);
@@ -522,19 +526,21 @@ pub const Move = struct {
         return self.from().getType() == .king and left.getCombination(right).overlaps(self.to().getBoard());
     }
 
-    pub fn initQuiet(from_: Piece, to_: Piece) Move {
+    pub fn initQuiet(from_: Piece, to_: Piece, might_self_check: bool) Move {
         return .{
             ._from = from_,
             ._to = to_,
             ._captured = null,
+            .might_cause_self_check = might_self_check,
         };
     }
 
-    pub fn initCapture(from_: Piece, to_: Piece, captured_: Piece) Move {
+    pub fn initCapture(from_: Piece, to_: Piece, captured_: Piece, might_self_check: bool) Move {
         return .{
             ._from = from_,
             ._to = to_,
             ._captured = captured_,
+            .might_cause_self_check = might_self_check,
         };
     }
 
@@ -846,7 +852,7 @@ pub const Board = struct {
 
     pub fn gameOver(self: Self) ?GameResult {
         var tmp_buf: [400]Move = undefined;
-        if (self.getAllMoves(&tmp_buf) == 0) {
+        if (self.getAllMoves(&tmp_buf, self.getSelfCheckSquares()) == 0) {
             if (self.isInCheck(.auto)) {
                 return GameResult.from(self.turn.flipped());
             } else {
@@ -1094,10 +1100,11 @@ pub const Board = struct {
     const rook_drs = [_]i8{ 1, -1, 0, 0 };
     const rook_dcs = [_]i8{ 0, 0, 1, -1 };
 
-    pub fn getQuietPawnMovesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getQuietPawnMovesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares_inp: BitBoard) usize {
         const should_flip = self.turn == .black;
         const pawns = if (should_flip) self.black.pawn.flipped() else self.white.pawn;
         if (pawns.isEmpty()) return 0;
+        const possible_self_check_squares = if (should_flip) possible_self_check_squares_inp.flipped() else possible_self_check_squares_inp;
 
         const own_pieces = if (should_flip) self.black.all().flipped() else self.white.all();
         const opponents_pieces = if (should_flip) self.white.all().flipped() else self.black.all();
@@ -1113,7 +1120,14 @@ pub const Board = struct {
         var promotion_pawns = pawns_that_can_move.getOverlap(seventh_row).iterator();
         while (promotion_pawns.next()) |pawn_to_promote| {
             for ([_]PieceType{ .knight, .bishop, .rook, .queen }) |piece_type| {
-                move_buffer[move_count] = Move.initQuiet(Piece.pawnFromBitBoard(pawn_to_promote), Piece.init(piece_type, pawn_to_promote.forward(1)));
+                move_buffer[move_count] = Move.initQuiet(
+                    Piece.pawnFromBitBoard(pawn_to_promote),
+                    Piece.init(
+                        piece_type,
+                        pawn_to_promote.forward(1),
+                    ),
+                    possible_self_check_squares.getOverlap(pawn_to_promote).isNonEmpty(),
+                );
                 move_count += 1;
             }
         }
@@ -1121,13 +1135,21 @@ pub const Board = struct {
         const second_row = BitBoard.fromSquareUnchecked("A2").allRight();
         var double_move_pawns = pawns_that_can_move.getOverlap(second_row).forwardMasked(2).getOverlap(allowed_squares).backwardMasked(2).iterator();
         while (double_move_pawns.next()) |pawn| {
-            move_buffer[move_count] = Move.initQuiet(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(pawn.forward(2)));
+            move_buffer[move_count] = Move.initQuiet(
+                Piece.pawnFromBitBoard(pawn),
+                Piece.pawnFromBitBoard(pawn.forward(2)),
+                possible_self_check_squares.getOverlap(pawn).isNonEmpty(),
+            );
             move_count += 1;
         }
 
         var last_pawns = pawns_that_can_move.getOverlap(seventh_row.complement()).iterator();
         while (last_pawns.next()) |pawn| {
-            move_buffer[move_count] = Move.initQuiet(Piece.pawnFromBitBoard(pawn), Piece.pawnFromBitBoard(pawn.forward(1)));
+            move_buffer[move_count] = Move.initQuiet(
+                Piece.pawnFromBitBoard(pawn),
+                Piece.pawnFromBitBoard(pawn.forward(1)),
+                possible_self_check_squares.getOverlap(pawn).isNonEmpty(),
+            );
             move_count += 1;
         }
 
@@ -1139,10 +1161,11 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getPawnCapturesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getPawnCapturesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares_inp: BitBoard) usize {
         const should_flip = self.turn == .black;
         const pawns = if (should_flip) self.black.pawn.flipped() else self.white.pawn;
         if (pawns.isEmpty()) return 0;
+        const possible_self_check_squares = if (should_flip) possible_self_check_squares_inp.flipped() else possible_self_check_squares_inp;
         const opponent_side = if (should_flip) self.white.flipped() else self.black;
 
         var move_count: usize = 0;
@@ -1154,6 +1177,7 @@ pub const Board = struct {
                     Piece.pawnFromBitBoard(capturing_pawn),
                     Piece.pawnFromBitBoard(en_passant_target),
                     Piece.pawnFromBitBoard(en_passant_pawn),
+                    possible_self_check_squares.getOverlap(capturing_pawn.getCombination(en_passant_pawn)).isNonEmpty(),
                 );
                 move_count += 1;
             }
@@ -1177,6 +1201,7 @@ pub const Board = struct {
             var promote_captures_right = forward_right_captures.getOverlap(seventh_row).iterator();
             while (promote_captures_left.next()) |from| {
                 const to = from.forwardUnchecked(1).leftUnchecked(1);
+                const might_self_cap = possible_self_check_squares.getOverlap(from).isNonEmpty();
                 for ([_]PieceType{
                     .knight,
                     .bishop,
@@ -1187,12 +1212,14 @@ pub const Board = struct {
                         Piece.pawnFromBitBoard(from),
                         Piece.init(PromotionType, to),
                         Piece.init(TargetPieceType, to),
+                        might_self_cap,
                     );
                     move_count += 1;
                 }
             }
             while (promote_captures_right.next()) |from| {
                 const to = from.forwardUnchecked(1).rightUnchecked(1);
+                const might_self_cap = possible_self_check_squares.getOverlap(from).isNonEmpty();
                 for ([_]PieceType{
                     .knight,
                     .bishop,
@@ -1203,6 +1230,7 @@ pub const Board = struct {
                         Piece.pawnFromBitBoard(from),
                         Piece.init(PromotionType, to),
                         Piece.init(TargetPieceType, to),
+                        might_self_cap,
                     );
                     move_count += 1;
                 }
@@ -1212,10 +1240,12 @@ pub const Board = struct {
             var captures_right = forward_right_captures.getOverlap(seventh_row.complement()).iterator();
             while (captures_left.next()) |from| {
                 const to = from.forwardUnchecked(1).leftUnchecked(1);
+
                 move_buffer[move_count] = Move.initCapture(
                     Piece.pawnFromBitBoard(from),
                     Piece.pawnFromBitBoard(to),
                     Piece.init(TargetPieceType, to),
+                    possible_self_check_squares.getOverlap(from).isNonEmpty(),
                 );
                 move_count += 1;
             }
@@ -1225,6 +1255,7 @@ pub const Board = struct {
                     Piece.pawnFromBitBoard(from),
                     Piece.pawnFromBitBoard(to),
                     Piece.init(TargetPieceType, to),
+                    possible_self_check_squares.getOverlap(from).isNonEmpty(),
                 );
                 move_count += 1;
             }
@@ -1238,13 +1269,13 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllPawnMovesUnchecked(self: Self, move_buffer: []Move) usize {
-        const first_move_count = self.getQuietPawnMovesUnchecked(move_buffer);
-        const second_move_count = self.getPawnCapturesUnchecked(move_buffer[first_move_count..]);
+    pub fn getAllPawnMovesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        const first_move_count = self.getQuietPawnMovesUnchecked(move_buffer, possible_self_check_squares);
+        const second_move_count = self.getPawnCapturesUnchecked(move_buffer[first_move_count..], possible_self_check_squares);
         return first_move_count + second_move_count;
     }
 
-    pub fn getQuietKnightMovesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getQuietKnightMovesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
         const should_flip = self.turn == .black;
         const knights = if (should_flip) self.black.knight else self.white.knight;
         if (knights.isEmpty()) return 0;
@@ -1264,6 +1295,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1271,7 +1303,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getKnightCapturesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getKnightCapturesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
         const is_black_turn = self.turn == .black;
         const knights = if (is_black_turn) self.black.knight else self.white.knight;
         if (knights.isEmpty()) return 0;
@@ -1292,6 +1324,7 @@ pub const Board = struct {
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
                     Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1299,7 +1332,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllKnightMovesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getAllKnightMovesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
         const is_white_turn = self.turn == .white;
         const own_side = if (is_white_turn) self.white else self.black;
         const knights = own_side.knight;
@@ -1318,6 +1351,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1328,6 +1362,7 @@ pub const Board = struct {
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
                     Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1335,7 +1370,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    fn getStraightLineMoves(self: Self, move_buffer: []Move, comptime captures_only: bool, comptime drs: anytype, comptime dcs: anytype, comptime piece_type: PieceType) usize {
+    fn getStraightLineMoves(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard, comptime captures_only: bool, comptime drs: anytype, comptime dcs: anytype, comptime piece_type: PieceType) usize {
         const is_black_turn = self.turn == .black;
         const pieces_of_interest = if (is_black_turn) self.black.getBoard(piece_type) else self.white.getBoard(piece_type);
         if (pieces_of_interest.isEmpty()) return 0;
@@ -1352,11 +1387,13 @@ pub const Board = struct {
         while (iter.next()) |curr| {
             for (drs, dcs) |dr, dc| {
                 var moved = if (captures_only) curr.getFirstOverLappingInDir(all_pieces, dr, dc) else curr.move(dr, dc);
+                const might_self_check = possible_self_check_squares.overlaps(curr);
                 if (!captures_only) {
                     while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
                         move_buffer[move_count] = Move.initQuiet(
                             Piece.init(piece_type, curr),
                             Piece.init(piece_type, moved),
+                            might_self_check,
                         );
                         move_count += 1;
                     }
@@ -1366,6 +1403,7 @@ pub const Board = struct {
                         Piece.init(piece_type, curr),
                         Piece.init(piece_type, moved),
                         Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
+                        might_self_check,
                     );
                     move_count += 1;
                 }
@@ -1374,31 +1412,31 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllBishopMovesUnchecked(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, false, bishop_drs, bishop_dcs, .bishop);
+    pub fn getAllBishopMovesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        return getStraightLineMoves(self, move_buffer, possible_self_check_squares, false, bishop_drs, bishop_dcs, .bishop);
     }
 
-    pub fn getBishopCapturesUnchecked(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, true, bishop_drs, bishop_dcs, .bishop);
+    pub fn getBishopCapturesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        return getStraightLineMoves(self, move_buffer, possible_self_check_squares, true, bishop_drs, bishop_dcs, .bishop);
     }
 
-    pub fn getAllRookMovesUnchecked(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, false, rook_drs, rook_dcs, .rook);
+    pub fn getAllRookMovesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        return getStraightLineMoves(self, move_buffer, possible_self_check_squares, false, rook_drs, rook_dcs, .rook);
     }
 
-    pub fn getRookCapturesUnchecked(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, true, rook_drs, rook_dcs, .rook);
+    pub fn getRookCapturesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        return getStraightLineMoves(self, move_buffer, possible_self_check_squares, true, rook_drs, rook_dcs, .rook);
     }
 
-    pub fn getAllQueenMovesUnchecked(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, false, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
+    pub fn getAllQueenMovesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        return getStraightLineMoves(self, move_buffer, possible_self_check_squares, false, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
     }
 
-    pub fn getQueenCapturesUnchecked(self: Self, move_buffer: []Move) usize {
-        return getStraightLineMoves(self, move_buffer, true, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
+    pub fn getQueenCapturesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        return getStraightLineMoves(self, move_buffer, possible_self_check_squares, true, bishop_drs ++ rook_drs, bishop_dcs ++ rook_dcs, .queen);
     }
 
-    pub fn getQuietKingMovesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getQuietKingMovesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
         const is_black_turn = self.turn == .black;
         const king = if (is_black_turn) self.black.king else self.white.king;
         assert(!king.isEmpty());
@@ -1421,6 +1459,7 @@ pub const Board = struct {
             move_buffer[move_count] = Move.initQuiet(
                 Piece.kingFromBitBoard(king),
                 Piece.kingFromBitBoard(moved),
+                true,
             );
             move_count += 1;
         }
@@ -1448,6 +1487,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
                     Piece.kingFromBitBoard(king.leftUnchecked(2)),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1461,6 +1501,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
                     Piece.kingFromBitBoard(king.rightUnchecked(2)),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1469,7 +1510,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getKingCapturesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getKingCapturesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
         const should_flip = self.turn == .black;
         const king = if (should_flip) self.black.king else self.white.king;
         assert(!king.isEmpty());
@@ -1490,13 +1531,14 @@ pub const Board = struct {
                 Piece.kingFromBitBoard(king),
                 Piece.kingFromBitBoard(moved),
                 Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
+                true,
             );
             move_count += 1;
         }
         return move_count;
     }
 
-    pub fn getAllKingMovesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getAllKingMovesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
         const is_black_turn = self.turn == .black;
         const king = if (is_black_turn) self.black.king else self.white.king;
         assert(!king.isEmpty());
@@ -1521,6 +1563,7 @@ pub const Board = struct {
                 Piece.kingFromBitBoard(king),
                 Piece.kingFromBitBoard(moved),
                 Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
+                true,
             );
             move_count += 1;
         }
@@ -1529,6 +1572,7 @@ pub const Board = struct {
             move_buffer[move_count] = Move.initQuiet(
                 Piece.kingFromBitBoard(king),
                 Piece.kingFromBitBoard(moved),
+                true,
             );
             move_count += 1;
         }
@@ -1556,6 +1600,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
                     Piece.kingFromBitBoard(king.leftUnchecked(2)),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1569,6 +1614,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
                     Piece.kingFromBitBoard(king.rightUnchecked(2)),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1576,19 +1622,19 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllKingMoves(self: Self, move_buffer: []Move) usize {
-        const unfiltered_count = self.getAllKingMovesUnchecked(move_buffer);
+    pub fn getAllKingMoves(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        const unfiltered_count = self.getAllKingMovesUnchecked(move_buffer, possible_self_check_squares);
         return self.filterMoves(move_buffer[0..unfiltered_count]);
     }
 
-    pub fn getAllMovesUnchecked(self: Self, move_buffer: []Move) usize {
+    pub fn getAllMovesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
         var res: usize = 0;
-        res += self.getAllPawnMovesUnchecked(move_buffer[res..]);
-        res += self.getAllKnightMovesUnchecked(move_buffer[res..]);
-        res += self.getAllBishopMovesUnchecked(move_buffer[res..]);
-        res += self.getAllRookMovesUnchecked(move_buffer[res..]);
-        res += self.getAllQueenMovesUnchecked(move_buffer[res..]);
-        res += self.getAllKingMovesUnchecked(move_buffer[res..]);
+        res += self.getAllPawnMovesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getAllKnightMovesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getAllBishopMovesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getAllRookMovesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getAllQueenMovesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getAllKingMovesUnchecked(move_buffer[res..], possible_self_check_squares);
         return res;
     }
 
@@ -1606,8 +1652,37 @@ pub const Board = struct {
         return filtered_count;
     }
 
-    pub fn getAllMoves(self: Self, move_buffer: []Move) usize {
-        const unfiltered_count = getAllMovesUnchecked(self, move_buffer);
+    pub fn getSelfCheckSquares(self: Self) BitBoard {
+        const own_side = if (self.turn == .white) self.white else self.black;
+        const opponent_side = if (self.turn == .white) self.black else self.white;
+        var own_pieces = own_side.pawn;
+        own_pieces.add(own_side.knight);
+        own_pieces.add(own_side.bishop);
+        own_pieces.add(own_side.rook);
+        own_pieces.add(own_side.queen);
+
+        var is_in_check = false;
+        var self_check_squares = own_side.king;
+        for (rook_drs, rook_dcs) |dr, dc| {
+            var dir = own_side.king.allDirection(dr, dc);
+            const enemy_piece = dir.getOverlap(opponent_side.rook.getCombination(opponent_side.queen));
+            is_in_check = is_in_check or !dir.overlaps(own_pieces);
+            dir.remove(enemy_piece.allDirection(dr, dc));
+            self_check_squares.add(dir);
+        }
+        for (bishop_drs, bishop_dcs) |dr, dc| {
+            var dir = own_side.king.allDirection(dr, dc);
+            const enemy_piece = dir.getOverlap(opponent_side.bishop.getCombination(opponent_side.queen));
+            is_in_check = is_in_check or !dir.overlaps(own_pieces);
+            dir.remove(enemy_piece.allDirection(dr, dc));
+            self_check_squares.add(dir);
+        }
+        if (is_in_check) self_check_squares = BitBoard.initEmpty().complement();
+        return self_check_squares;
+    }
+
+    pub fn getAllMoves(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        const unfiltered_count = getAllMovesUnchecked(self, move_buffer, possible_self_check_squares);
         var filtered_count: usize = 0;
         var board = self;
         for (move_buffer[0..unfiltered_count]) |move| {
@@ -1616,6 +1691,8 @@ pub const Board = struct {
                 move_buffer[filtered_count] = move;
                 filtered_count += 1;
                 board.undoMove(inv);
+            } else {
+                assert(move.from().getBoard().overlaps(possible_self_check_squares));
             }
         }
         return filtered_count;
@@ -1623,13 +1700,24 @@ pub const Board = struct {
 
     pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) usize {
         if (depth_remaining == 0) return 0;
-        const num_moves = self.getAllMovesUnchecked(move_buf);
+        const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
         const moves = move_buf[0..num_moves];
         var res: usize = 0;
-        for (moves) |move| {
-            if (self.playMovePossibleSelfCheck(move)) |inv| {
-                defer self.undoMove(inv);
-                res += if (depth_remaining == 1) 1 else perftSingleThreaded(self, move_buf[num_moves..], depth_remaining - 1);
+        if (depth_remaining == 1) {
+            for (moves) |move| {
+                if (!move.might_cause_self_check) {
+                    res += 1;
+                } else if (self.playMovePossibleSelfCheck(move)) |inv| {
+                    defer self.undoMove(inv);
+                    res += 1;
+                }
+            }
+        } else {
+            for (moves) |move| {
+                if (self.playMovePossibleSelfCheck(move)) |inv| {
+                    defer self.undoMove(inv);
+                    res += perftSingleThreaded(self, move_buf[num_moves..], depth_remaining - 1);
+                }
             }
         }
         return res;
@@ -1639,7 +1727,7 @@ pub const Board = struct {
         var self = inp;
         if (depth_remaining < 5) return self.perftSingleThreaded(move_buf, depth_remaining);
         if (depth_remaining == 0) return 0;
-        const num_moves = self.getAllMovesUnchecked(move_buf);
+        const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
         const moves = move_buf[0..num_moves];
         var res = std.atomic.Value(usize).init(0);
 
@@ -1734,7 +1822,7 @@ fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_capt
     var buf: [400]Move = undefined;
     const board = try Board.parseFen(fen);
     try testing.expectEqualSlices(u8, fen, board.toFen().slice());
-    const num_moves = func(board, &buf);
+    const num_moves = func(board, &buf, board.getSelfCheckSquares());
     testing.expectEqual(expected_moves, num_moves) catch |e| {
         for (buf[0..num_moves]) |move| {
             std.debug.print("{}\n", .{move});
@@ -1749,7 +1837,7 @@ fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_capt
 }
 
 test "failing" {
-    try testCase("rnN2k1r/pp2bppp/2p5/8/2B5/8/PPP1NnPP/RNBqK2R w KQ - 0 9", Board.getAllKingMoves, 1, 1, 0);
+    try testCase("5k2/8/8/b7/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 4, 0, 0);
 }
 
 test "fen parsing" {
@@ -1877,12 +1965,12 @@ test "all king moves" {
 
 test "en passant on d6" {
     var board = Board.init();
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A6"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D5"))));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A6")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D5")), true));
     var buf: [400]Move = undefined;
-    const pawn_captures = board.getPawnCapturesUnchecked(&buf);
+    const pawn_captures = board.getPawnCapturesUnchecked(&buf, board.getSelfCheckSquares());
     try testing.expectEqual(1, pawn_captures);
     try expectMovesInvertible(board, buf[0..pawn_captures]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_captures]);
@@ -1890,12 +1978,12 @@ test "en passant on d6" {
 
 test "en passant on a6" {
     var board = Board.init();
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B4"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H6"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B5"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A5"))));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H6")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A5")), true));
     var buf: [400]Move = undefined;
-    const pawn_captures = board.getPawnCapturesUnchecked(&buf);
+    const pawn_captures = board.getPawnCapturesUnchecked(&buf, board.getSelfCheckSquares());
     try testing.expectEqual(1, pawn_captures);
     try expectMovesInvertible(board, buf[0..pawn_captures]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_captures]);
@@ -1903,12 +1991,12 @@ test "en passant on a6" {
 
 test "en passant on h6" {
     var board = Board.init();
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A6"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G5"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H5"))));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A6")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H5")), true));
     var buf: [400]Move = undefined;
-    const pawn_captures = board.getPawnCapturesUnchecked(&buf);
+    const pawn_captures = board.getPawnCapturesUnchecked(&buf, board.getSelfCheckSquares());
     try testing.expectEqual(1, pawn_captures);
     try expectMovesInvertible(board, buf[0..pawn_captures]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_captures]);
@@ -1916,13 +2004,13 @@ test "en passant on h6" {
 
 test "en passant on d3" {
     var board = Board.init();
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G3"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G3")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4"))));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D4"))));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G3")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G3")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D4")), true));
     var buf: [400]Move = undefined;
-    const pawn_moves = board.getAllPawnMovesUnchecked(&buf);
+    const pawn_moves = board.getAllPawnMovesUnchecked(&buf, board.getSelfCheckSquares());
     try testing.expectEqual(16, pawn_moves);
     try expectMovesInvertible(board, buf[0..pawn_moves]);
     try expectCapturesImplyAttacked(board, buf[0..pawn_moves]);
