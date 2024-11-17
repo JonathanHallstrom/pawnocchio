@@ -772,7 +772,7 @@ pub const Board = struct {
                 en_passant_target_square_string[1] != correct_row)
                 return error.InvalidEnPassantTarget;
             const board = try BitBoard.fromSquare(en_passant_target_square_string);
-            const should_overlap = if (res.turn == .white) res.black.pawn.forward(1) else res.white.pawn.backward(1);
+            const should_overlap = if (res.turn == .white) res.black.pawn.forwardMasked(1) else res.white.pawn.backwardMasked(1);
             if (!board.overlaps(should_overlap)) return error.EnPassantTargetDoesntExist;
             res.en_passant_target = board;
         }
@@ -933,10 +933,23 @@ pub const Board = struct {
             }
         } else {
             self.en_passant_target = BitBoard.initEmpty();
-
-            if (move.from().getType() == .king or move.from().getType() == .rook) {
-                self.castling_squares.remove(move.from().getBoard().leftMasked(2));
-                self.castling_squares.remove(move.from().getBoard().rightMasked(2));
+            if (turn == .white and move.from().getType() == .king) {
+                self.castling_squares.remove(BitBoard.fromSquareUnchecked("A1").allRight());
+            }
+            if (turn == .black and move.from().getType() == .king) {
+                self.castling_squares.remove(BitBoard.fromSquareUnchecked("A8").allRight());
+            }
+            if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("A1")) {
+                self.castling_squares.remove(queenside_white_castle_destination);
+            }
+            if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("H1")) {
+                self.castling_squares.remove(kingside_white_castle_destination);
+            }
+            if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("A8")) {
+                self.castling_squares.remove(queenside_black_castle_destination);
+            }
+            if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("H8")) {
+                self.castling_squares.remove(kingside_black_castle_destination);
             }
         }
 
