@@ -702,15 +702,15 @@ pub const Board = struct {
 
     const Self = @This();
 
-    pub fn fromFenUnchecked(fen: []const u8) Self {
-        return fromFen(fen) catch unreachable;
+    pub fn parseFenUnchecked(fen: []const u8) Self {
+        return parseFen(fen) catch unreachable;
     }
 
     pub fn init() Board {
-        return fromFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        return parseFenUnchecked("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     }
 
-    pub fn fromFen(fen: []const u8) !Self {
+    pub fn parseFen(fen: []const u8) !Self {
         var iter = std.mem.tokenizeAny(u8, fen, " /");
         var rows: [8][]const u8 = undefined;
         for (0..8) |i| {
@@ -777,9 +777,9 @@ pub const Board = struct {
             res.en_passant_target = board;
         }
 
-        const halfmove_clock_string = iter.next() orelse return error.MissingHalfMoveClock;
+        const halfmove_clock_string = iter.next() orelse "0";
         res.halfmove_clock = try std.fmt.parseInt(u8, halfmove_clock_string, 10);
-        const fullmove_clock_str = iter.next() orelse return error.MissingFullMoveClock;
+        const fullmove_clock_str = iter.next() orelse "1";
         const fullmove = try std.fmt.parseInt(u64, fullmove_clock_str, 10);
         if (fullmove == 0)
             return error.InvalidFullMove;
@@ -933,23 +933,26 @@ pub const Board = struct {
             }
         } else {
             self.en_passant_target = BitBoard.initEmpty();
-            if (turn == .white and move.from().getType() == .king) {
-                self.castling_squares.remove(BitBoard.fromSquareUnchecked("A1").allRight());
-            }
-            if (turn == .black and move.from().getType() == .king) {
-                self.castling_squares.remove(BitBoard.fromSquareUnchecked("A8").allRight());
-            }
-            if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("A1")) {
-                self.castling_squares.remove(queenside_white_castle_destination);
-            }
-            if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("H1")) {
-                self.castling_squares.remove(kingside_white_castle_destination);
-            }
-            if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("A8")) {
-                self.castling_squares.remove(queenside_black_castle_destination);
-            }
-            if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("H8")) {
-                self.castling_squares.remove(kingside_black_castle_destination);
+            if (move.from().getType() == .king) {
+                if (turn == .white) {
+                    self.castling_squares.remove(BitBoard.fromSquareUnchecked("A1").allRight());
+                }
+                if (turn == .black) {
+                    self.castling_squares.remove(BitBoard.fromSquareUnchecked("A8").allRight());
+                }
+            } else if (move.from().getType() == .rook) {
+                if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("A1")) {
+                    self.castling_squares.remove(queenside_white_castle_destination);
+                }
+                if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("H1")) {
+                    self.castling_squares.remove(kingside_white_castle_destination);
+                }
+                if (turn == .black and move.from().getBoard() == BitBoard.fromSquareUnchecked("A8")) {
+                    self.castling_squares.remove(queenside_black_castle_destination);
+                }
+                if (turn == .black and move.from().getBoard() == BitBoard.fromSquareUnchecked("H8")) {
+                    self.castling_squares.remove(kingside_black_castle_destination);
+                }
             }
         }
 
@@ -1044,14 +1047,14 @@ pub const Board = struct {
         }
 
         var bishop_mask = BitBoard.initEmpty();
-        for (bishop_drs, bishop_dcs) |dr, dc| bishop_mask.add(squares.getFirstOverLappingInDirUnchecked(all_pieces, dr, dc));
+        for (bishop_drs, bishop_dcs) |dr, dc| bishop_mask.add(squares.getFirstOverLappingInDirMasked(all_pieces, dr, dc));
         if (bishop_mask.overlaps(opponent_side.bishop.getCombination(opponent_side.queen))) {
             // std.debug.print("bishop\n", .{});
             return true;
         }
 
         var rook_mask = BitBoard.initEmpty();
-        for (rook_drs, rook_dcs) |dr, dc| rook_mask.add(squares.getFirstOverLappingInDirUnchecked(all_pieces, dr, dc));
+        for (rook_drs, rook_dcs) |dr, dc| rook_mask.add(squares.getFirstOverLappingInDirMasked(all_pieces, dr, dc));
         if (rook_mask.overlaps(opponent_side.rook.getCombination(opponent_side.queen))) {
             // std.debug.print("rook\n", .{});
             return true;
@@ -1424,16 +1427,23 @@ pub const Board = struct {
 
         // castling
         const starting_square = if (self.turn == .white) BitBoard.fromSquareUnchecked("E1") else BitBoard.fromSquareUnchecked("E8");
-        if (king.overlaps(starting_square) and !self.castling_squares.isEmpty()) {
+        if (king.overlaps(starting_square)) {
+            const rook = own_side.rook;
+
+            var left_rook = rook;
+            left_rook.remove(rook.rightMasked(1).allRight());
+
+            var right_rook = rook;
+            right_rook.remove(rook.leftMasked(1).allLeft());
+
+            const left_side_king = king.leftUnchecked(1).allLeft();
+            const right_side_king = king.rightUnchecked(1).allRight();
+
             // queenside
             if (king.leftUnchecked(2).overlaps(self.castling_squares) and
-                !king.leftUnchecked(1)
-                .getCombination(king.leftUnchecked(2))
-                .getCombination(king.leftUnchecked(3))
-                .overlaps(all_pieces) and
-                king.leftUnchecked(4).overlaps(own_side.rook) and
-                !self.areSquaresAttacked(king.getCombination(king.leftUnchecked(1)).getCombination(king.leftUnchecked(2)), .auto) and
-                !self.areSquaresAttacked(king, .auto))
+                left_side_king.getOverlap(all_pieces) == left_side_king.getOverlap(left_rook) and
+                !left_side_king.getOverlap(left_rook).isEmpty() and
+                !self.areSquaresAttacked(king.getCombination(king.leftUnchecked(1)).getCombination(king.leftUnchecked(2)), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1444,12 +1454,9 @@ pub const Board = struct {
 
             // kingside
             if (king.rightUnchecked(2).overlaps(self.castling_squares) and
-                !king.rightUnchecked(1)
-                .getCombination(king.rightUnchecked(2))
-                .overlaps(all_pieces) and
-                king.rightUnchecked(3).overlaps(own_side.rook) and
-                !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto) and
-                !self.areSquaresAttacked(king, .auto))
+                right_side_king.getOverlap(all_pieces) == right_side_king.getOverlap(right_rook) and
+                !right_side_king.getOverlap(right_rook).isEmpty() and
+                !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1529,14 +1536,22 @@ pub const Board = struct {
         // castling
         const starting_square = if (self.turn == .white) BitBoard.fromSquareUnchecked("E1") else BitBoard.fromSquareUnchecked("E8");
         if (king.overlaps(starting_square)) {
+            const rook = own_side.rook;
+
+            var left_rook = rook;
+            left_rook.remove(rook.rightMasked(1).allRight());
+
+            var right_rook = rook;
+            right_rook.remove(rook.leftMasked(1).allLeft());
+
+            const left_side_king = king.leftUnchecked(1).allLeft();
+            const right_side_king = king.rightUnchecked(1).allRight();
+
+            // queenside
             if (king.leftUnchecked(2).overlaps(self.castling_squares) and
-                !king.leftUnchecked(1)
-                .getCombination(king.leftUnchecked(2))
-                .getCombination(king.leftUnchecked(3))
-                .overlaps(all_pieces) and
-                king.leftUnchecked(4).overlaps(own_side.rook) and
-                !self.areSquaresAttacked(king.getCombination(king.leftUnchecked(1)).getCombination(king.leftUnchecked(2)), .auto) and
-                !self.areSquaresAttacked(king, .auto))
+                left_side_king.getOverlap(all_pieces) == left_side_king.getOverlap(left_rook) and
+                !left_side_king.getOverlap(left_rook).isEmpty() and
+                !self.areSquaresAttacked(king.getCombination(king.leftUnchecked(1)).getCombination(king.leftUnchecked(2)), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1547,12 +1562,9 @@ pub const Board = struct {
 
             // kingside
             if (king.rightUnchecked(2).overlaps(self.castling_squares) and
-                !king.rightUnchecked(1)
-                .getCombination(king.rightUnchecked(2))
-                .overlaps(all_pieces) and
-                king.rightUnchecked(3).overlaps(own_side.rook) and
-                !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto) and
-                !self.areSquaresAttacked(king, .auto))
+                right_side_king.getOverlap(all_pieces) == right_side_king.getOverlap(right_rook) and
+                !right_side_king.getOverlap(right_rook).isEmpty() and
+                !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.kingFromBitBoard(king),
@@ -1623,7 +1635,8 @@ pub const Board = struct {
         return res;
     }
 
-    pub fn perftMultiThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) !usize {
+    pub fn perftMultiThreaded(inp: Self, move_buf: []Move, depth_remaining: usize, allocator: std.mem.Allocator) !usize {
+        var self = inp;
         if (depth_remaining < 5) return self.perftSingleThreaded(move_buf, depth_remaining);
         if (depth_remaining == 0) return 0;
         const num_moves = self.getAllMovesUnchecked(move_buf);
@@ -1632,37 +1645,33 @@ pub const Board = struct {
 
         const thread_count = 400;
         assert(thread_count > num_moves);
-        const buf = try std.heap.page_allocator.alloc(u8, thread_count * @sizeOf(std.Thread) * 2);
-        defer std.heap.page_allocator.free(buf);
-        var fba = std.heap.FixedBufferAllocator.init(buf);
         var threads: std.Thread.Pool = undefined;
-        try threads.init(.{ .n_jobs = @intCast(num_moves), .allocator = fba.allocator() });
-        var boards: [thread_count]Board = .{self.*} ** thread_count;
-        var needs_joining = std.StaticBitSet(thread_count).initEmpty();
+        try threads.init(.{
+            .n_jobs = @intCast(num_moves),
+            .allocator = allocator,
+        });
+        defer threads.deinit();
+        var wg = std.Thread.WaitGroup{};
         var move_buf_to_pass = move_buf[num_moves..];
         const amount_per_thread = move_buf_to_pass.len / num_moves;
 
         const worker_fn = struct {
-            fn impl(res_: *std.atomic.Value(usize), board_: *Self, move_buf_: []Move, depth_remaining_: usize) void {
-                _ = res_.fetchAdd(board_.perftMultiThreaded(move_buf_, depth_remaining_) catch |e| {
-                    std.debug.panic("Error: {any}\n", .{e});
-                }, .acq_rel);
+            fn impl(res_: *std.atomic.Value(usize), board_: Self, move_buf_: []Move, depth_remaining_: usize) void {
+                var board = board_;
+                _ = res_.fetchAdd(board.perftSingleThreaded(move_buf_, depth_remaining_), .seq_cst);
             }
         }.impl;
-
         for (0..num_moves) |i| {
-            const board = &boards[i];
+            var board = self;
             const move = moves[i];
             const cur_move_buf = move_buf_to_pass[0..amount_per_thread];
             move_buf_to_pass = move_buf_to_pass[amount_per_thread..];
 
-            if (board.playMovePossibleSelfCheck(move)) |inv| {
-                defer self.undoMove(inv);
-                needs_joining.set(i);
-                try threads.spawn(worker_fn, .{ &res, board, cur_move_buf, depth_remaining - 1 });
+            if (board.playMovePossibleSelfCheck(move)) |_| {
+                threads.spawnWg(&wg, worker_fn, .{ &res, board, cur_move_buf, depth_remaining - 1 });
             }
         }
-        threads.deinit();
+        threads.waitAndWork(&wg);
 
         return res.load(.seq_cst);
     }
@@ -1723,7 +1732,7 @@ fn expectCapturesImplyAttacked(board: Board, moves: []Move) !void {
 
 fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_captures: usize, expected_castling: usize) !void {
     var buf: [400]Move = undefined;
-    const board = try Board.fromFen(fen);
+    const board = try Board.parseFen(fen);
     try testing.expectEqualSlices(u8, fen, board.toFen().slice());
     const num_moves = func(board, &buf);
     testing.expectEqual(expected_moves, num_moves) catch |e| {
@@ -1744,9 +1753,9 @@ test "failing" {
 }
 
 test "fen parsing" {
-    try testing.expectError(error.NotEnoughRows, Board.fromFen(""));
-    try testing.expectError(error.EnPassantTargetDoesntExist, Board.fromFen("8/k7/8/4P3/8/8/K7/8 w - d6 0 1"));
-    try testing.expect(!std.meta.isError(Board.fromFen("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1")));
+    try testing.expectError(error.NotEnoughRows, Board.parseFen(""));
+    try testing.expectError(error.EnPassantTargetDoesntExist, Board.parseFen("8/k7/8/4P3/8/8/K7/8 w - d6 0 1"));
+    try testing.expect(!std.meta.isError(Board.parseFen("8/k7/8/3pP3/8/8/K7/8 w - d6 0 1")));
 }
 
 test "quiet pawn moves" {

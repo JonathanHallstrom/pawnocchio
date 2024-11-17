@@ -38,27 +38,29 @@ fn perft(board: *Board, move_buf: []Move, depth_remaining: usize) usize {
 }
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var threaded = std.heap.ThreadSafeAllocator{ .child_allocator = gpa.allocator() };
+    const allocator = threaded.allocator();
 
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
     _ = args.next();
     var parsed_board: ?Board = null;
     var fen: []const u8 = &.{};
+    defer allocator.free(fen);
     while (args.next()) |arg| {
         fen = try std.mem.join(allocator, " ", &.{ fen, arg });
-        parsed_board = Board.fromFen(fen) catch null;
+        parsed_board = Board.parseFen(fen) catch null;
     }
     var board = parsed_board orelse Board.init();
-    const outfile = try std.fs.cwd().openFile("out.txt", .{ .mode = .write_only });
-    const output = outfile.writer();
+    const output = std.io.getStdOut().writer();
 
     const move_buf: []Move = try allocator.alloc(Move, 1 << 20);
-    for (1..7) |max_depth| {
+    defer allocator.free(move_buf);
+    for (1..8) |depth| {
         var timer = try std.time.Timer.start();
-        const num_moves = perft(&board, move_buf, max_depth);
+        const num_moves = try board.perftMultiThreaded(move_buf, depth, allocator);
         const elapsed = timer.lap();
         try output.print("{}\n", .{num_moves});
         std.debug.print("{}\n", .{num_moves});

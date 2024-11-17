@@ -43,21 +43,36 @@ fn stockfishPerft(fen: []const u8, depth: usize, allocator: Allocator) !usize {
     return try std.fmt.parseInt(usize, std.mem.trim(u8, proc.stdout, "\n\t "), 10);
 }
 
+var error_moves: [100]Move = undefined;
+var num_error_moves: usize = 0;
 fn findPerftErrorPos(fen: []const u8, move_buf: []Move, depth: usize, allocator: Allocator) !void {
-    var board = try Board.fromFen(fen);
+    var board = try Board.parseFen(fen);
 
-    const my_perft = try board.perftMultiThreaded(move_buf, depth);
+    const my_perft = try board.perftMultiThreaded(move_buf, depth, allocator);
     const correct_perft = try stockfishPerft(fen, depth, allocator);
     if (my_perft == correct_perft) return;
 
     const num_moves = board.getAllMovesUnchecked(move_buf);
     const moves = move_buf[0..num_moves];
 
-    if (depth == 1) {
-        std.debug.print("{s}\n", .{fen});
-        std.debug.print("found: {}\n", .{my_perft});
-        std.debug.print("correct: {}\n", .{correct_perft});
+    if (depth != 1) {
+        for (moves) |move| {
+            if (board.playMovePossibleSelfCheck(move)) |inv| {
+                defer board.undoMove(inv);
+                findPerftErrorPos(board.toFen().slice(), move_buf[num_moves..], depth - 1, allocator) catch |e| {
+                    error_moves[num_error_moves] = move;
+                    num_error_moves += 1;
+                    std.debug.print("{}\n", .{move});
+                    return e;
+                };
+            }
+        }
+    }
+    std.debug.print("{s}\n", .{fen});
+    std.debug.print("found: {}\n", .{my_perft});
+    std.debug.print("correct: {}\n", .{correct_perft});
 
+    if (depth == 1) {
         for (moves) |move| {
             if (move.from().getType() != move.to().getType()) {
                 std.debug.print("{s}{s}{c}: 1\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() });
@@ -65,34 +80,52 @@ fn findPerftErrorPos(fen: []const u8, move_buf: []Move, depth: usize, allocator:
                 std.debug.print("{s}{s}: 1\n", .{ move.from().prettyPos(), move.to().prettyPos() });
             }
         }
-        return error.FoundPos;
     }
-
-    for (moves) |move| {
-        if (board.playMovePossibleSelfCheck(move)) |inv| {
-            defer board.undoMove(inv);
-            try findPerftErrorPos(board.toFen().slice(), move_buf[num_moves..], depth - 1, allocator);
-        }
-    }
+    return error.FoundPos;
 }
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var threaded = std.heap.ThreadSafeAllocator{ .child_allocator = gpa.allocator() };
+    const allocator = threaded.allocator();
 
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
     _ = args.next();
     var fen: []const u8 = &.{};
+    defer allocator.free(fen);
     while (args.next()) |arg| {
         fen = try std.mem.join(allocator, " ", &.{ std.mem.trim(u8, fen, " "), arg });
     }
-    const move_buf: []Move = try allocator.alloc(Move, 1 << 20);
 
-    const max_depth = 7;
-    for (1..max_depth) |depth| {
-        try findPerftErrorPos(fen, move_buf, depth, allocator);
-        std.debug.print("no errors found at a depth of {}\n", .{depth});
+    const TestInput = struct {
+        fen_string: []const u8,
+        depth: u8 = 5,
+    };
+
+    var test_inputs: []const TestInput = &.{.{ .fen_string = fen }};
+    if (fen.len == 0) {
+        test_inputs = &.{
+            // https://www.chessprogramming.org/Perft_Results
+            .{ .fen_string = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", .depth = 6 },
+            .{ .fen_string = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -", .depth = 5 },
+            .{ .fen_string = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -", .depth = 6 },
+            .{ .fen_string = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", .depth = 5 },
+            .{ .fen_string = "r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1", .depth = 5 },
+            .{ .fen_string = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", .depth = 5 },
+        };
+    }
+    const move_buf: []Move = try allocator.alloc(Move, 1 << 20);
+    defer allocator.free(move_buf);
+
+    for (test_inputs) |test_inp| {
+        const fen_to_test = test_inp.fen_string;
+
+        std.debug.print("testing: {s}\n", .{fen_to_test});
+        for (1..test_inp.depth + 1) |depth| {
+            try findPerftErrorPos(fen_to_test, move_buf, depth, allocator);
+            std.debug.print("no errors found at a depth of {}\n", .{depth});
+        }
     }
 }

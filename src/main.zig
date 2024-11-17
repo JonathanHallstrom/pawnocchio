@@ -17,7 +17,7 @@ pub fn main() !void {
 
     var previous_move_inverses = std.ArrayList(MoveInverse).init(allocator);
     defer previous_move_inverses.deinit();
-    var board = try lib.Board.fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    var board = try lib.Board.parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     while (true) {
         std.debug.print("Turn: {s}\n", .{@tagName(board.turn)});
         std.debug.print("Board state:\n", .{});
