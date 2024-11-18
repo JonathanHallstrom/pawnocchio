@@ -926,10 +926,10 @@ pub const Board = struct {
         const moved_side = if (turn == .white) &self.white else &self.black;
         const from_board = moved_side.getBoardPtr(move.from().getType());
         assert(from_board.overlaps(move.from().getBoard()));
-        from_board.* = from_board.getOverlap(move.from().getBoard().complement());
+        from_board.remove(move.from().getBoard());
         const to_board = moved_side.getBoardPtr(move.to().getType());
         assert(!to_board.overlaps(move.to().getBoard()));
-        to_board.* = to_board.getCombination(move.to().getBoard());
+        to_board.add(move.to().getBoard());
         if (move.from().getType() == .pawn) {
             self.halfmove_clock = 0;
             if (move.isEnPassantTarget()) {
@@ -994,10 +994,10 @@ pub const Board = struct {
         const moved_side = if (self.turn == .black) &self.white else &self.black;
         const from_board = moved_side.getBoardPtr(move.from().getType());
         assert(!from_board.overlaps(move.from().getBoard()));
-        from_board.* = from_board.getCombination(move.from().getBoard());
+        from_board.add(move.from().getBoard());
         const to_board = moved_side.getBoardPtr(move.to().getType());
         assert(to_board.overlaps(move.to().getBoard()));
-        to_board.* = to_board.getOverlap(move.to().getBoard().complement());
+        to_board.remove(move.to().getBoard());
         if (move.isEnPassantTarget()) {
             self.en_passant_target = move.getEnPassantTarget();
         } else if (move.isCastlingMove()) {
@@ -1303,7 +1303,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getKnightCapturesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
+    pub fn getKnightCapturesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
         const is_black_turn = self.turn == .black;
         const knights = if (is_black_turn) self.black.knight else self.white.knight;
         if (knights.isEmpty()) return 0;
@@ -1314,9 +1314,7 @@ pub const Board = struct {
 
         var move_count: usize = 0;
 
-        const row_offsets = [8]comptime_int{ 2, 2, -2, -2, 1, 1, -1, -1 };
-        const col_offsets = [8]comptime_int{ 1, -1, 1, -1, 2, -2, 2, -2 };
-        inline for (row_offsets, col_offsets) |dr, dc| {
+        inline for (knight_drs, knight_dcs) |dr, dc| {
             var iter = knights.move(dr, dc).getOverlap(opponents_pieces).move(-dr, -dc).iterator();
             while (iter.next()) |knight| {
                 const moved = knight.move(dr, dc);
@@ -1324,7 +1322,7 @@ pub const Board = struct {
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
                     Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
-                    true,
+                    knight.overlaps(possible_self_check_squares),
                 );
                 move_count += 1;
             }
@@ -1332,7 +1330,7 @@ pub const Board = struct {
         return move_count;
     }
 
-    pub fn getAllKnightMovesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
+    pub fn getAllKnightMovesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
         const is_white_turn = self.turn == .white;
         const own_side = if (is_white_turn) self.white else self.black;
         const knights = own_side.knight;
@@ -1351,7 +1349,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
-                    true,
+                    knight.overlaps(possible_self_check_squares),
                 );
                 move_count += 1;
             }
@@ -1362,7 +1360,7 @@ pub const Board = struct {
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
                     Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
-                    true,
+                    knight.overlaps(possible_self_check_squares),
                 );
                 move_count += 1;
             }
@@ -1642,8 +1640,7 @@ pub const Board = struct {
         var filtered_count: usize = 0;
         var board = self;
         for (move_buffer) |move| {
-            const res = board.playMovePossibleSelfCheck(move);
-            if (res) |inv| {
+            if (board.playMovePossibleSelfCheck(move)) |inv| {
                 move_buffer[filtered_count] = move;
                 filtered_count += 1;
                 board.undoMove(inv);
@@ -1651,6 +1648,9 @@ pub const Board = struct {
         }
         return filtered_count;
     }
+
+    pub var in_check_cnt: usize = 0;
+    pub var total: usize = 0;
 
     pub fn getSelfCheckSquares(self: Self) BitBoard {
         const own_side = if (self.turn == .white) self.white else self.black;
@@ -1678,6 +1678,10 @@ pub const Board = struct {
             self_check_squares.add(dir);
         }
         if (is_in_check) self_check_squares = BitBoard.initEmpty().complement();
+
+        total += 1;
+        in_check_cnt += @intFromBool(is_in_check);
+
         return self_check_squares;
     }
 
@@ -1698,11 +1702,11 @@ pub const Board = struct {
         return filtered_count;
     }
 
-    pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) usize {
+    pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) u64 {
         if (depth_remaining == 0) return 0;
         const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
         const moves = move_buf[0..num_moves];
-        var res: usize = 0;
+        var res: u64 = 0;
         if (depth_remaining == 1) {
             for (moves) |move| {
                 if (!move.might_cause_self_check) {
@@ -1723,19 +1727,25 @@ pub const Board = struct {
         return res;
     }
 
-    pub fn perftMultiThreaded(inp: Self, move_buf: []Move, depth_remaining: usize, allocator: std.mem.Allocator) !usize {
+    fn perftMultiThreadedWorkerFn(res_: *std.atomic.Value(u64), board_: Self, move_buf_: []Move, depth_remaining_: usize) void {
+        var board = board_;
+        _ = res_.fetchAdd(board.perftSingleThreaded(move_buf_, depth_remaining_), .seq_cst);
+    }
+
+    pub fn perftMultiThreaded(inp: Self, move_buf: []Move, depth_remaining: usize, allocator: std.mem.Allocator) !u64 {
         var self = inp;
-        if (depth_remaining < 5) return self.perftSingleThreaded(move_buf, depth_remaining);
+        if (depth_remaining < 3) return self.perftSingleThreaded(move_buf, depth_remaining);
         if (depth_remaining == 0) return 0;
+
         const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
         const moves = move_buf[0..num_moves];
-        var res = std.atomic.Value(usize).init(0);
+        var res = std.atomic.Value(u64).init(0);
 
         const thread_count = 400;
         assert(thread_count > num_moves);
         var threads: std.Thread.Pool = undefined;
         try threads.init(.{
-            .n_jobs = @intCast(num_moves),
+            .n_jobs = null,
             .allocator = allocator,
         });
         defer threads.deinit();
@@ -1743,12 +1753,6 @@ pub const Board = struct {
         var move_buf_to_pass = move_buf[num_moves..];
         const amount_per_thread = move_buf_to_pass.len / num_moves;
 
-        const worker_fn = struct {
-            fn impl(res_: *std.atomic.Value(usize), board_: Self, move_buf_: []Move, depth_remaining_: usize) void {
-                var board = board_;
-                _ = res_.fetchAdd(board.perftSingleThreaded(move_buf_, depth_remaining_), .seq_cst);
-            }
-        }.impl;
         for (0..num_moves) |i| {
             var board = self;
             const move = moves[i];
@@ -1756,7 +1760,7 @@ pub const Board = struct {
             move_buf_to_pass = move_buf_to_pass[amount_per_thread..];
 
             if (board.playMovePossibleSelfCheck(move)) |_| {
-                threads.spawnWg(&wg, worker_fn, .{ &res, board, cur_move_buf, depth_remaining - 1 });
+                threads.spawnWg(&wg, perftMultiThreadedWorkerFn, .{ &res, board, cur_move_buf, depth_remaining - 1 });
             }
         }
         threads.waitAndWork(&wg);
