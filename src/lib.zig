@@ -2044,8 +2044,6 @@ test "castling blocked by bishop" {
     try testCase("5k2/8/8/3b4/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 10, 0, 1);
 }
 
-test "perft tests" {}
-
 comptime {
     std.testing.refAllDeclsRecursive(@This());
 }

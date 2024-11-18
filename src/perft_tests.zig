@@ -44,7 +44,7 @@ pub fn main() !void {
             if (expected_perft != actual_perft) {
                 std.debug.print("error for: {s} at depth: {}\n", .{ fen, depth });
                 std.debug.print("expected: {}\n", .{expected_perft});
-                std.debug.print("got: {}\n", .{actual_perft});
+                std.debug.print("got:      {}\n", .{actual_perft});
             }
         }
         std.debug.print("{s} passed\n", .{fen});
