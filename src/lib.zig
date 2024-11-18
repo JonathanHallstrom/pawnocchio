@@ -1734,15 +1734,15 @@ pub const Board = struct {
 
     pub fn perftMultiThreaded(inp: Self, move_buf: []Move, depth_remaining: usize, allocator: std.mem.Allocator) !u64 {
         var self = inp;
-        if (depth_remaining < 3) return self.perftSingleThreaded(move_buf, depth_remaining);
+        if (depth_remaining < 4) return self.perftSingleThreaded(move_buf, depth_remaining);
         if (depth_remaining == 0) return 0;
 
-        const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
-        const moves = move_buf[0..num_moves];
+        const num_moves1 = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
+        const moves1 = move_buf[0..num_moves1];
         var res = std.atomic.Value(u64).init(0);
 
         const thread_count = 400;
-        assert(thread_count > num_moves);
+        assert(thread_count > num_moves1);
         var threads: std.Thread.Pool = undefined;
         try threads.init(.{
             .n_jobs = null,
@@ -1750,17 +1750,29 @@ pub const Board = struct {
         });
         defer threads.deinit();
         var wg = std.Thread.WaitGroup{};
-        var move_buf_to_pass = move_buf[num_moves..];
-        const amount_per_thread = move_buf_to_pass.len / num_moves;
+        var move_buf1 = move_buf[num_moves1..];
+        const amount_per_thread = move_buf1.len / num_moves1;
 
-        for (0..num_moves) |i| {
-            var board = self;
-            const move = moves[i];
-            const cur_move_buf = move_buf_to_pass[0..amount_per_thread];
-            move_buf_to_pass = move_buf_to_pass[amount_per_thread..];
+        for (moves1) |move1| {
+            var board1 = self;
+            const cur_move_buf1 = move_buf1[0..amount_per_thread];
+            move_buf1 = move_buf1[amount_per_thread..];
 
-            if (board.playMovePossibleSelfCheck(move)) |_| {
-                threads.spawnWg(&wg, perftMultiThreadedWorkerFn, .{ &res, board, cur_move_buf, depth_remaining - 1 });
+            if (board1.playMovePossibleSelfCheck(move1)) |_| {
+                const num_moves2 = board1.getAllMovesUnchecked(cur_move_buf1, board1.getSelfCheckSquares());
+                const moves2 = cur_move_buf1[0..num_moves2];
+                var move_buf2 = cur_move_buf1[num_moves2..];
+                const amount_per_move = move_buf2.len / num_moves2;
+
+                for (moves2) |move2| {
+                    var board2 = board1;
+                    const cur_move_buf2 = move_buf2[0..amount_per_move];
+                    move_buf2 = move_buf2[amount_per_move..];
+
+                    if (board2.playMovePossibleSelfCheck(move2)) |_| {
+                        threads.spawnWg(&wg, perftMultiThreadedWorkerFn, .{ &res, board2, cur_move_buf2, depth_remaining - 2 });
+                    }
+                }
             }
         }
         threads.waitAndWork(&wg);
