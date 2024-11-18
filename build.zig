@@ -56,9 +56,6 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(bench);
     const bench_cmd = b.addRunArtifact(bench);
     bench_cmd.step.dependOn(&bench.step);
-    if (b.args) |args| {
-        bench_cmd.addArgs(args);
-    }
     bench_step.dependOn(&bench_cmd.step);
 
     // This *creates* a Run step in the build graph, to be executed when another
@@ -74,9 +71,6 @@ pub fn build(b: *std.Build) void {
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
 
     // This creates a build step. It will be visible in the `zig build --help` menu,
     // and can be selected like this: `zig build run`
@@ -102,10 +96,25 @@ pub fn build(b: *std.Build) void {
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
+    const perft_tests = b.addExecutable(.{
+        .name = "pawnocchio_perft_tests",
+        .root_source_file = b.path("src/perft_tests.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+
+    const run_perft_tests = b.addRunArtifact(perft_tests);
+    if (b.args) |args| {
+        run_perft_tests.addArgs(args);
+        run_cmd.addArgs(args);
+        bench_cmd.addArgs(args);
+    }
+
     // Similar to creating the run step earlier, this exposes a `test` step to
     // the `zig build --help` menu, providing a way for the user to request
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_perft_tests.step);
 }

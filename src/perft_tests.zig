@@ -9,7 +9,13 @@ pub fn main() !void {
     const move_buf = try allocator.alloc(lib.Move, 1 << 20);
     defer allocator.free(move_buf);
 
-    const test_file = try std.fs.cwd().openFile("tests/standard.epd", .{});
+    var args = try std.process.argsWithAllocator(allocator);
+    _ = args.next();
+    defer args.deinit();
+
+    const which_file = args.next() orelse "tests/reduced.epd";
+
+    const test_file = try std.fs.cwd().openFile(which_file, .{});
     defer test_file.close();
     var br = std.io.bufferedReader(test_file.reader());
 
@@ -43,6 +49,5 @@ pub fn main() !void {
         }
         std.debug.print("{s} passed\n", .{fen});
     }
-    std.debug.print("{}/{}\n", .{ Board.in_check_cnt, Board.total });
-    std.debug.print("overall nps: {}", .{std.time.ns_per_s * total_positions / total_time});
+    std.debug.print("overall nps: {}\n", .{std.time.ns_per_s * total_positions / total_time});
 }

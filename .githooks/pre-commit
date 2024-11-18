@@ -1,5 +1,11 @@
 #!/bin/sh
 
+if ! zig fmt --check .; then
+    zig fmt */*.zig *.zig
+    echo "formatting failed"
+    exit 1
+fi
+
 if ! zig build check; then
     echo "building failed"
     exit 1
@@ -7,10 +13,5 @@ fi
 
 if ! zig build test; then
     echo "tests failed"
-    exit 1
-fi
-
-if ! zig fmt --check .; then
-    echo "formatting failed"
     exit 1
 fi
