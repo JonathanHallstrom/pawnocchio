@@ -1126,7 +1126,7 @@ pub const Board = struct {
                         piece_type,
                         pawn_to_promote.forward(1),
                     ),
-                    possible_self_check_squares.getOverlap(pawn_to_promote).isNonEmpty(),
+                    possible_self_check_squares.overlaps(pawn_to_promote),
                 );
                 move_count += 1;
             }
@@ -1138,7 +1138,7 @@ pub const Board = struct {
             move_buffer[move_count] = Move.initQuiet(
                 Piece.pawnFromBitBoard(pawn),
                 Piece.pawnFromBitBoard(pawn.forward(2)),
-                possible_self_check_squares.getOverlap(pawn).isNonEmpty(),
+                possible_self_check_squares.overlaps(pawn),
             );
             move_count += 1;
         }
@@ -1148,7 +1148,7 @@ pub const Board = struct {
             move_buffer[move_count] = Move.initQuiet(
                 Piece.pawnFromBitBoard(pawn),
                 Piece.pawnFromBitBoard(pawn.forward(1)),
-                possible_self_check_squares.getOverlap(pawn).isNonEmpty(),
+                possible_self_check_squares.overlaps(pawn),
             );
             move_count += 1;
         }
@@ -1177,7 +1177,7 @@ pub const Board = struct {
                     Piece.pawnFromBitBoard(capturing_pawn),
                     Piece.pawnFromBitBoard(en_passant_target),
                     Piece.pawnFromBitBoard(en_passant_pawn),
-                    possible_self_check_squares.getOverlap(capturing_pawn.getCombination(en_passant_pawn)).isNonEmpty(),
+                    possible_self_check_squares.overlaps(capturing_pawn.getCombination(en_passant_pawn)),
                 );
                 move_count += 1;
             }
@@ -1201,7 +1201,7 @@ pub const Board = struct {
             var promote_captures_right = forward_right_captures.getOverlap(seventh_row).iterator();
             while (promote_captures_left.next()) |from| {
                 const to = from.forwardUnchecked(1).leftUnchecked(1);
-                const might_self_cap = possible_self_check_squares.getOverlap(from).isNonEmpty();
+                const might_self_cap = possible_self_check_squares.overlaps(from);
                 for ([_]PieceType{
                     .knight,
                     .bishop,
@@ -1219,7 +1219,7 @@ pub const Board = struct {
             }
             while (promote_captures_right.next()) |from| {
                 const to = from.forwardUnchecked(1).rightUnchecked(1);
-                const might_self_cap = possible_self_check_squares.getOverlap(from).isNonEmpty();
+                const might_self_cap = possible_self_check_squares.overlaps(from);
                 for ([_]PieceType{
                     .knight,
                     .bishop,
@@ -1245,7 +1245,7 @@ pub const Board = struct {
                     Piece.pawnFromBitBoard(from),
                     Piece.pawnFromBitBoard(to),
                     Piece.init(TargetPieceType, to),
-                    possible_self_check_squares.getOverlap(from).isNonEmpty(),
+                    possible_self_check_squares.overlaps(from),
                 );
                 move_count += 1;
             }
@@ -1255,7 +1255,7 @@ pub const Board = struct {
                     Piece.pawnFromBitBoard(from),
                     Piece.pawnFromBitBoard(to),
                     Piece.init(TargetPieceType, to),
-                    possible_self_check_squares.getOverlap(from).isNonEmpty(),
+                    possible_self_check_squares.overlaps(from),
                 );
                 move_count += 1;
             }
@@ -1606,7 +1606,7 @@ pub const Board = struct {
             // kingside
             if (king.rightUnchecked(2).overlaps(self.castling_squares) and
                 right_side_king.getOverlap(all_pieces) == right_side_king.getOverlap(right_rook) and
-                !right_side_king.getOverlap(right_rook).isEmpty() and
+                right_side_king.overlaps(right_rook) and
                 !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
