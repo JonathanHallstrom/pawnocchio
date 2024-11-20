@@ -300,6 +300,7 @@ pub const BitBoard = enum(u64) {
     }
 
     comptime {
+        @setEvalBranchQuota(1 << 30);
         assert(BitBoard.fromSquareUnchecked("A8").allForward() == BitBoard.fromSquareUnchecked("A8"));
         assert(BitBoard.fromSquareUnchecked("A1").allForward() == blk: {
             var res = BitBoard.initEmpty();
@@ -393,13 +394,20 @@ pub const PieceType = enum(u8) {
 
 pub const Piece = struct {
     _tp: PieceType,
-    _board: BitBoard,
+    _loc: u7,
+
+    pub fn initInvalid() Piece {
+        return .{
+            ._tp = .pawn,
+            ._loc = 127,
+        };
+    }
 
     pub fn init(tp: PieceType, b: BitBoard) Piece {
         assert(@popCount(b.toInt()) == 1);
         return .{
             ._tp = tp,
-            ._board = b,
+            ._loc = @intCast(@ctz(b.toInt())),
         };
     }
 
@@ -441,7 +449,7 @@ pub const Piece = struct {
     }
 
     pub fn getBoard(self: Piece) BitBoard {
-        return self._board;
+        return BitBoard.init(@as(u64, 1) << @intCast(self._loc));
     }
 
     fn flipPos(pos: u6) u6 {
@@ -457,7 +465,11 @@ pub const Piece = struct {
     }
 
     pub fn flipped(self: Piece) Piece {
-        return init(self.getType(), self.getBoard().flipped());
+        return .{
+            ._tp = self._tp,
+            ._loc = flipPos(@intCast(self._loc)),
+        };
+        // return init(self.getType(), self.getBoard().flipped());
     }
 
     pub fn prettyPos(self: Piece) [2]u8 {
@@ -475,14 +487,17 @@ comptime {
 pub const Move = struct {
     _from: Piece,
     _to: Piece,
-    _captured: ?Piece,
-    might_cause_self_check: bool = true,
+    _captured: Piece,
+    _might_cause_self_check: bool,
+    _is_capture: bool,
 
-    pub fn init(from_: Piece, to_: Piece, captured_: ?Piece) Move {
+    pub fn init(from_: Piece, to_: Piece, captured_: ?Piece, might_self_check: bool) Move {
         return .{
             ._from = from_,
             ._to = to_,
-            ._captured = captured_,
+            ._captured = captured_ orelse Piece.initInvalid(),
+            ._is_capture = captured_ != null,
+            ._might_cause_self_check = might_self_check,
         };
     }
 
@@ -495,15 +510,19 @@ pub const Move = struct {
     }
 
     pub fn captured(self: Move) ?Piece {
-        return self._captured;
+        return if (self.isCapture()) self._captured else null;
     }
 
     pub fn isQuiet(self: Move) bool {
-        return self.captured() == null;
+        return !self.isCapture();
     }
 
     pub fn isCapture(self: Move) bool {
-        return self.captured() != null;
+        return self._is_capture;
+    }
+
+    pub fn mightSelfCheck(self: Move) bool {
+        return self._might_cause_self_check;
     }
 
     pub fn isEnPassantTarget(self: Move) bool {
@@ -530,8 +549,9 @@ pub const Move = struct {
         return .{
             ._from = from_,
             ._to = to_,
-            ._captured = null,
-            .might_cause_self_check = might_self_check,
+            ._captured = Piece.initInvalid(),
+            ._is_capture = false,
+            ._might_cause_self_check = might_self_check,
         };
     }
 
@@ -540,7 +560,8 @@ pub const Move = struct {
             ._from = from_,
             ._to = to_,
             ._captured = captured_,
-            .might_cause_self_check = might_self_check,
+            ._is_capture = true,
+            ._might_cause_self_check = might_self_check,
         };
     }
 
@@ -561,6 +582,7 @@ pub const Move = struct {
             self.from().flipped(),
             self.to().flipped(),
             if (self.captured()) |c| c.flipped() else null,
+            self.mightSelfCheck(),
         );
     }
 };
@@ -961,7 +983,7 @@ pub const Board = struct {
 
     pub fn playMovePossibleSelfCheck(self: *Self, move: Move) ?MoveInverse {
         const inverse = self.playMove(move);
-        if (move.might_cause_self_check and self.isInCheck(.flip)) {
+        if (move._might_cause_self_check and self.isInCheck(.flip)) {
             self.undoMove(inverse);
             return null;
         }
@@ -1070,6 +1092,15 @@ pub const Board = struct {
         return self.areSquaresAttacked(own_side.king, turn_mode);
     }
 
+    pub fn doesMoveCauseSelfCheck(self: Self, move: Move) bool {
+        if (!move.mightSelfCheck()) return false;
+        var board = self;
+        if (board.playMovePossibleSelfCheck(move)) |_| {
+            return false;
+        }
+        return true;
+    }
+
     const knight_drs = [_]i8{ 2, 2, -2, -2, 1, 1, -1, -1 };
     const knight_dcs = [_]i8{ 1, -1, 1, -1, 2, -2, 2, -2 };
 
@@ -1156,7 +1187,7 @@ pub const Board = struct {
                     Piece.pawnFromBitBoard(capturing_pawn),
                     Piece.pawnFromBitBoard(en_passant_target),
                     Piece.pawnFromBitBoard(en_passant_pawn),
-                    possible_self_check_squares.overlaps(capturing_pawn.getCombination(en_passant_pawn)),
+                    true,
                 );
                 move_count += 1;
             }
@@ -1634,8 +1665,8 @@ pub const Board = struct {
         return filtered_count;
     }
 
-    pub var in_check_cnt: usize = 0;
-    pub var total: usize = 0;
+    pub var in_check_cnt: std.atomic.Value(usize) = std.atomic.Value(usize).init(0);
+    pub var total: std.atomic.Value(usize) = std.atomic.Value(usize).init(0);
 
     pub fn getSelfCheckSquares(self: Self) BitBoard {
         const own_side = if (self.turn == .white) self.white else self.black;
@@ -1645,27 +1676,43 @@ pub const Board = struct {
         own_pieces.add(own_side.bishop);
         own_pieces.add(own_side.rook);
         own_pieces.add(own_side.queen);
+        const all_pieces = opponent_side.all().getCombination(own_pieces);
 
         var is_in_check = false;
         var self_check_squares = own_side.king;
         for (rook_drs, rook_dcs) |dr, dc| {
-            var dir = own_side.king.allDirection(dr, dc);
-            const enemy_piece = dir.getOverlap(opponent_side.rook.getCombination(opponent_side.queen));
-            dir.remove(enemy_piece.allDirection(dr, dc));
-            is_in_check = is_in_check or !dir.overlaps(own_pieces);
-            self_check_squares.add(dir);
+            var dir = own_side.king.move(dr, dc).allDirection(dr, dc);
+            const first = dir.getOverlap(all_pieces);
+            const second = first.move(dr, dc).allDirection(dr, dc).getOverlap(all_pieces);
+            const enemy_piece = second.getOverlap(opponent_side.rook.getCombination(opponent_side.queen));
+            const enemy_back = enemy_piece.allDirection(-dr, -dc);
+            const pinned = enemy_back.getOverlap(own_pieces);
+            dir.remove(enemy_piece.move(dr, dc).allDirection(dr, dc));
+
+            is_in_check = is_in_check or first.overlaps(opponent_side.rook.getCombination(opponent_side.queen));
+            self_check_squares.add(pinned);
         }
         for (bishop_drs, bishop_dcs) |dr, dc| {
-            var dir = own_side.king.allDirection(dr, dc);
-            const enemy_piece = dir.getOverlap(opponent_side.bishop.getCombination(opponent_side.queen));
-            dir.remove(enemy_piece.allDirection(dr, dc));
-            is_in_check = is_in_check or !dir.overlaps(own_pieces);
-            self_check_squares.add(dir);
+            var dir = own_side.king.move(dr, dc).allDirection(dr, dc);
+            const first = dir.getOverlap(all_pieces);
+            const second = first.move(dr, dc).allDirection(dr, dc).getOverlap(all_pieces);
+            const enemy_piece = second.getOverlap(opponent_side.bishop.getCombination(opponent_side.queen));
+            const enemy_back = enemy_piece.allDirection(-dr, -dc);
+            const pinned = enemy_back.getOverlap(own_pieces);
+            dir.remove(enemy_piece.move(dr, dc).allDirection(dr, dc));
+
+            is_in_check = is_in_check or first.overlaps(opponent_side.bishop.getCombination(opponent_side.queen));
+            is_in_check = is_in_check or (own_side.king.move(dr, dc).overlaps(opponent_side.pawn) and (dr == 1) == (self.turn == .white));
+            self_check_squares.add(pinned);
+        }
+        for (knight_drs, knight_dcs) |dr, dc| {
+            is_in_check = is_in_check or own_side.king.move(dr, dc).overlaps(opponent_side.knight);
         }
         if (is_in_check) self_check_squares = BitBoard.initEmpty().complement();
 
-        total += 1;
-        in_check_cnt += @intFromBool(is_in_check);
+        // _ = total.fetchAdd(1, .acq_rel);
+        // if (is_in_check)
+        //     _ = in_check_cnt.fetchAdd(1, .acq_rel);
 
         return self_check_squares;
     }
@@ -1694,12 +1741,8 @@ pub const Board = struct {
         var res: u64 = 0;
         if (depth_remaining == 1) {
             for (moves) |move| {
-                if (!move.might_cause_self_check) {
+                if (!self.doesMoveCauseSelfCheck(move))
                     res += 1;
-                } else if (self.playMovePossibleSelfCheck(move)) |inv| {
-                    defer self.undoMove(inv);
-                    res += 1;
-                }
             }
         } else {
             for (moves) |move| {

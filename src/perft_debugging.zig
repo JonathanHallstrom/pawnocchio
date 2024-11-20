@@ -88,6 +88,7 @@ fn findPerftErrorPos(fen: []const u8, move_buf: []Move, depth: usize, allocator:
 }
 
 pub fn main() !void {
+    defer std.debug.print("checks/total {}/{}\n", .{ Board.in_check_cnt.load(.acquire), Board.total.load(.acquire) });
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     var threaded = std.heap.ThreadSafeAllocator{ .child_allocator = gpa.allocator() };
@@ -104,7 +105,7 @@ pub fn main() !void {
 
     const TestInput = struct {
         fen_string: []const u8,
-        depth: u8 = 5,
+        depth: u8 = 1,
     };
 
     var test_inputs: []const TestInput = &.{.{ .fen_string = fen }};
