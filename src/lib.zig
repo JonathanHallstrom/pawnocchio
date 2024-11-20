@@ -874,39 +874,18 @@ pub const Board = struct {
         };
     }
 
-    pub fn toString(self: Self) [8][8]u8 {
-        var res: [8][8]u8 = .{.{' '} ** 8} ** 8;
+    pub fn toString(self: Self) [17][17]u8 {
+        const row: [17]u8 = ("+" ++ "-+" ** 8).*;
+        var res: [17][17]u8 = .{row} ++ (.{("|" ++ " |" ** 8).*} ++ .{row}) ** 8;
         for (0..8) |r| {
             for (0..8) |c| {
-                if (self.white.pawn.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'P';
-                if (self.black.pawn.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'p';
-
-                if (self.white.knight.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'N';
-                if (self.black.knight.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'n';
-
-                if (self.white.bishop.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'B';
-                if (self.black.bishop.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'b';
-
-                if (self.white.rook.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'R';
-                if (self.black.rook.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'r';
-
-                if (self.white.queen.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'Q';
-                if (self.black.queen.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'q';
-
-                if (self.white.king.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'K';
-                if (self.black.king.get(Row.init(r) catch unreachable, Col.init(c) catch unreachable))
-                    res[7 - r][c] = 'k';
+                const square = BitBoard.init(@as(u64, 1) << @intCast(8 * r + c));
+                if (self.white.whichType(square)) |s| {
+                    res[2 * (7 - r) + 1][2 * c + 1] = std.ascii.toUpper(s.letter());
+                }
+                if (self.black.whichType(square)) |s| {
+                    res[2 * (7 - r) + 1][2 * c + 1] = std.ascii.toLower(s.letter());
+                }
             }
         }
         return res;
@@ -1555,6 +1534,12 @@ pub const Board = struct {
         possible_places_to_move.add(king.rightMasked(1));
         possible_places_to_move.add(possible_places_to_move.forwardMasked(1));
         possible_places_to_move.add(possible_places_to_move.backwardMasked(1));
+
+        for (knight_drs, knight_dcs) |dr, dc| {
+            const dangers = possible_places_to_move.move(dr, dc).getOverlap(opponent_side.knight);
+            possible_places_to_move.remove(dangers.move(-dr, -dc));
+        }
+
         var captures = possible_places_to_move.getOverlap(opponents_pieces).iterator();
         while (captures.next()) |moved| {
             move_buffer[move_count] = Move.initCapture(
@@ -1666,15 +1651,15 @@ pub const Board = struct {
         for (rook_drs, rook_dcs) |dr, dc| {
             var dir = own_side.king.allDirection(dr, dc);
             const enemy_piece = dir.getOverlap(opponent_side.rook.getCombination(opponent_side.queen));
-            is_in_check = is_in_check or !dir.overlaps(own_pieces);
             dir.remove(enemy_piece.allDirection(dr, dc));
+            is_in_check = is_in_check or !dir.overlaps(own_pieces);
             self_check_squares.add(dir);
         }
         for (bishop_drs, bishop_dcs) |dr, dc| {
             var dir = own_side.king.allDirection(dr, dc);
             const enemy_piece = dir.getOverlap(opponent_side.bishop.getCombination(opponent_side.queen));
-            is_in_check = is_in_check or !dir.overlaps(own_pieces);
             dir.remove(enemy_piece.allDirection(dr, dc));
+            is_in_check = is_in_check or !dir.overlaps(own_pieces);
             self_check_squares.add(dir);
         }
         if (is_in_check) self_check_squares = BitBoard.initEmpty().complement();

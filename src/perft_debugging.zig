@@ -74,10 +74,13 @@ fn findPerftErrorPos(fen: []const u8, move_buf: []Move, depth: usize, allocator:
 
     if (depth == 1) {
         for (moves) |move| {
-            if (move.from().getType() != move.to().getType()) {
-                std.debug.print("{s}{s}{c}: 1\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() });
-            } else {
-                std.debug.print("{s}{s}: 1\n", .{ move.from().prettyPos(), move.to().prettyPos() });
+            if (board.playMovePossibleSelfCheck(move)) |inv| {
+                defer board.undoMove(inv);
+                if (move.from().getType() != move.to().getType()) {
+                    std.debug.print("{s}{s}{c}: 1\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() });
+                } else {
+                    std.debug.print("{s}{s}: 1\n", .{ move.from().prettyPos(), move.to().prettyPos() });
+                }
             }
         }
     }

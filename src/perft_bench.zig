@@ -34,8 +34,8 @@ pub fn main() !void {
     defer allocator.free(move_buf);
     for (1..8) |depth| {
         var timer = try std.time.Timer.start();
-        const num_moves = try board.perftMultiThreaded(move_buf, depth, allocator);
-        // const num_moves = board.perftSingleThreaded(move_buf, depth);
+        // const num_moves = try board.perftMultiThreaded(move_buf, depth, allocator);
+        const num_moves = board.perftSingleThreaded(move_buf, depth);
         const elapsed = timer.lap();
         try output.print("{}\n", .{num_moves});
         std.debug.print("{}\n", .{num_moves});
