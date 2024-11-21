@@ -57,12 +57,20 @@ pub fn main() !void {
                 if (board.playMovePossibleSelfCheck(move)) |inv| {
                     defer board.undoMove(inv);
 
-                    const eval = -engine.negaMax(board, 3, move_buf[num_moves..]);
+                    const eval = -engine.negaMax(board, 4, move_buf[num_moves..]);
                     if (eval > best_eval) {
                         best_eval = eval;
                         best_move = move;
                     }
                 }
+            }
+
+            std.debug.print("engine played:\n", .{});
+            const move = best_move;
+            if (move.from().getType() != move.to().getType()) {
+                std.debug.print("{s}{s}{c}\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() });
+            } else {
+                std.debug.print("{s}{s}\n", .{ move.from().prettyPos(), move.to().prettyPos() });
             }
             try previous_move_inverses.append(board.playMove(best_move));
         } else {
