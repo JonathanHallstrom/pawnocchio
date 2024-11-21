@@ -49,7 +49,6 @@ pub fn main() !void {
         if (play_against_engine and (engine_starts == (board.turn == .white))) {
             const engine = @import("negamax_engine.zig");
 
-
             std.debug.print("engine played:\n", .{});
             _, const move = engine.findMove(board, 5, move_buf);
             std.debug.print("{s}\n", .{move.pretty().slice()});
