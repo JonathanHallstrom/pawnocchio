@@ -31,7 +31,9 @@ fn pieceValueEval(comptime turn: lib.Side, board: Board) i32 {
         res += @popCount(board.white.getBoard(pt).toInt()) * PieceValues[@intFromEnum(pt)];
         res -= @popCount(board.black.getBoard(pt).toInt()) * PieceValues[@intFromEnum(pt)];
     }
-    return if (turn == .white) res else -res;
+    res = if (turn == .white) res else -res;
+    if (board.isInCheck(.auto)) res -= 100;
+    return res;
 }
 
 fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: []Move) i32 {
@@ -62,6 +64,28 @@ pub fn negaMax(board: Board, depth: usize, move_buf: []Move) i32 {
     return switch (self.turn) {
         inline else => |t| negaMaxImpl(t, &self, depth, move_buf),
     };
+}
+
+pub fn findMove(board: Board, depth: usize, move_buf: []Move) struct { i32, Move } {
+    var self = board;
+    const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
+    const moves = move_buf[0..num_moves];
+
+    var best_eval: i32 = -CHECKMATE_EVAL;
+    var best_move: Move = undefined;
+    for (moves) |move| {
+        if (self.playMovePossibleSelfCheck(move)) |inv| {
+            defer self.undoMove(inv);
+
+            const eval = -negaMax(self, depth - 1, move_buf[num_moves..]);
+            if (eval > best_eval) {
+                best_eval = eval;
+                best_move = move;
+            }
+        }
+    }
+
+    return .{ best_eval, best_move };
 }
 
 test "starting position even material" {

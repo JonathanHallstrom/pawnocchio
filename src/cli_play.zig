@@ -48,31 +48,12 @@ pub fn main() !void {
 
         if (play_against_engine and (engine_starts == (board.turn == .white))) {
             const engine = @import("negamax_engine.zig");
-            const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-            const moves = move_buf[0..num_moves];
 
-            var best_eval: i32 = -1000_000_000;
-            var best_move: Move = undefined;
-            for (moves) |move| {
-                if (board.playMovePossibleSelfCheck(move)) |inv| {
-                    defer board.undoMove(inv);
-
-                    const eval = -engine.negaMax(board, 4, move_buf[num_moves..]);
-                    if (eval > best_eval) {
-                        best_eval = eval;
-                        best_move = move;
-                    }
-                }
-            }
 
             std.debug.print("engine played:\n", .{});
-            const move = best_move;
-            if (move.from().getType() != move.to().getType()) {
-                std.debug.print("{s}{s}{c}\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() });
-            } else {
-                std.debug.print("{s}{s}\n", .{ move.from().prettyPos(), move.to().prettyPos() });
-            }
-            try previous_move_inverses.append(board.playMove(best_move));
+            _, const move = engine.findMove(board, 5, move_buf);
+            std.debug.print("{s}\n", .{move.pretty().slice()});
+            try previous_move_inverses.append(board.playMove(move));
         } else {
             const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
             const moves = move_buf[0..num_moves];
@@ -92,13 +73,7 @@ pub fn main() !void {
                 const input_str = std.mem.trim(u8, stdin.readUntilDelimiter(&input_buf, '\n') catch continue, &std.ascii.whitespace);
 
                 for (0..num_moves, moves) |i, move| {
-                    var move_str_buf: [6]u8 = undefined;
-                    const move_str = try if (move.from().getType() != move.to().getType())
-                        std.fmt.bufPrint(&move_str_buf, "{s}{s}{c}", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() })
-                    else
-                        std.fmt.bufPrint(&move_str_buf, "{s}{s}", .{ move.from().prettyPos(), move.to().prettyPos() });
-
-                    if (std.ascii.startsWithIgnoreCase(input_str, move_str)) {
+                    if (std.ascii.startsWithIgnoreCase(input_str, move.pretty().slice())) {
                         choice = i;
                     }
                 }

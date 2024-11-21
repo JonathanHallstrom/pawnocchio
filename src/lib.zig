@@ -474,7 +474,7 @@ const SmallPiece = struct {
     pub fn prettyPos(self: SmallPiece) [2]u8 {
         const pos = @ctz(self.getBoard().toInt());
         const row = @as(u8, pos / 8) + '1';
-        const col = @as(u8, pos % 8) + 'A';
+        const col = @as(u8, pos % 8) + 'a';
         return .{ col, row };
     }
 };
@@ -666,6 +666,19 @@ pub const Move = struct {
             if (self.captured()) |c| c.flipped() else null,
             self.mightSelfCheck(),
         );
+    }
+
+    pub fn pretty(self: Move) std.BoundedArray(u8, 8) {
+        var res = std.BoundedArray(u8, 8).init(0) catch unreachable;
+        if (self.from().getType() != self.to().getType()) {
+            res.appendSliceAssumeCapacity(&self.from().prettyPos());
+            res.appendSliceAssumeCapacity(&self.to().prettyPos());
+            res.appendAssumeCapacity(self.to().getType().letter());
+        } else {
+            res.appendSliceAssumeCapacity(&self.from().prettyPos());
+            res.appendSliceAssumeCapacity(&self.to().prettyPos());
+        }
+        return res;
     }
 };
 
@@ -1061,6 +1074,21 @@ pub const Board = struct {
             capture_board.* = capture_board.getOverlap(cap.getBoard().complement());
         }
         return res;
+    }
+
+    pub fn playMoveFromSquare(self: *Self, square: []const u8, move_buf: []Move) !MoveInverse {
+        const num_moves = self.getAllMoves(move_buf, self.getSelfCheckSquares());
+        const moves = move_buf[0..num_moves];
+
+        for (moves) |move| {
+            if (std.ascii.eqlIgnoreCase(
+                std.mem.trim(u8, move.pretty().slice(), &std.ascii.whitespace),
+                std.mem.trim(u8, square, &std.ascii.whitespace),
+            )) {
+                return self.playMove(move);
+            }
+        }
+        return error.NoSuchMove;
     }
 
     pub fn playMovePossibleSelfCheck(self: *Self, move: Move) ?MoveInverse {
