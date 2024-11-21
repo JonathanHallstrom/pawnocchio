@@ -13,7 +13,20 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var move_buf: [1024]Move = undefined;
+    var args = try std.process.argsWithAllocator(allocator);
+    _ = args.next();
+    var play_against_engine = false;
+    var engine_starts = false;
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "play_against_engine")) play_against_engine = true;
+        if (std.mem.eql(u8, arg, "engine_starts")) engine_starts = true;
+    }
+
+    if (play_against_engine)
+        std.debug.print("playing against engine\n", .{});
+
+    const move_buf: []Move = try allocator.alloc(Move, 1 << 20);
+    defer allocator.free(move_buf);
 
     var previous_move_inverses = std.ArrayList(MoveInverse).init(allocator);
     defer previous_move_inverses.deinit();
@@ -24,7 +37,6 @@ pub fn main() !void {
         for (board.toString()) |row| {
             std.debug.print("{s}\n", .{row});
         }
-
         if (board.gameOver()) |result| {
             if (result == .tie) {
                 std.debug.print("Result: tie\n", .{});
@@ -34,26 +46,46 @@ pub fn main() !void {
             break;
         }
 
-        const num_moves = board.getAllMoves(&move_buf, board.getSelfCheckSquares());
-        const moves = move_buf[0..num_moves];
+        if (play_against_engine and (engine_starts == (board.turn == .white))) {
+            const engine = @import("negamax_engine.zig");
+            const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
+            const moves = move_buf[0..num_moves];
 
-        std.debug.print("Available moves:\n", .{});
-        for (0..num_moves, moves) |i, move| {
-            std.debug.print("{d: >3}. {}\n", .{ i + 1, move });
-        }
+            var best_eval: i32 = -1000_000_000;
+            var best_move: Move = undefined;
+            for (moves) |move| {
+                if (board.playMovePossibleSelfCheck(move)) |inv| {
+                    defer board.undoMove(inv);
 
-        var input_buf: [32]u8 = undefined;
-        var choice: ?usize = null;
-        while (choice == null) {
-            std.debug.print("Choose a move (1-{}):", .{num_moves});
-            const input_str = stdin.readUntilDelimiter(&input_buf, '\n') catch continue;
-            const input_num = std.fmt.parseInt(usize, input_str, 10) catch continue;
-            if (1 <= input_num and input_num <= num_moves) {
-                choice = input_num - 1;
+                    const eval = -engine.negaMax(board, 3, move_buf[num_moves..]);
+                    if (eval > best_eval) {
+                        best_eval = eval;
+                        best_move = move;
+                    }
+                }
             }
+            try previous_move_inverses.append(board.playMove(best_move));
+        } else {
+            const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
+            const moves = move_buf[0..num_moves];
+            std.debug.print("Available moves:\n", .{});
+            for (0..num_moves, moves) |i, move| {
+                std.debug.print("{d: >3}. {}\n", .{ i + 1, move });
+            }
+
+            var input_buf: [32]u8 = undefined;
+            var choice: ?usize = null;
+            while (choice == null) {
+                std.debug.print("Choose a move (1-{}):", .{num_moves});
+                const input_str = stdin.readUntilDelimiter(&input_buf, '\n') catch continue;
+                const input_num = std.fmt.parseInt(usize, input_str, 10) catch continue;
+                if (1 <= input_num and input_num <= num_moves) {
+                    choice = input_num - 1;
+                }
+            }
+            const chosen_move = moves[choice.?];
+            try previous_move_inverses.append(board.playMove(chosen_move));
+            std.debug.print("\n", .{});
         }
-        const chosen_move = moves[choice.?];
-        try previous_move_inverses.append(board.playMove(chosen_move));
-        std.debug.print("\n", .{});
     }
 }

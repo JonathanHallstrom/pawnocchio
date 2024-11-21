@@ -382,7 +382,7 @@ pub const PieceType = enum(u8) {
         };
     }
 
-    const all = [_]PieceType{
+    pub const all = [_]PieceType{
         .pawn,
         .knight,
         .bishop,
@@ -392,18 +392,18 @@ pub const PieceType = enum(u8) {
     };
 };
 
-pub const Piece = struct {
+const SmallPiece = struct {
     _tp: PieceType,
     _loc: u7,
 
-    pub fn initInvalid() Piece {
+    pub fn initInvalid() SmallPiece {
         return .{
             ._tp = .pawn,
             ._loc = 127,
         };
     }
 
-    pub fn init(tp: PieceType, b: BitBoard) Piece {
+    pub fn init(tp: PieceType, b: BitBoard) SmallPiece {
         assert(@popCount(b.toInt()) == 1);
         return .{
             ._tp = tp,
@@ -411,31 +411,31 @@ pub const Piece = struct {
         };
     }
 
-    pub fn pawnFromBitBoard(b: BitBoard) Piece {
+    pub fn pawnFromBitBoard(b: BitBoard) SmallPiece {
         return init(.pawn, b);
     }
 
-    pub fn knightFromBitBoard(b: BitBoard) Piece {
+    pub fn knightFromBitBoard(b: BitBoard) SmallPiece {
         return init(.knight, b);
     }
 
-    pub fn bishopFromBitBoard(b: BitBoard) Piece {
+    pub fn bishopFromBitBoard(b: BitBoard) SmallPiece {
         return init(.bishop, b);
     }
 
-    pub fn rookFromBitBoard(b: BitBoard) Piece {
+    pub fn rookFromBitBoard(b: BitBoard) SmallPiece {
         return init(.rook, b);
     }
 
-    pub fn queenFromBitBoard(b: BitBoard) Piece {
+    pub fn queenFromBitBoard(b: BitBoard) SmallPiece {
         return init(.queen, b);
     }
 
-    pub fn kingFromBitBoard(b: BitBoard) Piece {
+    pub fn kingFromBitBoard(b: BitBoard) SmallPiece {
         return init(.king, b);
     }
 
-    pub fn format(self: Piece, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: SmallPiece, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
         const pos = @ctz(self.getBoard().toInt());
@@ -444,11 +444,11 @@ pub const Piece = struct {
         return try writer.print("({s} on {c}{c})", .{ @tagName(self.getType()), col, row });
     }
 
-    pub fn getType(self: Piece) PieceType {
+    pub fn getType(self: SmallPiece) PieceType {
         return self._tp;
     }
 
-    pub fn getBoard(self: Piece) BitBoard {
+    pub fn getBoard(self: SmallPiece) BitBoard {
         return BitBoard.init(@as(u64, 1) << @intCast(self._loc));
     }
 
@@ -464,21 +464,103 @@ pub const Piece = struct {
         }
     }
 
-    pub fn flipped(self: Piece) Piece {
+    pub fn flipped(self: SmallPiece) SmallPiece {
         return .{
             ._tp = self._tp,
             ._loc = flipPos(@intCast(self._loc)),
         };
-        // return init(self.getType(), self.getBoard().flipped());
     }
 
-    pub fn prettyPos(self: Piece) [2]u8 {
+    pub fn prettyPos(self: SmallPiece) [2]u8 {
         const pos = @ctz(self.getBoard().toInt());
         const row = @as(u8, pos / 8) + '1';
         const col = @as(u8, pos % 8) + 'A';
         return .{ col, row };
     }
 };
+
+const BigPiece = struct {
+    _tp: PieceType,
+    _board: BitBoard,
+
+    pub fn initInvalid() BigPiece {
+        return undefined;
+    }
+
+    pub fn init(tp: PieceType, b: BitBoard) BigPiece {
+        assert(@popCount(b.toInt()) == 1);
+        return .{
+            ._tp = tp,
+            ._board = b,
+        };
+    }
+
+    pub fn pawnFromBitBoard(b: BitBoard) BigPiece {
+        return init(.pawn, b);
+    }
+
+    pub fn knightFromBitBoard(b: BitBoard) BigPiece {
+        return init(.knight, b);
+    }
+
+    pub fn bishopFromBitBoard(b: BitBoard) BigPiece {
+        return init(.bishop, b);
+    }
+
+    pub fn rookFromBitBoard(b: BitBoard) BigPiece {
+        return init(.rook, b);
+    }
+
+    pub fn queenFromBitBoard(b: BitBoard) BigPiece {
+        return init(.queen, b);
+    }
+
+    pub fn kingFromBitBoard(b: BitBoard) BigPiece {
+        return init(.king, b);
+    }
+
+    pub fn format(self: BigPiece, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = actual_fmt;
+        _ = options;
+        const pos = @ctz(self.getBoard().toInt());
+        const row = @as(u8, pos / 8) + '1';
+        const col = @as(u8, pos % 8) + 'A';
+        return try writer.print("({s} on {c}{c})", .{ @tagName(self.getType()), col, row });
+    }
+
+    pub fn getType(self: BigPiece) PieceType {
+        return self._tp;
+    }
+
+    pub fn getBoard(self: BigPiece) BitBoard {
+        return self._board;
+    }
+
+    fn flipPos(pos: u6) u6 {
+        const row = pos / 8;
+        const col = pos % 8;
+        const new_row = 7 - row;
+        return 8 * new_row + col;
+    }
+    comptime {
+        for (0..64) |i| {
+            assert(@byteSwap(@as(u64, 1) << i) == @as(u64, 1) << flipPos(i));
+        }
+    }
+
+    pub fn flipped(self: BigPiece) BigPiece {
+        return init(self.getType(), self.getBoard().flipped());
+    }
+
+    pub fn prettyPos(self: BigPiece) [2]u8 {
+        const pos = @ctz(self.getBoard().toInt());
+        const row = @as(u8, pos / 8) + '1';
+        const col = @as(u8, pos % 8) + 'A';
+        return .{ col, row };
+    }
+};
+
+pub const Piece = SmallPiece;
 
 comptime {
     assert(@sizeOf(PieceType) == 1);
@@ -630,7 +712,7 @@ pub const Board = struct {
     // 1  0  1  2  3  4  5  6  7
     //    A  B  C  D  E  F  G  H
 
-    const PieceSet = packed struct {
+    pub const PieceSet = packed struct {
         pawn: BitBoard = BitBoard.initEmpty(),
         knight: BitBoard = BitBoard.initEmpty(),
         bishop: BitBoard = BitBoard.initEmpty(),
@@ -640,7 +722,7 @@ pub const Board = struct {
 
         // kinda ugly but makes for much better assembly than the naive implementation
         // https://godbolt.org/z/se5zaWv5r
-        fn getBoard(self: *const PieceSet, pt: PieceType) BitBoard {
+        pub fn getBoard(self: *const PieceSet, pt: PieceType) BitBoard {
             const base: [*]const BitBoard = @ptrCast(self);
             const offset: usize = switch (pt) {
                 inline else => |tp| @offsetOf(PieceSet, @tagName(tp)),
@@ -648,7 +730,7 @@ pub const Board = struct {
             return base[offset / @sizeOf(BitBoard)];
         }
 
-        fn getBoardPtr(self: *PieceSet, pt: PieceType) *BitBoard {
+        pub fn getBoardPtr(self: *PieceSet, pt: PieceType) *BitBoard {
             const base: [*]BitBoard = @ptrCast(self);
             const offset: usize = switch (pt) {
                 inline else => |tp| @offsetOf(PieceSet, @tagName(tp)),
@@ -656,7 +738,7 @@ pub const Board = struct {
             return &base[offset / @sizeOf(BitBoard)];
         }
 
-        fn addPieceFen(self: *PieceSet, which: u8, row: Row, col: Col) !void {
+        pub fn addPieceFen(self: *PieceSet, which: u8, row: Row, col: Col) !void {
             const board: *BitBoard = switch (std.ascii.toLower(which)) {
                 'p' => &self.pawn,
                 'n' => &self.knight,
@@ -669,7 +751,7 @@ pub const Board = struct {
             try board.set(row, col);
         }
 
-        fn flipped(self: PieceSet) PieceSet {
+        pub fn flipped(self: PieceSet) PieceSet {
             return .{
                 .pawn = self.pawn.flipped(),
                 .knight = self.knight.flipped(),
@@ -680,7 +762,7 @@ pub const Board = struct {
             };
         }
 
-        fn all(self: PieceSet) BitBoard {
+        pub fn all(self: PieceSet) BitBoard {
             var res = self.pawn;
             res.add(self.knight);
             res.add(self.bishop);
@@ -690,11 +772,11 @@ pub const Board = struct {
             return res;
         }
 
-        fn whichTypeUnchecked(self: PieceSet, needle: BitBoard) PieceType {
+        pub fn whichTypeUnchecked(self: PieceSet, needle: BitBoard) PieceType {
             return self.whichType(needle).?;
         }
 
-        fn whichType(self: PieceSet, needle: BitBoard) ?PieceType {
+        pub fn whichType(self: PieceSet, needle: BitBoard) ?PieceType {
             inline for (PieceType.all) |e| {
                 if (@field(self, @tagName(e)).overlaps(needle)) {
                     return e;
@@ -1656,10 +1738,9 @@ pub const Board = struct {
         var filtered_count: usize = 0;
         var board = self;
         for (move_buffer) |move| {
-            if (board.playMovePossibleSelfCheck(move)) |inv| {
-                move_buffer[filtered_count] = move;
+            move_buffer[filtered_count] = move;
+            if (!board.doesMoveCauseSelfCheck(move)) {
                 filtered_count += 1;
-                board.undoMove(inv);
             }
         }
         return filtered_count;
@@ -1710,28 +1791,16 @@ pub const Board = struct {
         }
         if (is_in_check) self_check_squares = BitBoard.initEmpty().complement();
 
-        // _ = total.fetchAdd(1, .acq_rel);
-        // if (is_in_check)
-        //     _ = in_check_cnt.fetchAdd(1, .acq_rel);
+        _ = total.fetchAdd(1, .acq_rel);
+        if (is_in_check)
+            _ = in_check_cnt.fetchAdd(1, .acq_rel);
 
         return self_check_squares;
     }
 
     pub fn getAllMoves(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
-        const unfiltered_count = getAllMovesUnchecked(self, move_buffer, possible_self_check_squares);
-        var filtered_count: usize = 0;
-        var board = self;
-        for (move_buffer[0..unfiltered_count]) |move| {
-            const res = board.playMovePossibleSelfCheck(move);
-            if (res) |inv| {
-                move_buffer[filtered_count] = move;
-                filtered_count += 1;
-                board.undoMove(inv);
-            } else {
-                assert(move.from().getBoard().overlaps(possible_self_check_squares));
-            }
-        }
-        return filtered_count;
+        const unfiltered_count = self.getAllMovesUnchecked(move_buffer, possible_self_check_squares);
+        return self.filterMoves(move_buffer[0..unfiltered_count]);
     }
 
     pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) u64 {
@@ -1757,12 +1826,12 @@ pub const Board = struct {
 
     fn perftMultiThreadedWorkerFn(res_: *std.atomic.Value(u64), board_: Self, move_buf_: []Move, depth_remaining_: usize) void {
         var board = board_;
-        _ = res_.fetchAdd(board.perftSingleThreaded(move_buf_, depth_remaining_), .seq_cst);
+        _ = res_.fetchAdd(board.perftSingleThreaded(move_buf_, depth_remaining_), .acquire);
     }
 
     pub fn perftMultiThreaded(inp: Self, move_buf: []Move, depth_remaining: usize, allocator: std.mem.Allocator) !u64 {
         var self = inp;
-        if (depth_remaining < 4) return self.perftSingleThreaded(move_buf, depth_remaining);
+        if (depth_remaining < 3) return self.perftSingleThreaded(move_buf, depth_remaining);
         if (depth_remaining == 0) return 0;
 
         const num_moves1 = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());

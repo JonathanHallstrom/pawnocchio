@@ -2,28 +2,17 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const Board = lib.Board;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .retain_metadata = true, .thread_safe = true, .safety = true }){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+fn runTests(file: []const u8, allocator: std.mem.Allocator) !void {
     const move_buf = try allocator.alloc(lib.Move, 1 << 20);
     defer allocator.free(move_buf);
-
-    var args = try std.process.argsWithAllocator(allocator);
-    _ = args.next();
-    defer args.deinit();
-
-    const which_file = args.next() orelse "tests/reduced.epd";
-
-    const test_file = try std.fs.cwd().openFile(which_file, .{});
+    const test_file = try std.fs.cwd().openFile(file, .{});
     defer test_file.close();
     var br = std.io.bufferedReader(test_file.reader());
 
-    var inp = br.reader();
     var line_buf: [1024]u8 = undefined;
     var total_time: u64 = 0;
     var total_positions: u64 = 0;
-    while (inp.readUntilDelimiter(&line_buf, '\n') catch null) |line| {
+    while (br.reader().readUntilDelimiter(&line_buf, '\n') catch null) |line| {
         var parts = std.mem.tokenizeSequence(u8, line, " ;D");
         const fen = parts.next().?;
 
@@ -41,14 +30,30 @@ pub fn main() !void {
             total_time += timer.lap();
             total_positions += expected_perft;
 
-            if (expected_perft != actual_perft) {
-                std.debug.print("error for: {s} at depth: {}\n", .{ fen, depth });
-                std.debug.print("expected: {}\n", .{expected_perft});
-                std.debug.print("got:      {}\n", .{actual_perft});
-                return;
-            }
+            std.testing.expectEqual(expected_perft, actual_perft) catch |e| {
+                std.log.err("error for: {s} at depth: {}\n", .{ fen, depth });
+                std.log.err("expected: {}\n", .{expected_perft});
+                std.log.err("got:      {}\n", .{actual_perft});
+                return e;
+            };
         }
-        std.debug.print("{s} passed\n", .{fen});
+        std.log.info("{s} passed\n", .{fen});
     }
-    std.debug.print("overall nps: {}\n", .{std.time.ns_per_s * total_positions / total_time});
+    std.log.info("overall nps: {}\n", .{std.time.ns_per_s * total_positions / total_time});
+}
+
+test "perft tests" {
+    try runTests("tests/reduced.epd", std.testing.allocator);
+}
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .retain_metadata = true, .thread_safe = true, .safety = true }){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var args = try std.process.argsWithAllocator(allocator);
+    _ = args.next();
+    defer args.deinit();
+
+    try runTests(args.next() orelse "tests/reduced.epd", allocator);
 }

@@ -43,6 +43,17 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    const cli = b.addExecutable(.{
+        .name = "pawnocchio-cli",
+        .root_source_file = b.path("src/cli_play.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+    });
+    b.installArtifact(cli);
+    const run_cli_cmd = b.addRunArtifact(cli);
+    const run_cli_step = b.step("run-cli", "Run the cli app");
+    run_cli_step.dependOn(&run_cli_cmd.step);
+
     const bench = b.addExecutable(.{
         .name = "pawnocchio_perft_bench",
         .root_source_file = b.path("src/perft_bench.zig"),
@@ -76,17 +87,16 @@ pub fn build(b: *std.Build) void {
     });
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
-    const perft_tests = b.addExecutable(.{
-        .name = "pawnocchio_perft_tests",
+    const perft_tests = b.addTest(.{
         .root_source_file = b.path("src/perft_tests.zig"),
         .target = target,
-        .optimize = .ReleaseFast,
+        .optimize = .ReleaseSafe,
     });
     const run_perft_tests = b.addRunArtifact(perft_tests);
 
     if (b.args) |args| {
-        run_perft_tests.addArgs(args);
         run_cmd.addArgs(args);
+        run_cli_cmd.addArgs(args);
         bench_cmd.addArgs(args);
     }
 
