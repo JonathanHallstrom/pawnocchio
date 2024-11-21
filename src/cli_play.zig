@@ -69,18 +69,30 @@ pub fn main() !void {
             const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
             const moves = move_buf[0..num_moves];
             std.debug.print("Available moves:\n", .{});
-            for (0..num_moves, moves) |i, move| {
-                std.debug.print("{d: >3}. {}\n", .{ i + 1, move });
+            for (moves) |move| {
+                if (move.from().getType() != move.to().getType()) {
+                    std.debug.print("{s}{s}{c}\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() });
+                } else {
+                    std.debug.print("{s}{s}\n", .{ move.from().prettyPos(), move.to().prettyPos() });
+                }
             }
 
             var input_buf: [32]u8 = undefined;
             var choice: ?usize = null;
             while (choice == null) {
-                std.debug.print("Choose a move (1-{}):", .{num_moves});
-                const input_str = stdin.readUntilDelimiter(&input_buf, '\n') catch continue;
-                const input_num = std.fmt.parseInt(usize, input_str, 10) catch continue;
-                if (1 <= input_num and input_num <= num_moves) {
-                    choice = input_num - 1;
+                std.debug.print("Choose a move:", .{});
+                const input_str = std.mem.trim(u8, stdin.readUntilDelimiter(&input_buf, '\n') catch continue, &std.ascii.whitespace);
+
+                for (0..num_moves, moves) |i, move| {
+                    var move_str_buf: [6]u8 = undefined;
+                    const move_str = try if (move.from().getType() != move.to().getType())
+                        std.fmt.bufPrint(&move_str_buf, "{s}{s}{c}", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() })
+                    else
+                        std.fmt.bufPrint(&move_str_buf, "{s}{s}", .{ move.from().prettyPos(), move.to().prettyPos() });
+
+                    if (std.ascii.startsWithIgnoreCase(input_str, move_str)) {
+                        choice = i;
+                    }
                 }
             }
             const chosen_move = moves[choice.?];

@@ -978,17 +978,17 @@ pub const Board = struct {
         };
     }
 
-    pub fn toString(self: Self) [17][17]u8 {
-        const row: [17]u8 = ("+" ++ "-+" ** 8).*;
-        var res: [17][17]u8 = .{row} ++ (.{("|" ++ " |" ** 8).*} ++ .{row}) ** 8;
+    pub fn toString(self: Self) [17][33]u8 {
+        const row: [33]u8 = ("+" ++ "---+" ** 8).*;
+        var res: [17][33]u8 = .{row} ++ (.{("|" ++ "   |" ** 8).*} ++ .{row}) ** 8;
         for (0..8) |r| {
             for (0..8) |c| {
                 const square = BitBoard.init(@as(u64, 1) << @intCast(8 * r + c));
                 if (self.white.whichType(square)) |s| {
-                    res[2 * (7 - r) + 1][2 * c + 1] = std.ascii.toUpper(s.letter());
+                    res[2 * (7 - r) + 1][4 * c + 2] = std.ascii.toUpper(s.letter());
                 }
                 if (self.black.whichType(square)) |s| {
-                    res[2 * (7 - r) + 1][2 * c + 1] = std.ascii.toLower(s.letter());
+                    res[2 * (7 - r) + 1][4 * c + 2] = std.ascii.toLower(s.letter());
                 }
             }
         }
