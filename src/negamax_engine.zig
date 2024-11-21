@@ -41,6 +41,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: [
     const moves = move_buf[0..num_moves];
     const rem_buf = move_buf[num_moves..];
     var res: i32 = -CHECKMATE_EVAL;
+    var res_dumb: i32 = 0;
     for (moves) |move| {
         if (res > 1000_000) return res;
         if (board.playMovePossibleSelfCheck(move)) |inv| {
@@ -48,9 +49,11 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: [
 
             const cur = -negaMaxImpl(turn.flipped(), board, depth - 1, rem_buf);
 
-            res = @max(res + @divTrunc(cur, 1000), cur + @divTrunc(res, 1000));
+            res = @max(res, cur);
+            res_dumb = @max(res_dumb + @divTrunc(cur, 1000), cur + @divTrunc(res_dumb, 1000));
         }
     }
+    if (res == 0) return res_dumb;
     return res;
 }
 
