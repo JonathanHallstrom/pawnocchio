@@ -101,13 +101,28 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     //     @import("main.zig").log_writer.print("fen {s}\n", .{board.toFen().slice()}) catch {};
     // }
     defer search_depth -= 1;
-    if (nodes_searched >= max_nodes) return eval(turn, board.*);
+    const cur_pos_eval = eval(turn, board.*);
     var alpha = alpha_;
+    if (cur_pos_eval >= beta)
+        return beta;
+    if (cur_pos_eval > alpha)
+        alpha = cur_pos_eval;
+    if (nodes_searched >= max_nodes)
+        return alpha;
+
     const num_moves = board.getAllCapturesUnchecked(move_buf, board.getSelfCheckSquares());
     if (num_moves == 0) return eval(turn, board.*);
     const moves = move_buf[0..num_moves];
 
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
+
+    // assert that moves are ordered from highest to lowest value capture
+    for (moves[0 .. num_moves - 1], moves[1..]) |first, second| {
+        std.testing.expect(mvvlvaValue(first) >= mvvlvaValue(second)) catch {
+            @import("main.zig").log_writer.print("incorrectly ordered moves\n", .{}) catch {};
+            @panic("");
+        };
+    }
 
     const rem_buf = move_buf[num_moves..];
     var res: i32 = -CHECKMATE_EVAL;
@@ -145,11 +160,17 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: [
     // }
     defer search_depth -= 1;
     if (nodes_searched >= max_nodes) return alpha_;
-    if (depth == 0) return quiesce(turn, board, move_buf, alpha_, beta);
+    if (depth == 0) {
+        return eval(turn, board.*);
+        // return quiesce(turn, board, move_buf, alpha_, beta);
+    }
     var alpha = alpha_;
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    if (num_moves == 0) return eval(turn, board.*);
+    if (num_moves == 0) {
+        @import("main.zig").log_writer.print("game over state reached {}\n", .{board.toFen()}) catch {};
+        return eval(turn, board.*);
+    }
     const moves = move_buf[0..num_moves];
     const rem_buf = move_buf[num_moves..];
     var res: i32 = -CHECKMATE_EVAL;
@@ -187,7 +208,7 @@ pub fn findMove(board: Board, depth: usize, move_buf: []Move) struct { i32, Move
     nodes_searched = 0;
 
     var self = board;
-    const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
+    const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
     const moves = move_buf[0..num_moves];
 
     var best_eval: i32 = -CHECKMATE_EVAL;
