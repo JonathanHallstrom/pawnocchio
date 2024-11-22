@@ -1332,7 +1332,7 @@ pub const Board = struct {
             var promote_captures_right = forward_right_captures.getOverlap(seventh_row).iterator();
             while (promote_captures_left.next()) |from| {
                 const to = from.forwardUnchecked(1).leftUnchecked(1);
-                const might_self_cap = possible_self_check_squares.overlaps(from);
+                const might_self_check = possible_self_check_squares.overlaps(from);
                 for ([_]PieceType{
                     .knight,
                     .bishop,
@@ -1343,14 +1343,14 @@ pub const Board = struct {
                         Piece.pawnFromBitBoard(from),
                         Piece.init(PromotionType, to),
                         Piece.init(TargetPieceType, to),
-                        might_self_cap,
+                        might_self_check,
                     );
                     move_count += 1;
                 }
             }
             while (promote_captures_right.next()) |from| {
                 const to = from.forwardUnchecked(1).rightUnchecked(1);
-                const might_self_cap = possible_self_check_squares.overlaps(from);
+                const might_self_check = possible_self_check_squares.overlaps(from);
                 for ([_]PieceType{
                     .knight,
                     .bishop,
@@ -1361,7 +1361,7 @@ pub const Board = struct {
                         Piece.pawnFromBitBoard(from),
                         Piece.init(PromotionType, to),
                         Piece.init(TargetPieceType, to),
-                        might_self_cap,
+                        might_self_check,
                     );
                     move_count += 1;
                 }
@@ -1654,6 +1654,7 @@ pub const Board = struct {
         possible_places_to_move.add(king.rightMasked(1));
         possible_places_to_move.add(possible_places_to_move.forwardMasked(1));
         possible_places_to_move.add(possible_places_to_move.backwardMasked(1));
+        possible_places_to_move.remove(king);
         var iter = possible_places_to_move.getOverlap(opponents_pieces).iterator();
         while (iter.next()) |moved| {
             move_buffer[move_count] = Move.initCapture(
@@ -1691,6 +1692,7 @@ pub const Board = struct {
             const dangers = possible_places_to_move.move(dr, dc).getOverlap(opponent_side.knight);
             possible_places_to_move.remove(dangers.move(-dr, -dc));
         }
+        possible_places_to_move.remove(king);
 
         var captures = possible_places_to_move.getOverlap(opponents_pieces).iterator();
         while (captures.next()) |moved| {

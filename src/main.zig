@@ -103,9 +103,8 @@ pub fn main() !void {
             }
 
             const engine = @import("engine.zig");
-
-            const eval, const move = engine.findMove(board, 24, move_buf);
-            write("info depth {} score cp {} pv {s}\n", .{ 2, eval, move.pretty().slice() });
+            const eval, const move = engine.findMove(board, 4, move_buf);
+            write("info depth {} score cp {} pv {s}\n", .{ 4, eval, move.pretty().slice() });
             write("bestmove {s}\n", .{move.pretty().slice()});
         }
 

@@ -84,34 +84,30 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
     return mvvlvaValue(lhs) > mvvlvaValue(rhs);
 }
 
-var q_depth: usize = 0;
-var max_depth: usize = 0;
-var q_nodes: usize = 0;
+var search_depth: usize = 0;
+var max_depth_seen: usize = 0;
+var nodes_searched: u64 = 0;
+const max_nodes: u64 = 10 << 20;
 
 fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32, beta: i32) i32 {
-    q_depth += 1;
-    q_nodes += 1;
-    if (q_nodes % (1 << 20) == 0) {
-        @import("main.zig").log_writer.print("q nodes {}\n", .{q_nodes}) catch {};
+    search_depth += 1;
+    nodes_searched += 1;
+    if (nodes_searched % (1 << 20) == 0) {
+        @import("main.zig").log_writer.print("q nodes {}\n", .{nodes_searched}) catch {};
     }
-    if (q_depth > max_depth) {
-        max_depth = q_depth;
-        @import("main.zig").log_writer.print("q depth {}\n", .{max_depth}) catch {};
-    }
-    defer q_depth -= 1;
+    // if (search_depth > max_depth_seen) {
+    //     max_depth_seen = search_depth;
+    //     @import("main.zig").log_writer.print("q depth {}\n", .{max_depth_seen}) catch {};
+    //     @import("main.zig").log_writer.print("fen {s}\n", .{board.toFen().slice()}) catch {};
+    // }
+    defer search_depth -= 1;
+    if (nodes_searched >= max_nodes) return eval(turn, board.*);
     var alpha = alpha_;
     const num_moves = board.getAllCapturesUnchecked(move_buf, board.getSelfCheckSquares());
     if (num_moves == 0) return eval(turn, board.*);
     const moves = move_buf[0..num_moves];
 
-    
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
-    for (moves[0 .. num_moves - 1], moves[1..]) |first, second| {
-        std.testing.expect(mvvlvaValue(first) >= mvvlvaValue(second)) catch {
-            @import("main.zig").log_writer.print("incorrectly ordered moves\n", .{}) catch {};
-            @panic("");
-        };
-    }
 
     const rem_buf = move_buf[num_moves..];
     var res: i32 = -CHECKMATE_EVAL;
@@ -137,6 +133,18 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
 }
 
 fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: []Move, alpha_: i32, beta: i32) i32 {
+    search_depth += 1;
+    nodes_searched += 1;
+    if (nodes_searched % (1 << 20) == 0) {
+        @import("main.zig").log_writer.print("n nodes {}\n", .{nodes_searched}) catch {};
+    }
+    // if (search_depth > max_depth_seen) {
+    //     max_depth_seen = search_depth;
+    //     @import("main.zig").log_writer.print("n depth {}\n", .{max_depth_seen}) catch {};
+    //     @import("main.zig").log_writer.print("fen {s}\n", .{board.toFen().slice()}) catch {};
+    // }
+    defer search_depth -= 1;
+    if (nodes_searched >= max_nodes) return alpha_;
     if (depth == 0) return quiesce(turn, board, move_buf, alpha_, beta);
     var alpha = alpha_;
 
@@ -174,12 +182,16 @@ pub fn negaMax(board: Board, depth: usize, move_buf: []Move) i32 {
 }
 
 pub fn findMove(board: Board, depth: usize, move_buf: []Move) struct { i32, Move } {
+    search_depth = 0;
+    max_depth_seen = 0;
+    nodes_searched = 0;
+
     var self = board;
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
     const moves = move_buf[0..num_moves];
 
     var best_eval: i32 = -CHECKMATE_EVAL;
-    var best_move: Move = undefined;
+    var best_move: Move = moves[0];
     for (moves) |move| {
         if (self.playMovePossibleSelfCheck(move)) |inv| {
             defer self.undoMove(inv);
