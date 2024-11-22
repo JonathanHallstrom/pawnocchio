@@ -4,12 +4,12 @@ const lib = @import("lib.zig");
 const Board = lib.Board;
 const Move = lib.Move;
 
-var log_writer = std.io.getStdErr().writer();
+pub var log_writer = std.io.getStdErr().writer();
 
 const stdout = std.io.getStdOut();
 
-fn write(comptime fmt: []const u8, args: anytype) void {
-    log_writer.print("sent: " ++ fmt, args) catch unreachable;
+pub fn write(comptime fmt: []const u8, args: anytype) void {
+    log_writer.print("sent: " ++ fmt, args) catch {};
     stdout.writer().print(fmt, args) catch |e| {
         std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
     };
@@ -18,7 +18,7 @@ fn write(comptime fmt: []const u8, args: anytype) void {
 pub fn main() !void {
     // disgusting ik
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
-    const log_file = std.fs.openFileAbsolute(log_file_path, .{ .mode = .read_write }) catch null;
+    const log_file = std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only }) catch null;
     defer if (log_file) |log| log.close();
 
     if (log_file) |lf| {
@@ -102,17 +102,11 @@ pub fn main() !void {
                 write("Nodes searched: {}\n", .{try board.perftMultiThreaded(move_buf, depth, allocator)});
             }
 
-            if (std.ascii.eqlIgnoreCase(sub_command, "depth") or
-                std.ascii.eqlIgnoreCase(sub_command, "nodes") or
-                std.ascii.eqlIgnoreCase(sub_command, "wtime") or
-                std.ascii.eqlIgnoreCase(sub_command, "movetime"))
-            {
-                const engine = @import("negamax_engine.zig");
+            const engine = @import("engine.zig");
 
-                const eval, const move = engine.findMove(board, 4, move_buf);
-                write("info depth {} score cp {} pv {s}\n", .{ 4, eval, move.pretty().slice() });
-                write("bestmove {s}\n", .{move.pretty().slice()});
-            }
+            const eval, const move = engine.findMove(board, 24, move_buf);
+            write("info depth {} score cp {} pv {s}\n", .{ 2, eval, move.pretty().slice() });
+            write("bestmove {s}\n", .{move.pretty().slice()});
         }
 
         if (std.ascii.eqlIgnoreCase(command, "quit")) {

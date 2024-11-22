@@ -1132,7 +1132,18 @@ pub const Board = struct {
         self.fullmove_clock -= @intFromBool(self.turn == .black);
     }
 
-    pub const TurnMode = enum { auto, flip, white, black };
+    pub const TurnMode = enum {
+        auto,
+        flip,
+        white,
+        black,
+        pub fn from(side: Side) TurnMode {
+            return switch (side) {
+                .black => .black,
+                .white => .white,
+            };
+        }
+    };
 
     // careful with lined up pieces!
     // remember the castling bug
@@ -1829,6 +1840,17 @@ pub const Board = struct {
     pub fn getAllMoves(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
         const unfiltered_count = self.getAllMovesUnchecked(move_buffer, possible_self_check_squares);
         return self.filterMoves(move_buffer[0..unfiltered_count]);
+    }
+
+    pub fn getAllCapturesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
+        var res: usize = 0;
+        res += self.getPawnCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getKnightCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getBishopCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getRookCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getQueenCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
+        res += self.getKingCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
+        return res;
     }
 
     pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) u64 {
