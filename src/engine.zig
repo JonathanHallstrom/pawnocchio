@@ -21,8 +21,21 @@ const PieceValues = [_]i32{
 
 const CHECKMATE_EVAL = 1000_000_000;
 
-fn pawnEval(pawns: BitBoard) i32 {
+fn pawnEval(pawns: BitBoard, king: BitBoard) i32 {
+    // // source? made it tf up
+    // const pawn_values: [64]i32 = .{
+    //     0,  0,  0,  0,  0,  0,  0,  0,
+    //     30, 30, 30, 40, 40, 30, 30, 30,
+    //     15, 20, 25, 30, 30, 25, 20, 15,
+    //     10, 15, 25, 25, 25, 25, 15, 10,
+    //     5,  10, 10, 10, 10, 10, 10, 5,
+    //     5,  10, 10, 10, 10, 10, 10, 5,
+    //     0,  0,  0,  0,  0,  0,  0,  0,
+    //     0,  0,  0,  0,  0,  0,  0,  0,
+    // };
+
     var res = @popCount(pawns.toInt()) * PieceValues[@intFromEnum(PieceType.pawn)];
+    if (true) return res;
 
     const first = BitBoard.fromSquareUnchecked("A3").allRight()
         .getCombination(BitBoard.fromSquareUnchecked("A5"))
@@ -43,22 +56,45 @@ fn pawnEval(pawns: BitBoard) i32 {
         break :blk cent.allForward();
     };
     res += @popCount(central.getOverlap(pawns).toInt()) * 5;
+
+    const in_front_of_king = king.getCombination(king.left(1)).getCombination(king.right(1)).forwardMasked(1).getOverlap(BitBoard.fromSquareUnchecked("A2").allRight());
+    res += @popCount(in_front_of_king.getOverlap(pawns).toInt()) * 10;
+
+    return res;
+}
+
+fn getEdges(dist: comptime_int) BitBoard {
+    var res = BitBoard.initEmpty().complement();
+    res = res.move(dist, dist);
+    res = res.move(-dist, -dist);
+    return res;
+}
+
+fn knightEval(knights: BitBoard) i32 {
+    var res = @popCount(knights.toInt()) * PieceValues[@intFromEnum(PieceType.knight)];
+    if (true) return res;
+
+    // knights on the rim
+    res -= @popCount(knights.getOverlap(getEdges(1)).toInt()) * 50;
+
+    // knights in the middle
+    res += @popCount(knights.getOverlap(getEdges(2)).toInt()) * 20;
+
     return res;
 }
 
 fn eval(comptime turn: lib.Side, board: Board) i32 {
     if (board.gameOver()) |res| return switch (res) {
         .tie => -50,
-        .white => if (turn == .white) CHECKMATE_EVAL else -CHECKMATE_EVAL,
-        .black => if (turn == .black) CHECKMATE_EVAL else -CHECKMATE_EVAL,
+        else => -CHECKMATE_EVAL,
     };
     var res: i32 = 0;
 
-    res += pawnEval(board.white.pawn);
-    res -= pawnEval(board.black.pawn.flipped());
+    res += pawnEval(board.white.pawn, board.white.king);
+    res -= pawnEval(board.black.pawn.flipped(), board.black.king);
 
-    res += @popCount(board.white.knight.toInt()) * PieceValues[@intFromEnum(PieceType.knight)];
-    res -= @popCount(board.black.knight.toInt()) * PieceValues[@intFromEnum(PieceType.knight)];
+    res += knightEval(board.white.knight);
+    res -= knightEval(board.black.knight);
 
     res += @popCount(board.white.bishop.toInt()) * PieceValues[@intFromEnum(PieceType.bishop)];
     res -= @popCount(board.black.bishop.toInt()) * PieceValues[@intFromEnum(PieceType.bishop)];
@@ -77,6 +113,7 @@ fn eval(comptime turn: lib.Side, board: Board) i32 {
 }
 
 fn mvvlvaValue(x: Move) i32 {
+    if (!x.isCapture()) return 0;
     return PieceValues[@intFromEnum(x.captured().?.getType())] - PieceValues[@intFromEnum(x.to().getType())];
 }
 
@@ -84,91 +121,20 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
     return mvvlvaValue(lhs) > mvvlvaValue(rhs);
 }
 
-var search_depth: usize = 0;
-var max_depth_seen: usize = 0;
-var nodes_searched: u64 = 0;
-const max_nodes: u64 = 10 << 20;
-
-fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32, beta: i32) i32 {
-    search_depth += 1;
-    nodes_searched += 1;
-    if (nodes_searched % (1 << 20) == 0) {
-        @import("main.zig").log_writer.print("q nodes {}\n", .{nodes_searched}) catch {};
-    }
-    // if (search_depth > max_depth_seen) {
-    //     max_depth_seen = search_depth;
-    //     @import("main.zig").log_writer.print("q depth {}\n", .{max_depth_seen}) catch {};
-    //     @import("main.zig").log_writer.print("fen {s}\n", .{board.toFen().slice()}) catch {};
-    // }
-    defer search_depth -= 1;
-    const cur_pos_eval = eval(turn, board.*);
-    var alpha = alpha_;
-    if (cur_pos_eval >= beta)
-        return beta;
-    if (cur_pos_eval > alpha)
-        alpha = cur_pos_eval;
-    if (nodes_searched >= max_nodes)
-        return alpha;
-
-    const num_moves = board.getAllCapturesUnchecked(move_buf, board.getSelfCheckSquares());
-    if (num_moves == 0) return eval(turn, board.*);
-    const moves = move_buf[0..num_moves];
-
-    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
-
-    // assert that moves are ordered from highest to lowest value capture
-    for (moves[0 .. num_moves - 1], moves[1..]) |first, second| {
-        std.testing.expect(mvvlvaValue(first) >= mvvlvaValue(second)) catch {
-            @import("main.zig").log_writer.print("incorrectly ordered moves\n", .{}) catch {};
-            @panic("");
-        };
-    }
-
-    const rem_buf = move_buf[num_moves..];
-    var res: i32 = -CHECKMATE_EVAL;
-    for (moves) |move| {
-        assert(move.isCapture());
-        if (board.playMovePossibleSelfCheck(move)) |inv| {
-            defer board.undoMove(inv);
-
-            const cur = -quiesce(
-                turn.flipped(),
-                board,
-                rem_buf,
-                -beta,
-                -alpha,
-            );
-
-            res = @max(res, cur);
-            alpha = @max(alpha, cur);
-            if (cur > beta) break;
-        }
-    }
-    return res;
-}
-
 fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: []Move, alpha_: i32, beta: i32) i32 {
     search_depth += 1;
+    defer search_depth -= 1;
     nodes_searched += 1;
     if (nodes_searched % (1 << 20) == 0) {
-        @import("main.zig").log_writer.print("n nodes {}\n", .{nodes_searched}) catch {};
+        @import("main.zig").log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
     }
-    // if (search_depth > max_depth_seen) {
-    //     max_depth_seen = search_depth;
-    //     @import("main.zig").log_writer.print("n depth {}\n", .{max_depth_seen}) catch {};
-    //     @import("main.zig").log_writer.print("fen {s}\n", .{board.toFen().slice()}) catch {};
-    // }
-    defer search_depth -= 1;
-    if (nodes_searched >= max_nodes) return alpha_;
+
+    var alpha = alpha_;
     if (depth == 0) {
         return eval(turn, board.*);
-        // return quiesce(turn, board, move_buf, alpha_, beta);
     }
-    var alpha = alpha_;
-
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
     if (num_moves == 0) {
-        @import("main.zig").log_writer.print("game over state reached {}\n", .{board.toFen()}) catch {};
         return eval(turn, board.*);
     }
     const moves = move_buf[0..num_moves];
@@ -189,7 +155,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: [
 
             res = @max(res, cur);
             alpha = @max(alpha, cur);
-            if (cur > beta) break;
+            if (cur >= beta) break;
         }
     }
     return res;
@@ -202,30 +168,72 @@ pub fn negaMax(board: Board, depth: usize, move_buf: []Move) i32 {
     };
 }
 
-pub fn findMove(board: Board, depth: usize, move_buf: []Move) struct { i32, Move } {
+var search_depth: usize = 0;
+var max_depth_seen: usize = 0;
+var nodes_searched: u64 = 0;
+var max_nodes: u64 = std.math.maxInt(u64);
+var max_depth: usize = std.math.maxInt(usize);
+var timer: std.time.Timer = undefined;
+var die_time: u64 = std.math.maxInt(u64);
+
+// const TTentry = struct {
+//     zobrist: u64 = 0,
+//     eval: i32 = 0,
+//     depth: u32 = 0,
+// };
+
+// var tt: [1 << 20]TTentry = .{.{}} ** (1 << 20);
+
+pub const MoveInfo = struct {
+    eval: i32,
+    move: Move,
+    depth_evaluated: usize,
+    nodes_evaluated: u64,
+};
+
+pub fn findMove(board: Board, move_buf: []Move, depth: usize, nodes: usize, soft_time: u64, hard_time: u64) MoveInfo {
+    // @memset(std.mem.sliceAsBytes(&tt), 0);
     search_depth = 0;
     max_depth_seen = 0;
     nodes_searched = 0;
+    max_depth = depth;
+    max_nodes = nodes;
 
     var self = board;
     const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
     const moves = move_buf[0..num_moves];
-
     var best_eval: i32 = -CHECKMATE_EVAL;
     var best_move: Move = moves[0];
-    for (moves) |move| {
-        if (self.playMovePossibleSelfCheck(move)) |inv| {
-            defer self.undoMove(inv);
 
-            const cur_eval = -negaMax(self, depth - 1, move_buf[num_moves..]);
-            if (cur_eval > best_eval) {
-                best_eval = cur_eval;
-                best_move = move;
+    var depth_to_try: usize = 1;
+    timer = std.time.Timer.start() catch unreachable;
+    die_time = timer.read() + hard_time;
+
+    var rand = std.Random.DefaultPrng.init(timer.read());
+    rand.random().shuffle(Move, moves);
+    while (timer.read() < soft_time and depth_to_try < depth) : (depth_to_try += 1) {
+        best_eval = -CHECKMATE_EVAL;
+        var new_best_move = best_move;
+        for (moves) |move| {
+            if (self.playMovePossibleSelfCheck(move)) |inv| {
+                defer self.undoMove(inv);
+
+                const cur_eval = -negaMax(self, depth_to_try, move_buf[num_moves..]);
+                if (cur_eval > best_eval) {
+                    best_eval = cur_eval;
+                    new_best_move = move;
+                }
             }
         }
+        if (timer.read() < hard_time) best_move = new_best_move;
     }
 
-    return .{ best_eval, best_move };
+    return MoveInfo{
+        .depth_evaluated = depth_to_try,
+        .eval = best_eval,
+        .move = best_move,
+        .nodes_evaluated = nodes_searched,
+    };
 }
 
 test "starting position even material" {

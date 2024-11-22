@@ -59,7 +59,7 @@ pub fn main() !void {
             std.debug.print("Available moves:\n", .{});
             for (moves) |move| {
                 if (move.from().getType() != move.to().getType()) {
-                    std.debug.print("{s}{s}{c}\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() });
+                    std.debug.print("{s}{s}{c}\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().toLetter() });
                 } else {
                     std.debug.print("{s}{s}\n", .{ move.from().prettyPos(), move.to().prettyPos() });
                 }

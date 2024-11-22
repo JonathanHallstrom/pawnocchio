@@ -102,9 +102,58 @@ pub fn main() !void {
                 write("Nodes searched: {}\n", .{try board.perftMultiThreaded(move_buf, depth, allocator)});
             }
 
+            var max_depth: usize = 5;
+            var max_nodes: u64 = std.math.maxInt(u64);
+
+            // by default assume each player has 1000s
+            // completely arbitrarily chosen value
+            var white_time: u64 = 1000 * std.time.ns_per_s;
+            var black_time: u64 = 1000 * std.time.ns_per_s;
+
+            while (parts.next()) |command_part| {
+                if (std.ascii.eqlIgnoreCase(command_part, "depth")) {
+                    const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    max_depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
+                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                        continue;
+                    };
+                }
+                if (std.ascii.eqlIgnoreCase(command_part, "nodes")) {
+                    const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    max_nodes = std.fmt.parseInt(usize, nodes_to_parse, 10) catch {
+                        try log_writer.print("invalid nodes: '{s}'\n", .{nodes_to_parse});
+                        continue;
+                    };
+                }
+                if (std.ascii.eqlIgnoreCase(command_part, "wtime")) {
+                    const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    white_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        continue;
+                    });
+                }
+                if (std.ascii.eqlIgnoreCase(command_part, "btime")) {
+                    const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    black_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        continue;
+                    });
+                }
+            }
+
+            const my_time = if (board.turn == .white) white_time else black_time;
+
+            // 25ms to quit seems fine
+            const hard_time = my_time * 4 / 5 -| 25 * std.time.ns_per_ms;
+            const soft_time = @min(hard_time, @max(500 * std.time.ns_per_ms, my_time / 30));
+
             const engine = @import("engine.zig");
-            const eval, const move = engine.findMove(board, 4, move_buf);
-            write("info depth {} score cp {} pv {s}\n", .{ 4, eval, move.pretty().slice() });
+            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time);
+            const move = move_info.move;
+            const depth_evaluated = move_info.depth_evaluated;
+            const eval = move_info.eval;
+            const nodes_evaluated = move_info.nodes_evaluated;
+            write("info depth {} score cp {} nodes {} pv {s}\n", .{ depth_evaluated, eval, nodes_evaluated, move.pretty().slice() });
             write("bestmove {s}\n", .{move.pretty().slice()});
         }
 

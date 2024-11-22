@@ -371,7 +371,18 @@ pub const PieceType = enum(u8) {
         return try writer.print("{s}", .{@tagName(self)});
     }
 
-    pub fn letter(self: PieceType) u8 {
+    pub fn fromLetter(letter: u8) PieceType {
+        return switch (letter) {
+            'p' => .pawn,
+            'n' => .knight,
+            'b' => .bishop,
+            'r' => .rook,
+            'q' => .queen,
+            'k' => .king,
+            else => unreachable,
+        };
+    }
+    pub fn toLetter(self: PieceType) u8 {
         return switch (self) {
             .pawn => 'p',
             .knight => 'n',
@@ -408,6 +419,12 @@ const SmallPiece = struct {
         return .{
             ._tp = tp,
             ._loc = @intCast(@ctz(b.toInt())),
+        };
+    }
+    pub fn initLoc(tp: PieceType, loc: u6) SmallPiece {
+        return .{
+            ._tp = tp,
+            ._loc = loc,
         };
     }
 
@@ -450,6 +467,10 @@ const SmallPiece = struct {
 
     pub fn getBoard(self: SmallPiece) BitBoard {
         return BitBoard.init(@as(u64, 1) << @intCast(self._loc));
+    }
+
+    pub fn getLoc(self: SmallPiece) u6 {
+        return @intCast(self._loc);
     }
 
     fn flipPos(pos: u6) u6 {
@@ -534,6 +555,10 @@ const BigPiece = struct {
 
     pub fn getBoard(self: BigPiece) BitBoard {
         return self._board;
+    }
+
+    pub fn getLoc(self: BigPiece) u6 {
+        return @ctz(self._board);
     }
 
     fn flipPos(pos: u6) u6 {
@@ -673,7 +698,7 @@ pub const Move = struct {
         if (self.from().getType() != self.to().getType()) {
             res.appendSliceAssumeCapacity(&self.from().prettyPos());
             res.appendSliceAssumeCapacity(&self.to().prettyPos());
-            res.appendAssumeCapacity(self.to().getType().letter());
+            res.appendAssumeCapacity(self.to().getType().toLetter());
         } else {
             res.appendSliceAssumeCapacity(&self.from().prettyPos());
             res.appendSliceAssumeCapacity(&self.to().prettyPos());
@@ -809,6 +834,7 @@ pub const Board = struct {
 
     halfmove_clock: u8 = 0,
     fullmove_clock: u64 = 1,
+    zobrist: u64 = 0,
 
     const white_king_start = BitBoard.fromSquareUnchecked("E1");
     const black_king_start = BitBoard.fromSquareUnchecked("E8");
@@ -907,8 +933,27 @@ pub const Board = struct {
         if (fullmove == 0)
             return error.InvalidFullMove;
         res.fullmove_clock = fullmove;
+        res.resetZobrist();
 
         return res;
+    }
+
+    fn resetZobrist(self: *Self) void {
+        self.zobrist = 0;
+        for (PieceType.all) |pt| {
+            var iter = self.white.getBoard(pt).iterator();
+            while (iter.next()) |b| {
+                self.zobristPiece(Piece.init(pt, b), .white);
+            }
+            iter = self.white.getBoard(pt).iterator();
+            while (iter.next()) |b| {
+                self.zobristPiece(Piece.init(pt, b), .black);
+            }
+        }
+    }
+
+    fn zobristPiece(self: *Self, piece: Piece, turn: Side) void {
+        self.zobrist ^= @import("zobrist.zig").get(piece, turn);
     }
 
     pub fn toFen(self: Self) std.BoundedArray(u8, 127) {
@@ -920,9 +965,9 @@ pub const Board = struct {
             inline for (0..8) |c| {
                 const r = 7 - ir;
                 const letter_opt: ?u8 = if (self.white.whichType(BitBoard.init(1 << r * 8 + c))) |piece_type|
-                    std.ascii.toUpper(piece_type.letter())
+                    std.ascii.toUpper(piece_type.toLetter())
                 else if (self.black.whichType(BitBoard.init(1 << r * 8 + c))) |piece_type|
-                    std.ascii.toLower(piece_type.letter())
+                    std.ascii.toLower(piece_type.toLetter())
                 else
                     null;
 
@@ -998,10 +1043,10 @@ pub const Board = struct {
             for (0..8) |c| {
                 const square = BitBoard.init(@as(u64, 1) << @intCast(8 * r + c));
                 if (self.white.whichType(square)) |s| {
-                    res[2 * (7 - r) + 1][4 * c + 2] = std.ascii.toUpper(s.letter());
+                    res[2 * (7 - r) + 1][4 * c + 2] = std.ascii.toUpper(s.toLetter());
                 }
                 if (self.black.whichType(square)) |s| {
-                    res[2 * (7 - r) + 1][4 * c + 2] = std.ascii.toLower(s.letter());
+                    res[2 * (7 - r) + 1][4 * c + 2] = std.ascii.toLower(s.toLetter());
                 }
             }
         }
@@ -1020,12 +1065,18 @@ pub const Board = struct {
         const turn = self.turn;
         self.turn = self.turn.flipped();
         const moved_side = if (turn == .white) &self.white else &self.black;
+
+        self.zobristPiece(move.from(), turn);
+        self.zobristPiece(move.to(), turn);
+
         const from_board = moved_side.getBoardPtr(move.from().getType());
         assert(from_board.overlaps(move.from().getBoard()));
         from_board.remove(move.from().getBoard());
+
         const to_board = moved_side.getBoardPtr(move.to().getType());
         assert(!to_board.overlaps(move.to().getBoard()));
         to_board.add(move.to().getBoard());
+
         if (move.from().getType() == .pawn) {
             self.halfmove_clock = 0;
             if (move.isEnPassantTarget()) {
@@ -1068,10 +1119,11 @@ pub const Board = struct {
             }
         }
         if (move.captured()) |cap| {
+            self.zobristPiece(cap, turn.flipped());
             self.halfmove_clock = 0;
             const capture_side = if (turn == .white) &self.black else &self.white;
             const capture_board = capture_side.getBoardPtr(cap.getType());
-            capture_board.* = capture_board.getOverlap(cap.getBoard().complement());
+            capture_board.remove(cap.getBoard());
         }
         return res;
     }
@@ -1103,12 +1155,20 @@ pub const Board = struct {
     pub fn undoMove(self: *Self, inv: MoveInverse) void {
         const move = inv.move;
         const moved_side = if (self.turn == .black) &self.white else &self.black;
+        // the turn it was when the move was played
+        const move_turn = self.turn.flipped();
+
+        self.zobristPiece(move.from(), move_turn);
+        self.zobristPiece(move.to(), move_turn);
+
         const from_board = moved_side.getBoardPtr(move.from().getType());
         assert(!from_board.overlaps(move.from().getBoard()));
         from_board.add(move.from().getBoard());
+
         const to_board = moved_side.getBoardPtr(move.to().getType());
         assert(to_board.overlaps(move.to().getBoard()));
         to_board.remove(move.to().getBoard());
+
         if (move.isEnPassantTarget()) {
             self.en_passant_target = move.getEnPassantTarget();
         } else if (move.isCastlingMove()) {
@@ -1123,9 +1183,10 @@ pub const Board = struct {
         if (move.captured()) |cap| {
             const capture_side = if (self.turn == .black) &self.black else &self.white;
             const capture_board = capture_side.getBoardPtr(cap.getType());
-            capture_board.* = capture_board.getCombination(cap.getBoard());
+            self.zobristPiece(cap, self.turn);
+            capture_board.add(cap.getBoard());
         }
-        self.turn = self.turn.flipped();
+        self.turn = move_turn;
         self.castling_squares = inv.castling;
         self.en_passant_target = inv.en_passant;
         self.halfmove_clock = inv.halfmove;
