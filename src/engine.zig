@@ -35,7 +35,7 @@ fn pawnEval(pawns: BitBoard, king: BitBoard) i32 {
     // };
 
     var res = @popCount(pawns.toInt()) * PieceValues[@intFromEnum(PieceType.pawn)];
-    if (true) return res;
+    // if (true) return res;
 
     const first = BitBoard.fromSquareUnchecked("A3").allRight()
         .getCombination(BitBoard.fromSquareUnchecked("A5"))
@@ -72,7 +72,7 @@ fn getEdges(dist: comptime_int) BitBoard {
 
 fn knightEval(knights: BitBoard) i32 {
     var res = @popCount(knights.toInt()) * PieceValues[@intFromEnum(PieceType.knight)];
-    if (true) return res;
+    // if (true) return res;
 
     // knights on the rim
     res -= @popCount(knights.getOverlap(getEdges(1)).toInt()) * 50;
@@ -83,9 +83,11 @@ fn knightEval(knights: BitBoard) i32 {
     return res;
 }
 
+var past_hashes: [32]u64 = .{0} ** 32;
+
 fn eval(comptime turn: lib.Side, board: Board) i32 {
     if (board.gameOver()) |res| return switch (res) {
-        .tie => -50,
+        .tie => 0,
         else => -CHECKMATE_EVAL,
     };
     var res: i32 = 0;
@@ -107,7 +109,7 @@ fn eval(comptime turn: lib.Side, board: Board) i32 {
 
     res = if (turn == .white) res else -res;
     if (board.isInCheck(Board.TurnMode.from(turn))) {
-        res -= 50;
+        res -= 25;
     }
     return res;
 }
@@ -122,11 +124,35 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
 }
 
 fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: []Move, alpha_: i32, beta: i32) i32 {
+    if (shutdown)
+        return 0;
     search_depth += 1;
     defer search_depth -= 1;
     nodes_searched += 1;
+
+    past_hashes[(board.fullmove_clock + @intFromBool(turn == .white)) % past_hashes.len] = board.zobrist;
+    var num_prev: u8 = 0;
+    for (past_hashes) |past| {
+        num_prev += @intFromBool(past == board.zobrist);
+    }
+    // tie
+    if (num_prev >= 3 or
+        board.isFiftyMoveTie() or
+        board.isTieByInsufficientMaterial())
+        return -50;
+
+    // const tt_entry = &tt[board.zobrist % tt.len];
+    // if (tt_entry.zobrist == board.zobrist and tt_entry.depth >= search_depth) {
+    //     return if (turn == .white) tt_entry.eval else -tt_entry.eval;
+    // }
+
     if (nodes_searched % (1 << 20) == 0) {
         @import("main.zig").log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
+    }
+
+    if (timer.read() >= die_time) {
+        shutdown = true;
+        return 0;
     }
 
     var alpha = alpha_;
@@ -139,7 +165,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: [
     }
     const moves = move_buf[0..num_moves];
     const rem_buf = move_buf[num_moves..];
-    var res: i32 = -CHECKMATE_EVAL;
+    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
@@ -152,13 +178,14 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: [
                 -beta,
                 -alpha,
             );
+            if (shutdown)
+                return 0;
 
-            res = @max(res, cur);
             alpha = @max(alpha, cur);
             if (cur >= beta) break;
         }
     }
-    return res;
+    return alpha;
 }
 
 pub fn negaMax(board: Board, depth: usize, move_buf: []Move) i32 {
@@ -175,14 +202,15 @@ var max_nodes: u64 = std.math.maxInt(u64);
 var max_depth: usize = std.math.maxInt(usize);
 var timer: std.time.Timer = undefined;
 var die_time: u64 = std.math.maxInt(u64);
+var shutdown = false;
 
-// const TTentry = struct {
-//     zobrist: u64 = 0,
-//     eval: i32 = 0,
-//     depth: u32 = 0,
-// };
+const TTentry = struct {
+    zobrist: u64 = 0,
+    eval: i32 = 0,
+    depth: u32 = 0,
+};
 
-// var tt: [1 << 20]TTentry = .{.{}} ** (1 << 20);
+var tt: [1 << 20]TTentry = .{.{}} ** (1 << 20);
 
 pub const MoveInfo = struct {
     eval: i32,
@@ -191,11 +219,22 @@ pub const MoveInfo = struct {
     nodes_evaluated: u64,
 };
 
-pub fn findMove(board: Board, move_buf: []Move, depth: usize, nodes: usize, soft_time: u64, hard_time: u64) MoveInfo {
-    // @memset(std.mem.sliceAsBytes(&tt), 0);
+fn resetSoft() void {
     search_depth = 0;
     max_depth_seen = 0;
     nodes_searched = 0;
+    shutdown = false;
+}
+
+pub fn reset() void {
+    resetSoft();
+    @memset(&past_hashes, 0);
+    @memset(&tt, .{});
+}
+
+var rand = std.Random.DefaultPrng.init(0);
+pub fn findMove(board: Board, move_buf: []Move, depth: usize, nodes: usize, soft_time: u64, hard_time: u64) MoveInfo {
+    resetSoft();
     max_depth = depth;
     max_nodes = nodes;
 
@@ -209,7 +248,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: usize, nodes: usize, soft
     timer = std.time.Timer.start() catch unreachable;
     die_time = timer.read() + hard_time;
 
-    var rand = std.Random.DefaultPrng.init(timer.read());
+    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
     rand.random().shuffle(Move, moves);
     while (timer.read() < soft_time and depth_to_try < depth) : (depth_to_try += 1) {
         best_eval = -CHECKMATE_EVAL;
@@ -223,9 +262,11 @@ pub fn findMove(board: Board, move_buf: []Move, depth: usize, nodes: usize, soft
                     best_eval = cur_eval;
                     new_best_move = move;
                 }
+                if (shutdown)
+                    break;
             }
         }
-        if (timer.read() < hard_time) best_move = new_best_move;
+        if (!shutdown) best_move = new_best_move;
     }
 
     return MoveInfo{

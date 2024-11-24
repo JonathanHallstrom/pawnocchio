@@ -1,5 +1,6 @@
 const std = @import("std");
 const lib = @import("lib.zig");
+const engine = @import("engine.zig");
 
 const Board = lib.Board;
 const Move = lib.Move;
@@ -22,7 +23,8 @@ pub fn main() !void {
     defer if (log_file) |log| log.close();
 
     if (log_file) |lf| {
-        log_writer = lf.writer();
+        _ = &lf;
+        // log_writer = lf.writer();
     }
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -39,7 +41,8 @@ pub fn main() !void {
     const move_buf = try allocator.alloc(Move, 1 << 20);
     defer allocator.free(move_buf);
 
-    var line_buf: [1024]u8 = undefined;
+    var line_buf: [1 << 20]u8 = undefined;
+    var my_turn: ?lib.Side = null;
     while (reader.readUntilDelimiter(&line_buf, '\n') catch null) |line_raw| {
         const line = std.mem.trim(u8, line_raw, &std.ascii.whitespace);
         var parts = std.mem.tokenizeScalar(u8, line, ' ');
@@ -57,28 +60,37 @@ pub fn main() !void {
             try stdout.writeAll("uciok\n");
         }
 
-        if (std.ascii.eqlIgnoreCase(command, "position") and std.mem.eql(u8, sub_command, "fen")) {
+        if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
+            my_turn = null;
+            engine.reset();
+            board = Board.init();
+        }
+
+        if (std.ascii.eqlIgnoreCase(command, "position")) {
             const rest = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
-            var fen_parts = std.mem.tokenizeSequence(u8, rest, "moves");
 
-            const fen_to_parse = std.mem.trim(u8, fen_parts.next() orelse {
-                try log_writer.print("no fen: '{s}'\n", .{rest});
-                continue;
-            }, &std.ascii.whitespace);
+            var pos_iter = std.mem.tokenizeSequence(u8, rest, " moves ");
 
-            board = Board.parseFen(fen_to_parse) catch {
-                try log_writer.print("invalid fen: '{s}'\n", .{fen_to_parse});
-                continue;
-            };
+            if (std.ascii.eqlIgnoreCase(sub_command, "fen")) {
+                const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {
+                    try log_writer.print("no fen: '{s}'\n", .{rest});
+                    continue;
+                }, &std.ascii.whitespace);
 
-            if (fen_parts.next()) |played_moves_string| {
-                var move_iter = std.mem.tokenizeScalar(u8, played_moves_string, ' ');
-                while (move_iter.next()) |played_move| {
-                    _ = board.playMoveFromSquare(played_move, move_buf) catch {
-                        try log_writer.print("invalid move: '{s}'\n", .{played_move});
-                        continue;
-                    };
-                }
+                board = Board.parseFen(fen_to_parse) catch {
+                    try log_writer.print("invalid fen: '{s}'\n", .{fen_to_parse});
+                    continue;
+                };
+            } else if (std.ascii.eqlIgnoreCase(sub_command, "startpos")) {
+                board = Board.init();
+            }
+            var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
+            while (move_iter.next()) |played_move| {
+                if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
+                _ = board.playMoveFromSquare(played_move, move_buf) catch {
+                    try log_writer.print("invalid move: '{s}'\n", .{played_move});
+                    continue;
+                };
             }
         }
 
@@ -102,7 +114,10 @@ pub fn main() !void {
                 write("Nodes searched: {}\n", .{try board.perftMultiThreaded(move_buf, depth, allocator)});
             }
 
-            var max_depth: usize = 5;
+            if (my_turn == null) my_turn = board.turn;
+            if (!std.meta.eql(my_turn, board.turn)) continue;
+
+            var max_depth: usize = 10;
             var max_nodes: u64 = std.math.maxInt(u64);
 
             // by default assume each player has 1000s
@@ -141,14 +156,13 @@ pub fn main() !void {
                 }
             }
 
-            const my_time = if (board.turn == .white) white_time else black_time;
+            // const my_time = if (board.turn == .white) white_time else black_time;
 
-            // 25ms to quit seems fine
-            const hard_time = my_time * 4 / 5 -| 25 * std.time.ns_per_ms;
-            const soft_time = @min(hard_time, @max(500 * std.time.ns_per_ms, my_time / 30));
+            // 250ms to quit seems fine
 
-            const engine = @import("engine.zig");
-            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time);
+            const hard_time = @min(white_time, black_time) / 30;
+
+            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, hard_time, hard_time);
             const move = move_info.move;
             const depth_evaluated = move_info.depth_evaluated;
             const eval = move_info.eval;

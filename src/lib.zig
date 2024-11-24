@@ -1012,7 +1012,32 @@ pub const Board = struct {
         return res;
     }
 
+    pub fn isTieByInsufficientMaterial(self: Self) bool {
+        _ = self; // autofix
+        return false;
+        // if (self.white.pawn
+        //     .getCombination(self.black.pawn)
+        //     .getCombination(self.white.rook)
+        //     .getCombination(self.black.rook)
+        //     .getCombination(self.white.queen)
+        //     .getCombination(self.black.queen)
+        //     .isNonEmpty())
+        //     return false;
+        // return @popCount(self.white.knight
+        //     .getCombination(self.black.knight)
+        //     .getCombination(self.white.bishop)
+        //     .getCombination(self.black.bishop)
+        //     .toInt()) < 2;
+    }
+
+    pub fn isFiftyMoveTie(self: Self) bool {
+        return self.halfmove_clock >= 50;
+    }
+
     pub fn gameOver(self: Self) ?GameResult {
+        if (self.isFiftyMoveTie()) return .tie;
+        if (self.isTieByInsufficientMaterial()) return .tie;
+
         var tmp_buf: [400]Move = undefined;
         if (self.getAllMoves(&tmp_buf, self.getSelfCheckSquares()) == 0) {
             if (self.isInCheck(.auto)) {
