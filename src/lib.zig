@@ -72,6 +72,14 @@ pub const BitBoard = enum(u64) {
         return .{ 'a' + col, '1' + row };
     }
 
+    pub fn fromLoc(loc: u6) BitBoard {
+        return init(@as(u64, 1) << loc);
+    }
+
+    pub fn toLoc(self: Self) u6 {
+        return @intCast(@ctz(self.toInt()));
+    }
+
     pub inline fn initEmpty() BitBoard {
         return init(0);
     }
@@ -418,7 +426,7 @@ const SmallPiece = struct {
         assert(@popCount(b.toInt()) == 1);
         return .{
             ._tp = tp,
-            ._loc = @intCast(@ctz(b.toInt())),
+            ._loc = @intCast(b.toLoc()),
         };
     }
     pub fn initLoc(tp: PieceType, loc: u6) SmallPiece {
@@ -455,7 +463,7 @@ const SmallPiece = struct {
     pub fn format(self: SmallPiece, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
-        const pos = @ctz(self.getBoard().toInt());
+        const pos = self.getBoard().toLoc();
         const row = @as(u8, pos / 8) + '1';
         const col = @as(u8, pos % 8) + 'A';
         return try writer.print("({s} on {c}{c})", .{ @tagName(self.getType()), col, row });
@@ -493,7 +501,7 @@ const SmallPiece = struct {
     }
 
     pub fn prettyPos(self: SmallPiece) [2]u8 {
-        const pos = @ctz(self.getBoard().toInt());
+        const pos = self.getBoard().toLoc();
         const row = @as(u8, pos / 8) + '1';
         const col = @as(u8, pos % 8) + 'a';
         return .{ col, row };
@@ -543,7 +551,7 @@ const BigPiece = struct {
     pub fn format(self: BigPiece, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
-        const pos = @ctz(self.getBoard().toInt());
+        const pos = self.getBoard().toLoc();
         const row = @as(u8, pos / 8) + '1';
         const col = @as(u8, pos % 8) + 'A';
         return try writer.print("({s} on {c}{c})", .{ @tagName(self.getType()), col, row });
@@ -710,8 +718,8 @@ pub const Move = struct {
 pub const MoveInverse = struct {
     move: Move,
     halfmove: u8,
-    castling: BitBoard,
-    en_passant: BitBoard,
+    castling: u4,
+    en_passant: ?u6,
 };
 
 pub const GameResult = enum {
@@ -829,8 +837,8 @@ pub const Board = struct {
 
     turn: Side = .white,
     // if u can castle queenside as white `C1` will be set
-    castling_squares: BitBoard = BitBoard.initEmpty(),
-    en_passant_target: BitBoard = BitBoard.initEmpty(),
+    castling_squares: u4 = 0,
+    en_passant_target: ?u6 = null,
 
     halfmove_clock: u8 = 0,
     fullmove_clock: u64 = 1,
@@ -838,16 +846,10 @@ pub const Board = struct {
 
     const white_king_start = BitBoard.fromSquareUnchecked("E1");
     const black_king_start = BitBoard.fromSquareUnchecked("E8");
-    const queenside_white_castle_destination = BitBoard.fromSquareUnchecked("C1");
-    const kingside_white_castle_destination = BitBoard.fromSquareUnchecked("G1");
-    const queenside_black_castle_destination = BitBoard.fromSquareUnchecked("C8");
-    const kingside_black_castle_destination = BitBoard.fromSquareUnchecked("G8");
-
-    comptime {
-        assert(queenside_white_castle_destination == queenside_black_castle_destination.flipped());
-        assert(kingside_white_castle_destination == kingside_black_castle_destination.flipped());
-        assert(white_king_start == black_king_start.flipped());
-    }
+    const queenside_white_castle: u4 = 1;
+    const kingside_white_castle: u4 = 2;
+    const queenside_black_castle: u4 = 4;
+    const kingside_black_castle: u4 = 8;
 
     const Self = @This();
 
@@ -902,19 +904,19 @@ pub const Board = struct {
         if (castling_string.len > 4) return error.CastlingStringTooBig;
         if (!std.mem.eql(u8, "-", castling_string)) {
             for (castling_string) |castle_ch| {
-                res.castling_squares.add(switch (castle_ch) {
-                    'Q' => queenside_white_castle_destination,
-                    'q' => queenside_black_castle_destination,
-                    'K' => kingside_white_castle_destination,
-                    'k' => kingside_black_castle_destination,
+                res.castling_squares |= switch (castle_ch) {
+                    'Q' => queenside_white_castle,
+                    'q' => queenside_black_castle,
+                    'K' => kingside_white_castle,
+                    'k' => kingside_black_castle,
                     else => return error.InvalidCharacter,
-                });
+                };
             }
         }
 
         const en_passant_target_square_string = iter.next() orelse return error.MissingEnPassantTarget;
         if (std.mem.eql(u8, en_passant_target_square_string, "-")) {
-            res.en_passant_target = BitBoard.initEmpty();
+            res.en_passant_target = null;
         } else {
             const correct_row: u8 = if (res.turn == .white) '6' else '3';
             if (en_passant_target_square_string.len != 2 or
@@ -923,7 +925,7 @@ pub const Board = struct {
             const board = try BitBoard.fromSquare(en_passant_target_square_string);
             const should_overlap = if (res.turn == .white) res.black.pawn.forwardMasked(1) else res.white.pawn.backwardMasked(1);
             if (!board.overlaps(should_overlap)) return error.EnPassantTargetDoesntExist;
-            res.en_passant_target = board;
+            res.en_passant_target = board.toLoc();
         }
 
         const halfmove_clock_string = iter.next() orelse "0";
@@ -991,19 +993,19 @@ pub const Board = struct {
         res.appendAssumeCapacity(' ');
         res.appendAssumeCapacity(std.ascii.toLower(@tagName(self.turn)[0]));
         res.appendAssumeCapacity(' ');
-        if (self.castling_squares.isEmpty()) {
+        if (self.castling_squares == 0) {
             res.appendAssumeCapacity('-');
         } else {
-            if (self.castling_squares.overlaps(kingside_white_castle_destination)) res.appendAssumeCapacity('K');
-            if (self.castling_squares.overlaps(queenside_white_castle_destination)) res.appendAssumeCapacity('Q');
-            if (self.castling_squares.overlaps(kingside_black_castle_destination)) res.appendAssumeCapacity('k');
-            if (self.castling_squares.overlaps(queenside_black_castle_destination)) res.appendAssumeCapacity('q');
+            if (self.castling_squares & kingside_white_castle != 0) res.appendAssumeCapacity('K');
+            if (self.castling_squares & queenside_white_castle != 0) res.appendAssumeCapacity('Q');
+            if (self.castling_squares & kingside_black_castle != 0) res.appendAssumeCapacity('k');
+            if (self.castling_squares & queenside_black_castle != 0) res.appendAssumeCapacity('q');
         }
         res.appendAssumeCapacity(' ');
-        if (self.en_passant_target.isEmpty()) {
+        if (self.en_passant_target == null) {
             res.appendAssumeCapacity('-');
         } else {
-            res.appendSliceAssumeCapacity(&self.en_passant_target.toSquare());
+            res.appendSliceAssumeCapacity(&BitBoard.fromLoc(self.en_passant_target.?).toSquare());
         }
         res.appendAssumeCapacity(' ');
         var clock_buf: [32]u8 = undefined;
@@ -1013,21 +1015,19 @@ pub const Board = struct {
     }
 
     pub fn isTieByInsufficientMaterial(self: Self) bool {
-        _ = self; // autofix
-        return false;
-        // if (self.white.pawn
-        //     .getCombination(self.black.pawn)
-        //     .getCombination(self.white.rook)
-        //     .getCombination(self.black.rook)
-        //     .getCombination(self.white.queen)
-        //     .getCombination(self.black.queen)
-        //     .isNonEmpty())
-        //     return false;
-        // return @popCount(self.white.knight
-        //     .getCombination(self.black.knight)
-        //     .getCombination(self.white.bishop)
-        //     .getCombination(self.black.bishop)
-        //     .toInt()) < 2;
+        if (self.white.pawn
+            .getCombination(self.black.pawn)
+            .getCombination(self.white.rook)
+            .getCombination(self.black.rook)
+            .getCombination(self.white.queen)
+            .getCombination(self.black.queen)
+            .isNonEmpty())
+            return false;
+        return @popCount(self.white.knight
+            .getCombination(self.black.knight)
+            .getCombination(self.white.bishop)
+            .getCombination(self.black.bishop)
+            .toInt()) < 2;
     }
 
     pub fn isFiftyMoveTie(self: Self) bool {
@@ -1047,18 +1047,6 @@ pub const Board = struct {
             }
         }
         return null;
-    }
-
-    pub fn flipped(self: Self) Board {
-        return Board{
-            .white = self.white.flipped(),
-            .black = self.black.flipped(),
-            .en_passant_target = self.en_passant_target.flipped(),
-            .castling_squares = self.castling_squares.flipped(),
-            .turn = self.turn,
-            .halfmove_clock = self.halfmove_clock,
-            .fullmove_clock = self.fullmove_clock,
-        };
     }
 
     pub fn toString(self: Self) [17][33]u8 {
@@ -1085,6 +1073,7 @@ pub const Board = struct {
             .castling = self.castling_squares,
             .en_passant = self.en_passant_target,
         };
+        self.zobrist ^= @import("zobrist.zig").getTurn();
         self.halfmove_clock += 1;
         self.fullmove_clock += @intFromBool(self.turn == .black);
         const turn = self.turn;
@@ -1105,31 +1094,31 @@ pub const Board = struct {
         if (move.from().getType() == .pawn) {
             self.halfmove_clock = 0;
             if (move.isEnPassantTarget()) {
-                self.en_passant_target = move.getEnPassantTarget();
+                self.en_passant_target = move.getEnPassantTarget().toLoc();
             } else {
-                self.en_passant_target = BitBoard.initEmpty();
+                self.en_passant_target = null;
             }
         } else {
-            self.en_passant_target = BitBoard.initEmpty();
+            self.en_passant_target = null;
             if (move.from().getType() == .king) {
                 if (turn == .white) {
-                    self.castling_squares.remove(BitBoard.fromSquareUnchecked("A1").allRight());
+                    self.castling_squares &= ~@as(u4, kingside_white_castle | queenside_white_castle);
                 }
                 if (turn == .black) {
-                    self.castling_squares.remove(BitBoard.fromSquareUnchecked("A8").allRight());
+                    self.castling_squares &= ~@as(u4, kingside_black_castle | queenside_black_castle);
                 }
             } else if (move.from().getType() == .rook) {
                 if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("A1")) {
-                    self.castling_squares.remove(queenside_white_castle_destination);
+                    self.castling_squares &= ~@as(u4, queenside_white_castle);
                 }
                 if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("H1")) {
-                    self.castling_squares.remove(kingside_white_castle_destination);
+                    self.castling_squares &= ~@as(u4, kingside_white_castle);
                 }
                 if (turn == .black and move.from().getBoard() == BitBoard.fromSquareUnchecked("A8")) {
-                    self.castling_squares.remove(queenside_black_castle_destination);
+                    self.castling_squares &= ~@as(u4, queenside_black_castle);
                 }
                 if (turn == .black and move.from().getBoard() == BitBoard.fromSquareUnchecked("H8")) {
-                    self.castling_squares.remove(kingside_black_castle_destination);
+                    self.castling_squares &= ~@as(u4, kingside_black_castle);
                 }
             }
         }
@@ -1181,6 +1170,7 @@ pub const Board = struct {
         const move = inv.move;
         const moved_side = if (self.turn == .black) &self.white else &self.black;
         // the turn it was when the move was played
+        self.zobrist ^= @import("zobrist.zig").getTurn();
         const move_turn = self.turn.flipped();
 
         self.zobristPiece(move.from(), move_turn);
@@ -1195,7 +1185,7 @@ pub const Board = struct {
         to_board.remove(move.to().getBoard());
 
         if (move.isEnPassantTarget()) {
-            self.en_passant_target = move.getEnPassantTarget();
+            self.en_passant_target = move.getEnPassantTarget().toLoc();
         } else if (move.isCastlingMove()) {
             if (move.from().getBoard().leftUnchecked(2) == move.to().getBoard()) {
                 moved_side.rook.add(move.to().getBoard().leftUnchecked(2));
@@ -1386,7 +1376,8 @@ pub const Board = struct {
         const opponent_side = if (should_flip) self.white.flipped() else self.black;
 
         var move_count: usize = 0;
-        const en_passant_target = if (should_flip) self.en_passant_target.flipped() else self.en_passant_target;
+        const en_passant_board = BitBoard.init(if (self.en_passant_target) |tg| @as(u64, 1) << tg else 0);
+        const en_passant_target = if (should_flip) en_passant_board.flipped() else en_passant_board;
         const en_passant_pawn = en_passant_target.backward(1);
         for ([_]BitBoard{ en_passant_pawn.left(1), en_passant_pawn.right(1) }) |capturing_pawn| {
             if (pawns.overlaps(capturing_pawn)) {
@@ -1694,7 +1685,8 @@ pub const Board = struct {
             const right_side_king = king.rightUnchecked(1).allRight();
 
             // queenside
-            if (king.leftUnchecked(2).overlaps(self.castling_squares) and
+            if ((is_black_turn and (self.castling_squares & queenside_black_castle != 0) or
+                !is_black_turn and (self.castling_squares & queenside_white_castle != 0)) and
                 left_side_king.getOverlap(all_pieces) == left_side_king.getOverlap(left_rook) and
                 !left_side_king.getOverlap(left_rook).isEmpty() and
                 !self.areSquaresAttacked(king.getCombination(king.leftUnchecked(1)).getCombination(king.leftUnchecked(2)), .auto))
@@ -1708,9 +1700,10 @@ pub const Board = struct {
             }
 
             // kingside
-            if (king.rightUnchecked(2).overlaps(self.castling_squares) and
+            if ((is_black_turn and (self.castling_squares & kingside_black_castle != 0) or
+                !is_black_turn and (self.castling_squares & kingside_white_castle != 0)) and
                 right_side_king.getOverlap(all_pieces) == right_side_king.getOverlap(right_rook) and
-                !right_side_king.getOverlap(right_rook).isEmpty() and
+                right_side_king.overlaps(right_rook) and
                 !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto))
             {
                 move_buffer[move_count] = Move.initQuiet(
@@ -1721,7 +1714,6 @@ pub const Board = struct {
                 move_count += 1;
             }
         }
-
         return move_count;
     }
 
@@ -1815,7 +1807,7 @@ pub const Board = struct {
             const right_side_king = king.rightUnchecked(1).allRight();
 
             // queenside
-            if (king.leftUnchecked(2).overlaps(self.castling_squares) and
+            if (self.castling_squares & queenside_white_castle << 2 * @as(u2, @intFromBool(is_black_turn)) != 0 and
                 left_side_king.getOverlap(all_pieces) == left_side_king.getOverlap(left_rook) and
                 !left_side_king.getOverlap(left_rook).isEmpty() and
                 !self.areSquaresAttacked(king.getCombination(king.leftUnchecked(1)).getCombination(king.leftUnchecked(2)), .auto))
@@ -1829,7 +1821,7 @@ pub const Board = struct {
             }
 
             // kingside
-            if (king.rightUnchecked(2).overlaps(self.castling_squares) and
+            if (self.castling_squares & kingside_white_castle << 2 * @as(u2, @intFromBool(is_black_turn)) != 0 and
                 right_side_king.getOverlap(all_pieces) == right_side_king.getOverlap(right_rook) and
                 right_side_king.overlaps(right_rook) and
                 !self.areSquaresAttacked(king.getCombination(king.rightUnchecked(1)), .auto))
@@ -2279,6 +2271,22 @@ test "castling blocked by bishop" {
     try testCase("5k2/8/8/3b4/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 10, 0, 1);
 }
 
+test "fools mate" {
+    var board = Board.init();
+    var buf: [1024]Move = undefined;
+    _ = try board.playMoveFromSquare("f2f3", &buf);
+    _ = try board.playMoveFromSquare("e7e6", &buf);
+    _ = try board.playMoveFromSquare("g2g4", &buf);
+    _ = try board.playMoveFromSquare("d8h4", &buf);
+
+    try testing.expectEqual(.black, board.gameOver());
+}
+
+test "repetition" {}
+
 comptime {
+    // @compileLog(@sizeOf(Board));
+    // @compileLog(@sizeOf(Board) + 50 * @sizeOf(usize) + 1);
+
     std.testing.refAllDeclsRecursive(@This());
 }

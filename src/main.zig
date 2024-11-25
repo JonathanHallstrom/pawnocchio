@@ -115,9 +115,9 @@ pub fn main() !void {
             }
 
             if (my_turn == null) my_turn = board.turn;
-            if (!std.meta.eql(my_turn, board.turn)) continue;
+            // if (!std.meta.eql(my_turn, board.turn)) continue;
 
-            var max_depth: usize = 10;
+            var max_depth: usize = 1000;
             var max_nodes: u64 = std.math.maxInt(u64);
 
             // by default assume each player has 1000s
@@ -160,7 +160,7 @@ pub fn main() !void {
 
             // 250ms to quit seems fine
 
-            const hard_time = @min(white_time, black_time) / 30;
+            const hard_time = @min(white_time, black_time) / 60;
 
             const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, hard_time, hard_time);
             const move = move_info.move;

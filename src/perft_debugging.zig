@@ -49,6 +49,7 @@ fn findPerftErrorPos(fen: []const u8, move_buf: []Move, depth: usize, allocator:
     var board = try Board.parseFen(fen);
 
     const my_perft = try board.perftMultiThreaded(move_buf, depth, allocator);
+    // const my_perft = board.perftSingleThreaded(move_buf, depth);
     const correct_perft = try stockfishPerft(fen, depth, allocator);
     if (my_perft == correct_perft) return;
 
@@ -68,19 +69,27 @@ fn findPerftErrorPos(fen: []const u8, move_buf: []Move, depth: usize, allocator:
             }
         }
     }
+    std.debug.print("depth: {}\n", .{depth});
     std.debug.print("{s}\n", .{fen});
     std.debug.print("found: {}\n", .{my_perft});
     std.debug.print("correct: {}\n", .{correct_perft});
 
-    if (depth == 1) {
-        for (moves) |move| {
-            if (board.playMovePossibleSelfCheck(move)) |inv| {
-                defer board.undoMove(inv);
-                if (move.from().getType() != move.to().getType()) {
-                    std.debug.print("{s}{s}{c}: 1\n", .{ move.from().prettyPos(), move.to().prettyPos(), move.to().getType().letter() });
-                } else {
-                    std.debug.print("{s}{s}: 1\n", .{ move.from().prettyPos(), move.to().prettyPos() });
-                }
+    for (moves) |move| {
+        if (board.playMovePossibleSelfCheck(move)) |inv| {
+            defer board.undoMove(inv);
+            if (move.from().getType() != move.to().getType()) {
+                std.debug.print("{s}{s}{c}: {}\n", .{
+                    move.from().prettyPos(),
+                    move.to().prettyPos(),
+                    move.to().getType().toLetter(),
+                    try board.perftMultiThreaded(move_buf[num_moves..], depth - 1, allocator),
+                });
+            } else {
+                std.debug.print("{s}{s}: {}\n", .{
+                    move.from().prettyPos(),
+                    move.to().prettyPos(),
+                    try board.perftMultiThreaded(move_buf[num_moves..], depth - 1, allocator),
+                });
             }
         }
     }
@@ -105,7 +114,7 @@ pub fn main() !void {
 
     const TestInput = struct {
         fen_string: []const u8,
-        depth: u8 = 1,
+        depth: u8 = 4,
     };
 
     var test_inputs: []const TestInput = &.{.{ .fen_string = fen }};
