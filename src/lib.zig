@@ -940,22 +940,28 @@ pub const Board = struct {
         return res;
     }
 
-    fn resetZobrist(self: *Self) void {
+    pub fn resetZobrist(self: *Self) void {
         self.zobrist = 0;
         for (PieceType.all) |pt| {
             var iter = self.white.getBoard(pt).iterator();
             while (iter.next()) |b| {
                 self.zobristPiece(Piece.init(pt, b), .white);
             }
-            iter = self.white.getBoard(pt).iterator();
+            iter = self.black.getBoard(pt).iterator();
             while (iter.next()) |b| {
                 self.zobristPiece(Piece.init(pt, b), .black);
             }
         }
+        if (self.turn == .black)
+            self.zobristTurn();
     }
 
     fn zobristPiece(self: *Self, piece: Piece, turn: Side) void {
         self.zobrist ^= @import("zobrist.zig").get(piece, turn);
+    }
+
+    fn zobristTurn(self: *Self) void {
+        self.zobrist ^= @import("zobrist.zig").getTurn();
     }
 
     pub fn toFen(self: Self) std.BoundedArray(u8, 127) {
@@ -1073,7 +1079,7 @@ pub const Board = struct {
             .castling = self.castling_squares,
             .en_passant = self.en_passant_target,
         };
-        self.zobrist ^= @import("zobrist.zig").getTurn();
+        self.zobristTurn();
         self.halfmove_clock += 1;
         self.fullmove_clock += @intFromBool(self.turn == .black);
         const turn = self.turn;
@@ -1127,9 +1133,13 @@ pub const Board = struct {
             if (move.from().getBoard().leftUnchecked(2) == move.to().getBoard()) {
                 moved_side.rook.remove(move.to().getBoard().leftUnchecked(2));
                 moved_side.rook.add(move.to().getBoard().rightUnchecked(1));
+                self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().leftUnchecked(2)), turn);
+                self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().rightUnchecked(1)), turn);
             } else {
                 moved_side.rook.remove(move.to().getBoard().rightUnchecked(1));
                 moved_side.rook.add(move.to().getBoard().leftUnchecked(1));
+                self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().rightUnchecked(1)), turn);
+                self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().leftUnchecked(1)), turn);
             }
         }
         if (move.captured()) |cap| {
@@ -1169,12 +1179,11 @@ pub const Board = struct {
     pub fn undoMove(self: *Self, inv: MoveInverse) void {
         const move = inv.move;
         const moved_side = if (self.turn == .black) &self.white else &self.black;
-        // the turn it was when the move was played
-        self.zobrist ^= @import("zobrist.zig").getTurn();
-        const move_turn = self.turn.flipped();
+        self.zobristTurn();
+        const turn = self.turn.flipped();
 
-        self.zobristPiece(move.from(), move_turn);
-        self.zobristPiece(move.to(), move_turn);
+        self.zobristPiece(move.from(), turn);
+        self.zobristPiece(move.to(), turn);
 
         const from_board = moved_side.getBoardPtr(move.from().getType());
         assert(!from_board.overlaps(move.from().getBoard()));
@@ -1190,18 +1199,22 @@ pub const Board = struct {
             if (move.from().getBoard().leftUnchecked(2) == move.to().getBoard()) {
                 moved_side.rook.add(move.to().getBoard().leftUnchecked(2));
                 moved_side.rook.remove(move.to().getBoard().rightUnchecked(1));
+                self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().leftUnchecked(2)), turn);
+                self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().rightUnchecked(1)), turn);
             } else {
                 moved_side.rook.add(move.to().getBoard().rightUnchecked(1));
                 moved_side.rook.remove(move.to().getBoard().leftUnchecked(1));
+                self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().rightUnchecked(1)), turn);
+                self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().leftUnchecked(1)), turn);
             }
         }
         if (move.captured()) |cap| {
             const capture_side = if (self.turn == .black) &self.black else &self.white;
             const capture_board = capture_side.getBoardPtr(cap.getType());
-            self.zobristPiece(cap, self.turn);
+            self.zobristPiece(cap, turn.flipped());
             capture_board.add(cap.getBoard());
         }
-        self.turn = move_turn;
+        self.turn = turn;
         self.castling_squares = inv.castling;
         self.en_passant_target = inv.en_passant;
         self.halfmove_clock = inv.halfmove;
@@ -2039,6 +2052,7 @@ fn expectNumCastling(moves: []Move, count: usize) !void {
 }
 
 fn expectMovesInvertible(board: Board, moves: []Move) !void {
+    const hash_before = board.zobrist;
     for (moves) |move| {
         var tmp = board;
         const inv = tmp.playMove(move);
@@ -2050,6 +2064,9 @@ fn expectMovesInvertible(board: Board, moves: []Move) !void {
         try std.testing.expectEqual(board.white, tmp.white);
         try std.testing.expectEqual(board.black, tmp.black);
         try std.testing.expectEqualDeep(board, tmp);
+        try testing.expectEqual(tmp.zobrist, hash_before);
+        tmp.resetZobrist();
+        try testing.expectEqual(tmp.zobrist, hash_before);
     }
 }
 
@@ -2079,9 +2096,14 @@ fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_capt
     try expectCapturesImplyAttacked(board, moves);
 }
 
-test "failing" {
-    try testCase("5k2/8/8/b7/8/8/7P/4K2R w K - 0 9", Board.getAllMoves, 4, 0, 0);
+fn expectZobristResetInvertible(board: Board) !void {
+    var tmp = board;
+    const before = board.zobrist;
+    tmp.resetZobrist();
+    try testing.expectEqual(before, tmp.zobrist);
 }
+
+test "failing" {}
 
 test "fen parsing" {
     try testing.expectError(error.NotEnoughRows, Board.parseFen(""));
@@ -2281,8 +2303,6 @@ test "fools mate" {
 
     try testing.expectEqual(.black, board.gameOver());
 }
-
-test "repetition" {}
 
 comptime {
     // @compileLog(@sizeOf(Board));

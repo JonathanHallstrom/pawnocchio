@@ -8,14 +8,10 @@ const bytes_per_piece: usize = @sizeOf(u64) + 64 - 1;
 const bytes_per_side: usize = bytes_per_piece * PieceType.all.len;
 var data: [bytes_per_side * 2 + 8]u8 = undefined;
 var initialized = false;
+var init_fn = std.once(init);
 
 noinline fn init() void {
     @setCold(true);
-    const globals = struct {
-        var actually_init: bool = false;
-    };
-    if (@atomicLoad(bool, &globals.actually_init, .seq_cst) == true) return;
-    @atomicStore(bool, &globals.actually_init, true, .seq_cst);
 
     // from random.org
     var seed: [std.Random.DefaultCsprng.secret_seed_length]u8 = .{
@@ -47,7 +43,7 @@ const native_endianness = @import("builtin").cpu.arch.endian();
 pub fn get(piece: Piece, side: lib.Side) u64 {
     if (!initialized) {
         initialized = true;
-        init();
+        init_fn.call();
     }
     const offset = @intFromEnum(piece.getType()) * bytes_per_piece + piece.getLoc() + if (side == .white) bytes_per_side else 0;
     return std.mem.readInt(u64, data[offset..][0..8], native_endianness);

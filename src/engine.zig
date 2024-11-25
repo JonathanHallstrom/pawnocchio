@@ -128,23 +128,23 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     defer search_depth -= 1;
     nodes_searched += 1;
 
-    const halfmove = board.halfmove_clock;
     const zobrist = board.zobrist;
-    past_hashes[halfmove] = zobrist;
+    future_hashes[future_hash_count] = zobrist;
+    future_hash_count += 1;
+    defer future_hash_count -= 1;
     var num_prev: u8 = 0;
-    for (past_hashes[0..halfmove]) |past| {
+    for (past_hashes) |past| {
         num_prev += @intFromBool(past == zobrist);
     }
+    for (future_hashes[0..future_hash_count]) |past| {
+        num_prev += @intFromBool(past == zobrist);
+    }
+
     // tie
     if (num_prev >= 3 or
         board.isFiftyMoveTie() or
         board.isTieByInsufficientMaterial())
         return 0;
-
-    // const tt_entry = &tt[board.zobrist % tt.len];
-    // if (tt_entry.zobrist == board.zobrist and tt_entry.depth >= search_depth) {
-    //     return if (turn == .white) tt_entry.eval else -tt_entry.eval;
-    // }
 
     if (nodes_searched % (1 << 20) == 0) {
         @import("main.zig").log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
@@ -190,25 +190,30 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
         }
     }
 
-    // tt_entry.depth = @intCast(search_depth);
-    // tt_entry.eval = if (turn == .white) alpha else -alpha;
-    // tt_entry.zobrist = board.zobrist;
     return alpha;
 }
 
-fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: []Move, alpha_: i32, beta: i32) i32 {
+fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []Move, alpha_: i32, beta: i32) i32 {
     if (shutdown)
         return 0;
     search_depth += 1;
     defer search_depth -= 1;
     nodes_searched += 1;
 
-    const halfmove = board.halfmove_clock;
     const zobrist = board.zobrist;
-    past_hashes[halfmove] = zobrist;
-    defer past_hashes[halfmove] = ~zobrist;
+    // board.resetZobrist();
+    // if (zobrist != board.zobrist) {
+    //     @import("main.zig").log_writer.print("zobrist broke {s}\n", .{board.toFen().slice()}) catch {};
+    // }
+
+    future_hashes[future_hash_count] = zobrist;
+    future_hash_count += 1;
+    defer future_hash_count -= 1;
     var num_prev: u8 = 0;
-    for (past_hashes[0..halfmove]) |past| {
+    for (past_hashes) |past| {
+        num_prev += @intFromBool(past == zobrist);
+    }
+    for (future_hashes[0..future_hash_count]) |past| {
         num_prev += @intFromBool(past == zobrist);
     }
 
@@ -220,6 +225,11 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: [
 
     if (nodes_searched % (1 << 20) == 0) {
         @import("main.zig").log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
+    }
+
+    const tt_entry = &tt[board.zobrist % tt.len];
+    if (tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth) {
+        return tt_entry.eval;
     }
 
     if (timer.read() >= die_time) {
@@ -258,13 +268,16 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: usize, move_buf: [
             if (cur >= beta) break;
         }
     }
-    if (shutdown)
-        return 0;
 
+    tt_entry.* = TTentry{
+        .depth = depth,
+        .eval = alpha,
+        .zobrist = zobrist,
+    };
     return alpha;
 }
 
-pub fn negaMax(board: Board, depth: usize, move_buf: []Move) i32 {
+pub fn negaMax(board: Board, depth: u16, move_buf: []Move) i32 {
     var self = board;
     return switch (self.turn) {
         inline else => |t| negaMaxImpl(t, &self, depth, move_buf, -CHECKMATE_EVAL, CHECKMATE_EVAL),
@@ -272,10 +285,10 @@ pub fn negaMax(board: Board, depth: usize, move_buf: []Move) i32 {
 }
 
 var search_depth: u16 = 0;
-var max_depth_seen: usize = 0;
+var max_depth_seen: u16 = 0;
 var nodes_searched: u64 = 0;
 var max_nodes: u64 = std.math.maxInt(u64);
-var max_depth: usize = 256;
+var max_depth: u16 = 256;
 var timer: std.time.Timer = undefined;
 var die_time: u64 = std.math.maxInt(u64);
 var shutdown = false;
@@ -292,6 +305,15 @@ pub const MoveInfo = struct {
     nodes_evaluated: u64,
 };
 
+const TTentry = struct {
+    zobrist: u64 = 0,
+    eval: i32 = 0,
+    depth: u16 = 0,
+};
+
+// 1000_003 is the next prime after 1000_000
+var tt: [1000_003]TTentry = .{.{}} ** 1000_003;
+
 fn resetSoft() void {
     search_depth = 0;
     max_depth_seen = 0;
@@ -304,14 +326,17 @@ fn resetSoft() void {
 pub fn reset() void {
     resetSoft();
     @memset(&past_hashes, 0);
+    @memset(&tt, .{});
     past_hash_count = 0;
 }
 
 var rand = std.Random.DefaultPrng.init(0);
-pub fn findMove(board: Board, move_buf: []Move, depth: usize, nodes: usize, soft_time: u64, hard_time: u64) MoveInfo {
+pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_time: u64, hard_time: u64) MoveInfo {
     resetSoft();
     max_depth = depth;
     max_nodes = nodes;
+    const prev_idx = (past_hash_count + past_hashes.len - 1) % past_hashes.len;
+    assert(past_hashes[prev_idx] != board.zobrist);
     past_hashes[past_hash_count] = board.zobrist;
     past_hash_count = (past_hash_count + 1) % past_hashes.len;
 
@@ -321,7 +346,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: usize, nodes: usize, soft
     var best_eval: i32 = -CHECKMATE_EVAL;
     var best_move: Move = moves[0];
 
-    var depth_to_try: usize = 1;
+    var depth_to_try: u16 = 1;
     timer = std.time.Timer.start() catch unreachable;
     die_time = timer.read() + hard_time;
 
