@@ -349,6 +349,10 @@ pub const BitBoard = enum(u64) {
     pub const PieceIterator = struct {
         data: u64,
 
+        pub fn numRemaining(self: PieceIterator) usize {
+            return @popCount(self.data);
+        }
+
         pub fn init(b: BitBoard) PieceIterator {
             return .{ .data = b.toInt() };
         }
@@ -952,6 +956,9 @@ pub const Board = struct {
                 self.zobristPiece(Piece.init(pt, b), .black);
             }
         }
+        if (self.en_passant_target) |ep|
+            self.zobristEnPassant(ep);
+        self.zobristCastling(self.castling_squares);
         if (self.turn == .black)
             self.zobristTurn();
     }
@@ -962,6 +969,14 @@ pub const Board = struct {
 
     fn zobristTurn(self: *Self) void {
         self.zobrist ^= @import("zobrist.zig").getTurn();
+    }
+
+    fn zobristEnPassant(self: *Self, ep: u6) void {
+        self.zobrist ^= @import("zobrist.zig").getEnPassant(ep);
+    }
+
+    fn zobristCastling(self: *Self, rights: u4) void {
+        self.zobrist ^= @import("zobrist.zig").getCastling(rights);
     }
 
     pub fn toFen(self: Self) std.BoundedArray(u8, 127) {
@@ -1100,20 +1115,27 @@ pub const Board = struct {
         if (move.from().getType() == .pawn) {
             self.halfmove_clock = 0;
             if (move.isEnPassantTarget()) {
+                if (self.en_passant_target) |ep| self.zobristEnPassant(ep);
                 self.en_passant_target = move.getEnPassantTarget().toLoc();
+                if (self.en_passant_target) |ep| self.zobristEnPassant(ep);
             } else {
+                if (self.en_passant_target) |ep| self.zobristEnPassant(ep);
                 self.en_passant_target = null;
             }
         } else {
+            if (self.en_passant_target) |ep| self.zobristEnPassant(ep);
             self.en_passant_target = null;
             if (move.from().getType() == .king) {
+                self.zobristCastling(self.castling_squares);
                 if (turn == .white) {
                     self.castling_squares &= ~@as(u4, kingside_white_castle | queenside_white_castle);
                 }
                 if (turn == .black) {
                     self.castling_squares &= ~@as(u4, kingside_black_castle | queenside_black_castle);
                 }
+                self.zobristCastling(self.castling_squares);
             } else if (move.from().getType() == .rook) {
+                self.zobristCastling(self.castling_squares);
                 if (turn == .white and move.from().getBoard() == BitBoard.fromSquareUnchecked("A1")) {
                     self.castling_squares &= ~@as(u4, queenside_white_castle);
                 }
@@ -1126,10 +1148,12 @@ pub const Board = struct {
                 if (turn == .black and move.from().getBoard() == BitBoard.fromSquareUnchecked("H8")) {
                     self.castling_squares &= ~@as(u4, kingside_black_castle);
                 }
+                self.zobristCastling(self.castling_squares);
             }
         }
 
         if (move.isCastlingMove()) {
+            self.zobristCastling(self.castling_squares);
             if (move.from().getBoard().leftUnchecked(2) == move.to().getBoard()) {
                 moved_side.rook.remove(move.to().getBoard().leftUnchecked(2));
                 moved_side.rook.add(move.to().getBoard().rightUnchecked(1));
@@ -1141,6 +1165,7 @@ pub const Board = struct {
                 self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().rightUnchecked(1)), turn);
                 self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().leftUnchecked(1)), turn);
             }
+            self.zobristCastling(self.castling_squares);
         }
         if (move.captured()) |cap| {
             self.zobristPiece(cap, turn.flipped());
@@ -1194,8 +1219,11 @@ pub const Board = struct {
         to_board.remove(move.to().getBoard());
 
         if (move.isEnPassantTarget()) {
+            if (self.en_passant_target) |ep| self.zobristEnPassant(ep);
             self.en_passant_target = move.getEnPassantTarget().toLoc();
+            if (self.en_passant_target) |ep| self.zobristEnPassant(ep);
         } else if (move.isCastlingMove()) {
+            self.zobristCastling(self.castling_squares);
             if (move.from().getBoard().leftUnchecked(2) == move.to().getBoard()) {
                 moved_side.rook.add(move.to().getBoard().leftUnchecked(2));
                 moved_side.rook.remove(move.to().getBoard().rightUnchecked(1));
@@ -1207,6 +1235,7 @@ pub const Board = struct {
                 self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().rightUnchecked(1)), turn);
                 self.zobristPiece(Piece.rookFromBitBoard(move.to().getBoard().leftUnchecked(1)), turn);
             }
+            self.zobristCastling(self.castling_squares);
         }
         if (move.captured()) |cap| {
             const capture_side = if (self.turn == .black) &self.black else &self.white;
@@ -1215,8 +1244,12 @@ pub const Board = struct {
             capture_board.add(cap.getBoard());
         }
         self.turn = turn;
+        self.zobristCastling(self.castling_squares);
         self.castling_squares = inv.castling;
+        self.zobristCastling(self.castling_squares);
+        if (self.en_passant_target) |ep| self.zobristEnPassant(ep);
         self.en_passant_target = inv.en_passant;
+        if (self.en_passant_target) |ep| self.zobristEnPassant(ep);
         self.halfmove_clock = inv.halfmove;
         self.fullmove_clock -= @intFromBool(self.turn == .black);
     }
