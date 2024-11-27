@@ -381,9 +381,11 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     const moves = move_buf[0..num_moves];
     const rem_buf = move_buf[num_moves..];
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
+    var num_played_moves: usize = 0;
     for (moves) |move| {
         if (move.isCapture()) {
             if (board.playMovePossibleSelfCheck(move)) |inv| {
+                num_played_moves += 1;
                 defer board.undoMove(inv);
 
                 const cur = -quiesce(
@@ -400,6 +402,9 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
                 if (cur >= beta) break;
             }
         }
+    }
+    if (num_played_moves == 0) {
+        return eval(turn, board.*);
     }
 
     return alpha;
@@ -461,8 +466,10 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []M
     const moves = move_buf[0..num_moves];
     const rem_buf = move_buf[num_moves..];
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
+    var num_played_moves: usize = 0;
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
+            num_played_moves += 1;
             defer board.undoMove(inv);
 
             const cur = -negaMaxImpl(
@@ -479,6 +486,9 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []M
             alpha = @max(alpha, cur);
             if (cur >= beta) break;
         }
+    }
+    if (num_played_moves == 0) {
+        return eval(turn, board.*);
     }
 
     tt_entry.* = TTentry{
