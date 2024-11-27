@@ -5,9 +5,9 @@ const engine = @import("engine.zig");
 const Board = lib.Board;
 const Move = lib.Move;
 
-pub var log_writer = std.io.getStdErr().writer();
+pub var log_writer: @TypeOf(std.io.getStdErr().writer()) = undefined;
 
-const stdout = std.io.getStdOut();
+var stdout: std.fs.File = undefined;
 
 pub fn write(comptime fmt: []const u8, args: anytype) void {
     log_writer.print("sent: " ++ fmt, args) catch {};
@@ -17,6 +17,8 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
 }
 
 pub fn main() !void {
+    log_writer = std.io.getStdErr().writer();
+    stdout = std.io.getStdOut();
     // disgusting ik
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
     const log_file = std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only }) catch null;
@@ -24,8 +26,10 @@ pub fn main() !void {
 
     if (log_file) |lf| {
         _ = &lf;
-        if (@import("builtin").mode == .ReleaseSafe)
-            log_writer = lf.writer();
+        switch (@import("builtin").mode) {
+            .Debug, .ReleaseSafe => log_writer = lf.writer(),
+            else => {},
+        }
     }
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -38,7 +42,8 @@ pub fn main() !void {
     const reader = br.reader();
 
     var board = Board.init();
-
+    var hash_history = try std.ArrayList(u64).initCapacity(allocator, 16384);
+    defer hash_history.deinit();
     const move_buf = try allocator.alloc(Move, 1 << 20);
     defer allocator.free(move_buf);
 
@@ -83,6 +88,8 @@ pub fn main() !void {
             } else if (std.ascii.eqlIgnoreCase(sub_command, "startpos")) {
                 board = Board.init();
             }
+            hash_history.clearRetainingCapacity();
+            hash_history.appendAssumeCapacity(board.zobrist);
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
             while (move_iter.next()) |played_move| {
                 if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
@@ -90,6 +97,7 @@ pub fn main() !void {
                     try log_writer.print("invalid move: '{s}'\n", .{played_move});
                     continue;
                 };
+                hash_history.appendAssumeCapacity(board.zobrist);
             }
         }
 
@@ -153,12 +161,13 @@ pub fn main() !void {
             }
 
             // const my_time = if (board.turn == .white) white_time else black_time;
+            const my_time = @min(white_time, black_time);
 
             // 250ms to quit seems fine
 
-            const hard_time = @min(white_time, black_time) / 60;
+            const hard_time = (my_time -| 100 * std.time.ns_per_ms) / 60;
 
-            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, hard_time, hard_time);
+            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, hard_time, hard_time, &hash_history);
             const move = move_info.move;
             const depth_evaluated = move_info.depth_evaluated;
             const eval = move_info.eval;

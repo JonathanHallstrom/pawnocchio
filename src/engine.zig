@@ -296,7 +296,7 @@ const PestoEval = struct {
 fn myEval(comptime turn: lib.Side, board: Board) i32 {
     if (board.gameOver()) |res| return switch (res) {
         .tie => 0,
-        inline else => |side| @as(i32, if (side == lib.GameResult.from(turn)) 1 else -1) * (-CHECKMATE_EVAL + @as(i32, @intCast(search_depth))),
+        inline else => -CHECKMATE_EVAL,
     };
     var res: i32 = 0;
 
@@ -322,7 +322,7 @@ fn myEval(comptime turn: lib.Side, board: Board) i32 {
     return res;
 }
 
-const eval = PestoEval.eval;
+const eval = myEval;
 
 fn mvvlvaValue(x: Move) i32 {
     if (!x.isCapture()) return 0;
@@ -333,7 +333,7 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
     return mvvlvaValue(lhs) > mvvlvaValue(rhs);
 }
 
-fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32, beta: i32) i32 {
+fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
     if (shutdown)
         return 0;
     search_depth += 1;
@@ -341,15 +341,11 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     nodes_searched += 1;
 
     const zobrist = board.zobrist;
-    future_hashes[future_hash_count] = zobrist;
-    future_hash_count += 1;
-    defer future_hash_count -= 1;
+
+    const num_query = @min(hash_history.items.len, board.halfmove_clock);
     var num_prev: u8 = 0;
-    for (past_hashes) |past| {
-        num_prev += @intFromBool(past == zobrist);
-    }
-    for (future_hashes[0..future_hash_count]) |past| {
-        num_prev += @intFromBool(past == zobrist);
+    for (hash_history.items[hash_history.items.len - num_query ..]) |past_hash| {
+        num_prev += @intFromBool(past_hash == zobrist);
     }
 
     // tie
@@ -387,6 +383,8 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
             if (board.playMovePossibleSelfCheck(move)) |inv| {
                 num_played_moves += 1;
                 defer board.undoMove(inv);
+                hash_history.appendAssumeCapacity(board.zobrist);
+                defer _ = hash_history.pop();
 
                 const cur = -quiesce(
                     turn.flipped(),
@@ -394,6 +392,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
                     rem_buf,
                     -beta,
                     -alpha,
+                    hash_history,
                 );
                 if (shutdown)
                     return 0;
@@ -410,7 +409,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     return alpha;
 }
 
-fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []Move, alpha_: i32, beta: i32) i32 {
+fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []Move, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
     if (shutdown)
         return 0;
     search_depth += 1;
@@ -423,15 +422,10 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []M
     //     @import("main.zig").log_writer.print("zobrist broke {s}\n", .{board.toFen().slice()}) catch {};
     // }
 
-    future_hashes[future_hash_count] = zobrist;
-    future_hash_count += 1;
-    defer future_hash_count -= 1;
+    const num_query = @min(hash_history.items.len, board.halfmove_clock);
     var num_prev: u8 = 0;
-    for (past_hashes) |past| {
-        num_prev += @intFromBool(past == zobrist);
-    }
-    for (future_hashes[0..future_hash_count]) |past| {
-        num_prev += @intFromBool(past == zobrist);
+    for (hash_history.items[hash_history.items.len - num_query ..]) |past_hash| {
+        num_prev += @intFromBool(past_hash == zobrist);
     }
 
     // tie
@@ -456,7 +450,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []M
 
     var alpha = alpha_;
     if (depth == 0) {
-        return quiesce(turn, board, move_buf, alpha, beta);
+        return quiesce(turn, board, move_buf, alpha, beta, hash_history);
         // return eval(turn, board.*);
     }
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
@@ -471,6 +465,8 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []M
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             num_played_moves += 1;
             defer board.undoMove(inv);
+            hash_history.appendAssumeCapacity(board.zobrist);
+            defer _ = hash_history.pop();
 
             const cur = -negaMaxImpl(
                 turn.flipped(),
@@ -479,6 +475,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []M
                 rem_buf,
                 -beta,
                 -alpha,
+                hash_history,
             );
             if (shutdown)
                 return 0;
@@ -499,10 +496,10 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth: u16, move_buf: []M
     return alpha;
 }
 
-pub fn negaMax(board: Board, depth: u16, move_buf: []Move) i32 {
+pub fn negaMax(board: Board, depth: u16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i32 {
     var self = board;
     return switch (self.turn) {
-        inline else => |t| negaMaxImpl(t, &self, depth, move_buf, -CHECKMATE_EVAL, CHECKMATE_EVAL),
+        inline else => |t| negaMaxImpl(t, &self, depth, move_buf, -CHECKMATE_EVAL, CHECKMATE_EVAL, hash_history),
     };
 }
 
@@ -514,11 +511,6 @@ var max_depth: u16 = 256;
 var timer: std.time.Timer = undefined;
 var die_time: u64 = std.math.maxInt(u64);
 var shutdown = false;
-
-var past_hashes: [64]u64 = .{0} ** 64;
-var past_hash_count: usize = 0;
-var future_hashes: [256]u64 = .{0} ** 256;
-var future_hash_count: usize = 0;
 
 pub const MoveInfo = struct {
     eval: i32,
@@ -541,26 +533,18 @@ fn resetSoft() void {
     max_depth_seen = 0;
     nodes_searched = 0;
     shutdown = false;
-    @memset(&future_hashes, 0);
-    future_hash_count = 0;
 }
 
 pub fn reset() void {
     resetSoft();
-    @memset(&past_hashes, 0);
     @memset(&tt, .{});
-    past_hash_count = 0;
 }
 
 var rand = std.Random.DefaultPrng.init(0);
-pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_time: u64, hard_time: u64) MoveInfo {
+pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64)) MoveInfo {
     resetSoft();
     max_depth = depth;
     max_nodes = nodes;
-    const prev_idx = (past_hash_count + past_hashes.len - 1) % past_hashes.len;
-    assert(past_hashes[prev_idx] != board.zobrist);
-    past_hashes[past_hash_count] = board.zobrist;
-    past_hash_count = (past_hash_count + 1) % past_hashes.len;
 
     var self = board;
     const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
@@ -568,22 +552,41 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
     var best_eval: i32 = -CHECKMATE_EVAL;
     var best_move: Move = moves[0];
 
+    const MoveEvalPair = struct {
+        move: Move,
+        eval: i32,
+
+        fn orderByEval(_: void, lhs: @This(), rhs: @This()) bool {
+            return lhs.eval > rhs.eval;
+        }
+    };
+
+    var move_eval_buf: [400]MoveEvalPair = undefined;
+    for (0..num_moves) |i| {
+        move_eval_buf[i] = .{ .move = moves[i], .eval = mvvlvaValue(moves[i]) };
+    }
+
     var depth_to_try: u16 = 1;
     timer = std.time.Timer.start() catch unreachable;
     die_time = timer.read() + hard_time;
 
-    rand.random().shuffle(Move, moves);
-    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
+    rand.random().shuffle(MoveEvalPair, move_eval_buf[0..num_moves]);
     while (timer.read() < soft_time and depth_to_try < depth) : (depth_to_try += 1) {
+        std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
         best_eval = -CHECKMATE_EVAL;
         var new_best_move = best_move;
-        for (moves) |move| {
+        for (move_eval_buf[0..num_moves]) |*entry| {
+            const move = entry.move;
+
+            hash_history.appendAssumeCapacity(self.zobrist);
+            defer _ = hash_history.pop();
+
             if (self.playMovePossibleSelfCheck(move)) |inv| {
                 defer self.undoMove(inv);
 
-                const cur_eval = -negaMax(self, depth_to_try, move_buf[num_moves..]);
-                if (cur_eval > best_eval) {
-                    best_eval = cur_eval;
+                entry.eval = -negaMax(self, depth_to_try, move_buf, hash_history);
+                if (entry.eval > best_eval) {
+                    best_eval = entry.eval;
                     new_best_move = move;
                 }
                 if (shutdown) {
