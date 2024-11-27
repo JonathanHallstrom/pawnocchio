@@ -1035,6 +1035,29 @@ pub const Board = struct {
         return res;
     }
 
+    pub fn isInCheck(self: Self, comptime turn_mode: TurnMode) bool {
+        const is_white_turn = switch (turn_mode) {
+            .auto => self.turn == .white,
+            .flip => self.turn == .black,
+            .white => true,
+            .black => false,
+        };
+
+        const own_side = if (is_white_turn) self.white else self.black;
+
+        return self.areSquaresAttacked(own_side.king, turn_mode);
+    }
+
+    pub fn isInCheckMate(self: Self, comptime turn_mode: TurnMode) bool {
+        var tmp_buf: [400]Move = undefined;
+        if (self.isInCheck(turn_mode)) {
+            if (self.getAllMoves(&tmp_buf, self.getSelfCheckSquares()) == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     pub fn isTieByInsufficientMaterial(self: Self) bool {
         if (self.white.pawn
             .getCombination(self.black.pawn)
@@ -1058,7 +1081,6 @@ pub const Board = struct {
     pub fn gameOver(self: Self) ?GameResult {
         if (self.isFiftyMoveTie()) return .tie;
         if (self.isTieByInsufficientMaterial()) return .tie;
-
         var tmp_buf: [400]Move = undefined;
         if (self.getAllMoves(&tmp_buf, self.getSelfCheckSquares()) == 0) {
             if (self.isInCheck(.auto)) {
@@ -1067,6 +1089,7 @@ pub const Board = struct {
                 return .tie;
             }
         }
+
         return null;
     }
 
@@ -1320,19 +1343,6 @@ pub const Board = struct {
             return true;
         }
         return false;
-    }
-
-    pub fn isInCheck(self: Self, comptime turn_mode: TurnMode) bool {
-        const is_white_turn = switch (turn_mode) {
-            .auto => self.turn == .white,
-            .flip => self.turn == .black,
-            .white => true,
-            .black => false,
-        };
-
-        const own_side = if (is_white_turn) self.white else self.black;
-
-        return self.areSquaresAttacked(own_side.king, turn_mode);
     }
 
     pub fn doesMoveCauseSelfCheck(self: Self, move: Move) bool {
