@@ -1,3 +1,3 @@
 # pawnocchio
 
-so far just move generation
+A/B, iterative deepening, qsearch, mvv-lva
