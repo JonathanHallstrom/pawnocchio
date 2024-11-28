@@ -165,7 +165,7 @@ pub fn main() !void {
 
             // 250ms to quit seems fine
 
-            const hard_time = (my_time -| 100 * std.time.ns_per_ms) / 60;
+            const hard_time = (my_time -| 100 * std.time.ns_per_ms) / 30;
 
             const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, hard_time, hard_time, &hash_history);
             const move = move_info.move;
