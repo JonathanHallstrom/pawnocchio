@@ -10,6 +10,7 @@ const castling_bytes: usize = @sizeOf(u64) + 16 - 1;
 const en_passant_bytes: usize = @sizeOf(u64) + 8 - 1;
 const bytes_for_side: usize = @sizeOf(u64);
 const data = blk: {
+    @setEvalBranchQuota(1 << 30);
     var res: [bytes_per_side * 2 + castling_bytes + en_passant_bytes + bytes_for_side]u8 = undefined;
     const seed: [std.Random.DefaultCsprng.secret_seed_length]u8 = .{
         83,  8,   124, 62,
