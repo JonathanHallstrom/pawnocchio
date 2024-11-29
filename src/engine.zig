@@ -379,15 +379,25 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     if (static_eval < -CHECKMATE_EVAL / 2)
         return static_eval;
 
-    const num_moves = board.getAllCapturesUnchecked(move_buf, board.getSelfCheckSquares());
-    if (num_moves == 0) {
-        return eval(turn, board.*);
+    const tt_entry = &tt[board.zobrist % tt.len];
+    var tt_hit: usize = 0;
+    if (tt_entry.zobrist == zobrist) {
+        if (std.debug.runtime_safety)
+            tt_hits += 1;
+        tt_hit = 1;
+        move_buf[0] = tt_entry.bestmove;
     }
-    const moves = move_buf[0..num_moves];
-    const rem_buf = move_buf[num_moves..];
+
+    const num_moves = board.getAllCapturesUnchecked(move_buf[tt_hit..], board.getSelfCheckSquares());
+    if (num_moves == 0) {
+        return static_eval;
+    }
+    const moves = move_buf[tt_hit..][0..num_moves];
+    const rem_buf = move_buf[tt_hit..][num_moves..];
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
     var num_valid_moves: usize = 0;
-    for (moves) |move| {
+    for (move_buf[0 .. num_moves + tt_hit], 0..) |move, i| {
+        if (i > 0 and std.meta.eql(move, move_buf[0])) continue;
         if (move.isCapture()) {
             if (board.playMovePossibleSelfCheck(move)) |inv| {
                 num_valid_moves += 1;
@@ -412,7 +422,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
         }
     }
     if (num_valid_moves == 0) {
-        return eval(turn, board.*);
+        return static_eval;
     }
 
     return alpha;
@@ -459,39 +469,39 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     _ = &depth;
     if (board.isInCheck(.auto)) depth += 1;
 
-    // havent been able to get TT to pass
+    var alpha = alpha_;
+
     const tt_entry = &tt[board.zobrist % tt.len];
-
-    if (@hasDecl(TTentry, "board")) {
-        if (tt_entry.zobrist == board.zobrist) {
-            zobrist_collisions += @intFromBool(!std.meta.eql(tt_entry.board, board.*));
-        }
-    }
-
-    if (tt_entry.zobrist == zobrist and tt_entry.depth >= depth) {
+    var tt_hit: usize = 0;
+    if (tt_entry.zobrist == zobrist and
+        tt_entry.depth >= depth)
+    {
         if (std.debug.runtime_safety)
             tt_hits += 1;
-        // return tt_entry.eval;
+        tt_hit = 1;
+        move_buf[0] = tt_entry.bestmove;
     }
-
-    var alpha = alpha_;
 
     if (depth == 0) {
         return quiesce(turn, board, move_buf, alpha, beta, hash_history);
         // return eval(turn, board.*);
     }
-    const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
+    const num_moves = board.getAllMovesUnchecked(move_buf[tt_hit..], board.getSelfCheckSquares());
     if (num_moves == 0) {
         return eval(turn, board.*);
     }
-    const moves = move_buf[0..num_moves];
-    const rem_buf = move_buf[num_moves..];
+    const moves = move_buf[tt_hit..][0..num_moves];
+    const rem_buf = move_buf[tt_hit..][num_moves..];
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
     var num_valid_moves: usize = 0;
-    for (moves) |move| {
+
+    var bestmove: Move = move_buf[0];
+    for (move_buf[0 .. num_moves + tt_hit], 0..) |move, i| {
+        if (i > 0 and std.meta.eql(move, move_buf[0])) continue;
         if (board.playMovePossibleSelfCheck(move)) |inv| {
-            num_valid_moves += 1;
             defer board.undoMove(inv);
+
+            num_valid_moves += 1;
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
 
@@ -506,9 +516,15 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
             );
             if (shutdown)
                 return 0;
+            if (cur > alpha) {
+                bestmove = move;
+                alpha = cur;
+            }
 
             alpha = @max(alpha, cur);
-            if (cur >= beta) break;
+            if (cur >= beta) {
+                break;
+            }
         }
     }
     if (num_valid_moves == 0) {
@@ -516,7 +532,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     }
 
     tt_entry.depth = depth;
-    tt_entry.eval = alpha;
+    tt_entry.bestmove = bestmove;
     tt_entry.zobrist = zobrist;
     if (@hasDecl(TTentry, "board")) tt_entry.board = board.*;
     return alpha;
@@ -548,8 +564,8 @@ pub const MoveInfo = struct {
 
 const TTentry = struct {
     zobrist: u64 = 0,
-    eval: i32 = 0,
     depth: u16 = 0,
+    bestmove: Move = undefined,
     // board: Board = .{},
 };
 
@@ -578,8 +594,6 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
     var self = board;
     const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
     const moves = move_buf[0..num_moves];
-    var best_eval: i32 = -CHECKMATE_EVAL;
-    var best_move: Move = moves[0];
 
     const MoveEvalPair = struct {
         move: Move,
@@ -601,8 +615,11 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
     die_time = timer.read() + hard_time;
 
     rand.random().shuffle(MoveEvalPair, move_eval_buf[0..num_moves]);
+    std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
+    var best_eval: i32 = move_eval_buf[0].eval;
+    var best_move: Move = move_eval_buf[0].move;
+
     while (timer.read() < soft_time and depth_to_try <= depth) {
-        std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
         best_eval = -CHECKMATE_EVAL;
         var new_best_move = best_move;
         for (move_eval_buf[0..num_moves]) |*entry| {
@@ -645,8 +662,10 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
                 best_move.pretty().slice(),
             });
         }
+        if (shutdown) break;
 
         depth_to_try += 1;
+        std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
     }
 
     return MoveInfo{
