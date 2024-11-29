@@ -48,15 +48,13 @@ pub fn main() !void {
     defer allocator.free(move_buf);
 
     var line_buf: [1 << 20]u8 = undefined;
-    while (reader.readUntilDelimiter(&line_buf, '\n') catch null) |line_raw| {
+    main_loop: while (reader.readUntilDelimiter(&line_buf, '\n') catch null) |line_raw| {
         const line = std.mem.trim(u8, line_raw, &std.ascii.whitespace);
         var parts = std.mem.tokenizeScalar(u8, line, ' ');
 
         const command = parts.next() orelse {
             continue; // empty command
         };
-
-        const sub_command = parts.next() orelse "";
 
         try log_writer.print("got: {s}\n", .{line});
 
@@ -75,6 +73,7 @@ pub fn main() !void {
 
             var pos_iter = std.mem.tokenizeSequence(u8, rest, " moves ");
 
+            const sub_command = parts.next() orelse "";
             if (std.ascii.eqlIgnoreCase(sub_command, "fen")) {
                 const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {
                     try log_writer.print("no fen: '{s}'\n", .{rest});
@@ -112,15 +111,6 @@ pub fn main() !void {
         }
 
         if (std.ascii.eqlIgnoreCase(command, "go")) {
-            if (std.ascii.eqlIgnoreCase(sub_command, "perft")) {
-                const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
-                const depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
-                    try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
-                    continue;
-                };
-                write("Nodes searched: {}\n", .{try board.perftMultiThreaded(move_buf, depth, allocator)});
-            }
-
             var max_depth: u16 = 1000;
             var max_nodes: u64 = std.math.maxInt(u64);
 
@@ -130,6 +120,15 @@ pub fn main() !void {
             var black_time: u64 = 1000 * std.time.ns_per_s;
 
             while (parts.next()) |command_part| {
+                if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
+                    const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
+                    const depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
+                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                        continue;
+                    };
+                    write("Nodes searched: {}\n", .{try board.perftMultiThreaded(move_buf, depth, allocator)});
+                    continue :main_loop;
+                }
                 if (std.ascii.eqlIgnoreCase(command_part, "depth")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     max_depth = std.fmt.parseInt(u16, depth_to_parse, 10) catch {
@@ -159,6 +158,7 @@ pub fn main() !void {
                     });
                 }
             }
+            log_writer.print("max depth: {}\n", .{max_depth}) catch {};
 
             // const my_time = if (board.turn == .white) white_time else black_time;
             const my_time = @min(white_time, black_time);

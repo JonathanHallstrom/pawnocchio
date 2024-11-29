@@ -1966,9 +1966,11 @@ pub const Board = struct {
         }
         if (is_in_check) self_check_squares = BitBoard.initEmpty().complement();
 
-        _ = total.fetchAdd(1, .acq_rel);
-        if (is_in_check)
-            _ = in_check_cnt.fetchAdd(1, .acq_rel);
+        if (std.debug.runtime_safety) {
+            _ = total.fetchAdd(1, .acq_rel);
+            if (is_in_check)
+                _ = in_check_cnt.fetchAdd(1, .acq_rel);
+        }
 
         return self_check_squares;
     }
@@ -1986,6 +1988,28 @@ pub const Board = struct {
         res += self.getRookCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
         res += self.getQueenCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
         res += self.getKingCapturesUnchecked(move_buffer[res..], possible_self_check_squares);
+        return res;
+    }
+
+    pub fn perftZobrist(self: *Self, move_buf: []Move, depth_remaining: usize, zobrist_map: *std.AutoHashMap(u64, Board)) !u64 {
+        if (depth_remaining == 0) return 0;
+        const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
+        const moves = move_buf[0..num_moves];
+        var res: u64 = 0;
+        for (moves) |move| {
+            if (self.playMovePossibleSelfCheck(move)) |inv| {
+                defer self.undoMove(inv);
+                const gp = try zobrist_map.getOrPut(self.zobrist);
+                if (gp.found_existing) {
+                    if (!std.meta.eql(gp.value_ptr.*, self.*)) {
+                        return error.MismatchingBoards;
+                    }
+                } else {
+                    gp.value_ptr.* = self.*;
+                }
+                res += perftSingleThreaded(self, move_buf[num_moves..], depth_remaining - 1);
+            }
+        }
         return res;
     }
 

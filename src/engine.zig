@@ -4,6 +4,9 @@ const assert = std.debug.assert;
 
 const lib = @import("lib.zig");
 
+const log_writer = @import("main.zig").log_writer;
+const write = @import("main.zig").write;
+
 const BitBoard = lib.BitBoard;
 const Piece = lib.Piece;
 const PieceType = lib.PieceType;
@@ -336,8 +339,10 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
 }
 
 fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
-    search_depth += 1;
-    defer search_depth -= 1;
+    if (std.debug.runtime_safety) search_depth += 1;
+    defer {
+        if (std.debug.runtime_safety) search_depth -= 1;
+    }
     nodes_searched += 1;
     if (nodes_searched >= max_nodes)
         shutdown = true;
@@ -361,8 +366,8 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     if (num_prev >= 3)
         return 0;
 
-    if (nodes_searched % (1 << 20) == 0) {
-        @import("main.zig").log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
+    if (std.debug.runtime_safety and nodes_searched % (1 << 20) == 0) {
+        log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
     }
 
     var alpha = alpha_;
@@ -416,8 +421,10 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
 var zobrist_collisions: usize = 0;
 
 fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
-    search_depth += 1;
-    defer search_depth -= 1;
+    if (std.debug.runtime_safety) search_depth += 1;
+    defer {
+        if (std.debug.runtime_safety) search_depth -= 1;
+    }
     nodes_searched += 1;
     if (nodes_searched >= max_nodes)
         shutdown = true;
@@ -429,7 +436,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     const zobrist = board.zobrist;
     // board.resetZobrist();
     // if (zobrist != board.zobrist) {
-    //     @import("main.zig").log_writer.print("zobrist broke {s}\n", .{board.toFen().slice()}) catch {};
+    //     log_writer.print("zobrist broke {s}\n", .{board.toFen().slice()}) catch {};
     // }
 
     if (board.isFiftyMoveTie() or board.isTieByInsufficientMaterial())
@@ -444,9 +451,8 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     // tie
     if (num_prev >= 3)
         return 0;
-
-    if (nodes_searched % (1 << 20) == 0) {
-        @import("main.zig").log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
+    if (std.debug.runtime_safety and nodes_searched % (1 << 20) == 0) {
+        log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
     }
 
     var depth = depth_;
@@ -454,7 +460,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     if (board.isInCheck(.auto)) depth += 1;
 
     // havent been able to get TT to pass
-    const tt_entry = &tt[board.zobrist % tt.len];
+    const tt_entry = &tt[(board.zobrist * tt.len) >> 32];
 
     if (@hasDecl(TTentry, "board")) {
         if (tt_entry.zobrist == board.zobrist) {
@@ -462,7 +468,9 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
         }
     }
 
-    if (tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth) {
+    if (tt_entry.zobrist == zobrist and tt_entry.depth >= depth) {
+        if (std.debug.runtime_safety)
+            tt_hits += 1;
         // return tt_entry.eval;
     }
 
@@ -529,6 +537,7 @@ var max_depth: u16 = 256;
 var timer: std.time.Timer = undefined;
 var die_time: u64 = std.math.maxInt(u64);
 var shutdown = false;
+var tt_hits: usize = 0;
 
 pub const MoveInfo = struct {
     eval: i32,
@@ -544,13 +553,15 @@ const TTentry = struct {
     // board: Board = .{},
 };
 
-var tt: [1000_003]TTentry = .{.{}} ** 1000_003;
+const tt_size = 1 << 20;
+var tt: [tt_size]TTentry = .{.{}} ** tt_size;
 
 fn resetSoft() void {
     search_depth = 0;
     max_depth_seen = 0;
     nodes_searched = 0;
     shutdown = false;
+    tt_hits = 0;
 }
 
 pub fn reset() void {
@@ -590,7 +601,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
     die_time = timer.read() + hard_time;
 
     rand.random().shuffle(MoveEvalPair, move_eval_buf[0..num_moves]);
-    while (timer.read() < soft_time and depth_to_try < depth) : (depth_to_try += 1) {
+    while (timer.read() < soft_time and depth_to_try <= depth) {
         std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
         best_eval = -CHECKMATE_EVAL;
         var new_best_move = best_move;
@@ -609,16 +620,34 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
                     new_best_move = move;
                 }
                 if (shutdown) {
-                    @import("main.zig").log_writer.print("shutdown after {}\n", .{std.fmt.fmtDuration(timer.read())}) catch {};
+                    if (std.debug.runtime_safety) log_writer.print("shutdown after {}\n", .{std.fmt.fmtDuration(timer.read())}) catch {};
                     break;
                 }
             }
         }
-        @import("main.zig").log_writer.print("depth {} bestmove {s}\n", .{ depth_to_try, new_best_move.pretty().slice() }) catch {};
+        if (std.debug.runtime_safety) log_writer.print("depth {} bestmove {s} tt_hits: {} zobrist_errors: {}\n", .{
+            depth_to_try,
+            new_best_move.pretty().slice(),
+            tt_hits,
+            zobrist_collisions,
+        }) catch {};
+
         if (!shutdown) {
             best_move = new_best_move;
             actual_eval = best_eval;
+            const elapsed_ns = timer.read();
+            write("info depth {} score {} nodes {} nps {d} time {} pv {s}\n", .{
+                depth_to_try,
+                best_eval,
+                nodes_searched,
+                nodes_searched * std.time.ns_per_s / elapsed_ns,
+                elapsed_ns / std.time.ns_per_ms,
+                best_move.pretty().slice(),
+            });
         }
+
+
+        depth_to_try += 1;
     }
 
     return MoveInfo{
