@@ -379,7 +379,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     if (static_eval < -CHECKMATE_EVAL / 2)
         return static_eval;
 
-    const tt_entry = &tt[board.zobrist % tt.len];
+    const tt_entry = &tt[getTTIndex(zobrist)];
     var tt_hit: usize = 0;
     if (tt_entry.zobrist == zobrist) {
         if (std.debug.runtime_safety)
@@ -396,6 +396,8 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     const rem_buf = move_buf[tt_hit..][num_moves..];
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
     var num_valid_moves: usize = 0;
+
+    var bestmove: Move = move_buf[0];
     for (move_buf[0 .. num_moves + tt_hit], 0..) |move, i| {
         if (i > 0 and std.meta.eql(move, move_buf[0])) continue;
         if (move.isCapture()) {
@@ -415,8 +417,10 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
                 );
                 if (shutdown)
                     return 0;
-
-                alpha = @max(alpha, cur);
+                if (cur > alpha) {
+                    alpha = cur;
+                    bestmove = move;
+                }
                 if (cur >= beta) break;
             }
         }
@@ -424,7 +428,8 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     if (num_valid_moves == 0) {
         return static_eval;
     }
-
+    tt_entry.zobrist = zobrist;
+    tt_entry.bestmove = bestmove;
     return alpha;
 }
 
@@ -471,11 +476,9 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
 
     var alpha = alpha_;
 
-    const tt_entry = &tt[board.zobrist % tt.len];
+    const tt_entry = &tt[getTTIndex(zobrist)];
     var tt_hit: usize = 0;
-    if (tt_entry.zobrist == zobrist and
-        tt_entry.depth >= depth)
-    {
+    if (tt_entry.zobrist == zobrist) {
         if (std.debug.runtime_safety)
             tt_hits += 1;
         tt_hit = 1;
@@ -531,7 +534,6 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
         return if (board.isInCheck(.auto)) -CHECKMATE_EVAL else 0;
     }
 
-    tt_entry.depth = depth;
     tt_entry.bestmove = bestmove;
     tt_entry.zobrist = zobrist;
     if (@hasDecl(TTentry, "board")) tt_entry.board = board.*;
@@ -564,13 +566,16 @@ pub const MoveInfo = struct {
 
 const TTentry = struct {
     zobrist: u64 = 0,
-    depth: u16 = 0,
     bestmove: Move = undefined,
     // board: Board = .{},
 };
 
 const tt_size = 1 << 20;
 var tt: [tt_size]TTentry = .{.{}} ** tt_size;
+
+fn getTTIndex(hash: u64) usize {
+    return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt_size) >> 32;
+}
 
 fn resetSoft() void {
     search_depth = 0;
