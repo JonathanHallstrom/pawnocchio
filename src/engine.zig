@@ -4,7 +4,7 @@ const assert = std.debug.assert;
 
 const lib = @import("lib.zig");
 
-const log_writer = @import("main.zig").log_writer;
+const log_writer = &@import("main.zig").log_writer;
 const write = @import("main.zig").write;
 
 const BitBoard = lib.BitBoard;
@@ -460,7 +460,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     if (board.isInCheck(.auto)) depth += 1;
 
     // havent been able to get TT to pass
-    const tt_entry = &tt[(board.zobrist * tt.len) >> 32];
+    const tt_entry = &tt[board.zobrist % tt.len];
 
     if (@hasDecl(TTentry, "board")) {
         if (tt_entry.zobrist == board.zobrist) {
@@ -645,7 +645,6 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
                 best_move.pretty().slice(),
             });
         }
-
 
         depth_to_try += 1;
     }
