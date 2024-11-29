@@ -297,10 +297,9 @@ fn knightEval(knights: BitBoard) i32 {
 }
 
 fn myEval(comptime turn: lib.Side, board: Board) i32 {
-    if (board.gameOver()) |res| return switch (res) {
-        .tie => 0,
-        inline else => -CHECKMATE_EVAL,
-    };
+    if (board.gameOver()) |gr| {
+        return if (gr == .tie) 0 else -CHECKMATE_EVAL;
+    }
     var res: i32 = 0;
 
     res += pawnEval(board.white.pawn);
@@ -342,14 +341,15 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     nodes_searched += 1;
     if (nodes_searched >= max_nodes)
         shutdown = true;
+    if (nodes_searched % 128 == 0 and timer.read() >= die_time)
+        shutdown = true;
     if (shutdown)
         return 0;
-    if (nodes_searched % 128 == 0 and timer.read() >= die_time) {
-        shutdown = true;
-        return 0;
-    }
 
     const zobrist = board.zobrist;
+
+    if (board.isFiftyMoveTie() or board.isTieByInsufficientMaterial())
+        return 0;
 
     const num_query = @min(hash_history.items.len, board.halfmove_clock);
     var num_prev: u8 = 0;
@@ -358,9 +358,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     }
 
     // tie
-    if (num_prev >= 3 or
-        board.isFiftyMoveTie() or
-        board.isTieByInsufficientMaterial())
+    if (num_prev >= 3)
         return 0;
 
     if (nodes_searched % (1 << 20) == 0) {
@@ -373,6 +371,8 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
         return beta;
     if (alpha < static_eval)
         alpha = static_eval;
+    if (static_eval < -CHECKMATE_EVAL / 2)
+        return static_eval;
 
     const num_moves = board.getAllCapturesUnchecked(move_buf, board.getSelfCheckSquares());
     if (num_moves == 0) {
@@ -381,11 +381,11 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
     const moves = move_buf[0..num_moves];
     const rem_buf = move_buf[num_moves..];
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
-    var num_played_moves: usize = 0;
+    var num_valid_moves: usize = 0;
     for (moves) |move| {
         if (move.isCapture()) {
             if (board.playMovePossibleSelfCheck(move)) |inv| {
-                num_played_moves += 1;
+                num_valid_moves += 1;
                 defer board.undoMove(inv);
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
@@ -406,7 +406,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, alpha_: i32
             }
         }
     }
-    if (num_played_moves == 0) {
+    if (num_valid_moves == 0) {
         return eval(turn, board.*);
     }
 
@@ -421,18 +421,19 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     nodes_searched += 1;
     if (nodes_searched >= max_nodes)
         shutdown = true;
+    if (nodes_searched % 128 == 0 and timer.read() >= die_time)
+        shutdown = true;
     if (shutdown)
         return 0;
-    if (nodes_searched % 128 == 0 and timer.read() >= die_time) {
-        shutdown = true;
-        return 0;
-    }
 
     const zobrist = board.zobrist;
     // board.resetZobrist();
     // if (zobrist != board.zobrist) {
     //     @import("main.zig").log_writer.print("zobrist broke {s}\n", .{board.toFen().slice()}) catch {};
     // }
+
+    if (board.isFiftyMoveTie() or board.isTieByInsufficientMaterial())
+        return 0;
 
     const num_query = @min(hash_history.items.len, board.halfmove_clock);
     var num_prev: u8 = 0;
@@ -441,9 +442,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     }
 
     // tie
-    if (num_prev >= 3 or
-        board.isFiftyMoveTie() or
-        board.isTieByInsufficientMaterial())
+    if (num_prev >= 3)
         return 0;
 
     if (nodes_searched % (1 << 20) == 0) {
@@ -480,10 +479,10 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     const moves = move_buf[0..num_moves];
     const rem_buf = move_buf[num_moves..];
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
-    var num_played_moves: usize = 0;
+    var num_valid_moves: usize = 0;
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
-            num_played_moves += 1;
+            num_valid_moves += 1;
             defer board.undoMove(inv);
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
@@ -504,8 +503,8 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
             if (cur >= beta) break;
         }
     }
-    if (num_played_moves == 0) {
-        return eval(turn, board.*);
+    if (num_valid_moves == 0) {
+        return if (board.isInCheck(.auto)) -CHECKMATE_EVAL else 0;
     }
 
     tt_entry.depth = depth;
