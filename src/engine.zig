@@ -536,7 +536,7 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
 
     tt_entry.bestmove = bestmove;
     tt_entry.zobrist = zobrist;
-    if (@hasDecl(TTentry, "board")) tt_entry.board = board.*;
+
     return alpha;
 }
 
@@ -566,12 +566,12 @@ pub const MoveInfo = struct {
 
 const TTentry = struct {
     zobrist: u64 = 0,
-    bestmove: Move = undefined,
-    // board: Board = .{},
+    bestmove: Move = std.mem.zeroes(Move),
+    const null_entry: TTentry = .{};
 };
 
 const tt_size = 1 << 20;
-var tt: [tt_size]TTentry = .{.{}} ** tt_size;
+var tt: [tt_size]TTentry = .{TTentry.null_entry} ** tt_size;
 
 fn getTTIndex(hash: u64) usize {
     return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt_size) >> 32;
@@ -587,7 +587,7 @@ fn resetSoft() void {
 
 pub fn reset() void {
     resetSoft();
-    @memset(&tt, .{});
+    @memset(&tt, TTentry.null_entry);
 }
 
 var rand = std.Random.DefaultPrng.init(0);

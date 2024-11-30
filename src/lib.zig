@@ -369,7 +369,7 @@ pub const BitBoard = enum(u64) {
     };
 };
 
-pub const PieceType = enum(u8) {
+pub const PieceType = enum(u3) {
     pawn,
     knight,
     bishop,
@@ -665,23 +665,11 @@ pub const Move = struct {
     }
 
     pub fn initQuiet(from_: Piece, to_: Piece, might_self_check: bool) Move {
-        return .{
-            ._from = from_,
-            ._to = to_,
-            ._captured = Piece.initInvalid(),
-            ._is_capture = false,
-            ._might_cause_self_check = might_self_check,
-        };
+        return init(from_, to_, null, might_self_check);
     }
 
     pub fn initCapture(from_: Piece, to_: Piece, captured_: Piece, might_self_check: bool) Move {
-        return .{
-            ._from = from_,
-            ._to = to_,
-            ._captured = captured_,
-            ._is_capture = true,
-            ._might_cause_self_check = might_self_check,
-        };
+        return init(from_, to_, captured_, might_self_check);
     }
 
     pub fn format(self: Move, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
