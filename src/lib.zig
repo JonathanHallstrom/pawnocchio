@@ -370,12 +370,12 @@ pub const BitBoard = enum(u64) {
 };
 
 pub const PieceType = enum(u3) {
-    pawn,
-    knight,
-    bishop,
-    rook,
-    queen,
-    king,
+    pawn = 0,
+    knight = 1,
+    bishop = 2,
+    rook = 3,
+    queen = 4,
+    king = 5,
 
     pub fn format(self: PieceType, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
@@ -416,26 +416,26 @@ pub const PieceType = enum(u3) {
 };
 
 const SmallPiece = struct {
-    _tp: PieceType,
+    _pt: PieceType,
     _loc: u7,
 
     pub fn initInvalid() SmallPiece {
         return .{
-            ._tp = .pawn,
+            ._pt = .pawn,
             ._loc = 127,
         };
     }
 
-    pub fn init(tp: PieceType, b: BitBoard) SmallPiece {
+    pub fn init(pt: PieceType, b: BitBoard) SmallPiece {
         assert(@popCount(b.toInt()) == 1);
         return .{
-            ._tp = tp,
+            ._pt = pt,
             ._loc = @intCast(b.toLoc()),
         };
     }
     pub fn initLoc(tp: PieceType, loc: u6) SmallPiece {
         return .{
-            ._tp = tp,
+            ._pt = tp,
             ._loc = loc,
         };
     }
@@ -474,7 +474,7 @@ const SmallPiece = struct {
     }
 
     pub fn getType(self: SmallPiece) PieceType {
-        return self._tp;
+        return self._pt;
     }
 
     pub fn getBoard(self: SmallPiece) BitBoard {
@@ -485,11 +485,8 @@ const SmallPiece = struct {
         return @intCast(self._loc);
     }
 
-    fn flipPos(pos: u6) u6 {
-        const row = pos / 8;
-        const col = pos % 8;
-        const new_row = 7 - row;
-        return 8 * new_row + col;
+    fn flipPos(x: anytype) @TypeOf(x) {
+        return x ^ 56;
     }
     comptime {
         for (0..64) |i| {
@@ -499,8 +496,8 @@ const SmallPiece = struct {
 
     pub fn flipped(self: SmallPiece) SmallPiece {
         return .{
-            ._tp = self._tp,
-            ._loc = flipPos(@intCast(self._loc)),
+            ._pt = self._pt,
+            ._loc = flipPos(self._loc),
         };
     }
 
@@ -513,7 +510,7 @@ const SmallPiece = struct {
 };
 
 const BigPiece = struct {
-    _tp: PieceType,
+    _pt: PieceType,
     _board: BitBoard,
 
     pub fn initInvalid() BigPiece {
@@ -523,7 +520,7 @@ const BigPiece = struct {
     pub fn init(tp: PieceType, b: BitBoard) BigPiece {
         assert(@popCount(b.toInt()) == 1);
         return .{
-            ._tp = tp,
+            ._pt = tp,
             ._board = b,
         };
     }
@@ -562,7 +559,7 @@ const BigPiece = struct {
     }
 
     pub fn getType(self: BigPiece) PieceType {
-        return self._tp;
+        return self._pt;
     }
 
     pub fn getBoard(self: BigPiece) BitBoard {
@@ -664,6 +661,17 @@ pub const Move = struct {
         return self.from().getType() == .king and left.getCombination(right).overlaps(self.to().getBoard());
     }
 
+    pub fn getCastlingRookMove(self: Move) Move {
+        assert(self.isCastlingMove());
+        const f = self.from().getBoard();
+        const t = self.to().getBoard();
+        if (f.leftUnchecked(2) == t) {
+            return initQuiet(Piece.rookFromBitBoard(t.leftUnchecked(2)), Piece.rookFromBitBoard(t.rightUnchecked(1)), self.mightSelfCheck());
+        } else {
+            return initQuiet(Piece.rookFromBitBoard(t.rightUnchecked(1)), Piece.rookFromBitBoard(t.leftUnchecked(1)), self.mightSelfCheck());
+        }
+    }
+
     pub fn initQuiet(from_: Piece, to_: Piece, might_self_check: bool) Move {
         return init(from_, to_, null, might_self_check);
     }
@@ -685,12 +693,13 @@ pub const Move = struct {
     }
 
     pub fn flipped(self: Move) Move {
-        return init(
-            self.from().flipped(),
-            self.to().flipped(),
-            if (self.captured()) |c| c.flipped() else null,
-            self.mightSelfCheck(),
-        );
+        return .{
+            ._from = self._from.flipped(),
+            ._to = self._to.flipped(),
+            ._captured = self._captured.flipped(),
+            ._is_capture = self._is_capture,
+            ._might_cause_self_check = self._might_cause_self_check,
+        };
     }
 
     pub fn pretty(self: Move) std.BoundedArray(u8, 8) {
