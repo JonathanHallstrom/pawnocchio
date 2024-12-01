@@ -1988,26 +1988,21 @@ pub const Board = struct {
         return res;
     }
 
-    pub fn perftZobrist(self: *Self, move_buf: []Move, depth_remaining: usize, zobrist_map: *std.AutoHashMap(u64, Board)) !u64 {
-        if (depth_remaining == 0) return 0;
+    pub fn perftZobrist(self: *Self, move_buf: []Move, depth_remaining: usize, zobrist_list: anytype) !void {
+        if (depth_remaining == 0) return;
         const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
         const moves = move_buf[0..num_moves];
-        var res: u64 = 0;
         for (moves) |move| {
             if (self.playMovePossibleSelfCheck(move)) |inv| {
                 defer self.undoMove(inv);
-                const gp = try zobrist_map.getOrPut(self.zobrist);
-                if (gp.found_existing) {
-                    if (!std.meta.eql(gp.value_ptr.*, self.*)) {
-                        return error.MismatchingBoards;
-                    }
-                } else {
-                    gp.value_ptr.* = self.*;
-                }
-                res += perftSingleThreaded(self, move_buf[num_moves..], depth_remaining - 1);
+                var hash = std.hash.CityHash64.hash(&std.mem.toBytes(self.white));
+                hash +%= std.hash.CityHash64.hash(&std.mem.toBytes(self.black));
+                hash +%= std.hash.CityHash64.hash(&std.mem.toBytes(self.castling_squares));
+                hash +%= std.hash.CityHash64.hash(&std.mem.toBytes(self.en_passant_target));
+                try zobrist_list.append(.{ .zobrist = self.zobrist, .other_hash = hash });
+                try perftZobrist(self, move_buf[num_moves..], depth_remaining - 1, zobrist_list);
             }
         }
-        return res;
     }
 
     pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth_remaining: usize) u64 {
