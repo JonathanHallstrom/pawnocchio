@@ -185,8 +185,8 @@ const PestoEval = struct {
         for (PieceType.all) |pt| {
             const p: usize = @intFromEnum(pt);
             for (0..64) |sq| {
-                res[2 * p + 0][sq] = eg_value[p] + eg_pesto_table[p][sq];
-                res[2 * p + 1][sq] = eg_value[p] + eg_pesto_table[p][sq ^ 56];
+                res[2 * p + 0][sq] = eg_value[p] + eg_pesto_table[p][sq] / 4;
+                res[2 * p + 1][sq] = eg_value[p] + eg_pesto_table[p][sq ^ 56] / 4;
             }
         }
         break :blk res;
@@ -225,24 +225,84 @@ const PestoEval = struct {
 
 const CHECKMATE_EVAL = 1000_000_000;
 
-fn evalPiece(comptime piece_side: lib.Side, piece: Piece) i32 {
+fn evalPieceMg(comptime piece_side: lib.Side, piece: Piece) i32 {
     const tp = piece.getType();
     const p: usize = @intFromEnum(tp);
     return PestoEval.mg_table[2 * p + @intFromBool(piece_side == .black)][piece.getLoc()];
 }
 
-fn evalWithoutGameOver(comptime turn: lib.Side, board: Board) i32 {
+fn evalPieceEg(comptime piece_side: lib.Side, piece: Piece) i32 {
+    const tp = piece.getType();
+    const p: usize = @intFromEnum(tp);
+    return PestoEval.eg_table[2 * p + @intFromBool(piece_side == .black)][piece.getLoc()];
+}
+
+fn evalWithoutGameOverMg(comptime turn: lib.Side, board: Board) i32 {
     var res: i32 = 0;
     inline for (PieceType.all) |pt| {
         var iter = board.white.getBoard(pt).iterator();
         while (iter.next()) |b|
-            res += evalPiece(.white, Piece.init(pt, b));
+            res += evalPieceMg(.white, Piece.init(pt, b));
         iter = board.black.getBoard(pt).iterator();
         while (iter.next()) |b|
-            res -= evalPiece(.black, Piece.init(pt, b));
+            res -= evalPieceMg(.black, Piece.init(pt, b));
     }
     if (turn == .black) res = -res;
     return res;
+}
+
+fn evalWithoutGameOverEg(comptime turn: lib.Side, board: Board) i32 {
+    var res: i32 = 0;
+    inline for (PieceType.all) |pt| {
+        var iter = board.white.getBoard(pt).iterator();
+        while (iter.next()) |b|
+            res += evalPieceEg(.white, Piece.init(pt, b));
+        iter = board.black.getBoard(pt).iterator();
+        while (iter.next()) |b|
+            res -= evalPieceEg(.black, Piece.init(pt, b));
+    }
+    if (turn == .black) res = -res;
+    return res;
+}
+
+fn getPhase(pt: PieceType) i32 {
+    return PestoEval.gamephaseInc[@intFromEnum(pt)];
+}
+
+fn getPhaseBoard(board: Board) i32 {
+    var phase: i32 = 0;
+    inline for (PieceType.all) |pt| {
+        phase += board.white.getBoard(pt).iterator().numRemaining() * getPhase(pt);
+        phase += board.black.getBoard(pt).iterator().numRemaining() * getPhase(pt);
+    }
+    return phase;
+}
+
+fn evalWithoutGameOver(comptime turn: lib.Side, board: Board) i32 {
+    var mg: i32 = 0;
+    var eg: i32 = 0;
+    var phase: i32 = 0;
+    inline for (PieceType.all) |pt| {
+        var iter = board.white.getBoard(pt).iterator();
+        phase += iter.numRemaining() * getPhase(pt);
+        while (iter.next()) |b| {
+            mg += evalPieceMg(.white, Piece.init(pt, b));
+            eg += evalPieceEg(.white, Piece.init(pt, b));
+        }
+        iter = board.black.getBoard(pt).iterator();
+        phase += iter.numRemaining() * getPhase(pt);
+        while (iter.next()) |b| {
+            mg -= evalPieceMg(.black, Piece.init(pt, b));
+            eg -= evalPieceEg(.black, Piece.init(pt, b));
+        }
+    }
+    if (turn == .black) {
+        mg = -mg;
+        eg = -eg;
+    }
+    const mg_phase = @min(phase, 24);
+    const eg_phase = 24 - mg_phase;
+    return @divTrunc(mg_phase * mg + eg_phase * eg, 24);
 }
 
 fn eval(comptime turn: lib.Side, board: Board) i32 {
@@ -269,7 +329,7 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
     return mvvlvaValue(lhs) > mvvlvaValue(rhs);
 }
 
-fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, static_eval: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
+fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, phase: i32, mg: i32, eg: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
     if (std.debug.runtime_safety) search_depth += 1;
     defer {
         if (std.debug.runtime_safety) search_depth -= 1;
@@ -301,8 +361,11 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, static_eval
         log_writer.print("q nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
     }
 
-    if (std.debug.runtime_safety and static_eval != evalWithoutGameOver(turn, board.*)) {
-        log_writer.print("q evalerror {} {} {s}\n", .{ static_eval, evalWithoutGameOver(turn, board.*), board.toFen().slice() }) catch {};
+    if (std.debug.runtime_safety and mg != evalWithoutGameOverMg(turn, board.*)) {
+        log_writer.print("q mg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverMg(turn, board.*), board.toFen().slice() }) catch {};
+    }
+    if (std.debug.runtime_safety and eg != evalWithoutGameOverEg(turn, board.*)) {
+        log_writer.print("q eg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverEg(turn, board.*), board.toFen().slice() }) catch {};
     }
 
     // if (static_eval != evalWithoutGameOver(turn, board.*)) {
@@ -315,13 +378,14 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, static_eval
     //     }
     // }
 
+    const mg_phase = @min(phase, 24);
+    const eg_phase = 24 - mg_phase;
+    const static_eval = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
     var alpha = alpha_;
     if (static_eval >= beta)
         return beta;
     if (alpha < static_eval)
         alpha = static_eval;
-    if (static_eval < -CHECKMATE_EVAL / 2)
-        return static_eval;
 
     const tt_entry = &tt[getTTIndex(zobrist)];
     var tt_hit: usize = 0;
@@ -351,12 +415,16 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, static_eval
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
 
-                const d_static_eval = evalPiece(turn, move.to()) - evalPiece(turn, move.from()) + evalPiece(turn.flipped(), move.captured().?);
+                const d_mg = evalPieceMg(turn, move.to()) - evalPieceMg(turn, move.from()) + evalPieceMg(turn.flipped(), move.captured().?);
+                const d_eg = evalPieceEg(turn, move.to()) - evalPieceEg(turn, move.from()) + evalPieceEg(turn.flipped(), move.captured().?);
+                const d_phase = getPhase(move.captured().?.getType());
                 const cur = -quiesce(
                     turn.flipped(),
                     board,
                     rem_buf,
-                    -(static_eval + d_static_eval),
+                    phase - d_phase,
+                    -(mg + d_mg),
+                    -(eg + d_eg),
                     -beta,
                     -alpha,
                     hash_history,
@@ -381,7 +449,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, static_eval
 
 var zobrist_collisions: usize = 0;
 
-fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move, static_eval: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
+fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move, phase: i32, mg: i32, eg: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
     if (std.debug.runtime_safety) search_depth += 1;
     defer {
         if (std.debug.runtime_safety) search_depth -= 1;
@@ -414,8 +482,11 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
     if (std.debug.runtime_safety and nodes_searched % (1 << 20) == 0) {
         log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
     }
-    if (std.debug.runtime_safety and static_eval != evalWithoutGameOver(turn, board.*)) {
-        log_writer.print("n evalerror {} {} {s}\n", .{ static_eval, evalWithoutGameOver(turn, board.*), board.toFen().slice() }) catch {};
+    if (std.debug.runtime_safety and mg != evalWithoutGameOverMg(turn, board.*)) {
+        log_writer.print("n mg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverMg(turn, board.*), board.toFen().slice() }) catch {};
+    }
+    if (std.debug.runtime_safety and eg != evalWithoutGameOverEg(turn, board.*)) {
+        log_writer.print("n eg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverEg(turn, board.*), board.toFen().slice() }) catch {};
     }
 
     // if (static_eval != evalWithoutGameOver(turn, board.*)) {
@@ -431,6 +502,10 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
     _ = &depth;
     if (board.isInCheck(.auto)) depth += 1;
 
+    const mg_phase = @min(phase, 24);
+    const eg_phase = 24 - mg_phase;
+    const static_eval = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
+    _ = static_eval; // autofix
     var alpha = alpha_;
 
     const tt_entry = &tt[getTTIndex(zobrist)];
@@ -443,7 +518,7 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
     }
 
     if (depth == 0) {
-        return quiesce(turn, board, move_buf, evalWithoutGameOver(turn, board.*), alpha, beta, hash_history);
+        return quiesce(turn, board, move_buf, phase, mg, eg, alpha, beta, hash_history);
         // return eval(turn, board.*);
     }
     const num_moves = board.getAllMovesUnchecked(move_buf[tt_hit..], board.getSelfCheckSquares());
@@ -462,20 +537,27 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
 
-            var d_static_eval = evalPiece(turn, move.to()) - evalPiece(turn, move.from());
+            var d_mg = evalPieceMg(turn, move.to()) - evalPieceMg(turn, move.from());
+            var d_eg = evalPieceEg(turn, move.to()) - evalPieceEg(turn, move.from());
+            var d_phase: i32 = 0;
             if (move.captured()) |cap| {
-                d_static_eval += evalPiece(turn.flipped(), cap);
+                d_mg += evalPieceMg(turn.flipped(), cap);
+                d_eg += evalPieceEg(turn.flipped(), cap);
+                d_phase = getPhase(cap.getType());
             }
             if (move.isCastlingMove()) {
                 const rm = move.getCastlingRookMove();
-                d_static_eval += evalPiece(turn, rm.to()) - evalPiece(turn, rm.from());
+                d_mg += evalPieceMg(turn, rm.to()) - evalPieceMg(turn, rm.from());
+                d_eg += evalPieceEg(turn, rm.to()) - evalPieceEg(turn, rm.from());
             }
             var cur = -search(
                 turn.flipped(),
                 board,
                 depth - 1,
                 rem_buf,
-                -(static_eval + d_static_eval),
+                phase + d_phase,
+                -(mg + d_mg),
+                -(eg + d_eg),
                 -(alpha + 1),
                 -alpha,
                 hash_history,
@@ -486,7 +568,9 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
                     board,
                     depth - 1,
                     rem_buf,
-                    -(static_eval + d_static_eval),
+                    phase + d_phase,
+                    -(mg + d_mg),
+                    -(eg + d_eg),
                     -beta,
                     -alpha,
                     hash_history,
@@ -506,7 +590,7 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
         }
     }
     if (num_valid_moves == 0) {
-        return if (board.isInCheck(.auto)) -CHECKMATE_EVAL else 0;
+        return if (board.isInCheck(.auto)) -CHECKMATE_EVAL + @as(i32, @intCast(board.fullmove_clock)) else 0;
     }
 
     tt_entry.bestmove = bestmove;
@@ -518,7 +602,7 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
 pub fn negaMax(board: Board, depth: u16, move_buf: []Move, hash_history: *std.ArrayList(u64), alpha: i32, beta: i32) i32 {
     var self = board;
     return switch (self.turn) {
-        inline else => |t| search(t, &self, depth, move_buf, evalWithoutGameOver(t, board), alpha, beta, hash_history),
+        inline else => |t| search(t, &self, depth, move_buf, getPhaseBoard(board), evalWithoutGameOverMg(t, board), evalWithoutGameOverEg(t, board), alpha, beta, hash_history),
     };
 }
 

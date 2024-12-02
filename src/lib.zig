@@ -349,7 +349,7 @@ pub const BitBoard = enum(u64) {
     pub const PieceIterator = struct {
         data: u64,
 
-        pub fn numRemaining(self: PieceIterator) usize {
+        pub fn numRemaining(self: PieceIterator) u8 {
             return @popCount(self.data);
         }
 
