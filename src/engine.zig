@@ -480,7 +480,7 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
                 -alpha,
                 hash_history,
             );
-            if (cur > alpha and cur < beta) {
+            if (alpha < cur and cur < beta) {
                 cur = -search(
                     turn.flipped(),
                     board,
@@ -612,7 +612,11 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
             if (self.playMovePossibleSelfCheck(move)) |inv| {
                 defer self.undoMove(inv);
 
-                entry.eval = -negaMax(self, depth_to_try, move_buf, hash_history, -beta, -alpha);
+                entry.eval = -negaMax(self, depth_to_try, move_buf, hash_history, -(alpha + 1), -alpha);
+                if (alpha < entry.eval and entry.eval < beta) {
+                    entry.eval = -negaMax(self, depth_to_try, move_buf, hash_history, -beta, -alpha);
+                }
+
                 if (entry.eval > alpha) {
                     alpha = entry.eval;
                     new_best_move = move;
