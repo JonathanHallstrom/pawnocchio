@@ -41,7 +41,7 @@ fn parallelSort(
     std.sort.pdq(T, items, context, lessThanFn);
 }
 
-fn runTests(file: []const u8, allocator: std.mem.Allocator) !void {
+fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anytype) !void {
     const move_buf = try allocator.alloc(lib.Move, 1 << 20);
     defer allocator.free(move_buf);
     const test_file = try std.fs.cwd().openFile(file, .{});
@@ -111,6 +111,7 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator) !void {
 
     var last = zobrist_list.items[0];
     last.zobrist +%= 1;
+    last.other_hash +%= 1;
     var zobrist_collisions: usize = 0;
     var other_hash_collisions: usize = 0;
     var unique_positions: usize = 0;
@@ -124,26 +125,37 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator) !void {
     }
     zobrist_list.shrinkRetainingCapacity(unique_positions);
 
-    std.log.warn("overall nps: {}", .{std.time.ns_per_s * total_positions / total_time});
-    std.log.warn("zobrist collisions: {}/{} ({d:.5}%)", .{
+    std.log.info("overall nps: {}", .{std.time.ns_per_s * total_positions / total_time});
+    std.log.info("zobrist collisions: {}/{} ({d:.5}%)", .{
         zobrist_collisions,
         unique_positions,
         @as(f64, @floatFromInt(zobrist_collisions * 100)) / @as(f64, @floatFromInt(unique_positions)),
     });
+    result_writer.print("zobrist collisions: {}/{} ({d:.5}%)\n", .{
+        zobrist_collisions,
+        unique_positions,
+        @as(f64, @floatFromInt(zobrist_collisions * 100)) / @as(f64, @floatFromInt(unique_positions)),
+    }) catch {};
 
-    std.log.warn("other hash collisions: {}/{} ({d:.5}%)", .{
+    std.log.info("other hash collisions: {}/{} ({d:.5}%)", .{
         other_hash_collisions,
         unique_positions,
         @as(f64, @floatFromInt(other_hash_collisions * 100)) / @as(f64, @floatFromInt(unique_positions)),
     });
+    result_writer.print("other hash collisions: {}/{} ({d:.5}%)\n", .{
+        other_hash_collisions,
+        unique_positions,
+        @as(f64, @floatFromInt(other_hash_collisions * 100)) / @as(f64, @floatFromInt(unique_positions)),
+    }) catch {};
 
     var bit_counts: [65]usize = .{0} ** 65;
     for (zobrist_list.items) |item| bit_counts[@popCount(item.zobrist)] += 1;
-    std.log.warn("counts: {any}", .{bit_counts});
+    std.log.info("counts: {any}", .{bit_counts});
+    result_writer.print("counts: {any}\n", .{bit_counts}) catch {};
 }
 
 test "perft tests" {
-    try runTests("tests/reduced.epd", std.testing.allocator);
+    try runTests("tests/reduced.epd", std.testing.allocator, std.io.null_writer);
 }
 
 pub fn main() !void {
@@ -155,5 +167,5 @@ pub fn main() !void {
     _ = args.next();
     defer args.deinit();
 
-    try runTests(args.next() orelse "tests/reduced.epd", allocator);
+    try runTests(args.next() orelse "tests/reduced.epd", allocator, std.io.getStdOut().writer());
 }
