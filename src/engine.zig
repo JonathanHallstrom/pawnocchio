@@ -381,7 +381,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, static_eval
 
 var zobrist_collisions: usize = 0;
 
-fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move, static_eval: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
+fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move, static_eval: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
     if (std.debug.runtime_safety) search_depth += 1;
     defer {
         if (std.debug.runtime_safety) search_depth -= 1;
@@ -470,16 +470,28 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
                 const rm = move.getCastlingRookMove();
                 d_static_eval += evalPiece(turn, rm.to()) - evalPiece(turn, rm.from());
             }
-            const cur = -negaMaxImpl(
+            var cur = -search(
                 turn.flipped(),
                 board,
                 depth - 1,
                 rem_buf,
                 -(static_eval + d_static_eval),
-                -beta,
+                -(alpha + 1),
                 -alpha,
                 hash_history,
             );
+            if (cur > alpha and cur < beta) {
+                cur = -search(
+                    turn.flipped(),
+                    board,
+                    depth - 1,
+                    rem_buf,
+                    -(static_eval + d_static_eval),
+                    -beta,
+                    -alpha,
+                    hash_history,
+                );
+            }
             if (shutdown)
                 return 0;
             if (cur > alpha) {
@@ -503,10 +515,10 @@ fn negaMaxImpl(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []
     return alpha;
 }
 
-pub fn negaMax(board: Board, depth: u16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i32 {
+pub fn negaMax(board: Board, depth: u16, move_buf: []Move, hash_history: *std.ArrayList(u64), alpha: i32, beta: i32) i32 {
     var self = board;
     return switch (self.turn) {
-        inline else => |t| negaMaxImpl(t, &self, depth, move_buf, evalWithoutGameOver(t, board), -CHECKMATE_EVAL, CHECKMATE_EVAL, hash_history),
+        inline else => |t| search(t, &self, depth, move_buf, evalWithoutGameOver(t, board), alpha, beta, hash_history),
     };
 }
 
@@ -584,11 +596,12 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
 
     rand.random().shuffle(MoveEvalPair, move_eval_buf[0..num_moves]);
     std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
-    var best_eval: i32 = move_eval_buf[0].eval;
+    var alpha: i32 = move_eval_buf[0].eval;
+    const beta = CHECKMATE_EVAL;
     var best_move: Move = move_eval_buf[0].move;
 
     while (timer.read() < soft_time and depth_to_try <= depth) {
-        best_eval = -CHECKMATE_EVAL;
+        alpha = -CHECKMATE_EVAL;
         var new_best_move = best_move;
         for (move_eval_buf[0..num_moves]) |*entry| {
             const move = entry.move;
@@ -599,9 +612,9 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
             if (self.playMovePossibleSelfCheck(move)) |inv| {
                 defer self.undoMove(inv);
 
-                entry.eval = -negaMax(self, depth_to_try, move_buf, hash_history);
-                if (entry.eval > best_eval) {
-                    best_eval = entry.eval;
+                entry.eval = -negaMax(self, depth_to_try, move_buf, hash_history, -beta, -alpha);
+                if (entry.eval > alpha) {
+                    alpha = entry.eval;
                     new_best_move = move;
                 }
                 if (shutdown) {
@@ -619,11 +632,11 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
 
         if (!shutdown) {
             best_move = new_best_move;
-            actual_eval = best_eval;
+            actual_eval = alpha;
             const elapsed_ns = timer.read();
             write("info depth {} score {} nodes {} nps {d} time {} pv {s}\n", .{
                 depth_to_try,
-                best_eval,
+                alpha,
                 nodes_searched,
                 nodes_searched * std.time.ns_per_s / elapsed_ns,
                 elapsed_ns / std.time.ns_per_ms,
