@@ -1,3 +1,3 @@
 # pawnocchio
 
-A/B, iterative deepening, qsearch, mvv-lva
+A/B, iterative deepening, qsearch, mvv-lva, pvs
