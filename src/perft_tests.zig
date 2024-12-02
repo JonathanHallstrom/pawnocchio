@@ -12,7 +12,7 @@ fn parallelSort(
     const worker = struct {
         fn impl(
             worker_items: []T,
-            ctx: anytype,
+            ctx: @TypeOf(context),
         ) void {
             std.sort.pdq(T, worker_items, ctx, lessThanFn);
         }
@@ -22,16 +22,16 @@ fn parallelSort(
     var thread_pool: std.Thread.Pool = undefined;
     try thread_pool.init(.{
         .allocator = allocator,
-        .n_jobs = @intCast(2 * num_threads),
+        .n_jobs = @intCast(num_threads),
     });
     defer thread_pool.deinit();
     while (num_threads > 1) : (num_threads >>= 1) {
         const items_per_thread = (n + num_threads - 1) / num_threads;
-        if (items_per_thread < 1 << 20) continue;
         var wg = std.Thread.WaitGroup{};
         var rem_items = items;
         for (0..num_threads) |_| {
             const amt = @min(items_per_thread, rem_items.len);
+            if (amt == 0) break;
             const cur = rem_items[0..amt];
             rem_items = rem_items[amt..];
             thread_pool.spawnWg(&wg, worker, .{ cur, context });
@@ -107,7 +107,7 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anyty
             last_size = zobrist_list.items.len;
         }
     }
-    try parallelSort(Entry, zobrist_list.items, void{}, Entry.cmp, allocator);
+    std.sort.pdq(Entry, zobrist_list.items, void{}, Entry.cmp);
 
     var last = zobrist_list.items[0];
     last.zobrist +%= 1;
