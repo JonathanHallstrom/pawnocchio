@@ -499,13 +499,12 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
     //     }
     // }
     var depth = depth_;
-    _ = &depth;
     if (board.isInCheck(.auto)) depth += 1;
 
-    const mg_phase = @min(phase, 24);
-    const eg_phase = 24 - mg_phase;
-    const static_eval = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
-    _ = static_eval; // autofix
+    // const mg_phase = @min(phase, 24);
+    // const eg_phase = 24 - mg_phase;
+    // const static_eval = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
+    // _ = static_eval; // autofix
     var alpha = alpha_;
 
     const tt_entry = &tt[getTTIndex(zobrist)];
