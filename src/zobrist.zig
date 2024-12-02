@@ -4,14 +4,14 @@ const lib = @import("lib.zig");
 const Piece = lib.Piece;
 const PieceType = lib.PieceType;
 
-const bytes_per_piece: usize = 64;
-const bytes_per_side: usize = bytes_per_piece * PieceType.all.len;
-const castling_bytes: usize = 16;
-const en_passant_bytes: usize = 8;
-const bytes_for_side: usize = 8;
+const piece_entries: usize = 64;
+const side_entries: usize = piece_entries * PieceType.all.len;
+const castling_entries: usize = 16;
+const en_passant_entries: usize = 8;
+const side_diff_entries: usize = 1;
 const data = blk: {
     @setEvalBranchQuota(1 << 30);
-    var res: [bytes_per_side * 2 + castling_bytes + en_passant_bytes + bytes_for_side + @sizeOf(u64) - 1]u8 = undefined;
+    var res: [side_entries * 2 + castling_entries + en_passant_entries + side_diff_entries + @sizeOf(u64) - 1]u8 = undefined;
     const seed: [std.Random.DefaultCsprng.secret_seed_length]u8 = .{
         83,  8,   124, 62,
         209, 228, 102, 90,
@@ -30,19 +30,19 @@ const data = blk: {
 const native_endianness = @import("builtin").cpu.arch.endian();
 
 pub fn get(piece: Piece, side: lib.Side) u64 {
-    const offset = @intFromEnum(piece.getType()) * bytes_per_piece + piece.getLoc() + if (side == .white) bytes_per_side else 0;
+    const offset = @intFromEnum(piece.getType()) * piece_entries + piece.getLoc() + if (side == .white) side_entries else 0;
     return std.mem.readInt(u64, data[offset..][0..8], native_endianness);
 }
 
 pub fn getCastling(rights: u4) u64 {
-    return std.mem.readInt(u64, data[bytes_per_side * 2 ..][rights..][0..@sizeOf(u64)], native_endianness);
+    return std.mem.readInt(u64, data[side_entries * 2 ..][rights..][0..@sizeOf(u64)], native_endianness);
 }
 
 pub fn getEnPassant(where: u6) u64 {
     const file = where % 8;
-    return std.mem.readInt(u64, data[bytes_per_side * 2 + castling_bytes ..][file..][0..@sizeOf(u64)], native_endianness);
+    return std.mem.readInt(u64, data[side_entries * 2 + castling_entries ..][file..][0..@sizeOf(u64)], native_endianness);
 }
 
 pub fn getTurn() u64 {
-    return std.mem.readInt(u64, data[bytes_per_side * 2 + castling_bytes + en_passant_bytes ..][0..@sizeOf(u64)], native_endianness);
+    return std.mem.readInt(u64, data[side_entries * 2 + castling_entries + en_passant_entries ..][0..@sizeOf(u64)], native_endianness);
 }
