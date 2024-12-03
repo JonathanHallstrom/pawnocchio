@@ -120,8 +120,20 @@ pub fn main() !void {
             var black_time: u64 = 1000 * std.time.ns_per_s;
             var white_increment: u64 = 1000 * std.time.ns_per_s;
             var black_increment: u64 = 1000 * std.time.ns_per_s;
+            var mate_finding_depth: ?u8 = null;
+            var move_time: ?u64 = null;
 
             while (parts.next()) |command_part| {
+                if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
+                    const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    const depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
+                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                        continue;
+                    };
+
+                    mate_finding_depth = depth;
+                }
+
                 if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
                     const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
@@ -159,6 +171,13 @@ pub fn main() !void {
                         continue;
                     });
                 }
+                if (std.ascii.eqlIgnoreCase(command_part, "movetime")) {
+                    const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    move_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        continue;
+                    });
+                }
                 if (std.ascii.eqlIgnoreCase(command_part, "winc")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     white_increment = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
@@ -177,11 +196,12 @@ pub fn main() !void {
             log_writer.print("max depth: {}\n", .{max_depth}) catch {};
 
             // const my_time = if (board.turn == .white) white_time else black_time;
+
             const my_time = @min(white_time, black_time);
             const my_increment = @min(white_increment, black_increment);
 
             // 50ms to quit seems fine
-            const hard_time = @min(my_time / 2 -| 50 * std.time.ns_per_ms, my_time / 30 + my_increment / 2);
+            const hard_time = if (move_time) |mt| mt else @min(my_time / 2 -| 50 * std.time.ns_per_ms, my_time / 30 + my_increment / 2);
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
             const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, hard_time, hard_time, &hash_history);
@@ -189,7 +209,11 @@ pub fn main() !void {
             const depth_evaluated = move_info.depth_evaluated;
             const eval = move_info.eval;
             const nodes_evaluated = move_info.nodes_evaluated;
-            write("info depth {} score cp {} nodes {} pv {s}\n", .{ depth_evaluated, eval, nodes_evaluated, move.pretty().slice() });
+            if (move_info.is_mate) {
+                write("info depth {} score mate {} nodes {} pv {s}\n", .{ depth_evaluated, eval, nodes_evaluated, move.pretty().slice() });
+            } else {
+                write("info depth {} score cp {} nodes {} pv {s}\n", .{ depth_evaluated, eval, nodes_evaluated, move.pretty().slice() });
+            }
             write("bestmove {s}\n", .{move.pretty().slice()});
         }
 

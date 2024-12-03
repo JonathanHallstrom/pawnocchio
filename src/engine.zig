@@ -174,8 +174,8 @@ const PestoEval = struct {
         for (PieceType.all) |pt| {
             const p: usize = @intFromEnum(pt);
             for (0..64) |sq| {
-                res[2 * p + 0][sq] = mg_value[p] + mg_pesto_table[p][sq] / 4;
-                res[2 * p + 1][sq] = mg_value[p] + mg_pesto_table[p][sq ^ 56] / 4;
+                res[2 * p + 0][sq] = mg_value[p] + mg_pesto_table[p][sq ^ 56];
+                res[2 * p + 1][sq] = mg_value[p] + mg_pesto_table[p][sq];
             }
         }
         break :blk res;
@@ -185,8 +185,8 @@ const PestoEval = struct {
         for (PieceType.all) |pt| {
             const p: usize = @intFromEnum(pt);
             for (0..64) |sq| {
-                res[2 * p + 0][sq] = eg_value[p] + eg_pesto_table[p][sq] / 4;
-                res[2 * p + 1][sq] = eg_value[p] + eg_pesto_table[p][sq ^ 56] / 4;
+                res[2 * p + 0][sq] = eg_value[p] + eg_pesto_table[p][sq ^ 56];
+                res[2 * p + 1][sq] = eg_value[p] + eg_pesto_table[p][sq];
             }
         }
         break :blk res;
@@ -620,6 +620,7 @@ pub const MoveInfo = struct {
     move: Move,
     depth_evaluated: usize,
     nodes_evaluated: u64,
+    is_mate: bool = false,
 };
 
 const TTentry = struct {
@@ -721,7 +722,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
             best_move = new_best_move;
             actual_eval = alpha;
             const elapsed_ns = timer.read();
-            write("info depth {} score {} nodes {} nps {d} time {} pv {s}\n", .{
+            write("info depth {} score cp {} nodes {} nps {d} time {} pv {s}\n", .{
                 depth_to_try,
                 alpha,
                 nodes_searched,
@@ -730,18 +731,29 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
                 best_move.pretty().slice(),
             });
         }
+        if (actual_eval > CHECKMATE_EVAL / 2) break;
         if (shutdown) break;
 
         depth_to_try += 1;
         std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
     }
-
-    return MoveInfo{
+    var res = MoveInfo{
         .depth_evaluated = depth_to_try,
         .eval = actual_eval,
         .move = best_move,
         .nodes_evaluated = nodes_searched,
     };
+
+    if (@abs(actual_eval) > CHECKMATE_EVAL / 2) {
+        res.is_mate = true;
+        const winning = actual_eval > 0;
+        if (winning) {
+            res.eval = CHECKMATE_EVAL - actual_eval - @as(i32, @intCast(board.fullmove_clock)) + 1;
+        } else {
+            res.eval = CHECKMATE_EVAL + actual_eval + @as(i32, @intCast(board.fullmove_clock)) + 1;
+        }
+    }
+    return res;
 }
 
 test "starting position even material" {
