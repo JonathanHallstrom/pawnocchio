@@ -59,7 +59,7 @@ pub fn main() !void {
         try log_writer.print("got: {s}\n", .{line});
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
-            try stdout.writeAll("id name pawnocchio 0.0.3\n");
+            try stdout.writeAll("id name pawnocchio 0.0.4\n");
             try stdout.writeAll("uciok\n");
         }
 
