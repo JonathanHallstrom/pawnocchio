@@ -799,10 +799,11 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
     if (@abs(actual_eval) > CHECKMATE_EVAL / 2) {
         res.is_mate = true;
         const winning = actual_eval > 0;
+        const correction = @intFromBool(board.turn == .white);
         if (winning) {
-            res.eval = CHECKMATE_EVAL - actual_eval - @as(i32, @intCast(board.fullmove_clock)) + 1;
+            res.eval = CHECKMATE_EVAL - actual_eval - @as(i32, @intCast(board.fullmove_clock)) + correction;
         } else {
-            res.eval = CHECKMATE_EVAL + actual_eval + @as(i32, @intCast(board.fullmove_clock)) - 1;
+            res.eval = CHECKMATE_EVAL + actual_eval + @as(i32, @intCast(board.fullmove_clock)) - correction;
         }
     }
     return res;
