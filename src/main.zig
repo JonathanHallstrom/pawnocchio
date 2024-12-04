@@ -228,10 +228,11 @@ pub fn main() !void {
             const depth_evaluated = move_info.depth_evaluated;
             const eval = move_info.eval;
             const nodes_evaluated = move_info.nodes_evaluated;
+            const time_used = move_info.time_used;
             if (move_info.is_mate) {
-                write("info depth {} score mate {} nodes {} pv {s}\n", .{ depth_evaluated, eval, nodes_evaluated, move.pretty().slice() });
+                write("info depth {} score mate {} time {} nodes {} pv {s}\n", .{ depth_evaluated, eval, time_used, nodes_evaluated, move.pretty().slice() });
             } else {
-                write("info depth {} score cp {} nodes {} pv {s}\n", .{ depth_evaluated, eval, nodes_evaluated, move.pretty().slice() });
+                write("info depth {} score cp {} time {} nodes {} pv {s}\n", .{ depth_evaluated, eval, time_used, nodes_evaluated, move.pretty().slice() });
             }
             write("bestmove {s}\n", .{move.pretty().slice()});
         }

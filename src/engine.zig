@@ -15,10 +15,10 @@ const Board = lib.Board;
 
 // havent quite gotten this working yet
 const PestoEval = struct {
-    const mg_value: [6]i32 = .{ 82, 337, 365, 477, 1025, 0 };
-    const eg_value: [6]i32 = .{ 94, 281, 297, 512, 936, 0 };
+    const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 0 };
+    const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 0 };
 
-    const mg_pawn_table: [64]i32 = .{
+    const mg_pawn_table: [64]i16 = .{
         0,   0,   0,   0,   0,   0,   0,  0,
         98,  134, 61,  95,  68,  126, 34, -11,
         -6,  7,   26,  31,  65,  56,  25, -20,
@@ -29,7 +29,7 @@ const PestoEval = struct {
         0,   0,   0,   0,   0,   0,   0,  0,
     };
 
-    const eg_pawn_table: [64]i32 = .{
+    const eg_pawn_table: [64]i16 = .{
         0,   0,   0,   0,   0,   0,   0,   0,
         178, 173, 158, 134, 147, 132, 165, 187,
         94,  100, 85,  67,  56,  53,  82,  84,
@@ -40,7 +40,7 @@ const PestoEval = struct {
         0,   0,   0,   0,   0,   0,   0,   0,
     };
 
-    const mg_knight_table: [64]i32 = .{
+    const mg_knight_table: [64]i16 = .{
         -167, -89, -34, -49, 61,  -97, -15, -107,
         -73,  -41, 72,  36,  23,  62,  7,   -17,
         -47,  60,  37,  65,  84,  129, 73,  44,
@@ -51,7 +51,7 @@ const PestoEval = struct {
         -105, -21, -58, -33, -17, -28, -19, -23,
     };
 
-    const eg_knight_table: [64]i32 = .{
+    const eg_knight_table: [64]i16 = .{
         -58, -38, -13, -28, -31, -27, -63, -99,
         -25, -8,  -25, -2,  -9,  -25, -24, -52,
         -24, -20, 10,  9,   -1,  -9,  -19, -41,
@@ -62,7 +62,7 @@ const PestoEval = struct {
         -29, -51, -23, -15, -22, -18, -50, -64,
     };
 
-    const mg_bishop_table: [64]i32 = .{
+    const mg_bishop_table: [64]i16 = .{
         -29, 4,  -82, -37, -25, -42, 7,   -8,
         -26, 16, -18, -13, 30,  59,  18,  -47,
         -16, 37, 43,  40,  35,  50,  37,  -2,
@@ -73,7 +73,7 @@ const PestoEval = struct {
         -33, -3, -14, -21, -13, -12, -39, -21,
     };
 
-    const eg_bishop_table: [64]i32 = .{
+    const eg_bishop_table: [64]i16 = .{
         -14, -21, -11, -8,  -7, -9,  -17, -24,
         -8,  -4,  7,   -12, -3, -13, -4,  -14,
         2,   -8,  0,   -1,  -2, 6,   0,   4,
@@ -84,7 +84,7 @@ const PestoEval = struct {
         -23, -9,  -23, -5,  -9, -16, -5,  -17,
     };
 
-    const mg_rook_table: [64]i32 = .{
+    const mg_rook_table: [64]i16 = .{
         32,  42,  32,  51,  63, 9,  31,  43,
         27,  32,  58,  62,  80, 67, 26,  44,
         -5,  19,  26,  36,  17, 45, 61,  16,
@@ -95,7 +95,7 @@ const PestoEval = struct {
         -19, -13, 1,   17,  16, 7,  -37, -26,
     };
 
-    const eg_rook_table: [64]i32 = .{
+    const eg_rook_table: [64]i16 = .{
         13, 10, 18, 15, 12, 12,  8,   5,
         11, 13, 13, 11, -3, 3,   8,   3,
         7,  7,  7,  5,  4,  -3,  -5,  -3,
@@ -106,7 +106,7 @@ const PestoEval = struct {
         -9, 2,  3,  -1, -5, -13, 4,   -20,
     };
 
-    const mg_queen_table: [64]i32 = .{
+    const mg_queen_table: [64]i16 = .{
         -28, 0,   29,  12,  59,  44,  43,  45,
         -24, -39, -5,  1,   -16, 57,  28,  54,
         -13, -17, 7,   8,   29,  56,  47,  57,
@@ -117,7 +117,7 @@ const PestoEval = struct {
         -1,  -18, -9,  10,  -15, -25, -31, -50,
     };
 
-    const eg_queen_table: [64]i32 = .{
+    const eg_queen_table: [64]i16 = .{
         -9,  22,  22,  27,  27,  19,  10,  20,
         -17, 20,  32,  41,  58,  25,  30,  0,
         -20, 6,   9,   49,  47,  35,  19,  9,
@@ -128,7 +128,7 @@ const PestoEval = struct {
         -33, -28, -22, -43, -5,  -32, -20, -41,
     };
 
-    const mg_king_table: [64]i32 = .{
+    const mg_king_table: [64]i16 = .{
         -65, 23,  16,  -15, -56, -34, 2,   13,
         29,  -1,  -20, -7,  -8,  -4,  -38, -29,
         -9,  24,  2,   -16, -20, 6,   22,  -22,
@@ -139,7 +139,7 @@ const PestoEval = struct {
         -15, 36,  12,  -54, 8,   -28, 24,  14,
     };
 
-    const eg_king_table: [64]i32 = .{
+    const eg_king_table: [64]i16 = .{
         -74, -35, -18, -18, -11, 15,  4,   -17,
         -12, 17,  14,  17,  17,  38,  23,  11,
         10,  17,  23,  15,  20,  45,  44,  13,
@@ -150,7 +150,7 @@ const PestoEval = struct {
         -53, -34, -21, -11, -28, -14, -24, -43,
     };
 
-    const mg_pesto_table: [6][64]i32 = .{
+    const mg_pesto_table: [6][64]i16 = .{
         mg_pawn_table,
         mg_knight_table,
         mg_bishop_table,
@@ -159,7 +159,7 @@ const PestoEval = struct {
         mg_king_table,
     };
 
-    const eg_pesto_table: [6][64]i32 = .{
+    const eg_pesto_table: [6][64]i16 = .{
         eg_pawn_table,
         eg_knight_table,
         eg_bishop_table,
@@ -168,9 +168,9 @@ const PestoEval = struct {
         eg_king_table,
     };
 
-    const gamephaseInc: [6]i32 = .{ 0, 1, 1, 2, 4, 0 };
+    const gamephaseInc: [6]i16 = .{ 0, 1, 1, 2, 4, 0 };
     const mg_table = blk: {
-        var res: [12][64]i32 = undefined;
+        var res: [12][64]i16 = undefined;
         for (PieceType.all) |pt| {
             const p: usize = @intFromEnum(pt);
             for (0..64) |sq| {
@@ -181,7 +181,7 @@ const PestoEval = struct {
         break :blk res;
     };
     const eg_table = blk: {
-        var res: [12][64]i32 = undefined;
+        var res: [12][64]i16 = undefined;
         for (PieceType.all) |pt| {
             const p: usize = @intFromEnum(pt);
             for (0..64) |sq| {
@@ -193,22 +193,22 @@ const PestoEval = struct {
     };
 };
 
-const CHECKMATE_EVAL: i32 = 1000_000_000;
+const CHECKMATE_EVAL: i16 = 32000;
 
-fn evalPieceMg(comptime piece_side: lib.Side, piece: Piece) i32 {
+fn evalPieceMg(comptime piece_side: lib.Side, piece: Piece) i16 {
     const tp = piece.getType();
     const p: usize = @intFromEnum(tp);
     return PestoEval.mg_table[2 * p + @intFromBool(piece_side == .black)][piece.getLoc()];
 }
 
-fn evalPieceEg(comptime piece_side: lib.Side, piece: Piece) i32 {
+fn evalPieceEg(comptime piece_side: lib.Side, piece: Piece) i16 {
     const tp = piece.getType();
     const p: usize = @intFromEnum(tp);
     return PestoEval.eg_table[2 * p + @intFromBool(piece_side == .black)][piece.getLoc()];
 }
 
-fn evalWithoutGameOverMg(comptime turn: lib.Side, board: Board) i32 {
-    var res: i32 = 0;
+fn evalWithoutGameOverMg(comptime turn: lib.Side, board: Board) i16 {
+    var res: i16 = 0;
     inline for (PieceType.all) |pt| {
         var iter = board.white.getBoard(pt).iterator();
         while (iter.next()) |b|
@@ -221,8 +221,8 @@ fn evalWithoutGameOverMg(comptime turn: lib.Side, board: Board) i32 {
     return res;
 }
 
-fn evalWithoutGameOverEg(comptime turn: lib.Side, board: Board) i32 {
-    var res: i32 = 0;
+fn evalWithoutGameOverEg(comptime turn: lib.Side, board: Board) i16 {
+    var res: i16 = 0;
     inline for (PieceType.all) |pt| {
         var iter = board.white.getBoard(pt).iterator();
         while (iter.next()) |b|
@@ -235,12 +235,12 @@ fn evalWithoutGameOverEg(comptime turn: lib.Side, board: Board) i32 {
     return res;
 }
 
-fn getPhase(pt: PieceType) i32 {
+fn getPhase(pt: PieceType) i16 {
     return PestoEval.gamephaseInc[@intFromEnum(pt)];
 }
 
-fn getPhaseBoard(board: Board) i32 {
-    var phase: i32 = 0;
+fn getPhaseBoard(board: Board) i16 {
+    var phase: i16 = 0;
     inline for (PieceType.all) |pt| {
         phase += board.white.getBoard(pt).iterator().numRemaining() * getPhase(pt);
         phase += board.black.getBoard(pt).iterator().numRemaining() * getPhase(pt);
@@ -248,10 +248,10 @@ fn getPhaseBoard(board: Board) i32 {
     return phase;
 }
 
-fn eval(comptime turn: lib.Side, board: Board) i32 {
-    var mg: i32 = 0;
-    var eg: i32 = 0;
-    var phase: i32 = 0;
+fn eval(comptime turn: lib.Side, board: Board) i16 {
+    var mg: i16 = 0;
+    var eg: i16 = 0;
+    var phase: i16 = 0;
     inline for (PieceType.all) |pt| {
         var iter = board.white.getBoard(pt).iterator();
         phase += iter.numRemaining() * getPhase(pt);
@@ -272,11 +272,11 @@ fn eval(comptime turn: lib.Side, board: Board) i32 {
     }
     const mg_phase = @min(phase, 24);
     const eg_phase = 24 - mg_phase;
-    return @divTrunc(mg_phase * mg + eg_phase * eg, 24);
+    return @intCast(@divTrunc(mg_phase * @as(i32, mg) + eg_phase * eg, 24));
 }
 
-fn mvvlvaValue(x: Move) i32 {
-    const PieceValues = [_]i32{
+fn mvvlvaValue(x: Move) i16 {
+    const PieceValues = [_]i16{
         100, // pawn
         320, // knight
         330, // bishop
@@ -293,15 +293,15 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
 }
 
 const MoveDelta = struct {
-    mg: i32,
-    eg: i32,
-    phase: i32,
+    mg: i16,
+    eg: i16,
+    phase: i16,
 };
 
 fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
     var d_mg = evalPieceMg(turn, move.to()) - evalPieceMg(turn, move.from());
     var d_eg = evalPieceEg(turn, move.to()) - evalPieceEg(turn, move.from());
-    var d_phase: i32 = 0;
+    var d_phase: i16 = 0;
     if (move.captured()) |cap| {
         d_mg += evalPieceMg(turn.flipped(), cap);
         d_eg += evalPieceEg(turn.flipped(), cap);
@@ -319,8 +319,9 @@ fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
     };
 }
 
-fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) i32 {
+fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     nodes_searched += 1;
+    var alpha = alpha_;
     if (timer.read() >= die_time) {
         shutdown = true;
         return 0;
@@ -345,7 +346,6 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
     const moves = move_buf[0..num_moves];
-    var result = -CHECKMATE_EVAL;
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
@@ -356,25 +356,31 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                 board,
                 current_depth + 1,
                 depth_remaining - 1,
+                -beta,
+                -alpha,
                 move_buf[num_moves..],
                 hash_history,
             );
             if (shutdown) return 0;
 
-            if (cur > result)
-                result = cur;
+            if (cur > alpha)
+                alpha = cur;
+            if (cur >= beta)
+                break;
         }
     }
-    return result;
+    return alpha;
 }
 
-pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) i32 {
+pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     return switch (board.turn) {
         inline else => |t| search(
             t,
             board,
             1,
             depth,
+            -CHECKMATE_EVAL,
+            CHECKMATE_EVAL,
             move_buf,
             hash_history,
         ),
@@ -390,11 +396,12 @@ var shutdown = false;
 // var tt_hits: usize = 0;
 
 pub const MoveInfo = struct {
-    eval: i32,
+    eval: i16,
     move: Move,
     depth_evaluated: usize,
     nodes_evaluated: u64,
     is_mate: bool = false,
+    time_used: u64,
 };
 
 // const TTentry = struct {
@@ -459,13 +466,24 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
             best_move = best_move_iter;
         }
     }
-    return MoveInfo{
+
+    var res = MoveInfo{
         .eval = best_eval,
         .move = best_move,
         .depth_evaluated = depth_evaluated,
         .is_mate = false,
         .nodes_evaluated = nodes_searched,
+        .time_used = timer.read() / std.time.ns_per_ms,
     };
+    if (@abs(best_eval) >= CHECKMATE_EVAL - max_depth) {
+        res.is_mate = true;
+        if (best_eval > 0) {
+            res.eval = CHECKMATE_EVAL - best_eval;
+        } else {
+            res.eval = best_eval - CHECKMATE_EVAL;
+        }
+    }
+    return res;
 }
 
 test "starting position even material" {
