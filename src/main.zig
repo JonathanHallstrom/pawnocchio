@@ -128,7 +128,7 @@ pub fn main() !void {
         }
 
         if (std.ascii.eqlIgnoreCase(command, "go")) {
-            var max_depth: u16 = 1000;
+            var max_depth: u8 = 255;
             var max_nodes: u64 = std.math.maxInt(u64);
 
             // by default assume each player has 1000s
@@ -162,7 +162,7 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "depth")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    max_depth = std.fmt.parseInt(u16, depth_to_parse, 10) catch {
+                    max_depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
                         try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
@@ -210,6 +210,7 @@ pub fn main() !void {
                     });
                 }
             }
+            if (mate_finding_depth) |depth| max_depth = @min(max_depth, depth);
             log_writer.print("max depth: {}\n", .{max_depth}) catch {};
 
             // const my_time = if (board.turn == .white) white_time else black_time;

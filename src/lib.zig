@@ -1910,8 +1910,8 @@ pub const Board = struct {
         var filtered_count: usize = 0;
         var board = self;
         for (move_buffer) |move| {
-            move_buffer[filtered_count] = move;
             if (!board.doesMoveCauseSelfCheck(move)) {
+                move_buffer[filtered_count] = move;
                 filtered_count += 1;
             }
         }

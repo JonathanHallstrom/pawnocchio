@@ -191,39 +191,9 @@ const PestoEval = struct {
         }
         break :blk res;
     };
-
-    fn eval(comptime turn: lib.Side, board: Board) i32 {
-        if (board.gameOver()) |res| return switch (res) {
-            .tie => 0,
-            else => -CHECKMATE_EVAL,
-        };
-
-        var mg: i32 = 0;
-        var eg: i32 = 0;
-        var mg_phase: i32 = 0;
-        for (PieceType.all) |pt| {
-            const p: usize = @intFromEnum(pt);
-            var iter = board.white.getBoard(pt).iterator();
-            while (iter.next()) |b| {
-                mg += mg_table[2 * p][b.toLoc()];
-                eg += eg_table[2 * p][b.toLoc()];
-                mg_phase += gamephaseInc[p];
-            }
-            iter = board.black.getBoard(pt).iterator();
-            while (iter.next()) |b| {
-                mg -= mg_table[2 * p + 1][b.toLoc()];
-                eg -= eg_table[2 * p + 1][b.toLoc()];
-                mg_phase += gamephaseInc[p];
-            }
-        }
-        mg_phase = @min(mg_phase, 24);
-        const eg_phase = 24 - mg_phase;
-        const res = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
-        return if (turn == .white) res else -res;
-    }
 };
 
-const CHECKMATE_EVAL = 1000_000_000;
+const CHECKMATE_EVAL: i32 = 1000_000_000;
 
 fn evalPieceMg(comptime piece_side: lib.Side, piece: Piece) i32 {
     const tp = piece.getType();
@@ -278,7 +248,7 @@ fn getPhaseBoard(board: Board) i32 {
     return phase;
 }
 
-fn evalWithoutGameOver(comptime turn: lib.Side, board: Board) i32 {
+fn eval(comptime turn: lib.Side, board: Board) i32 {
     var mg: i32 = 0;
     var eg: i32 = 0;
     var phase: i32 = 0;
@@ -303,13 +273,6 @@ fn evalWithoutGameOver(comptime turn: lib.Side, board: Board) i32 {
     const mg_phase = @min(phase, 24);
     const eg_phase = 24 - mg_phase;
     return @divTrunc(mg_phase * mg + eg_phase * eg, 24);
-}
-
-fn eval(comptime turn: lib.Side, board: Board) i32 {
-    if (board.gameOver()) |gr| {
-        return if (gr == .tie) 0 else -CHECKMATE_EVAL + @as(i32, @intCast(board.fullmove_clock));
-    }
-    return evalWithoutGameOver(turn, board);
 }
 
 fn mvvlvaValue(x: Move) i32 {
@@ -356,309 +319,75 @@ fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
     };
 }
 
-fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, phase: i32, mg: i32, eg: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
-    if (std.debug.runtime_safety) search_depth += 1;
-    defer {
-        if (std.debug.runtime_safety) search_depth -= 1;
-    }
+fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) i32 {
     nodes_searched += 1;
-    if (nodes_searched >= max_nodes)
+    if (timer.read() >= die_time) {
         shutdown = true;
-    if (nodes_searched % 128 == 0 and timer.read() >= die_time)
-        shutdown = true;
-    if (shutdown)
         return 0;
+    }
+    if (shutdown) return 0;
 
-    const zobrist = board.zobrist;
-
-    if (board.isFiftyMoveTie() or board.isTieByInsufficientMaterial())
+    if (board.gameOver()) |gr| {
+        return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
+    }
+    var num_repeats: u8 = 0;
+    for (0..board.halfmove_clock) |i| {
+        if (hash_history.items[hash_history.items.len - 1 - i] == board.zobrist) {
+            num_repeats += 1;
+        }
+    }
+    if (num_repeats >= 3) {
         return 0;
-
-    const num_query = @min(hash_history.items.len, board.halfmove_clock);
-    var num_prev: u8 = 0;
-    for (hash_history.items[hash_history.items.len - num_query ..]) |past_hash| {
-        num_prev += @intFromBool(past_hash == zobrist);
     }
-
-    // tie
-    if (num_prev >= 3)
-        return 0;
-
-    if (std.debug.runtime_safety and nodes_searched % (1 << 20) == 0) {
-        log_writer.print("q nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
-    }
-
-    if (std.debug.runtime_safety and mg != evalWithoutGameOverMg(turn, board.*)) {
-        log_writer.print("q mg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverMg(turn, board.*), board.toFen().slice() }) catch {};
-    }
-    if (std.debug.runtime_safety and eg != evalWithoutGameOverEg(turn, board.*)) {
-        log_writer.print("q eg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverEg(turn, board.*), board.toFen().slice() }) catch {};
-    }
-
-    // if (static_eval != evalWithoutGameOver(turn, board.*)) {
-    //     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
-    //     const log_file = std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only }) catch null;
-    //     defer if (log_file) |log| log.close();
-
-    //     if (log_file) |lf| {
-    //         lf.writer().print("q evalerror {} {} {s}\n", .{ static_eval, evalWithoutGameOver(turn, board.*), board.toFen().slice() }) catch {};
-    //     }
-    // }
-
-    const mg_phase = @min(phase, 24);
-    const eg_phase = 24 - mg_phase;
-    const static_eval = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
-    var alpha = alpha_;
-    if (static_eval >= beta)
-        return beta;
-    if (alpha < static_eval)
-        alpha = static_eval;
-
-    const tt_entry = &tt[getTTIndex(zobrist)];
-    var tt_hit: usize = 0;
-    if (tt_entry.zobrist == zobrist) {
-        if (std.debug.runtime_safety)
-            tt_hits += 1;
-        tt_hit = 1;
-        move_buf[0] = tt_entry.bestmove;
-    }
-
-    const num_moves = board.getAllCapturesUnchecked(move_buf[tt_hit..], board.getSelfCheckSquares());
-    if (num_moves == 0) {
+    if (depth_remaining == 0) {
         return eval(turn, board.*);
-    }
-    const moves = move_buf[tt_hit..][0..num_moves];
-    const rem_buf = move_buf[tt_hit..][num_moves..];
-    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
-    var num_valid_moves: usize = 0;
-
-    var bestmove: Move = move_buf[0];
-    for (move_buf[0 .. num_moves + tt_hit], 0..) |move, i| {
-        if (i > 0 and std.meta.eql(move, move_buf[0])) continue;
-        if (move.isCapture()) {
-            if (board.playMovePossibleSelfCheck(move)) |inv| {
-                num_valid_moves += 1;
-                defer board.undoMove(inv);
-                hash_history.appendAssumeCapacity(board.zobrist);
-                defer _ = hash_history.pop();
-
-                const d_mg = evalPieceMg(turn, move.to()) - evalPieceMg(turn, move.from()) + evalPieceMg(turn.flipped(), move.captured().?);
-                const d_eg = evalPieceEg(turn, move.to()) - evalPieceEg(turn, move.from()) + evalPieceEg(turn.flipped(), move.captured().?);
-                const d_phase = getPhase(move.captured().?.getType());
-                const cur = -quiesce(
-                    turn.flipped(),
-                    board,
-                    rem_buf,
-                    phase - d_phase,
-                    -(mg + d_mg),
-                    -(eg + d_eg),
-                    -beta,
-                    -alpha,
-                    hash_history,
-                );
-                if (shutdown)
-                    return 0;
-                if (cur > alpha) {
-                    alpha = cur;
-                    bestmove = move;
-                }
-                if (cur >= beta) break;
-            }
-        }
-    }
-    if (num_valid_moves == 0) {
-        return eval(turn, board.*);
-    }
-    tt_entry.zobrist = zobrist;
-    tt_entry.bestmove = bestmove;
-    return alpha;
-}
-
-var zobrist_collisions: usize = 0;
-
-fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move, phase: i32, mg: i32, eg: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
-    if (std.debug.runtime_safety) search_depth += 1;
-    defer {
-        if (std.debug.runtime_safety) search_depth -= 1;
-    }
-    nodes_searched += 1;
-    if (nodes_searched >= max_nodes)
-        shutdown = true;
-    if (nodes_searched % 128 == 0 and timer.read() >= die_time)
-        shutdown = true;
-    if (shutdown)
-        return 0;
-    const zobrist = board.zobrist;
-    // board.resetZobrist();
-    // if (zobrist != board.zobrist) {
-    //     log_writer.print("zobrist broke {s}\n", .{board.toFen().slice()}) catch {};
-    // }
-
-    if (board.isFiftyMoveTie() or board.isTieByInsufficientMaterial())
-        return 0;
-
-    const num_query = @min(hash_history.items.len, board.halfmove_clock);
-    var num_prev: u8 = 0;
-    for (hash_history.items[hash_history.items.len - num_query ..]) |past_hash| {
-        num_prev += @intFromBool(past_hash == zobrist);
-    }
-
-    // tie
-    if (num_prev >= 3)
-        return 0;
-    if (std.debug.runtime_safety and nodes_searched % (1 << 20) == 0) {
-        log_writer.print("n nodes {} depth {}\n", .{ nodes_searched, search_depth }) catch {};
-    }
-    if (std.debug.runtime_safety and mg != evalWithoutGameOverMg(turn, board.*)) {
-        log_writer.print("n mg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverMg(turn, board.*), board.toFen().slice() }) catch {};
-    }
-    if (std.debug.runtime_safety and eg != evalWithoutGameOverEg(turn, board.*)) {
-        log_writer.print("n eg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverEg(turn, board.*), board.toFen().slice() }) catch {};
-    }
-
-    var alpha = alpha_;
-    var depth = depth_;
-    if (board.isInCheck(.auto)) depth += 1;
-    if (depth == 0) {
-        return quiesce(turn, board, move_buf, phase, mg, eg, alpha, beta, hash_history);
-    }
-
-    const tt_entry = &tt[getTTIndex(zobrist)];
-    var bestmove: ?Move = null;
-    if (tt_entry.zobrist == zobrist) {
-        if (std.debug.runtime_safety)
-            tt_hits += 1;
-        bestmove = tt_entry.bestmove;
-        const inverse = board.playMove(tt_entry.bestmove);
-        hash_history.appendAssumeCapacity(board.zobrist);
-        defer _ = hash_history.pop();
-        defer board.undoMove(inverse);
-        const move_delta = getMoveDelta(turn, tt_entry.bestmove);
-        const cur = -search(
-            turn.flipped(),
-            board,
-            depth - 1,
-            move_buf,
-            phase - move_delta.phase,
-            -(mg + move_delta.mg),
-            -(eg + move_delta.eg),
-            -beta,
-            -alpha,
-            hash_history,
-        );
-        if (shutdown) {
-            return 0;
-        }
-        if (cur > alpha) {
-            alpha = cur;
-        }
-        if (cur >= beta) {
-            return alpha;
-        }
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
     const moves = move_buf[0..num_moves];
-    const rem_buf = move_buf[num_moves..];
-    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
-    var num_valid_moves: usize = @intFromBool(bestmove != null);
-
+    var result = -CHECKMATE_EVAL;
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
+            defer board.undoMove(inv);
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
-            defer board.undoMove(inv);
+            const cur = -search(
+                turn.flipped(),
+                board,
+                current_depth + 1,
+                depth_remaining - 1,
+                move_buf[num_moves..],
+                hash_history,
+            );
+            if (shutdown) return 0;
 
-            num_valid_moves += 1;
-
-            const move_delta = getMoveDelta(turn, move);
-
-            if (num_valid_moves == 1) {
-                const cur = -search(
-                    turn.flipped(),
-                    board,
-                    depth - 1,
-                    rem_buf,
-                    phase - move_delta.phase,
-                    -(mg + move_delta.mg),
-                    -(eg + move_delta.eg),
-                    -beta,
-                    -alpha,
-                    hash_history,
-                );
-                if (cur > alpha) {
-                    alpha = cur;
-                    bestmove = move;
-                }
-            } else {
-                var cur = -search(
-                    turn.flipped(),
-                    board,
-                    depth - 1,
-                    rem_buf,
-                    phase - move_delta.phase,
-                    -(mg + move_delta.mg),
-                    -(eg + move_delta.eg),
-                    -(alpha + 1),
-                    -alpha,
-                    hash_history,
-                );
-                if (alpha < cur and cur < beta) {
-                    cur = -search(
-                        turn.flipped(),
-                        board,
-                        depth - 1,
-                        rem_buf,
-                        phase - move_delta.phase,
-                        -(mg + move_delta.mg),
-                        -(eg + move_delta.eg),
-                        -beta,
-                        -alpha,
-                        hash_history,
-                    );
-                }
-
-                if (cur > alpha) {
-                    alpha = cur;
-                    bestmove = move;
-                }
-            }
-            if (shutdown) {
-                return 0;
-            }
-            if (alpha >= beta) {
-                break;
-            }
+            if (cur > result)
+                result = cur;
         }
     }
-    if (num_valid_moves == 0) {
-        return if (board.isInCheck(.auto)) -CHECKMATE_EVAL + @as(i32, @intCast(board.fullmove_clock)) else 0;
-    }
-
-    if (bestmove) |bm| {
-        tt_entry.bestmove = bm;
-        tt_entry.zobrist = zobrist;
-    }
-
-    return alpha;
+    return result;
 }
 
-pub fn negaMax(board: Board, depth: u16, move_buf: []Move, hash_history: *std.ArrayList(u64), alpha: i32, beta: i32) i32 {
-    var self = board;
-    return switch (self.turn) {
-        inline else => |t| search(t, &self, depth, move_buf, getPhaseBoard(board), evalWithoutGameOverMg(t, board), evalWithoutGameOverEg(t, board), alpha, beta, hash_history),
+pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) i32 {
+    return switch (board.turn) {
+        inline else => |t| search(
+            t,
+            board,
+            1,
+            depth,
+            move_buf,
+            hash_history,
+        ),
     };
 }
 
-var search_depth: u16 = 0;
-var max_depth_seen: u16 = 0;
 var nodes_searched: u64 = 0;
 var max_nodes: u64 = std.math.maxInt(u64);
-var max_depth: u16 = 256;
+var max_depth: u8 = 255;
 var timer: std.time.Timer = undefined;
 var die_time: u64 = std.math.maxInt(u64);
 var shutdown = false;
-var tt_hits: usize = 0;
+// var tt_hits: usize = 0;
 
 pub const MoveInfo = struct {
     eval: i32,
@@ -668,144 +397,75 @@ pub const MoveInfo = struct {
     is_mate: bool = false,
 };
 
-const TTentry = struct {
-    zobrist: u64 = 0,
-    bestmove: Move = std.mem.zeroes(Move),
-    const null_entry: TTentry = .{};
-};
+// const TTentry = struct {
+//     zobrist: u64 = 0,
+//     bestmove: Move = std.mem.zeroes(Move),
+//     const null_entry: TTentry = .{};
+// };
 
-const tt_size = 1 << 20;
-var tt: [tt_size]TTentry = .{TTentry.null_entry} ** tt_size;
+// const tt_size = 1 << 20;
+// var tt: [tt_size]TTentry = .{TTentry.null_entry} ** tt_size;
 
-fn getTTIndex(hash: u64) usize {
-    return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt_size) >> 32;
-}
+// fn getTTIndex(hash: u64) usize {
+//     return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt_size) >> 32;
+// }
 
 fn resetSoft() void {
-    search_depth = 0;
-    max_depth_seen = 0;
     nodes_searched = 0;
     shutdown = false;
-    tt_hits = 0;
+    // tt_hits = 0;
 }
 
 pub fn reset() void {
     resetSoft();
-    @memset(&tt, TTentry.null_entry);
+    // @memset(&tt, TTentry.null_entry);
 }
 
 var rand = std.Random.DefaultPrng.init(0);
-pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64)) MoveInfo {
-    resetSoft();
-    max_depth = depth;
+pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64)) MoveInfo {
     max_nodes = nodes;
-
-    var self = board;
-    const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
-    const moves = move_buf[0..num_moves];
-
-    const MoveEvalPair = struct {
-        move: Move,
-        eval: i32,
-
-        fn orderByEval(_: void, lhs: @This(), rhs: @This()) bool {
-            return lhs.eval > rhs.eval;
-        }
-    };
-
-    var move_eval_buf: [400]MoveEvalPair = undefined;
-    for (0..num_moves) |i| {
-        move_eval_buf[i] = .{ .move = moves[i], .eval = mvvlvaValue(moves[i]) };
-    }
-
-    var depth_to_try: u16 = 1;
-    var actual_eval: i32 = 0;
     timer = std.time.Timer.start() catch unreachable;
     die_time = timer.read() + hard_time;
+    resetSoft();
 
-    rand.random().shuffle(MoveEvalPair, move_eval_buf[0..num_moves]);
-    std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
-    var alpha: i32 = move_eval_buf[0].eval;
-    const beta = CHECKMATE_EVAL;
-    var best_move: Move = move_eval_buf[0].move;
+    const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
+    const moves = move_buf[0..num_moves];
+    var best_move = moves[0];
+    var best_eval = -CHECKMATE_EVAL;
+    var self = board;
+    var depth_try: u8 = 1;
+    var depth_evaluated: u8 = 0;
+    while (depth_try <= depth and timer.read() <= soft_time) : (depth_try += 1) {
+        var best_move_iter = moves[0];
+        var best_eval_iter = -CHECKMATE_EVAL;
 
-    while (timer.read() < soft_time and depth_to_try <= depth) {
-        alpha = -CHECKMATE_EVAL;
-        var new_best_move = best_move;
-        for (move_eval_buf[0..num_moves]) |*entry| {
-            const move = entry.move;
+        for (moves) |move| {
+            const inv = self.playMove(move);
+            defer self.undoMove(inv);
 
             hash_history.appendAssumeCapacity(self.zobrist);
             defer _ = hash_history.pop();
 
-            if (self.playMovePossibleSelfCheck(move)) |inv| {
-                defer self.undoMove(inv);
-
-                var cur = -negaMax(self, depth_to_try, move_buf, hash_history, -(alpha + 1), -alpha);
-                if (alpha < cur and cur < beta) {
-                    cur = -negaMax(self, depth_to_try, move_buf, hash_history, -beta, -alpha);
-                }
-
-                if (shutdown) {
-                    if (std.debug.runtime_safety) log_writer.print("shutdown after {}\n", .{std.fmt.fmtDuration(timer.read())}) catch {};
-                    break;
-                }
-
-                entry.eval = cur;
-                if (entry.eval > alpha) {
-                    alpha = entry.eval;
-                    new_best_move = move;
-                }
+            const cur = -doSearch(&self, depth_try, move_buf[num_moves..], hash_history);
+            if (shutdown) break;
+            if (cur > best_eval_iter) {
+                best_eval_iter = cur;
+                best_move_iter = move;
             }
         }
-        if (std.debug.runtime_safety) log_writer.print("depth {} bestmove {s} tt_hits: {} zobrist_errors: {}\n", .{
-            depth_to_try,
-            new_best_move.pretty().slice(),
-            tt_hits,
-            zobrist_collisions,
-        }) catch {};
-
         if (!shutdown) {
-            best_move = new_best_move;
-            actual_eval = alpha;
-            const elapsed_ns = timer.read();
-            write("info depth {} score cp {} nodes {} nps {d} time {} pv {s}\n", .{
-                depth_to_try,
-                alpha,
-                nodes_searched,
-                nodes_searched * std.time.ns_per_s / elapsed_ns,
-                elapsed_ns / std.time.ns_per_ms,
-                best_move.pretty().slice(),
-            });
+            depth_evaluated = depth_try;
+            best_eval = best_eval_iter;
+            best_move = best_move_iter;
         }
-        if (actual_eval > CHECKMATE_EVAL / 2) break;
-        if (shutdown) break;
-
-        depth_to_try += 1;
-        std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
     }
-
-    if (shutdown) {
-        if (std.debug.runtime_safety) log_writer.print("shutdown after {}\n", .{std.fmt.fmtDuration(timer.read())}) catch {};
-    }
-
-    var res = MoveInfo{
-        .depth_evaluated = depth_to_try,
-        .eval = actual_eval,
+    return MoveInfo{
+        .eval = best_eval,
         .move = best_move,
+        .depth_evaluated = depth_evaluated,
+        .is_mate = false,
         .nodes_evaluated = nodes_searched,
     };
-
-    if (@abs(actual_eval) > CHECKMATE_EVAL / 2) {
-        res.is_mate = true;
-        const winning = actual_eval > 0;
-        if (winning) {
-            res.eval = CHECKMATE_EVAL - actual_eval - @as(i32, @intCast(board.fullmove_clock)) + 1;
-        } else {
-            res.eval = CHECKMATE_EVAL + actual_eval + @as(i32, @intCast(board.fullmove_clock)) - 1;
-        }
-    }
-    return res;
 }
 
 test "starting position even material" {
