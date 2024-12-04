@@ -282,7 +282,7 @@ fn mvvlvaValue(x: Move) i16 {
         330, // bishop
         500, // rook
         900, // queen
-        100_000, // king
+        10_000, // king
     };
     if (!x.isCapture()) return 0;
     return PieceValues[@intFromEnum(x.captured().?.getType())] - PieceValues[@intFromEnum(x.to().getType())];
@@ -301,11 +301,11 @@ const MoveDelta = struct {
 fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
     var d_mg = evalPieceMg(turn, move.to()) - evalPieceMg(turn, move.from());
     var d_eg = evalPieceEg(turn, move.to()) - evalPieceEg(turn, move.from());
-    var d_phase: i16 = 0;
+    var d_phase: i16 = getPhase(move.to().getType()) - getPhase(move.from().getType());
     if (move.captured()) |cap| {
         d_mg += evalPieceMg(turn.flipped(), cap);
         d_eg += evalPieceEg(turn.flipped(), cap);
-        d_phase = getPhase(cap.getType());
+        d_phase -= getPhase(cap.getType());
     }
     if (move.isCastlingMove()) {
         const rm = move.getCastlingRookMove();
@@ -319,7 +319,7 @@ fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
     };
 }
 
-fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, phase: i16, mg: i16, eg: i16, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     nodes_searched += 1;
     var alpha = alpha_;
     if (timer.read() >= die_time) {
@@ -327,6 +327,17 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
         return 0;
     }
     if (shutdown) return 0;
+
+    if (std.debug.runtime_safety and
+        (phase != getPhaseBoard(board.*) or
+        mg != evalWithoutGameOverMg(turn, board.*) or
+        eg != evalWithoutGameOverEg(turn, board.*)))
+    {
+        log_writer.print("board: {s}\n", .{board.toFen().slice()}) catch {};
+        err = true;
+        shutdown = true;
+        return 0;
+    }
 
     if (board.gameOver()) |gr| {
         return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
@@ -341,26 +352,37 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
         return 0;
     }
     if (depth_remaining == 0) {
-        return eval(turn, board.*);
+        const mg_phase: i32 = @min(24, phase);
+        const eg_phase: i32 = 24 - mg_phase;
+        const static_eval = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
+        return @intCast(static_eval);
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
     const moves = move_buf[0..num_moves];
+    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
+            const delta = getMoveDelta(turn, move);
             const cur = -search(
                 turn.flipped(),
                 board,
                 current_depth + 1,
                 depth_remaining - 1,
+                phase + delta.phase,
+                -(mg + delta.mg),
+                -(eg + delta.eg),
                 -beta,
                 -alpha,
                 move_buf[num_moves..],
                 hash_history,
             );
+            if (err) {
+                log_writer.print("move: {}\n", .{move}) catch {};
+            }
             if (shutdown) return 0;
 
             if (cur > alpha)
@@ -379,6 +401,9 @@ pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, hash_history: *std.A
             board,
             1,
             depth,
+            getPhaseBoard(board.*),
+            evalWithoutGameOverMg(t, board.*),
+            evalWithoutGameOverEg(t, board.*),
             -CHECKMATE_EVAL,
             CHECKMATE_EVAL,
             move_buf,
@@ -387,6 +412,7 @@ pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, hash_history: *std.A
     };
 }
 
+var err = false;
 var nodes_searched: u64 = 0;
 var max_nodes: u64 = std.math.maxInt(u64);
 var max_depth: u8 = 255;
@@ -454,6 +480,10 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
             defer _ = hash_history.pop();
 
             const cur = -doSearch(&self, depth_try, move_buf[num_moves..], hash_history);
+
+            if (err) {
+                log_writer.print("move: {}\n", .{move}) catch {};
+            }
             if (shutdown) break;
             if (cur > best_eval_iter) {
                 best_eval_iter = cur;
