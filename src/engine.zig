@@ -329,6 +329,33 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
     return mvvlvaValue(lhs) > mvvlvaValue(rhs);
 }
 
+const MoveDelta = struct {
+    mg: i32,
+    eg: i32,
+    phase: i32,
+};
+
+fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
+    var d_mg = evalPieceMg(turn, move.to()) - evalPieceMg(turn, move.from());
+    var d_eg = evalPieceEg(turn, move.to()) - evalPieceEg(turn, move.from());
+    var d_phase: i32 = 0;
+    if (move.captured()) |cap| {
+        d_mg += evalPieceMg(turn.flipped(), cap);
+        d_eg += evalPieceEg(turn.flipped(), cap);
+        d_phase = getPhase(cap.getType());
+    }
+    if (move.isCastlingMove()) {
+        const rm = move.getCastlingRookMove();
+        d_mg += evalPieceMg(turn, rm.to()) - evalPieceMg(turn, rm.from());
+        d_eg += evalPieceEg(turn, rm.to()) - evalPieceEg(turn, rm.from());
+    }
+    return .{
+        .mg = d_mg,
+        .eg = d_eg,
+        .phase = d_phase,
+    };
+}
+
 fn quiesce(comptime turn: lib.Side, board: *Board, move_buf: []Move, phase: i32, mg: i32, eg: i32, alpha_: i32, beta: i32, hash_history: *std.ArrayList(u64)) i32 {
     if (std.debug.runtime_safety) search_depth += 1;
     defer {
@@ -489,101 +516,117 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
         log_writer.print("n eg evalerror {} {} {s}\n", .{ mg, evalWithoutGameOverEg(turn, board.*), board.toFen().slice() }) catch {};
     }
 
-    // if (static_eval != evalWithoutGameOver(turn, board.*)) {
-    //     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
-    //     const log_file = std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only }) catch null;
-    //     defer if (log_file) |log| log.close();
-
-    //     if (log_file) |lf| {
-    //         lf.writer().print("q evalerror {} {} {s}\n", .{ static_eval, evalWithoutGameOver(turn, board.*), board.toFen().slice() }) catch {};
-    //     }
-    // }
+    var alpha = alpha_;
     var depth = depth_;
     if (board.isInCheck(.auto)) depth += 1;
-
-    // const mg_phase = @min(phase, 24);
-    // const eg_phase = 24 - mg_phase;
-    // const static_eval = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
-    // _ = static_eval; // autofix
-    var alpha = alpha_;
+    if (depth == 0) {
+        return quiesce(turn, board, move_buf, phase, mg, eg, alpha, beta, hash_history);
+    }
 
     const tt_entry = &tt[getTTIndex(zobrist)];
-    var tt_hit: usize = 0;
+    var bestmove: ?Move = null;
     if (tt_entry.zobrist == zobrist) {
         if (std.debug.runtime_safety)
             tt_hits += 1;
-        tt_hit = 1;
-        move_buf[0] = tt_entry.bestmove;
+        bestmove = tt_entry.bestmove;
+        const inverse = board.playMove(tt_entry.bestmove);
+        hash_history.appendAssumeCapacity(board.zobrist);
+        defer _ = hash_history.pop();
+        defer board.undoMove(inverse);
+        const move_delta = getMoveDelta(turn, tt_entry.bestmove);
+        const cur = -search(
+            turn.flipped(),
+            board,
+            depth - 1,
+            move_buf,
+            phase - move_delta.phase,
+            -(mg + move_delta.mg),
+            -(eg + move_delta.eg),
+            -beta,
+            -alpha,
+            hash_history,
+        );
+        if (shutdown) {
+            return 0;
+        }
+        if (cur > alpha) {
+            alpha = cur;
+        }
+        if (cur >= beta) {
+            return alpha;
+        }
     }
 
-    if (depth == 0) {
-        return quiesce(turn, board, move_buf, phase, mg, eg, alpha, beta, hash_history);
-        // return eval(turn, board.*);
-    }
-    const num_moves = board.getAllMovesUnchecked(move_buf[tt_hit..], board.getSelfCheckSquares());
-    const moves = move_buf[tt_hit..][0..num_moves];
-    const rem_buf = move_buf[tt_hit..][num_moves..];
+    const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
+    const moves = move_buf[0..num_moves];
+    const rem_buf = move_buf[num_moves..];
     std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
-    var num_valid_moves: usize = 0;
+    var num_valid_moves: usize = @intFromBool(bestmove != null);
 
-    var bestmove: Move = move_buf[0];
-    for (move_buf[0 .. num_moves + tt_hit], 0..) |move, i| {
-        if (i > 0 and std.meta.eql(move, move_buf[0])) continue;
+    for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
+            hash_history.appendAssumeCapacity(board.zobrist);
+            defer _ = hash_history.pop();
             defer board.undoMove(inv);
 
             num_valid_moves += 1;
-            hash_history.appendAssumeCapacity(board.zobrist);
-            defer _ = hash_history.pop();
 
-            var d_mg = evalPieceMg(turn, move.to()) - evalPieceMg(turn, move.from());
-            var d_eg = evalPieceEg(turn, move.to()) - evalPieceEg(turn, move.from());
-            var d_phase: i32 = 0;
-            if (move.captured()) |cap| {
-                d_mg += evalPieceMg(turn.flipped(), cap);
-                d_eg += evalPieceEg(turn.flipped(), cap);
-                d_phase = getPhase(cap.getType());
-            }
-            if (move.isCastlingMove()) {
-                const rm = move.getCastlingRookMove();
-                d_mg += evalPieceMg(turn, rm.to()) - evalPieceMg(turn, rm.from());
-                d_eg += evalPieceEg(turn, rm.to()) - evalPieceEg(turn, rm.from());
-            }
-            var cur = -search(
-                turn.flipped(),
-                board,
-                depth - 1,
-                rem_buf,
-                phase + d_phase,
-                -(mg + d_mg),
-                -(eg + d_eg),
-                -(alpha + 1),
-                -alpha,
-                hash_history,
-            );
-            if (alpha < cur and cur < beta) {
-                cur = -search(
+            const move_delta = getMoveDelta(turn, move);
+
+            if (num_valid_moves == 1) {
+                const cur = -search(
                     turn.flipped(),
                     board,
                     depth - 1,
                     rem_buf,
-                    phase + d_phase,
-                    -(mg + d_mg),
-                    -(eg + d_eg),
+                    phase - move_delta.phase,
+                    -(mg + move_delta.mg),
+                    -(eg + move_delta.eg),
                     -beta,
                     -alpha,
                     hash_history,
                 );
-            }
-            if (shutdown)
-                return 0;
-            if (cur > alpha) {
-                bestmove = move;
-                alpha = cur;
-            }
+                if (cur > alpha) {
+                    alpha = cur;
+                    bestmove = move;
+                }
+            } else {
+                var cur = -search(
+                    turn.flipped(),
+                    board,
+                    depth - 1,
+                    rem_buf,
+                    phase - move_delta.phase,
+                    -(mg + move_delta.mg),
+                    -(eg + move_delta.eg),
+                    -(alpha + 1),
+                    -alpha,
+                    hash_history,
+                );
+                if (alpha < cur and cur < beta) {
+                    cur = -search(
+                        turn.flipped(),
+                        board,
+                        depth - 1,
+                        rem_buf,
+                        phase - move_delta.phase,
+                        -(mg + move_delta.mg),
+                        -(eg + move_delta.eg),
+                        -beta,
+                        -alpha,
+                        hash_history,
+                    );
+                }
 
-            alpha = @max(alpha, cur);
-            if (cur >= beta) {
+                if (cur > alpha) {
+                    alpha = cur;
+                    bestmove = move;
+                }
+            }
+            if (shutdown) {
+                return 0;
+            }
+            if (alpha >= beta) {
                 break;
             }
         }
@@ -592,8 +635,10 @@ fn search(comptime turn: lib.Side, board: *Board, depth_: u16, move_buf: []Move,
         return if (board.isInCheck(.auto)) -CHECKMATE_EVAL + @as(i32, @intCast(board.fullmove_clock)) else 0;
     }
 
-    tt_entry.bestmove = bestmove;
-    tt_entry.zobrist = zobrist;
+    if (bestmove) |bm| {
+        tt_entry.bestmove = bm;
+        tt_entry.zobrist = zobrist;
+    }
 
     return alpha;
 }
@@ -696,18 +741,20 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
             if (self.playMovePossibleSelfCheck(move)) |inv| {
                 defer self.undoMove(inv);
 
-                entry.eval = -negaMax(self, depth_to_try, move_buf, hash_history, -(alpha + 1), -alpha);
-                if (alpha < entry.eval and entry.eval < beta) {
-                    entry.eval = -negaMax(self, depth_to_try, move_buf, hash_history, -beta, -alpha);
+                var cur = -negaMax(self, depth_to_try, move_buf, hash_history, -(alpha + 1), -alpha);
+                if (alpha < cur and cur < beta) {
+                    cur = -negaMax(self, depth_to_try, move_buf, hash_history, -beta, -alpha);
                 }
 
-                if (entry.eval > alpha) {
-                    alpha = entry.eval;
-                    new_best_move = move;
-                }
                 if (shutdown) {
                     if (std.debug.runtime_safety) log_writer.print("shutdown after {}\n", .{std.fmt.fmtDuration(timer.read())}) catch {};
                     break;
+                }
+
+                entry.eval = cur;
+                if (entry.eval > alpha) {
+                    alpha = entry.eval;
+                    new_best_move = move;
                 }
             }
         }
@@ -737,6 +784,11 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
         depth_to_try += 1;
         std.sort.pdq(MoveEvalPair, move_eval_buf[0..num_moves], void{}, MoveEvalPair.orderByEval);
     }
+
+    if (shutdown) {
+        if (std.debug.runtime_safety) log_writer.print("shutdown after {}\n", .{std.fmt.fmtDuration(timer.read())}) catch {};
+    }
+
     var res = MoveInfo{
         .depth_evaluated = depth_to_try,
         .eval = actual_eval,
@@ -750,7 +802,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u16, nodes: usize, soft_t
         if (winning) {
             res.eval = CHECKMATE_EVAL - actual_eval - @as(i32, @intCast(board.fullmove_clock)) + 1;
         } else {
-            res.eval = CHECKMATE_EVAL + actual_eval + @as(i32, @intCast(board.fullmove_clock)) + 1;
+            res.eval = CHECKMATE_EVAL + actual_eval + @as(i32, @intCast(board.fullmove_clock)) - 1;
         }
     }
     return res;

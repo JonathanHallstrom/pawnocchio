@@ -10,8 +10,20 @@ pub var log_writer: @TypeOf(std.io.getStdErr().writer()) = undefined;
 var stdout: std.fs.File = undefined;
 
 pub fn write(comptime fmt: []const u8, args: anytype) void {
-    log_writer.print("sent: " ++ fmt, args) catch {};
-    stdout.writer().print(fmt, args) catch |e| {
+    var buf: [4096]u8 = undefined;
+    const to_print = std.fmt.bufPrint(&buf, fmt, args) catch "";
+
+    const non_printable_opt = for (to_print) |c| {
+        if (!std.ascii.isPrint(c) and !std.ascii.isWhitespace(c)) {
+            break c;
+        }
+    } else null;
+    if (non_printable_opt) |non_printable| {
+        log_writer.print("tried to send non printable char: '{c}' (ascii: {})\n", .{ non_printable, @as(i32, non_printable) }) catch {};
+        return;
+    }
+    log_writer.print("sent: {s}", .{to_print}) catch {};
+    stdout.writer().writeAll(to_print) catch |e| {
         std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
     };
 }
@@ -50,6 +62,11 @@ pub fn main() !void {
     var line_buf: [1 << 20]u8 = undefined;
     main_loop: while (reader.readUntilDelimiter(&line_buf, '\n') catch null) |line_raw| {
         const line = std.mem.trim(u8, line_raw, &std.ascii.whitespace);
+        for (line) |c| {
+            if (!std.ascii.isPrint(c)) {
+                continue :main_loop;
+            }
+        }
         var parts = std.mem.tokenizeScalar(u8, line, ' ');
 
         const command = parts.next() orelse {
@@ -201,10 +218,11 @@ pub fn main() !void {
             const my_increment = @min(white_increment, black_increment);
 
             // 50ms to quit seems fine
-            const hard_time = if (move_time) |mt| mt else @min(my_time / 2 -| 50 * std.time.ns_per_ms, my_time / 30 + my_increment / 2);
+            const soft_time = my_time / 20 + my_increment / 2;
+            const hard_time = if (move_time) |mt| mt else @min(my_time / 10 -| 50 * std.time.ns_per_ms, my_time / 5 + my_increment / 2);
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
-            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, hard_time, hard_time, &hash_history);
+            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history);
             const move = move_info.move;
             const depth_evaluated = move_info.depth_evaluated;
             const eval = move_info.eval;
