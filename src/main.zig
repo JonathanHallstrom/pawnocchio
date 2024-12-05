@@ -6,6 +6,7 @@ const Board = lib.Board;
 const Move = lib.Move;
 
 pub var log_writer: @TypeOf(std.io.getStdErr().writer()) = undefined;
+// pub var log_writer: @TypeOf(std.io.null_writer) = undefined;
 
 var stdout: std.fs.File = undefined;
 
@@ -30,6 +31,7 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
 
 pub fn main() !void {
     log_writer = std.io.getStdErr().writer();
+    // log_writer = std.io.null_writer;
     stdout = std.io.getStdOut();
     // disgusting ik
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
@@ -210,7 +212,7 @@ pub fn main() !void {
                     });
                 }
             }
-            if (mate_finding_depth) |depth| max_depth = @min(max_depth, depth);
+            if (mate_finding_depth) |depth| max_depth = @min(max_depth, depth * 2);
             log_writer.print("max depth: {}\n", .{max_depth}) catch {};
 
             // const my_time = if (board.turn == .white) white_time else black_time;
