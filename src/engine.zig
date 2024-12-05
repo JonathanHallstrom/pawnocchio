@@ -319,6 +319,52 @@ fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
     };
 }
 
+fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, phase: i16, mg: i16, eg: i16, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+    const mg_phase: i32 = @min(24, phase);
+    const eg_phase: i32 = 24 - mg_phase;
+    const static_eval: i16 = @intCast(@divTrunc(mg_phase * mg + eg_phase * eg, 24));
+    var alpha = alpha_;
+    if (static_eval >= beta) {
+        return beta;
+    }
+    if (static_eval > alpha)
+        alpha = static_eval;
+
+    const num_moves = board.getAllCapturesUnchecked(move_buf, board.getSelfCheckSquares());
+    const moves = move_buf[0..num_moves];
+    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
+    for (moves) |move| {
+        if (board.playMovePossibleSelfCheck(move)) |inv| {
+            defer board.undoMove(inv);
+            hash_history.appendAssumeCapacity(board.zobrist);
+            defer _ = hash_history.pop();
+            const delta = getMoveDelta(turn, move);
+            const cur = -quiesce(
+                turn.flipped(),
+                board,
+                current_depth + 1,
+                phase + delta.phase,
+                -(mg + delta.mg),
+                -(eg + delta.eg),
+                -beta,
+                -alpha,
+                move_buf[num_moves..],
+                hash_history,
+            );
+            if (err) {
+                log_writer.print("move: {}\n", .{move}) catch {};
+            }
+            if (shutdown) return 0;
+
+            if (cur > alpha)
+                alpha = cur;
+            if (cur >= beta)
+                break;
+        }
+    }
+    return alpha;
+}
+
 fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, phase: i16, mg: i16, eg: i16, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     nodes_searched += 1;
     var alpha = alpha_;
@@ -339,9 +385,6 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
         return 0;
     }
 
-    if (board.gameOver()) |gr| {
-        return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
-    }
     var num_repeats: u8 = 0;
     for (0..board.halfmove_clock) |i| {
         if (hash_history.items[hash_history.items.len - 1 - i] == board.zobrist) {
@@ -351,11 +394,11 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     if (num_repeats >= 3) {
         return 0;
     }
-    if (depth_remaining == 0) {
-        const mg_phase: i32 = @min(24, phase);
-        const eg_phase: i32 = 24 - mg_phase;
-        const static_eval = @divTrunc(mg_phase * mg + eg_phase * eg, 24);
-        return @intCast(static_eval);
+    if (board.gameOver()) |gr| {
+        return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
+    }
+    if (depth_remaining == 0 or current_depth >= max_depth) {
+        return quiesce(turn, board, current_depth, phase, mg, eg, alpha, beta, move_buf, hash_history);
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
@@ -367,11 +410,14 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
             const delta = getMoveDelta(turn, move);
+            // const check_extension = board.isInCheck(.auto);
             const cur = -search(
                 turn.flipped(),
                 board,
                 current_depth + 1,
-                depth_remaining - 1,
+                depth_remaining - 1
+                //  + @intFromBool(check_extension)
+                ,
                 phase + delta.phase,
                 -(mg + delta.mg),
                 -(eg + delta.eg),
@@ -457,6 +503,7 @@ pub fn reset() void {
 var rand = std.Random.DefaultPrng.init(0);
 pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64)) MoveInfo {
     max_nodes = nodes;
+    max_depth = depth;
     timer = std.time.Timer.start() catch unreachable;
     die_time = timer.read() + hard_time;
     resetSoft();
@@ -464,8 +511,6 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
     const raw_moves = move_buf[0..num_moves];
     var self = board;
-    var depth_try: u8 = 1;
-    var depth_evaluated: u8 = 0;
 
     const MoveEvalPair = struct {
         move: Move,
@@ -485,10 +530,13 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     var best_move = move_eval_buf[0].move;
     var best_eval = -CHECKMATE_EVAL;
 
+    var depth_try: u8 = 0;
+    var depth_evaluated: u8 = 0;
     while (depth_try <= depth and timer.read() <= soft_time) : (depth_try += 1) {
+        // max_depth = @min(depth_try + 8, depth);
+
         var best_move_iter = move_eval_buf[0].move;
         var best_eval_iter = -CHECKMATE_EVAL;
-
         for (moves) |*entry| {
             const move = entry.move;
             const inv = self.playMove(move);
@@ -502,7 +550,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
                 depth_try,
                 move_buf,
                 -CHECKMATE_EVAL,
-                CHECKMATE_EVAL,
+                -best_eval_iter,
                 hash_history,
             );
 
@@ -518,7 +566,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
         }
         if (shutdown) break;
 
-        depth_evaluated = depth_try;
+        depth_evaluated = depth_try + 1;
         best_eval = best_eval_iter;
         best_move = best_move_iter;
         std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
