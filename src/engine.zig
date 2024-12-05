@@ -394,7 +394,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     return alpha;
 }
 
-pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) i16 {
     return switch (board.turn) {
         inline else => |t| search(
             t,
@@ -404,8 +404,8 @@ pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, hash_history: *std.A
             getPhaseBoard(board.*),
             evalWithoutGameOverMg(t, board.*),
             evalWithoutGameOverEg(t, board.*),
-            -CHECKMATE_EVAL,
-            CHECKMATE_EVAL,
+            alpha,
+            beta,
             move_buf,
             hash_history,
         ),
@@ -462,24 +462,49 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     resetSoft();
 
     const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
-    const moves = move_buf[0..num_moves];
-    var best_move = moves[0];
-    var best_eval = -CHECKMATE_EVAL;
+    const raw_moves = move_buf[0..num_moves];
     var self = board;
     var depth_try: u8 = 1;
     var depth_evaluated: u8 = 0;
+
+    const MoveEvalPair = struct {
+        move: Move,
+        eval: i32,
+
+        fn orderByEval(_: void, lhs: @This(), rhs: @This()) bool {
+            return lhs.eval > rhs.eval;
+        }
+    };
+
+    var move_eval_buf: [400]MoveEvalPair = undefined;
+    for (0..num_moves) |i| {
+        move_eval_buf[i] = .{ .move = raw_moves[i], .eval = mvvlvaValue(raw_moves[i]) };
+    }
+    const moves = move_eval_buf[0..num_moves];
+    std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
+    var best_move = move_eval_buf[0].move;
+    var best_eval = -CHECKMATE_EVAL;
+
     while (depth_try <= depth and timer.read() <= soft_time) : (depth_try += 1) {
-        var best_move_iter = moves[0];
+        var best_move_iter = move_eval_buf[0].move;
         var best_eval_iter = -CHECKMATE_EVAL;
 
-        for (moves) |move| {
+        for (moves) |*entry| {
+            const move = entry.move;
             const inv = self.playMove(move);
             defer self.undoMove(inv);
 
             hash_history.appendAssumeCapacity(self.zobrist);
             defer _ = hash_history.pop();
 
-            const cur = -doSearch(&self, depth_try, move_buf[num_moves..], hash_history);
+            const cur = -doSearch(
+                &self,
+                depth_try,
+                move_buf,
+                -CHECKMATE_EVAL,
+                CHECKMATE_EVAL,
+                hash_history,
+            );
 
             if (err) {
                 log_writer.print("move: {}\n", .{move}) catch {};
@@ -489,12 +514,14 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
                 best_eval_iter = cur;
                 best_move_iter = move;
             }
+            entry.eval = cur;
         }
-        if (!shutdown) {
-            depth_evaluated = depth_try;
-            best_eval = best_eval_iter;
-            best_move = best_move_iter;
-        }
+        if (shutdown) break;
+
+        depth_evaluated = depth_try;
+        best_eval = best_eval_iter;
+        best_move = best_move_iter;
+        std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
     }
 
     var res = MoveInfo{
@@ -508,9 +535,9 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     if (@abs(best_eval) >= CHECKMATE_EVAL - max_depth) {
         res.is_mate = true;
         if (best_eval > 0) {
-            res.eval = CHECKMATE_EVAL - best_eval;
+            res.eval = @divTrunc(CHECKMATE_EVAL - best_eval + 1, 2);
         } else {
-            res.eval = best_eval - CHECKMATE_EVAL;
+            res.eval = @divTrunc(best_eval - CHECKMATE_EVAL - 1, 2);
         }
     }
     return res;
