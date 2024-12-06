@@ -514,7 +514,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
 
     const MoveEvalPair = struct {
         move: Move,
-        eval: i32,
+        eval: i16,
 
         fn orderByEval(_: void, lhs: @This(), rhs: @This()) bool {
             return lhs.eval > rhs.eval;
@@ -535,8 +535,22 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     while (depth_try <= depth and timer.read() <= soft_time) : (depth_try += 1) {
         // max_depth = @min(depth_try + 8, depth);
 
-        var best_move_iter = move_eval_buf[0].move;
-        var best_eval_iter = -CHECKMATE_EVAL;
+        var best_move_iter = best_move;
+
+        hash_history.appendAssumeCapacity(self.zobrist);
+        const best_inv = self.playMove(best_move_iter);
+        var best_eval_iter = -doSearch(
+            &self,
+            depth_try,
+            move_buf,
+            -CHECKMATE_EVAL,
+            CHECKMATE_EVAL,
+            hash_history,
+        );
+        _ = hash_history.pop();
+        self.undoMove(best_inv);
+        if (shutdown) break;
+
         for (moves) |*entry| {
             const move = entry.move;
             const inv = self.playMove(move);
@@ -558,13 +572,12 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
                 log_writer.print("move: {}\n", .{move}) catch {};
             }
             if (shutdown) break;
-            if (cur > best_eval_iter) {
-                best_eval_iter = cur;
+            entry.eval = cur;
+            if (entry.eval > best_eval_iter) {
+                best_eval_iter = entry.eval;
                 best_move_iter = move;
             }
-            entry.eval = cur;
         }
-        if (shutdown) break;
 
         depth_evaluated = depth_try + 1;
         best_eval = best_eval_iter;
