@@ -385,14 +385,16 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
         return 0;
     }
 
-    var num_repeats: u8 = 0;
-    for (0..board.halfmove_clock) |i| {
-        if (hash_history.items[hash_history.items.len - 1 - i] == board.zobrist) {
-            num_repeats += 1;
+    {
+        var num_repeats: u8 = 0;
+        for (0..board.halfmove_clock) |i| {
+            if (hash_history.items[hash_history.items.len - 1 - i] == board.zobrist) {
+                num_repeats += 1;
+            }
         }
-    }
-    if (num_repeats >= 3) {
-        return 0;
+        if (num_repeats >= 3) {
+            return 0;
+        }
     }
     if (board.gameOver()) |gr| {
         return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
@@ -402,42 +404,81 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    const moves = move_buf[0..num_moves];
-    std.sort.pdq(Move, moves, void{}, mvvlvaCompare);
-    for (moves) |move| {
+    std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
+
+    var best_score = -CHECKMATE_EVAL;
+    for (move_buf[0..num_moves]) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
             const delta = getMoveDelta(turn, move);
-            // const check_extension = board.isInCheck(.auto);
-            const cur = -search(
-                turn.flipped(),
-                board,
-                current_depth + 1,
-                depth_remaining - 1
-                //  + @intFromBool(check_extension)
-                ,
-                phase + delta.phase,
-                -(mg + delta.mg),
-                -(eg + delta.eg),
-                -beta,
-                -alpha,
-                move_buf[num_moves..],
-                hash_history,
-            );
+            if (best_score == -CHECKMATE_EVAL) {
+                const score = -search(
+                    turn.flipped(),
+                    board,
+                    current_depth + 1,
+                    depth_remaining - 1,
+                    phase + delta.phase,
+                    -(mg + delta.mg),
+                    -(eg + delta.eg),
+                    -beta,
+                    -alpha,
+                    move_buf[num_moves..],
+                    hash_history,
+                );
+                if (score > alpha) {
+                    if (score >= beta) {
+                        return score;
+                    }
+                    alpha = score;
+                }
+                best_score = score;
+            } else {
+                var score = -search(
+                    turn.flipped(),
+                    board,
+                    current_depth + 1,
+                    depth_remaining - 1,
+                    phase + delta.phase,
+                    -(mg + delta.mg),
+                    -(eg + delta.eg),
+                    -(alpha + 1),
+                    -alpha,
+                    move_buf[num_moves..],
+                    hash_history,
+                );
+                if (alpha < score and score < beta) {
+                    score = -search(
+                        turn.flipped(),
+                        board,
+                        current_depth + 1,
+                        depth_remaining - 1,
+                        phase + delta.phase,
+                        -(mg + delta.mg),
+                        -(eg + delta.eg),
+                        -beta,
+                        -alpha,
+                        move_buf[num_moves..],
+                        hash_history,
+                    );
+                    if (score > alpha)
+                        alpha = score;
+                }
+                if (score > best_score) {
+                    if (score >= beta) {
+                        return score;
+                    }
+                    best_score = score;
+                }
+            }
             if (err) {
                 log_writer.print("move: {}\n", .{move}) catch {};
             }
             if (shutdown) return 0;
-
-            if (cur > alpha)
-                alpha = cur;
-            if (cur >= beta)
-                break;
         }
     }
-    return alpha;
+    return best_score;
 }
 
 pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) i16 {
@@ -492,21 +533,21 @@ pub const MoveInfo = struct {
 fn resetSoft() void {
     nodes_searched = 0;
     shutdown = false;
-    // tt_hits = 0;
+    max_depth = 255;
+    max_nodes = std.math.maxInt(u64);
 }
 
 pub fn reset() void {
     resetSoft();
-    // @memset(&tt, TTentry.null_entry);
 }
 
 var rand = std.Random.DefaultPrng.init(0);
 pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64)) MoveInfo {
+    resetSoft();
     max_nodes = nodes;
     max_depth = depth;
     timer = std.time.Timer.start() catch unreachable;
     die_time = timer.read() + hard_time;
-    resetSoft();
 
     const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
     const raw_moves = move_buf[0..num_moves];
@@ -532,7 +573,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
 
     var depth_try: u8 = 0;
     var depth_evaluated: u8 = 0;
-    while (depth_try <= depth and timer.read() <= soft_time) : (depth_try += 1) {
+    while (depth_try < depth and timer.read() <= soft_time) : (depth_try += 1) {
         // max_depth = @min(depth_try + 8, depth);
 
         var best_move_iter = best_move;
