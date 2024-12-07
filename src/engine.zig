@@ -562,7 +562,7 @@ pub const MoveInfo = struct {
             if (best_eval > 0) {
                 res.eval = @divTrunc(CHECKMATE_EVAL - best_eval + 1, 2);
             } else {
-                res.eval = @divTrunc(best_eval - CHECKMATE_EVAL - 1, 2);
+                res.eval = -@divTrunc(CHECKMATE_EVAL + best_eval + 1, 2);
             }
         }
         return res;
