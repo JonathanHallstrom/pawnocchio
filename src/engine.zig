@@ -362,6 +362,11 @@ fn getMoveDelta(turn: lib.Side, move: Move) EvalState {
 
 fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     nodes_searched += 1;
+    if (nodes_searched % 1024 == 0 and timer.read() >= die_time) {
+        shutdown = true;
+        return 0;
+    }
+
     const static_eval = eval_state.static();
     var alpha = alpha_;
     if (static_eval >= beta) {
@@ -404,9 +409,13 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state
 }
 
 fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+    if (depth_remaining == 0 or current_depth == max_depth) {
+        return quiesce(turn, board, current_depth, eval_state, alpha_, beta, move_buf, hash_history);
+    }
+
     nodes_searched += 1;
     var alpha = alpha_;
-    if (timer.read() >= die_time) {
+    if (nodes_searched % 1024 == 0 and timer.read() >= die_time) {
         shutdown = true;
         return 0;
     }
@@ -436,9 +445,6 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     }
     if (board.gameOver()) |gr| {
         return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
-    }
-    if (depth_remaining == 0 or current_depth >= max_depth) {
-        return quiesce(turn, board, current_depth, eval_state, alpha, beta, move_buf, hash_history);
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
