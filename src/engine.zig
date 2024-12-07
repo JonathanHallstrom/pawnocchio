@@ -195,19 +195,19 @@ const PestoEval = struct {
 
 const CHECKMATE_EVAL: i16 = 32000;
 
-fn evalPieceMg(comptime piece_side: lib.Side, piece: Piece) i16 {
+fn evalPieceMg(piece_side: lib.Side, piece: Piece) i16 {
     const tp = piece.getType();
     const p: usize = @intFromEnum(tp);
     return PestoEval.mg_table[2 * p + @intFromBool(piece_side == .black)][piece.getLoc()];
 }
 
-fn evalPieceEg(comptime piece_side: lib.Side, piece: Piece) i16 {
+fn evalPieceEg(piece_side: lib.Side, piece: Piece) i16 {
     const tp = piece.getType();
     const p: usize = @intFromEnum(tp);
     return PestoEval.eg_table[2 * p + @intFromBool(piece_side == .black)][piece.getLoc()];
 }
 
-fn evalWithoutGameOverMg(comptime turn: lib.Side, board: Board) i16 {
+fn evalWithoutGameOverMg(turn: lib.Side, board: Board) i16 {
     var res: i16 = 0;
     inline for (PieceType.all) |pt| {
         var iter = board.white.getBoard(pt).iterator();
@@ -249,30 +249,7 @@ fn getPhaseBoard(board: Board) i16 {
 }
 
 fn eval(comptime turn: lib.Side, board: Board) i16 {
-    var mg: i16 = 0;
-    var eg: i16 = 0;
-    var phase: i16 = 0;
-    inline for (PieceType.all) |pt| {
-        var iter = board.white.getBoard(pt).iterator();
-        phase += iter.numRemaining() * getPhase(pt);
-        while (iter.next()) |b| {
-            mg += evalPieceMg(.white, Piece.init(pt, b));
-            eg += evalPieceEg(.white, Piece.init(pt, b));
-        }
-        iter = board.black.getBoard(pt).iterator();
-        phase += iter.numRemaining() * getPhase(pt);
-        while (iter.next()) |b| {
-            mg -= evalPieceMg(.black, Piece.init(pt, b));
-            eg -= evalPieceEg(.black, Piece.init(pt, b));
-        }
-    }
-    if (turn == .black) {
-        mg = -mg;
-        eg = -eg;
-    }
-    const mg_phase = @min(phase, 24);
-    const eg_phase = 24 - mg_phase;
-    return @intCast(@divTrunc(mg_phase * @as(i32, mg) + eg_phase * eg, 24));
+    return EvalState.init(turn, board).static();
 }
 
 fn mvvlvaValue(x: Move) i16 {
@@ -292,13 +269,64 @@ fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
     return mvvlvaValue(lhs) > mvvlvaValue(rhs);
 }
 
-const MoveDelta = struct {
+const EvalState = struct {
     mg: i16,
     eg: i16,
     phase: i16,
+
+    fn add(self: EvalState, other: EvalState) EvalState {
+        return .{
+            .mg = self.mg + other.mg,
+            .eg = self.eg + other.eg,
+            .phase = self.phase + other.phase,
+        };
+    }
+
+    fn flipped(self: EvalState) EvalState {
+        return .{
+            .mg = -self.mg,
+            .eg = -self.eg,
+            .phase = self.phase,
+        };
+    }
+
+    fn static(self: EvalState) i16 {
+        const mg_phase: i32 = @min(24, self.phase);
+        const eg_phase: i32 = 24 - mg_phase;
+        return @intCast(@divTrunc(mg_phase * self.mg + eg_phase * self.eg, 24));
+    }
+
+    fn init(board: Board) EvalState {
+        var mg: i16 = 0;
+        var eg: i16 = 0;
+        var phase: i16 = 0;
+        inline for (PieceType.all) |pt| {
+            var iter = board.white.getBoard(pt).iterator();
+            phase += iter.numRemaining() * getPhase(pt);
+            while (iter.next()) |b| {
+                mg += evalPieceMg(.white, Piece.init(pt, b));
+                eg += evalPieceEg(.white, Piece.init(pt, b));
+            }
+            iter = board.black.getBoard(pt).iterator();
+            phase += iter.numRemaining() * getPhase(pt);
+            while (iter.next()) |b| {
+                mg -= evalPieceMg(.black, Piece.init(pt, b));
+                eg -= evalPieceEg(.black, Piece.init(pt, b));
+            }
+        }
+        if (board.turn == .black) {
+            mg = -mg;
+            eg = -eg;
+        }
+        return EvalState{
+            .mg = mg,
+            .eg = eg,
+            .phase = phase,
+        };
+    }
 };
 
-fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
+fn getMoveDelta(turn: lib.Side, move: Move) EvalState {
     var d_mg = evalPieceMg(turn, move.to()) - evalPieceMg(turn, move.from());
     var d_eg = evalPieceEg(turn, move.to()) - evalPieceEg(turn, move.from());
     var d_phase: i16 = getPhase(move.to().getType()) - getPhase(move.from().getType());
@@ -319,10 +347,9 @@ fn getMoveDelta(comptime turn: lib.Side, move: Move) MoveDelta {
     };
 }
 
-fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, phase: i16, mg: i16, eg: i16, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
-    const mg_phase: i32 = @min(24, phase);
-    const eg_phase: i32 = 24 - mg_phase;
-    const static_eval: i16 = @intCast(@divTrunc(mg_phase * mg + eg_phase * eg, 24));
+fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+    nodes_searched += 1;
+    const static_eval = eval_state.static();
     var alpha = alpha_;
     if (static_eval >= beta) {
         return beta;
@@ -343,9 +370,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, phase: i16
                 turn.flipped(),
                 board,
                 current_depth + 1,
-                phase + delta.phase,
-                -(mg + delta.mg),
-                -(eg + delta.eg),
+                eval_state.add(delta).flipped(),
                 -beta,
                 -alpha,
                 move_buf[num_moves..],
@@ -365,7 +390,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, phase: i16
     return alpha;
 }
 
-fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, phase: i16, mg: i16, eg: i16, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     nodes_searched += 1;
     var alpha = alpha_;
     if (timer.read() >= die_time) {
@@ -375,9 +400,9 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     if (shutdown) return 0;
 
     if (std.debug.runtime_safety and
-        (phase != getPhaseBoard(board.*) or
-        mg != evalWithoutGameOverMg(turn, board.*) or
-        eg != evalWithoutGameOverEg(turn, board.*)))
+        (eval_state.phase != getPhaseBoard(board.*) or
+        eval_state.mg != evalWithoutGameOverMg(turn, board.*) or
+        eval_state.eg != evalWithoutGameOverEg(turn, board.*)))
     {
         log_writer.print("board: {s}\n", .{board.toFen().slice()}) catch {};
         err = true;
@@ -387,7 +412,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
 
     {
         var num_repeats: u8 = 0;
-        for (0..board.halfmove_clock) |i| {
+        for (0..@min(hash_history.items.len, board.halfmove_clock)) |i| {
             if (hash_history.items[hash_history.items.len - 1 - i] == board.zobrist) {
                 num_repeats += 1;
             }
@@ -400,7 +425,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
         return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
     }
     if (depth_remaining == 0 or current_depth >= max_depth) {
-        return quiesce(turn, board, current_depth, phase, mg, eg, alpha, beta, move_buf, hash_history);
+        return quiesce(turn, board, current_depth, eval_state, alpha, beta, move_buf, hash_history);
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
@@ -419,9 +444,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                     board,
                     current_depth + 1,
                     depth_remaining - 1,
-                    phase + delta.phase,
-                    -(mg + delta.mg),
-                    -(eg + delta.eg),
+                    eval_state.add(delta).flipped(),
                     -beta,
                     -alpha,
                     move_buf[num_moves..],
@@ -440,9 +463,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                     board,
                     current_depth + 1,
                     depth_remaining - 1,
-                    phase + delta.phase,
-                    -(mg + delta.mg),
-                    -(eg + delta.eg),
+                    eval_state.add(delta).flipped(),
                     -(alpha + 1),
                     -alpha,
                     move_buf[num_moves..],
@@ -454,9 +475,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                         board,
                         current_depth + 1,
                         depth_remaining - 1,
-                        phase + delta.phase,
-                        -(mg + delta.mg),
-                        -(eg + delta.eg),
+                        eval_state.add(delta).flipped(),
                         -beta,
                         -alpha,
                         move_buf[num_moves..],
@@ -481,16 +500,14 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     return best_score;
 }
 
-pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) i16 {
+pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, eval_state: EvalState, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) i16 {
     return switch (board.turn) {
         inline else => |t| search(
             t,
             board,
             1,
             depth,
-            getPhaseBoard(board.*),
-            evalWithoutGameOverMg(t, board.*),
-            evalWithoutGameOverEg(t, board.*),
+            eval_state,
             alpha,
             beta,
             move_buf,
@@ -511,10 +528,50 @@ var shutdown = false;
 pub const MoveInfo = struct {
     eval: i16,
     move: Move,
-    depth_evaluated: usize,
+    depth_evaluated: u8,
     nodes_evaluated: u64,
     is_mate: bool = false,
     time_used: u64,
+
+    fn init(best_eval: i16, best_move: Move, depth_evaluated: u8, nodes: u64, ns_elapsed: u64) MoveInfo {
+        var res = MoveInfo{
+            .eval = best_eval,
+            .move = best_move,
+            .depth_evaluated = depth_evaluated,
+            .is_mate = false,
+            .nodes_evaluated = nodes,
+            .time_used = ns_elapsed,
+        };
+        if (@abs(best_eval) >= CHECKMATE_EVAL - 255) {
+            res.is_mate = true;
+            if (best_eval > 0) {
+                res.eval = @divTrunc(CHECKMATE_EVAL - best_eval + 1, 2);
+            } else {
+                res.eval = @divTrunc(best_eval - CHECKMATE_EVAL - 1, 2);
+            }
+        }
+        return res;
+    }
+
+    pub fn format(self: MoveInfo, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = actual_fmt;
+        _ = options;
+        var buf: [256]u8 = undefined;
+        var bytes_written: usize = 0;
+        bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "info depth {} score ", .{self.depth_evaluated})).len;
+        if (self.is_mate) {
+            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "mate {} ", .{self.eval})).len;
+        } else {
+            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "cp {} ", .{self.eval})).len;
+        }
+        bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "time {} nodes {} nps {} pv {s}", .{
+            self.time_used / std.time.ns_per_ms,
+            self.nodes_evaluated,
+            self.nodes_evaluated * std.time.ns_per_s / self.time_used,
+            self.move.pretty().slice(),
+        })).len;
+        try writer.writeAll(buf[0..bytes_written]);
+    }
 };
 
 // const TTentry = struct {
@@ -573,6 +630,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
 
     var depth_try: u8 = 0;
     var depth_evaluated: u8 = 0;
+    const eval_state = EvalState.init(board);
     while (depth_try < depth and timer.read() <= soft_time) : (depth_try += 1) {
         // max_depth = @min(depth_try + 8, depth);
 
@@ -584,6 +642,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
             &self,
             depth_try,
             move_buf,
+            eval_state.add(getMoveDelta(board.turn, best_move_iter)).flipped(),
             -CHECKMATE_EVAL,
             CHECKMATE_EVAL,
             hash_history,
@@ -604,6 +663,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
                 &self,
                 depth_try,
                 move_buf,
+                eval_state.add(getMoveDelta(board.turn, move)).flipped(),
                 -CHECKMATE_EVAL,
                 -best_eval_iter,
                 hash_history,
@@ -623,26 +683,13 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
         depth_evaluated = depth_try + 1;
         best_eval = best_eval_iter;
         best_move = best_move_iter;
+        const info = MoveInfo.init(best_eval, best_move, depth_evaluated, nodes_searched, timer.read());
+        write("{}\n", .{info});
+        if (info.is_mate) break;
         std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
     }
 
-    var res = MoveInfo{
-        .eval = best_eval,
-        .move = best_move,
-        .depth_evaluated = depth_evaluated,
-        .is_mate = false,
-        .nodes_evaluated = nodes_searched,
-        .time_used = timer.read() / std.time.ns_per_ms,
-    };
-    if (@abs(best_eval) >= CHECKMATE_EVAL - max_depth) {
-        res.is_mate = true;
-        if (best_eval > 0) {
-            res.eval = @divTrunc(CHECKMATE_EVAL - best_eval + 1, 2);
-        } else {
-            res.eval = @divTrunc(best_eval - CHECKMATE_EVAL - 1, 2);
-        }
-    }
-    return res;
+    return MoveInfo.init(best_eval, best_move, depth_evaluated, nodes_searched, timer.read());
 }
 
 test "starting position even material" {
