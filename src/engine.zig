@@ -248,8 +248,26 @@ fn getPhaseBoard(board: Board) i16 {
     return phase;
 }
 
-fn eval(comptime turn: lib.Side, board: Board) i16 {
-    return EvalState.init(turn, board).static();
+fn moveDeltaEvaluator(comptime turn: lib.Side) fn (ctx: EvalState, move: Move) callconv(std.builtin.CallingConvention.Inline) i16 {
+    return struct {
+        inline fn impl(delta: EvalState, move: Move) i16 {
+            return delta.add(getMoveDelta(turn, move)).static() - delta.static();
+        }
+    }.impl;
+}
+
+fn moveDeltaComparator(comptime turn: lib.Side) fn (ctx: EvalState, lhs: Move, rhs: Move) bool {
+    return struct {
+        fn impl(ctx: EvalState, lhs: Move, rhs: Move) bool {
+            const moveDeltaValue = moveDeltaEvaluator(turn);
+            const mult: i64 = 1 << 32;
+            return moveDeltaValue(ctx, lhs) * mult + mvvlvaValue(lhs)  > moveDeltaValue(ctx, rhs) * mult + mvvlvaValue(rhs);
+        }
+    }.impl;
+}
+
+fn eval(board: Board) i16 {
+    return EvalState.init(board).static();
 }
 
 fn mvvlvaValue(x: Move) i16 {
@@ -429,7 +447,8 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
+    std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
+    // std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
 
     var best_score = -CHECKMATE_EVAL;
     for (move_buf[0..num_moves]) |move| {
@@ -438,12 +457,13 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
             const delta = getMoveDelta(turn, move);
+            const extension: u8 = @intFromBool(board.isInCheck(.auto));
             if (best_score == -CHECKMATE_EVAL) {
                 const score = -search(
                     turn.flipped(),
                     board,
                     current_depth + 1,
-                    depth_remaining - 1,
+                    depth_remaining - 1 + extension,
                     eval_state.add(delta).flipped(),
                     -beta,
                     -alpha,
@@ -462,7 +482,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                     turn.flipped(),
                     board,
                     current_depth + 1,
-                    depth_remaining - 1,
+                    depth_remaining - 1 + extension,
                     eval_state.add(delta).flipped(),
                     -(alpha + 1),
                     -alpha,
@@ -474,7 +494,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                         turn.flipped(),
                         board,
                         current_depth + 1,
-                        depth_remaining - 1,
+                        depth_remaining - 1 + extension,
                         eval_state.add(delta).flipped(),
                         -beta,
                         -alpha,
@@ -693,5 +713,5 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
 }
 
 test "starting position even material" {
-    try testing.expectEqual(0, eval(.white, Board.init()));
+    try testing.expectEqual(0, eval(Board.init()));
 }
