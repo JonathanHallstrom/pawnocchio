@@ -442,8 +442,8 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    // std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
-    std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
+    std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
+    // std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
 
     var best_score = -CHECKMATE_EVAL;
     for (move_buf[0..num_moves]) |move| {
