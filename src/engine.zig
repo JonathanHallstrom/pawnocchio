@@ -261,7 +261,7 @@ fn moveDeltaComparator(comptime turn: lib.Side) fn (ctx: EvalState, lhs: Move, r
         fn impl(ctx: EvalState, lhs: Move, rhs: Move) bool {
             const moveDeltaValue = moveDeltaEvaluator(turn);
             const mult: i64 = 1 << 32;
-            return moveDeltaValue(ctx, lhs) * mult + mvvlvaValue(lhs)  > moveDeltaValue(ctx, rhs) * mult + mvvlvaValue(rhs);
+            return moveDeltaValue(ctx, lhs) + mvvlvaValue(lhs) * mult > moveDeltaValue(ctx, rhs) + mvvlvaValue(rhs) * mult;
         }
     }.impl;
 }
@@ -271,16 +271,11 @@ fn eval(board: Board) i16 {
 }
 
 fn mvvlvaValue(x: Move) i16 {
-    const PieceValues = [_]i16{
-        100, // pawn
-        320, // knight
-        330, // bishop
-        500, // rook
-        900, // queen
-        10_000, // king
-    };
     if (!x.isCapture()) return 0;
-    return PieceValues[@intFromEnum(x.captured().?.getType())] - PieceValues[@intFromEnum(x.to().getType())];
+    const attacker: i16 = @intFromEnum(x.to().getType());
+    const victim: i16 = @intFromEnum(x.captured().?.getType());
+    // 1 indexing to avoid overflow
+    return 8 * victim - attacker; // analog hors
 }
 
 fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
@@ -447,8 +442,8 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
-    // std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
+    // std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
+    std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
 
     var best_score = -CHECKMATE_EVAL;
     for (move_buf[0..num_moves]) |move| {
@@ -457,7 +452,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
             const delta = getMoveDelta(turn, move);
-            const extension: u8 = @intFromBool(board.isInCheck(.auto));
+            const extension: u8 = @intFromBool(board.isInCheck(.auto)) & 0;
             if (best_score == -CHECKMATE_EVAL) {
                 const score = -search(
                     turn.flipped(),
