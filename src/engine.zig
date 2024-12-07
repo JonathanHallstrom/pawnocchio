@@ -452,7 +452,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
             const delta = getMoveDelta(turn, move);
-            const extension: u8 = @intFromBool(board.isInCheck(.auto)) & 0;
+            const extension: u8 = @intFromBool(board.isInCheck(.auto));
             if (best_score == -CHECKMATE_EVAL) {
                 const score = -search(
                     turn.flipped(),
