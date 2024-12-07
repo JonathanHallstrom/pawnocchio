@@ -15,8 +15,8 @@ const Board = lib.Board;
 
 // havent quite gotten this working yet
 const PestoEval = struct {
-    const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 0 };
-    const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 0 };
+    const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 10_000 };
+    const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 10_000 };
 
     const mg_pawn_table: [64]i16 = .{
         0,   0,   0,   0,   0,   0,   0,  0,
@@ -360,7 +360,7 @@ fn getMoveDelta(turn: lib.Side, move: Move) EvalState {
     };
 }
 
-fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move) i16 {
     nodes_searched += 1;
     if (nodes_searched % 1024 == 0 and timer.read() >= die_time) {
         shutdown = true;
@@ -381,8 +381,6 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state
     for (moves) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
-            hash_history.appendAssumeCapacity(board.zobrist);
-            defer _ = hash_history.pop();
             const delta = getMoveDelta(turn, move);
             const cur = -quiesce(
                 turn.flipped(),
@@ -392,9 +390,8 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state
                 -beta,
                 -alpha,
                 move_buf[num_moves..],
-                hash_history,
             );
-            if (err) {
+            if (std.debug.runtime_safety and err) {
                 log_writer.print("move: {}\n", .{move}) catch {};
             }
             if (shutdown) return 0;
@@ -410,7 +407,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state
 
 fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     if (depth_remaining == 0 or current_depth == max_depth) {
-        return quiesce(turn, board, current_depth, eval_state, alpha_, beta, move_buf, hash_history);
+        return quiesce(turn, board, current_depth, eval_state, alpha_, beta, move_buf);
     }
 
     nodes_searched += 1;
@@ -512,7 +509,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                     best_score = score;
                 }
             }
-            if (err) {
+            if (std.debug.runtime_safety and err) {
                 log_writer.print("move: {}\n", .{move}) catch {};
             }
             if (shutdown) return 0;
