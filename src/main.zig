@@ -5,8 +5,7 @@ const engine = @import("engine.zig");
 const Board = lib.Board;
 const Move = lib.Move;
 
-pub var log_writer: @TypeOf(std.io.getStdErr().writer()) = undefined;
-// pub var log_writer: @TypeOf(std.io.null_writer) = undefined;
+pub var log_writer: std.io.AnyWriter = undefined;
 
 var stdout: std.fs.File = undefined;
 
@@ -30,8 +29,9 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
 }
 
 pub fn main() !void {
-    log_writer = std.io.getStdErr().writer();
-    // log_writer = std.io.null_writer;
+    log_writer = std.io.getStdErr().writer().any();
+    if (!std.debug.runtime_safety)
+        log_writer = std.io.null_writer.any();
     stdout = std.io.getStdOut();
     // disgusting ik
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
@@ -39,13 +39,10 @@ pub fn main() !void {
     defer if (log_file) |log| log.close();
 
     if (log_file) |lf| {
-        _ = &lf;
-        switch (@import("builtin").mode) {
-            .Debug, .ReleaseSafe => log_writer = lf.writer(),
-            else => {},
+        if (std.debug.runtime_safety) {
+            log_writer = lf.writer().any();
         }
     }
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -222,20 +219,12 @@ pub fn main() !void {
 
             // 50ms to quit seems fine
             const soft_time = my_time / 20 + my_increment / 2;
-            const hard_time = if (move_time) |mt| mt else @min(my_time / 10 -| 50 * std.time.ns_per_ms, my_time / 5 + my_increment / 2);
+            var hard_time = if (move_time) |mt| mt else @min(my_time / 10, my_time / 5 + my_increment / 2);
+            hard_time -|= 50 * std.time.ns_per_ms;
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
             const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history);
             const move = move_info.move;
-            const depth_evaluated = move_info.depth_evaluated;
-            const eval = move_info.eval;
-            const nodes_evaluated = move_info.nodes_evaluated;
-            const time_used = move_info.time_used;
-            if (move_info.is_mate) {
-                write("info depth {} score mate {} time {} nodes {} pv {s}\n", .{ depth_evaluated, eval, time_used, nodes_evaluated, move.pretty().slice() });
-            } else {
-                write("info depth {} score cp {} time {} nodes {} pv {s}\n", .{ depth_evaluated, eval, time_used, nodes_evaluated, move.pretty().slice() });
-            }
             write("bestmove {s}\n", .{move.pretty().slice()});
         }
 
