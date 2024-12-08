@@ -714,6 +714,11 @@ pub const Move = struct {
         }
         return res;
     }
+
+    pub fn eql(self: Move, other: Move) bool {
+        return std.meta.eql(self.from(), other.from()) and
+            std.meta.eql(self.to(), other.to());
+    }
 };
 
 pub const MoveInverse = struct {
@@ -1910,8 +1915,8 @@ pub const Board = struct {
         var filtered_count: usize = 0;
         var board = self;
         for (move_buffer) |move| {
-            move_buffer[filtered_count] = move;
             if (!board.doesMoveCauseSelfCheck(move)) {
+                move_buffer[filtered_count] = move;
                 filtered_count += 1;
             }
         }

@@ -5,7 +5,7 @@ const engine = @import("engine.zig");
 const Board = lib.Board;
 const Move = lib.Move;
 
-pub var log_writer: @TypeOf(std.io.getStdErr().writer()) = undefined;
+pub var log_writer: std.io.AnyWriter = undefined;
 
 var stdout: std.fs.File = undefined;
 
@@ -29,7 +29,9 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
 }
 
 pub fn main() !void {
-    log_writer = std.io.getStdErr().writer();
+    log_writer = std.io.getStdErr().writer().any();
+    if (!std.debug.runtime_safety)
+        log_writer = std.io.null_writer.any();
     stdout = std.io.getStdOut();
     // disgusting ik
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
@@ -37,13 +39,10 @@ pub fn main() !void {
     defer if (log_file) |log| log.close();
 
     if (log_file) |lf| {
-        _ = &lf;
-        switch (@import("builtin").mode) {
-            .Debug, .ReleaseSafe => log_writer = lf.writer(),
-            else => {},
+        if (std.debug.runtime_safety) {
+            log_writer = lf.writer().any();
         }
     }
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -128,7 +127,7 @@ pub fn main() !void {
         }
 
         if (std.ascii.eqlIgnoreCase(command, "go")) {
-            var max_depth: u16 = 1000;
+            var max_depth: u8 = 255;
             var max_nodes: u64 = std.math.maxInt(u64);
 
             // by default assume each player has 1000s
@@ -162,7 +161,7 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "depth")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    max_depth = std.fmt.parseInt(u16, depth_to_parse, 10) catch {
+                    max_depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
                         try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
@@ -210,6 +209,7 @@ pub fn main() !void {
                     });
                 }
             }
+            if (mate_finding_depth) |depth| max_depth = @min(max_depth, depth * 2);
             log_writer.print("max depth: {}\n", .{max_depth}) catch {};
 
             // const my_time = if (board.turn == .white) white_time else black_time;
@@ -219,19 +219,12 @@ pub fn main() !void {
 
             // 50ms to quit seems fine
             const soft_time = my_time / 20 + my_increment / 2;
-            const hard_time = if (move_time) |mt| mt else @min(my_time / 10 -| 50 * std.time.ns_per_ms, my_time / 5 + my_increment / 2);
+            var hard_time = if (move_time) |mt| mt else @min(my_time / 10, my_time / 5 + my_increment / 2);
+            hard_time -|= 50 * std.time.ns_per_ms;
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
             const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history);
             const move = move_info.move;
-            const depth_evaluated = move_info.depth_evaluated;
-            const eval = move_info.eval;
-            const nodes_evaluated = move_info.nodes_evaluated;
-            if (move_info.is_mate) {
-                write("info depth {} score mate {} nodes {} pv {s}\n", .{ depth_evaluated, eval, nodes_evaluated, move.pretty().slice() });
-            } else {
-                write("info depth {} score cp {} nodes {} pv {s}\n", .{ depth_evaluated, eval, nodes_evaluated, move.pretty().slice() });
-            }
             write("bestmove {s}\n", .{move.pretty().slice()});
         }
 
