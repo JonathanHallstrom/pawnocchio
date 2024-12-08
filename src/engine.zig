@@ -382,7 +382,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
             const delta = getMoveDelta(turn, move);
-            const cur = -quiesce(
+            const score = -quiesce(
                 turn.flipped(),
                 board,
                 current_depth + 1,
@@ -396,9 +396,9 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state
             }
             if (shutdown) return 0;
 
-            if (cur > alpha)
-                alpha = cur;
-            if (cur >= beta)
+            if (score > alpha)
+                alpha = score;
+            if (score >= beta)
                 break;
         }
     }
@@ -444,11 +444,56 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
         return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
     }
 
-    const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
     // std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
 
+    const tt_entry = tt[getTTIndex(board.zobrist)];
+
     var best_score = -CHECKMATE_EVAL;
+    var best_move = move_buf[0];
+
+    if (tt_entry.zobrist == board.zobrist) {
+        best_move = tt_entry.bestmove;
+        if (std.debug.runtime_safety)
+            tt_hits += 1;
+
+        const inv = board.playMove(best_move);
+        defer board.undoMove(inv);
+        hash_history.appendAssumeCapacity(board.zobrist);
+        defer _ = hash_history.pop();
+        const delta = getMoveDelta(turn, best_move);
+        const extension: u8 = @intFromBool(board.isInCheck(.auto));
+
+        const score = -search(
+            turn.flipped(),
+            board,
+            current_depth + 1,
+            depth_remaining - 1 + extension,
+            eval_state.add(delta).flipped(),
+            -beta,
+            -alpha,
+            move_buf,
+            hash_history,
+        );
+
+        if (score > alpha) {
+            if (score >= beta) {
+                return score;
+            }
+            alpha = score;
+        }
+        best_score = score;
+        if (shutdown) return 0;
+    } else if (tt_entry.zobrist != 0) {
+        if (std.debug.runtime_safety)
+            tt_misses += 1;
+    }
+
+    const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
+    std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
+    if (best_score == -CHECKMATE_EVAL) {
+        best_move = move_buf[0];
+    }
+
     for (move_buf[0..num_moves]) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             defer board.undoMove(inv);
@@ -468,13 +513,15 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                     move_buf[num_moves..],
                     hash_history,
                 );
+                best_move = move;
+                best_score = score;
                 if (score > alpha) {
                     if (score >= beta) {
-                        return score;
+                        break;
+                        // return score;
                     }
                     alpha = score;
                 }
-                best_score = score;
             } else {
                 var score = -search(
                     turn.flipped(),
@@ -503,18 +550,26 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                         alpha = score;
                 }
                 if (score > best_score) {
-                    if (score >= beta) {
-                        return score;
-                    }
+                    best_move = move;
                     best_score = score;
+                    if (score >= beta) {
+                        break;
+                        // return score;
+                    }
                 }
             }
             if (std.debug.runtime_safety and err) {
                 log_writer.print("move: {}\n", .{move}) catch {};
             }
-            if (shutdown) return 0;
+            if (shutdown) break;
         }
     }
+
+    tt[getTTIndex(board.zobrist)] = TTentry{
+        .zobrist = board.zobrist,
+        .bestmove = best_move,
+    };
+
     return best_score;
 }
 
@@ -533,15 +588,6 @@ pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, eval_state: EvalStat
         ),
     };
 }
-
-var err = false;
-var nodes_searched: u64 = 0;
-var max_nodes: u64 = std.math.maxInt(u64);
-var max_depth: u8 = 255;
-var timer: std.time.Timer = undefined;
-var die_time: u64 = std.math.maxInt(u64);
-var shutdown = false;
-// var tt_hits: usize = 0;
 
 pub const MoveInfo = struct {
     eval: i16,
@@ -592,28 +638,42 @@ pub const MoveInfo = struct {
     }
 };
 
-// const TTentry = struct {
-//     zobrist: u64 = 0,
-//     bestmove: Move = std.mem.zeroes(Move),
-//     const null_entry: TTentry = .{};
-// };
+var err = false;
+var nodes_searched: u64 = 0;
+var max_nodes: u64 = std.math.maxInt(u64);
+var max_depth: u8 = 255;
+var timer: std.time.Timer = undefined;
+var die_time: u64 = std.math.maxInt(u64);
+var shutdown = false;
+var tt_hits: usize = 0;
+var tt_misses: usize = 0;
 
-// const tt_size = 1 << 20;
-// var tt: [tt_size]TTentry = .{TTentry.null_entry} ** tt_size;
+const TTentry = struct {
+    zobrist: u64 = 0,
+    bestmove: Move = std.mem.zeroes(Move),
+    const null_entry: TTentry = .{};
+};
 
-// fn getTTIndex(hash: u64) usize {
-//     return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt_size) >> 32;
-// }
+const tt_size = 1 << 20;
+var tt_backing: [tt_size]TTentry align(16) = .{TTentry.null_entry} ** tt_size;
+const tt: [*]TTentry = &tt_backing;
+fn getTTIndex(hash: u64) usize {
+    return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt_size) >> 32;
+}
 
 fn resetSoft() void {
     nodes_searched = 0;
     shutdown = false;
     max_depth = 255;
     max_nodes = std.math.maxInt(u64);
+    tt_hits = 0;
+    tt_misses = 0;
 }
 
 pub fn reset() void {
     resetSoft();
+    // tt = std.heap.page_allocator.realloc(tt, tt_size) catch @panic("OOM");
+    @memset(tt[0..tt_size], TTentry.null_entry);
 }
 
 var rand = std.Random.DefaultPrng.init(0);

@@ -714,6 +714,11 @@ pub const Move = struct {
         }
         return res;
     }
+
+    pub fn eql(self: Move, other: Move) bool {
+        return std.meta.eql(self.from(), other.from()) and
+            std.meta.eql(self.to(), other.to());
+    }
 };
 
 pub const MoveInverse = struct {
