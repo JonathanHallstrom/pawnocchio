@@ -59,6 +59,7 @@ pub fn main() !void {
     defer allocator.free(move_buf);
 
     var line_buf: [1 << 20]u8 = undefined;
+    engine.init();
     main_loop: while (reader.readUntilDelimiter(&line_buf, '\n') catch null) |line_raw| {
         const line = std.mem.trim(u8, line_raw, &std.ascii.whitespace);
         for (line) |c| {
@@ -75,13 +76,28 @@ pub fn main() !void {
         try log_writer.print("got: {s}\n", .{line});
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
-            try stdout.writeAll("id name pawnocchio 0.0.4\n");
+            try stdout.writeAll("id name pawnocchio 0.0.5\n");
+            try stdout.writeAll("option name Hash type spin default 16 min 1 max 65535\n");
             try stdout.writeAll("uciok\n");
         }
 
         if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             engine.reset();
             board = Board.init();
+        }
+
+        if (std.ascii.eqlIgnoreCase(command, "setoption")) {
+            if (!std.ascii.eqlIgnoreCase("name", parts.next() orelse "")) continue;
+
+            if (std.ascii.eqlIgnoreCase("Hash", parts.next() orelse "")) {
+                if (!std.ascii.eqlIgnoreCase("value", parts.next() orelse "")) continue;
+                const hash_size_to_parts = parts.next() orelse "";
+                const size = std.fmt.parseInt(u16, hash_size_to_parts, 10) catch {
+                    try log_writer.print("invalid hash size: '{s}'\n", .{hash_size_to_parts});
+                    continue;
+                };
+                try engine.setTTSize(size);
+            }
         }
 
         if (std.ascii.eqlIgnoreCase(command, "position")) {
@@ -212,17 +228,17 @@ pub fn main() !void {
             if (mate_finding_depth) |depth| max_depth = @min(max_depth, depth * 2);
             log_writer.print("max depth: {}\n", .{max_depth}) catch {};
 
-            // const my_time = if (board.turn == .white) white_time else black_time;
+            const my_time = if (board.turn == .white) white_time else black_time;
+            const my_increment = if (board.turn == .white) white_increment else black_increment;
 
-            const my_time = @min(white_time, black_time);
-            const my_increment = @min(white_increment, black_increment);
+            // const my_time = @min(white_time, black_time);
+            // const my_increment = @min(white_increment, black_increment);
 
-            // 50ms to quit seems fine
-
-            const overhead = 50 * std.time.ns_per_ms;
+            // 10ms  seems fine
+            const overhead = 10 * std.time.ns_per_ms;
 
             const soft_time = my_time / 20 + my_increment * 3 / 4;
-            const hard_time = if (move_time) |mt| mt -| overhead else @min((my_time -| overhead) / 5, (my_time -| overhead) / 5 + my_increment * 3 / 4);
+            const hard_time = if (move_time) |mt| mt -| overhead else my_time / 10 -| overhead;
 
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 

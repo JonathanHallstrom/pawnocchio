@@ -452,7 +452,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     var best_move = move_buf[0];
 
     if (tt_entry.zobrist == board.zobrist) {
-        best_move = tt_entry.bestmove;
+        best_move = tt_entry.best_move;
         if (std.debug.runtime_safety)
             tt_hits += 1;
 
@@ -567,7 +567,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
 
     tt[getTTIndex(board.zobrist)] = TTentry{
         .zobrist = board.zobrist,
-        .bestmove = best_move,
+        .best_move = best_move,
     };
 
     return best_score;
@@ -650,13 +650,13 @@ var tt_misses: usize = 0;
 
 const TTentry = struct {
     zobrist: u64 = 0,
-    bestmove: Move = std.mem.zeroes(Move),
+    best_move: Move = std.mem.zeroes(Move),
     const null_entry: TTentry = .{};
 };
 
-const tt_size = 1 << 20;
-var tt_backing: [tt_size]TTentry align(16) = .{TTentry.null_entry} ** tt_size;
-const tt: [*]TTentry = &tt_backing;
+var tt_size_mb: usize = 0;
+var tt_size: usize = 0;
+var tt: []TTentry = &.{};
 fn getTTIndex(hash: u64) usize {
     return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt_size) >> 32;
 }
@@ -670,9 +670,19 @@ fn resetSoft() void {
     tt_misses = 0;
 }
 
+pub fn setTTSize(megabytes: usize) !void {
+    tt_size_mb = megabytes;
+    tt_size = (tt_size_mb << 20) / @sizeOf(TTentry);
+    tt = try std.heap.page_allocator.realloc(tt, tt_size);
+}
+
+pub fn init() void {
+    reset();
+}
+
 pub fn reset() void {
     resetSoft();
-    // tt = std.heap.page_allocator.realloc(tt, tt_size) catch @panic("OOM");
+    setTTSize(16) catch @panic("OOM");
     @memset(tt[0..tt_size], TTentry.null_entry);
 }
 
@@ -682,7 +692,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     max_nodes = nodes;
     max_depth = depth;
     timer = std.time.Timer.start() catch unreachable;
-    die_time = timer.read() + hard_time;
+    die_time = hard_time;
 
     const num_moves = board.getAllMoves(move_buf, board.getSelfCheckSquares());
     const raw_moves = move_buf[0..num_moves];
@@ -701,7 +711,17 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     for (0..num_moves) |i| {
         move_eval_buf[i] = .{ .move = raw_moves[i], .eval = mvvlvaValue(raw_moves[i]) };
     }
+
     const moves = move_eval_buf[0..num_moves];
+    const tt_entry = tt[getTTIndex(board.zobrist)];
+    if (tt_entry.zobrist == board.zobrist) {
+        for (move_eval_buf[0..num_moves]) |*entry| {
+            if (entry.move.eql(tt_entry.best_move)) {
+                entry.eval = CHECKMATE_EVAL;
+                break;
+            }
+        }
+    }
     std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
     var best_move = move_eval_buf[0].move;
     var best_eval = -CHECKMATE_EVAL;
@@ -709,7 +729,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     var depth_try: u8 = 0;
     var depth_evaluated: u8 = 0;
     const eval_state = EvalState.init(board);
-    while (depth_try < depth and timer.read() <= soft_time) : (depth_try += 1) {
+    while (depth_try < depth and (timer.read() <= soft_time or best_eval < 0)) : (depth_try += 1) {
         // max_depth = @min(depth_try + 8, depth);
 
         var best_move_iter = best_move;
@@ -728,6 +748,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
         _ = hash_history.pop();
         self.undoMove(best_inv);
         if (shutdown) break;
+        var second_best_eval = -CHECKMATE_EVAL;
 
         for (moves) |*entry| {
             const move = entry.move;
@@ -753,8 +774,12 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
             if (shutdown) break;
             entry.eval = cur;
             if (entry.eval > best_eval_iter) {
+                second_best_eval = best_eval_iter;
                 best_eval_iter = entry.eval;
                 best_move_iter = move;
+            }
+            if (entry.eval > second_best_eval) {
+                second_best_eval = entry.eval;
             }
         }
 
@@ -764,6 +789,8 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
         const info = MoveInfo.init(best_eval, best_move, depth_evaluated, nodes_searched, timer.read());
         write("{}\n", .{info});
         if (info.is_mate) break;
+        if (shutdown) break;
+        if ((best_eval > 0 and second_best_eval < 0) and timer.read() >= soft_time / 4) break;
         std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
     }
 
