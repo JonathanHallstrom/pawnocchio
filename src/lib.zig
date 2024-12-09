@@ -1112,6 +1112,57 @@ pub const Board = struct {
         return res;
     }
 
+    // move has to be valid
+    pub fn compressMove(self: Self, move: Move) u16 {
+        _ = self;
+        const from_sq: u16 = move.from().getLoc();
+        const to_sq: u16 = move.to().getLoc();
+        var other_flags: u16 = 0;
+        if (move.from().getType() != move.to().getType()) {
+            other_flags = switch (move.to().getType()) {
+                .knight => 0b1000,
+                .bishop => 0b1001,
+                .rook => 0b1010,
+                .queen => 0b1011,
+                else => unreachable,
+            };
+        }
+        if (move.captured()) |cap| {
+            if (cap.getLoc() != move.to().getLoc()) {
+                other_flags = 0b0100;
+            }
+        }
+
+        return from_sq | to_sq << 6 | other_flags << 12;
+    }
+    pub fn decompressMove(self: Self, compressed_move: u16) Move {
+        const moved_side = if (self.turn == .white) self.white else self.black;
+        const from_sq: u6 = @intCast(compressed_move & 0b111111);
+        const from_bb = BitBoard.init(@as(u64, 1) << from_sq);
+        const to_sq: u6 = @intCast(compressed_move >> 6 & 0b111111);
+        const to_bb = BitBoard.init(@as(u64, 1) << to_sq);
+        const other_flags: u4 = @intCast(compressed_move >> 12);
+        const from = Piece.init(moved_side.whichTypeUnchecked(from_bb), from_bb);
+        var to = Piece.init(moved_side.whichTypeUnchecked(from_bb), to_bb);
+        if (other_flags & 0b1000 != 0) {
+            to = Piece.init(switch (other_flags) {
+                0b1000 => .knight,
+                0b1001 => .bishop,
+                0b1010 => .rook,
+                0b1011 => .queen,
+                else => unreachable,
+            }, to_bb);
+        }
+        var captured: ?Piece = null;
+        if (moved_side.whichType(to_bb)) |captured_type| {
+            captured = Piece.init(captured_type, to_bb);
+        } else if (other_flags == 0b0100) {
+            captured = Piece.pawnFromBitBoard(if (self.turn == .white) to_bb.backwardUnchecked(1) else to_bb.forwardUnchecked(1));
+        }
+
+        return Move.init(from, to, captured, true);
+    }
+
     pub fn playMove(self: *Self, move: Move) MoveInverse {
         const res = MoveInverse{
             .move = move,
@@ -1998,6 +2049,7 @@ pub const Board = struct {
         const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
         const moves = move_buf[0..num_moves];
         for (moves) |move| {
+            try testing.expect(move.eql(self.decompressMove(self.compressMove(move))));
             if (self.playMovePossibleSelfCheck(move)) |inv| {
                 defer self.undoMove(inv);
                 var hash = std.hash.CityHash64.hash(&std.mem.toBytes(self.white));
@@ -2142,6 +2194,12 @@ fn expectCapturesImplyAttacked(board: Board, moves: []Move) !void {
     }
 }
 
+fn expectMovesCompressible(board: Board, moves: []Move) !void {
+    for (moves) |move| {
+        try std.testing.expect(move.eql(board.decompressMove(board.compressMove(move))));
+    }
+}
+
 fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_captures: usize, expected_castling: usize) !void {
     var buf: [400]Move = undefined;
     const board = try Board.parseFen(fen);
@@ -2158,6 +2216,7 @@ fn testCase(fen: []const u8, func: anytype, expected_moves: usize, expected_capt
     try expectNumCastling(moves, expected_castling);
     try expectMovesInvertible(board, moves);
     try expectCapturesImplyAttacked(board, moves);
+    try expectMovesCompressible(board, moves);
 }
 
 fn expectZobristResetInvertible(board: Board) !void {
