@@ -218,9 +218,12 @@ pub fn main() !void {
             const my_increment = @min(white_increment, black_increment);
 
             // 50ms to quit seems fine
-            const soft_time = my_time / 20 + my_increment / 2;
-            var hard_time = if (move_time) |mt| mt else @min(my_time / 10, my_time / 5 + my_increment / 2);
-            hard_time -|= 50 * std.time.ns_per_ms;
+
+            const overhead = 50 * std.time.ns_per_ms;
+
+            const soft_time = my_time / 20 + my_increment * 3 / 4;
+            const hard_time = if (move_time) |mt| mt -| overhead else @min((my_time -| overhead) / 5, (my_time -| overhead) / 5 + my_increment * 3 / 4);
+
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
             const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history);
