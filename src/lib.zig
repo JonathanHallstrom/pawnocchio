@@ -2082,6 +2082,20 @@ pub const Board = struct {
         return res;
     }
 
+    pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth_remaining: usize) u64 {
+        if (depth_remaining == 0) return 1;
+        const num_moves = self.getAllMovesUnchecked(move_buf, self.getSelfCheckSquares());
+        const moves = move_buf[0..num_moves];
+        var res: u64 = 0;
+        for (moves) |move| {
+            if (self.playMovePossibleSelfCheck(move)) |inv| {
+                defer self.undoMove(inv);
+                res += perftSingleThreadedNonBulk(self, move_buf[num_moves..], depth_remaining - 1);
+            }
+        }
+        return res;
+    }
+
     fn perftMultiThreadedWorkerFn(res_: *std.atomic.Value(u64), board_: Self, move_buf_: []Move, depth_remaining_: usize) void {
         var board = board_;
         _ = res_.fetchAdd(board.perftSingleThreaded(move_buf_, depth_remaining_), .acquire);

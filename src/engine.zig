@@ -361,7 +361,7 @@ fn getMoveDelta(turn: lib.Side, move: Move) EvalState {
 
 fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move) i16 {
     nodes_searched += 1;
-    if (nodes_searched % 1024 == 0 and timer.read() >= die_time) {
+    if (nodes_searched % 1024 == 0 and (nodes_searched >= max_nodes or timer.read() >= die_time)) {
         shutdown = true;
         return 0;
     }
@@ -411,7 +411,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
 
     nodes_searched += 1;
     var alpha = alpha_;
-    if (nodes_searched % 1024 == 0 and timer.read() >= die_time) {
+    if (nodes_searched % 1024 == 0 and (nodes_searched >= max_nodes or timer.read() >= die_time)) {
         shutdown = true;
         return 0;
     }
