@@ -266,7 +266,7 @@ fn moveDeltaComparator(comptime turn: lib.Side) fn (ctx: EvalState, lhs: Move, r
     }.impl;
 }
 
-fn eval(board: Board) i16 {
+fn evaluate(board: Board) i16 {
     return EvalState.init(board).static();
 }
 
@@ -274,7 +274,6 @@ fn mvvlvaValue(x: Move) i16 {
     if (!x.isCapture()) return 0;
     const attacker: i16 = @intFromEnum(x.to().getType());
     const victim: i16 = @intFromEnum(x.captured().?.getType());
-    // 1 indexing to avoid overflow
     return 8 * victim - attacker; // analog hors
 }
 
@@ -573,70 +572,135 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     return best_score;
 }
 
-pub fn doSearch(board: *Board, depth: u8, move_buf: []Move, eval_state: EvalState, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) i16 {
-    return switch (board.turn) {
-        inline else => |t| search(
-            t,
-            board,
-            1,
-            depth,
-            eval_state,
-            alpha,
-            beta,
-            move_buf,
-            hash_history,
-        ),
-    };
+fn convertEval(eval: i16) struct { bool, i16 } {
+    var is_mate = false;
+    var res = eval;
+    if (@abs(eval) >= CHECKMATE_EVAL - 255) {
+        is_mate = true;
+        if (eval > 0) {
+            res = @divTrunc(CHECKMATE_EVAL - eval + 1, 2);
+        } else {
+            res = -@divTrunc(CHECKMATE_EVAL + eval + 1, 2);
+        }
+    }
+    return .{ is_mate, res };
 }
 
-pub const MoveInfo = struct {
-    eval: i16,
-    move: Move,
+pub const SearchInfo = struct {
+    best_eval: i16,
+    best_move: Move,
     depth_evaluated: u8,
     nodes_evaluated: u64,
-    is_mate: bool = false,
     time_used: u64,
+    is_mate: bool = false,
 
-    fn init(best_eval: i16, best_move: Move, depth_evaluated: u8, nodes: u64, ns_elapsed: u64) MoveInfo {
-        var res = MoveInfo{
-            .eval = best_eval,
-            .move = best_move,
+    fn init(best_eval: i16, best_move: Move, depth_evaluated: u8, nodes: u64, ns_elapsed: u64) SearchInfo {
+        var res = SearchInfo{
+            .best_eval = best_eval,
+            .best_move = best_move,
             .depth_evaluated = depth_evaluated,
             .is_mate = false,
             .nodes_evaluated = nodes,
             .time_used = ns_elapsed,
         };
-        if (@abs(best_eval) >= CHECKMATE_EVAL - 255) {
-            res.is_mate = true;
-            if (best_eval > 0) {
-                res.eval = @divTrunc(CHECKMATE_EVAL - best_eval + 1, 2);
-            } else {
-                res.eval = -@divTrunc(CHECKMATE_EVAL + best_eval + 1, 2);
-            }
-        }
+        res.is_mate, res.best_eval = convertEval(best_eval);
         return res;
     }
 
-    pub fn format(self: MoveInfo, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: SearchInfo, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = actual_fmt;
         _ = options;
         var buf: [256]u8 = undefined;
         var bytes_written: usize = 0;
         bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "info depth {} score ", .{self.depth_evaluated})).len;
         if (self.is_mate) {
-            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "mate {} ", .{self.eval})).len;
+            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "mate {} ", .{self.best_eval})).len;
         } else {
-            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "cp {} ", .{self.eval})).len;
+            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "cp {} ", .{self.best_eval})).len;
         }
         bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "time {} nodes {} nps {} pv {s}", .{
             self.time_used / std.time.ns_per_ms,
             self.nodes_evaluated,
             self.nodes_evaluated * std.time.ns_per_s / self.time_used,
-            self.move.pretty().slice(),
+            self.best_move.pretty().slice(),
         })).len;
         try writer.writeAll(buf[0..bytes_written]);
     }
 };
+
+fn searchWithoutTurn(board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+    return switch (board.turn) {
+        inline else => |t| search(t, board, current_depth, depth_remaining, eval_state, alpha_, beta, move_buf, hash_history),
+    };
+}
+
+inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves: []MoveEvalPair, move_buf: []Move, eval_state: EvalState, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) ?SearchInfo {
+    // var new_evals: [256]i16 = undefined;
+    var best_move = prev_best_move;
+    const best_delta = getMoveDelta(board.turn, best_move);
+    const best_inv = board.playMove(best_move);
+    hash_history.appendAssumeCapacity(board.zobrist);
+    var best_eval = -searchWithoutTurn(
+        board,
+        1,
+        depth,
+        eval_state.add(best_delta).flipped(),
+        -beta,
+        -alpha,
+        move_buf,
+        hash_history,
+    );
+    _ = hash_history.pop();
+    board.undoMove(best_inv);
+    if (shutdown) return null;
+
+    for (
+        moves,
+        // new_evals[0..moves.len]
+    ) |
+        *entry,
+        // *new_eval
+    | {
+        const move = entry.move;
+        if (move.eql(prev_best_move)) {
+            continue;
+        }
+        const delta = getMoveDelta(board.turn, move);
+        const inv = board.playMove(move);
+        defer board.undoMove(inv);
+
+        hash_history.appendAssumeCapacity(board.zobrist);
+        defer _ = hash_history.pop();
+
+        const score = -searchWithoutTurn(
+            board,
+            1,
+            depth,
+            eval_state.add(delta).flipped(),
+            -beta,
+            -best_eval,
+            move_buf,
+            hash_history,
+        );
+
+        if (err) {
+            log_writer.print("move: {}\n", .{move}) catch {};
+        }
+        if (shutdown) break;
+        // new_eval.* = score;
+        entry.eval = score;
+        if (score > best_eval) {
+            best_eval = score;
+            best_move = move;
+        }
+    }
+    if (!shutdown) {
+        // for (moves, new_evals[0..moves.len]) |*entry, new_eval| {
+        //     entry.eval = new_eval;
+        // }
+    }
+    return SearchInfo.init(best_eval, best_move, depth + 1, nodes_searched, timer.read());
+}
 
 var err = false;
 var nodes_searched: u64 = 0;
@@ -682,12 +746,22 @@ pub fn init() void {
 
 pub fn reset() void {
     resetSoft();
-    setTTSize(16) catch @panic("OOM");
+    setTTSize(256) catch @panic("OOM");
     @memset(tt[0..tt_size], TTentry.null_entry);
 }
 
 var rand = std.Random.DefaultPrng.init(0);
-pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64)) MoveInfo {
+
+const MoveEvalPair = struct {
+    move: Move,
+    eval: i16,
+
+    fn orderByEval(_: void, lhs: @This(), rhs: @This()) bool {
+        return lhs.eval > rhs.eval;
+    }
+};
+
+pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64)) SearchInfo {
     resetSoft();
     max_nodes = nodes;
     max_depth = depth;
@@ -698,16 +772,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     const raw_moves = move_buf[0..num_moves];
     var self = board;
 
-    const MoveEvalPair = struct {
-        move: Move,
-        eval: i16,
-
-        fn orderByEval(_: void, lhs: @This(), rhs: @This()) bool {
-            return lhs.eval > rhs.eval;
-        }
-    };
-
-    var move_eval_buf: [400]MoveEvalPair = undefined;
+    var move_eval_buf: [256]MoveEvalPair = undefined;
     for (0..num_moves) |i| {
         move_eval_buf[i] = .{ .move = raw_moves[i], .eval = mvvlvaValue(raw_moves[i]) };
     }
@@ -724,79 +789,35 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
     }
     std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
     var best_move = move_eval_buf[0].move;
-    var best_eval = -CHECKMATE_EVAL;
+    var best_eval: i16 = 0;
 
     var depth_try: u8 = 0;
     var depth_evaluated: u8 = 0;
     const eval_state = EvalState.init(board);
     while (depth_try < depth and (timer.read() <= soft_time or best_eval < 0)) : (depth_try += 1) {
-        // max_depth = @min(depth_try + 8, depth);
-
-        var best_move_iter = best_move;
-
-        hash_history.appendAssumeCapacity(self.zobrist);
-        const best_inv = self.playMove(best_move_iter);
-        var best_eval_iter = -doSearch(
+        const info = searchIteration(
             &self,
             depth_try,
+            best_move,
+            moves,
             move_buf,
-            eval_state.add(getMoveDelta(board.turn, best_move_iter)).flipped(),
+            eval_state,
             -CHECKMATE_EVAL,
             CHECKMATE_EVAL,
             hash_history,
-        );
-        _ = hash_history.pop();
-        self.undoMove(best_inv);
-        if (shutdown) break;
-        var second_best_eval = -CHECKMATE_EVAL;
-
-        for (moves) |*entry| {
-            const move = entry.move;
-            const inv = self.playMove(move);
-            defer self.undoMove(inv);
-
-            hash_history.appendAssumeCapacity(self.zobrist);
-            defer _ = hash_history.pop();
-
-            const cur = -doSearch(
-                &self,
-                depth_try,
-                move_buf,
-                eval_state.add(getMoveDelta(board.turn, move)).flipped(),
-                -CHECKMATE_EVAL,
-                -best_eval_iter,
-                hash_history,
-            );
-
-            if (err) {
-                log_writer.print("move: {}\n", .{move}) catch {};
-            }
-            if (shutdown) break;
-            entry.eval = cur;
-            if (entry.eval > best_eval_iter) {
-                second_best_eval = best_eval_iter;
-                best_eval_iter = entry.eval;
-                best_move_iter = move;
-            }
-            if (entry.eval > second_best_eval) {
-                second_best_eval = entry.eval;
-            }
-        }
-
+        ) orelse break;
         depth_evaluated = depth_try + 1;
-        best_eval = best_eval_iter;
-        best_move = best_move_iter;
-        const info = MoveInfo.init(best_eval, best_move, depth_evaluated, nodes_searched, timer.read());
+        best_eval = info.best_eval;
+        best_move = info.best_move;
         write("{}\n", .{info});
         if (info.is_mate) break;
         if (shutdown) break;
-        if ((best_eval > 0 and second_best_eval < 0) and timer.read() >= soft_time / 4) break;
         std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
     }
 
-    return MoveInfo.init(best_eval, best_move, depth_evaluated, nodes_searched, timer.read());
+    return SearchInfo.init(best_eval, best_move, depth_evaluated, nodes_searched, timer.read());
 }
 
 test "starting position even material" {
-    try testing.expectEqual(0, eval(Board.init()));
+    try testing.expectEqual(0, evaluate(Board.init()));
 }

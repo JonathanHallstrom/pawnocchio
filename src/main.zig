@@ -77,7 +77,7 @@ pub fn main() !void {
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             try stdout.writeAll("id name pawnocchio 0.0.5\n");
-            try stdout.writeAll("option name Hash type spin default 16 min 1 max 65535\n");
+            try stdout.writeAll("option name Hash type spin default 256 min 1 max 65535\n");
             try stdout.writeAll("uciok\n");
         }
 
@@ -243,7 +243,7 @@ pub fn main() !void {
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
             const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history);
-            const move = move_info.move;
+            const move = move_info.best_move;
             write("bestmove {s}\n", .{move.pretty().slice()});
         }
 

@@ -1358,20 +1358,6 @@ pub const Board = struct {
         const opponents_pieces = opponent_side.all();
         const all_pieces = own_pieces.getCombination(opponents_pieces);
 
-        const pawn_dr: i8 = if (is_white_turn) 1 else -1;
-        var pawn_mask = BitBoard.initEmpty();
-        pawn_mask.add(squares.move(pawn_dr, 1));
-        pawn_mask.add(squares.move(pawn_dr, -1));
-        if (pawn_mask.overlaps(opponent_side.pawn)) {
-            return true;
-        }
-        var knight_mask = BitBoard.initEmpty();
-        for (knight_drs, knight_dcs) |dr, dc| knight_mask.add(squares.move(dr, dc));
-        if (knight_mask.overlaps(opponent_side.knight)) {
-            // std.debug.print("knight\n", .{});
-            return true;
-        }
-
         var bishop_mask = BitBoard.initEmpty();
         for (bishop_drs, bishop_dcs) |dr, dc| bishop_mask.add(squares.getFirstOverLappingInDirMasked(all_pieces, dr, dc));
         if (bishop_mask.overlaps(opponent_side.bishop.getCombination(opponent_side.queen))) {
@@ -1383,6 +1369,19 @@ pub const Board = struct {
         for (rook_drs, rook_dcs) |dr, dc| rook_mask.add(squares.getFirstOverLappingInDirMasked(all_pieces, dr, dc));
         if (rook_mask.overlaps(opponent_side.rook.getCombination(opponent_side.queen))) {
             // std.debug.print("rook\n", .{});
+            return true;
+        }
+        const pawn_dr: i8 = if (is_white_turn) 1 else -1;
+        var pawn_mask = BitBoard.initEmpty();
+        pawn_mask.add(squares.move(pawn_dr, 1));
+        pawn_mask.add(squares.move(pawn_dr, -1));
+        if (pawn_mask.overlaps(opponent_side.pawn)) {
+            return true;
+        }
+        var knight_mask = BitBoard.initEmpty();
+        for (knight_drs, knight_dcs) |dr, dc| knight_mask.add(squares.move(dr, dc));
+        if (knight_mask.overlaps(opponent_side.knight)) {
+            // std.debug.print("knight\n", .{});
             return true;
         }
 
