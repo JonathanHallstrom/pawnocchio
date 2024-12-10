@@ -635,7 +635,7 @@ fn searchWithoutTurn(board: *Board, current_depth: u8, depth_remaining: u8, eval
 }
 
 inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves: []MoveEvalPair, move_buf: []Move, eval_state: EvalState, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) ?SearchInfo {
-    // var new_evals: [256]i16 = undefined;
+    var new_evals: [256]i16 = undefined;
     var best_move = prev_best_move;
     const best_delta = getMoveDelta(board.turn, best_move);
     const best_inv = board.playMove(best_move);
@@ -654,13 +654,7 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
     board.undoMove(best_inv);
     if (shutdown) return null;
 
-    for (
-        moves,
-        // new_evals[0..moves.len]
-    ) |
-        *entry,
-        // *new_eval
-    | {
+    for (moves, new_evals[0..moves.len]) |entry, *new_eval| {
         const move = entry.move;
         if (move.eql(prev_best_move)) {
             continue;
@@ -687,17 +681,19 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
             log_writer.print("move: {}\n", .{move}) catch {};
         }
         if (shutdown) break;
-        // new_eval.* = score;
-        entry.eval = score;
+        new_eval.* = score;
+        // entry.eval = score;
         if (score > best_eval) {
             best_eval = score;
             best_move = move;
         }
     }
     if (!shutdown) {
-        // for (moves, new_evals[0..moves.len]) |*entry, new_eval| {
-        //     entry.eval = new_eval;
-        // }
+        if (alpha < best_eval and best_eval < beta) {
+            for (moves, new_evals[0..moves.len]) |*entry, new_eval| {
+                entry.eval = new_eval;
+            }
+        }
     }
     return SearchInfo.init(best_eval, best_move, depth + 1, nodes_searched, timer.read());
 }
@@ -718,7 +714,6 @@ const TTentry = struct {
     const null_entry: TTentry = .{};
 };
 
-var tt_size_mb: usize = 0;
 var tt_size: usize = 0;
 var tt: []TTentry = &.{};
 fn getTTIndex(hash: u64) usize {
@@ -735,8 +730,7 @@ fn resetSoft() void {
 }
 
 pub fn setTTSize(megabytes: usize) !void {
-    tt_size_mb = megabytes;
-    tt_size = (tt_size_mb << 20) / @sizeOf(TTentry);
+    tt_size = (megabytes << 20) / @sizeOf(TTentry);
     tt = try std.heap.page_allocator.realloc(tt, tt_size);
 }
 
