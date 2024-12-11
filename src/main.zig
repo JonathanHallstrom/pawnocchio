@@ -78,6 +78,7 @@ pub fn main() !void {
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             try stdout.writeAll("id name pawnocchio 0.0.5\n");
             try stdout.writeAll("option name Hash type spin default 256 min 1 max 65535\n");
+            try stdout.writeAll("option name Threads type spin default 1 min 1 max 1\n");
             try stdout.writeAll("uciok\n");
         }
 
