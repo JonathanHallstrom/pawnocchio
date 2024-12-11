@@ -1,46 +1,59 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const lib = @import("lib.zig");
-
 const Board = lib.Board;
-const Move = lib.Move;
 
-fn getMovesAlloc(board: *const Board, allocator: Allocator) ![]Move {
-    var buf: [400]Move = undefined;
-    const num_moves = board.getAllMovesUnchecked(&buf);
-    return try allocator.dupe(Move, buf[0..num_moves]);
+pub fn runBench(file: []const u8, allocator: std.mem.Allocator, result_writer: anytype) !void {
+    const move_buf = try allocator.alloc(lib.Move, 1 << 20);
+    defer allocator.free(move_buf);
+    const test_file = try std.fs.cwd().openFile(file, .{});
+    defer test_file.close();
+    var br = std.io.bufferedReader(test_file.reader());
+
+    var line_buf: [1024]u8 = undefined;
+    var total_time: u64 = 0;
+    var total_positions: u64 = 0;
+    while (br.reader().readUntilDelimiter(&line_buf, '\n') catch null) |line| {
+        var parts = std.mem.tokenizeSequence(u8, line, " ;D");
+        const fen = parts.next().?;
+
+        var board = try Board.parseFen(fen);
+        var depth: u8 = undefined;
+        while (parts.next()) |depth_info| {
+            var depth_parts = std.mem.tokenizeScalar(u8, depth_info, ' ');
+            depth = try std.fmt.parseInt(u8, depth_parts.next() orelse {
+                std.debug.panic("invalid depth info: {s}", .{depth_info});
+            }, 10);
+            const expected_perft = try std.fmt.parseInt(u64, depth_parts.next() orelse {
+                std.debug.panic("invalid depth info: {s}", .{depth_info});
+            }, 10);
+            var timer = try std.time.Timer.start();
+            // const actual_perft = try board.perftMultiThreaded(move_buf, depth, allocator);
+            const actual_perft = board.perftSingleThreaded(move_buf, depth);
+            total_time += timer.lap();
+            total_positions += expected_perft;
+            std.testing.expectEqual(expected_perft, actual_perft) catch |e| {
+                std.log.err("error for: {s} at depth: {}", .{ fen, depth });
+                std.log.err("expected: {}", .{expected_perft});
+                std.log.err("got:      {}", .{actual_perft});
+                return e;
+            };
+        }
+        std.log.info("{s} passed, total positions: {}", .{ fen, total_positions });
+    }
+    const nodes = total_positions;
+    const nps = std.time.ns_per_s * nodes / total_time;
+    std.log.info("overall nps: {}", .{nps});
+    try result_writer.print("{} nodes {} nps\n", .{ nodes, nps });
 }
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .retain_metadata = true, .thread_safe = true, .safety = true }){};
     defer _ = gpa.deinit();
-    var threaded = std.heap.ThreadSafeAllocator{ .child_allocator = gpa.allocator() };
-    const allocator = threaded.allocator();
+    const allocator = gpa.allocator();
 
     var args = try std.process.argsWithAllocator(allocator);
-    defer args.deinit();
     _ = args.next();
-    var parsed_board: ?Board = null;
-    var fen: []const u8 = &.{};
-    defer allocator.free(fen);
-    while (args.next()) |arg| {
-        fen = try std.mem.join(allocator, " ", &.{ fen, arg });
-        parsed_board = Board.parseFen(fen) catch null;
-    }
-    var board = parsed_board orelse Board.init();
-    const output = std.io.getStdOut().writer();
+    defer args.deinit();
 
-    const move_buf: []Move = try allocator.alloc(Move, 1 << 20);
-    defer allocator.free(move_buf);
-    for (1..8) |depth| {
-        var timer = try std.time.Timer.start();
-        // const num_moves = try board.perftMultiThreaded(move_buf, depth, allocator);
-        const num_moves = board.perftSingleThreaded(move_buf, depth);
-        const elapsed = timer.lap();
-        try output.print("{}\n", .{num_moves});
-        std.debug.print("{}\n", .{num_moves});
-        std.debug.print("time : {}\n", .{std.fmt.fmtDuration(elapsed)});
-        std.debug.print("Moves/s: {}\n", .{num_moves * 1000_000_000 / elapsed});
-        std.debug.print("Million moves/s: {}\n", .{num_moves * 1000 / elapsed});
-    }
+    try runBench(args.next() orelse "tests/reduced.epd", allocator, std.io.getStdOut().writer());
 }

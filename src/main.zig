@@ -29,9 +29,11 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
 }
 
 pub fn main() !void {
-    log_writer = std.io.getStdErr().writer().any();
-    if (!std.debug.runtime_safety)
-        log_writer = std.io.null_writer.any();
+    log_writer = if (std.debug.runtime_safety)
+        std.io.getStdErr().writer().any()
+    else
+        std.io.null_writer.any();
+
     stdout = std.io.getStdOut();
     // disgusting ik
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
@@ -46,6 +48,19 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+
+    const name = args.next() orelse "pawnocchio";
+    _ = name;
+
+    if (args.next()) |arg| {
+        if (std.ascii.endsWithIgnoreCase(arg, "bench")) {
+            try @import("perft_bench.zig").runBench(args.next() orelse "tests/reduced.epd", allocator, std.io.getStdOut().writer());
+            return;
+        }
+    }
 
     const stdin = std.io.getStdIn();
     var br = std.io.bufferedReader(stdin.reader());
