@@ -2,11 +2,11 @@
 
 .DEFAULT_GOAL := default
 
-MV=mv ./zig-out/bin/$(EXE) .
+ifndef EXE
+EXE=pawnocchio
+endif
 
 default:
-	zig build --release=fast -Dname=$(EXE) install
+	zig build --release=fast install
 
-ifdef EXE
-	$(MV)
-endif
+	mv ./zig-out/bin/pawnocchio $(EXE)
