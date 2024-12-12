@@ -573,17 +573,15 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
 }
 
 fn convertEval(eval: i16) struct { bool, i16 } {
-    var is_mate = false;
-    var res = eval;
     if (@abs(eval) >= CHECKMATE_EVAL - 255) {
-        is_mate = true;
-        if (eval > 0) {
-            res = @divTrunc(CHECKMATE_EVAL - eval + 1, 2);
-        } else {
-            res = -@divTrunc(CHECKMATE_EVAL + eval + 1, 2);
-        }
+        const res = if (eval > 0)
+            @divTrunc(CHECKMATE_EVAL - eval + 1, 2)
+        else
+            -@divTrunc(CHECKMATE_EVAL + eval + 1, 2);
+        return .{ true, res };
+    } else {
+        return .{ false, eval };
     }
-    return .{ is_mate, res };
 }
 
 pub const SearchInfo = struct {

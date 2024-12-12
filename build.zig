@@ -10,27 +10,15 @@ pub fn build(b: *std.Build) void {
     // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
 
+    const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
+
     // Standard optimization options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addStaticLibrary(.{
-        .name = "pawnocchio",
-        // In this case the main source file is merely a path, however, in more
-        // complicated build scripts, this could be a generated file.
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // This declares intent for the library to be installed into the standard
-    // location when the user invokes the "install" step (the default step when
-    // running `zig build`).
-    b.installArtifact(lib);
-
     const exe = b.addExecutable(.{
-        .name = "pawnocchio",
+        .name = name,
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
@@ -42,17 +30,6 @@ pub fn build(b: *std.Build) void {
     run_cmd.step.dependOn(b.getInstallStep());
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
-
-    const cli = b.addExecutable(.{
-        .name = "pawnocchio-cli",
-        .root_source_file = b.path("src/cli_play.zig"),
-        .target = target,
-        .optimize = .ReleaseSafe,
-    });
-    b.installArtifact(cli);
-    const run_cli_cmd = b.addRunArtifact(cli);
-    const run_cli_step = b.step("run-cli", "Run the cli app");
-    run_cli_step.dependOn(&run_cli_cmd.step);
 
     const bench = b.addExecutable(.{
         .name = "pawnocchio_perft_bench",
@@ -96,7 +73,6 @@ pub fn build(b: *std.Build) void {
 
     if (b.args) |args| {
         run_cmd.addArgs(args);
-        run_cli_cmd.addArgs(args);
         bench_cmd.addArgs(args);
     }
 
