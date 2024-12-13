@@ -753,7 +753,7 @@ const MoveEvalPair = struct {
     }
 };
 
-pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64)) SearchInfo {
+pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: u64, soft_time: u64, hard_time: u64, hash_history: *std.ArrayList(u64), disable_info: bool) SearchInfo {
     resetSoft();
     max_nodes = nodes;
     max_depth = depth;
@@ -801,7 +801,8 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: usize, soft_ti
         depth_evaluated = depth_try + 1;
         best_eval = info.best_eval;
         best_move = info.best_move;
-        write("{}\n", .{info});
+        if (!disable_info)
+            write("{}\n", .{info});
         if (info.is_mate) break;
         if (shutdown) break;
         std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
