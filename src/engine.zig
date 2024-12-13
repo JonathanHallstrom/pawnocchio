@@ -439,9 +439,6 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
             return 0;
         }
     }
-    if (board.gameOver()) |gr| {
-        return if (gr == .tie) 0 else -CHECKMATE_EVAL + current_depth;
-    }
 
     // std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
 
@@ -492,9 +489,10 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
     if (best_score == -CHECKMATE_EVAL) {
         best_move = move_buf[0];
     }
-
+    var num_legal_moves: u8 = 0;
     for (move_buf[0..num_moves]) |move| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
+            num_legal_moves += 1;
             defer board.undoMove(inv);
             hash_history.appendAssumeCapacity(board.zobrist);
             defer _ = hash_history.pop();
@@ -562,6 +560,9 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
             }
             if (shutdown) break;
         }
+    }
+    if (num_legal_moves == 0) {
+        return if (board.isInCheck(.auto)) -CHECKMATE_EVAL + current_depth else 0;
     }
 
     tt[getTTIndex(board.zobrist)] = TTentry{
