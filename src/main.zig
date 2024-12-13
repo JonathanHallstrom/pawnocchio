@@ -328,7 +328,7 @@ pub fn main() !void {
 
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
-            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history, true);
+            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history, false);
             const move = move_info.best_move;
             write("bestmove {s}\n", .{move.pretty().slice()});
         }
