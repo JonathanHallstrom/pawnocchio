@@ -13,7 +13,6 @@ const PieceType = lib.PieceType;
 const Move = lib.Move;
 const Board = lib.Board;
 
-// havent quite gotten this working yet
 const PestoEval = struct {
     const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 10_000 };
     const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 10_000 };
@@ -404,7 +403,7 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state
     return alpha;
 }
 
-fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     if (depth_remaining == 0 or current_depth == max_depth) {
         return quiesce(turn, board, current_depth, eval_state, alpha_, beta, move_buf);
     }
@@ -428,27 +427,34 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
         return 0;
     }
 
-    {
-        var num_repeats: u8 = 0;
-        for (0..@min(hash_history.items.len, board.halfmove_clock)) |i| {
-            if (hash_history.items[hash_history.items.len - 1 - i] == board.zobrist) {
-                num_repeats += 1;
-            }
-        }
-        if (num_repeats >= 3) {
-            return 0;
-        }
-    }
-
     // std.sort.pdq(Move, move_buf[0..num_moves], void{}, mvvlvaCompare);
 
     const tt_entry = tt[getTTIndex(board.zobrist)];
 
+    var eval_type = EvalType.uninitialized;
     var best_score = -CHECKMATE_EVAL;
     var best_move = move_buf[0];
 
     if (tt_entry.zobrist == board.zobrist) {
-        best_move = tt_entry.best_move;
+        best_move = board.decompressMove(tt_entry.best_move);
+        if (tt_entry.depth >= depth_remaining and !is_pv) {
+            switch (tt_entry.eval_type) {
+                .uninitialized => unreachable,
+                .lower => {
+                    if (tt_entry.eval >= beta) {
+                        return tt_entry.eval;
+                    }
+                },
+                .upper => {
+                    if (tt_entry.eval <= alpha) {
+                        return tt_entry.eval;
+                    }
+                },
+                .exact => {
+                    return tt_entry.eval;
+                },
+            }
+        }
         if (std.debug.runtime_safety)
             tt_hits += 1;
 
@@ -461,6 +467,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
 
         const score = -search(
             turn.flipped(),
+            true,
             board,
             current_depth + 1,
             depth_remaining - 1 + extension,
@@ -471,17 +478,28 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
             hash_history,
         );
 
+        best_score = score;
+        eval_type = .upper;
         if (score > alpha) {
+            eval_type = .exact;
             if (score >= beta) {
                 return score;
             }
             alpha = score;
         }
-        best_score = score;
         if (shutdown) return 0;
-    } else if (tt_entry.zobrist != 0) {
-        if (std.debug.runtime_safety)
-            tt_misses += 1;
+    }
+
+    {
+        var num_repeats: u8 = 0;
+        for (0..@min(hash_history.items.len, board.halfmove_clock)) |i| {
+            if (hash_history.items[hash_history.items.len - 1 - i] == board.zobrist) {
+                num_repeats += 1;
+            }
+        }
+        if (num_repeats >= 3) {
+            return 0;
+        }
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
@@ -501,6 +519,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
             if (best_score == -CHECKMATE_EVAL) {
                 const score = -search(
                     turn.flipped(),
+                    true,
                     board,
                     current_depth + 1,
                     depth_remaining - 1 + extension,
@@ -513,15 +532,17 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                 best_move = move;
                 best_score = score;
                 if (score > alpha) {
+                    eval_type = .exact;
                     if (score >= beta) {
+                        eval_type = .lower;
                         break;
-                        // return score;
                     }
                     alpha = score;
                 }
             } else {
                 var score = -search(
                     turn.flipped(),
+                    false,
                     board,
                     current_depth + 1,
                     depth_remaining - 1 + extension,
@@ -534,6 +555,7 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                 if (alpha < score and score < beta) {
                     score = -search(
                         turn.flipped(),
+                        true,
                         board,
                         current_depth + 1,
                         depth_remaining - 1 + extension,
@@ -543,15 +565,18 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
                         move_buf[num_moves..],
                         hash_history,
                     );
-                    if (score > alpha)
+                    if (score > alpha) {
+                        eval_type = .exact;
                         alpha = score;
+                    }
                 }
                 if (score > best_score) {
                     best_move = move;
                     best_score = score;
+                    eval_type = .exact;
                     if (score >= beta) {
+                        eval_type = .lower;
                         break;
-                        // return score;
                     }
                 }
             }
@@ -567,7 +592,10 @@ fn search(comptime turn: lib.Side, board: *Board, current_depth: u8, depth_remai
 
     tt[getTTIndex(board.zobrist)] = TTentry{
         .zobrist = board.zobrist,
-        .best_move = best_move,
+        .best_move = board.compressMove(best_move),
+        .eval_type = eval_type,
+        .eval = best_score,
+        .depth = depth_remaining,
     };
 
     return best_score;
@@ -629,7 +657,7 @@ pub const SearchInfo = struct {
 
 fn searchWithoutTurn(board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     return switch (board.turn) {
-        inline else => |t| search(t, board, current_depth, depth_remaining, eval_state, alpha_, beta, move_buf, hash_history),
+        inline else => |t| search(t, true, board, current_depth, depth_remaining, eval_state, alpha_, beta, move_buf, hash_history),
     };
 }
 
@@ -707,9 +735,19 @@ var shutdown = false;
 var tt_hits: usize = 0;
 var tt_misses: usize = 0;
 
+const EvalType = enum(u8) {
+    uninitialized,
+    lower,
+    exact,
+    upper,
+};
+
 const TTentry = struct {
     zobrist: u64 = 0,
-    best_move: Move = std.mem.zeroes(Move),
+    best_move: u16 = 0,
+    eval: i16 = 0,
+    eval_type: EvalType = .uninitialized,
+    depth: u8 = 0,
     const null_entry: TTentry = .{};
 };
 
@@ -772,9 +810,10 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: u64, soft_time
 
     const moves = move_eval_buf[0..num_moves];
     const tt_entry = tt[getTTIndex(board.zobrist)];
+    const tt_move = board.decompressMove(tt_entry.best_move);
     if (tt_entry.zobrist == board.zobrist) {
         for (move_eval_buf[0..num_moves]) |*entry| {
-            if (entry.move.eql(tt_entry.best_move)) {
+            if (entry.move.eql(tt_move)) {
                 entry.eval = CHECKMATE_EVAL;
                 break;
             }

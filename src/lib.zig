@@ -716,7 +716,8 @@ pub const Move = struct {
     }
 
     pub fn eql(self: Move, other: Move) bool {
-        return std.meta.eql(self.from(), other.from()) and
+        return self.isCapture() == other.isCapture() and
+            std.meta.eql(self.from(), other.from()) and
             std.meta.eql(self.to(), other.to());
     }
 };
@@ -1137,6 +1138,7 @@ pub const Board = struct {
     }
     pub fn decompressMove(self: Self, compressed_move: u16) Move {
         const moved_side = if (self.turn == .white) self.white else self.black;
+        const other_side = if (self.turn == .white) self.black else self.white;
         const from_sq: u6 = @intCast(compressed_move & 0b111111);
         const from_bb = BitBoard.init(@as(u64, 1) << from_sq);
         const to_sq: u6 = @intCast(compressed_move >> 6 & 0b111111);
@@ -1154,7 +1156,7 @@ pub const Board = struct {
             }, to_bb);
         }
         var captured: ?Piece = null;
-        if (moved_side.whichType(to_bb)) |captured_type| {
+        if (other_side.whichType(to_bb)) |captured_type| {
             captured = Piece.init(captured_type, to_bb);
         } else if (other_flags == 0b0100) {
             captured = Piece.pawnFromBitBoard(if (self.turn == .white) to_bb.backwardUnchecked(1) else to_bb.forwardUnchecked(1));
@@ -1828,7 +1830,7 @@ pub const Board = struct {
     pub fn getKingCapturesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
         const should_flip = self.turn == .black;
         const king = if (should_flip) self.black.king else self.white.king;
-        assert(!king.isEmpty());
+        if (king.isEmpty()) return 0;
 
         const opponent_side = if (should_flip) &self.white else &self.black;
         const opponents_pieces = opponent_side.all();
