@@ -519,7 +519,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
             if (best_score == -CHECKMATE_EVAL) {
                 const score = -search(
                     turn.flipped(),
-                    true,
+                    is_pv,
                     board,
                     current_depth + 1,
                     depth_remaining - 1 + extension,
@@ -552,7 +552,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                     move_buf[num_moves..],
                     hash_history,
                 );
-                if (alpha < score and score < beta) {
+                if (alpha < score and score < beta and is_pv) {
                     score = -search(
                         turn.flipped(),
                         true,
@@ -655,9 +655,9 @@ pub const SearchInfo = struct {
     }
 };
 
-fn searchWithoutTurn(board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+fn searchWithoutTurn(comptime is_pv: bool, board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     return switch (board.turn) {
-        inline else => |t| search(t, true, board, current_depth, depth_remaining, eval_state, alpha_, beta, move_buf, hash_history),
+        inline else => |t| search(t, is_pv, board, current_depth, depth_remaining, eval_state, alpha_, beta, move_buf, hash_history),
     };
 }
 
@@ -668,6 +668,7 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
     const best_inv = board.playMove(best_move);
     hash_history.appendAssumeCapacity(board.zobrist);
     var best_eval = -searchWithoutTurn(
+        true,
         board,
         1,
         depth,
@@ -694,6 +695,7 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
         defer _ = hash_history.pop();
 
         const score = -searchWithoutTurn(
+            true,
             board,
             1,
             depth,
