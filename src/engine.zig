@@ -552,7 +552,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                     move_buf[num_moves..],
                     hash_history,
                 );
-                if (alpha < score and score < beta and is_pv) {
+                if (alpha < score and score < beta) {
                     score = -search(
                         turn.flipped(),
                         true,
