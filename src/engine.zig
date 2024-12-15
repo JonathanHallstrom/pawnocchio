@@ -194,13 +194,13 @@ const PestoEval = struct {
 
 const CHECKMATE_EVAL: i16 = 32000;
 
-fn evalPieceMg(piece_side: lib.Side, piece: Piece) i16 {
+inline fn evalPieceMg(piece_side: lib.Side, piece: Piece) i16 {
     const tp = piece.getType();
     const p: usize = @intFromEnum(tp);
     return PestoEval.mg_table[2 * p + @intFromBool(piece_side == .black)][piece.getLoc()];
 }
 
-fn evalPieceEg(piece_side: lib.Side, piece: Piece) i16 {
+inline fn evalPieceEg(piece_side: lib.Side, piece: Piece) i16 {
     const tp = piece.getType();
     const p: usize = @intFromEnum(tp);
     return PestoEval.eg_table[2 * p + @intFromBool(piece_side == .black)][piece.getLoc()];
@@ -252,6 +252,18 @@ fn historyCompare(_: void, lhs: Move, rhs: Move) bool {
     return mvvlvaValue(lhs) * mult + readHistory(lhs) > mvvlvaValue(rhs) * mult + readHistory(rhs);
 }
 
+fn amendedHistoryCompare(side: lib.Side, lhs: Move, rhs: Move) bool {
+    var le: i32 = mvvlvaValue(lhs);
+    var re: i32 = mvvlvaValue(rhs);
+    if (le != re) return le > re;
+    le = readHistory(lhs);
+    re = readHistory(rhs);
+    if (le != re) return le > re;
+    le = evalPieceMg(side, lhs.to());
+    re = evalPieceMg(side, rhs.to());
+    return le > re;
+}
+
 inline fn historyEntry(move: Move) *i32 {
     return &history[@intFromEnum(move.to().getType())][move.to().getLoc()];
 }
@@ -271,10 +283,10 @@ fn evaluate(board: Board) i16 {
     return EvalState.init(board).static();
 }
 
-fn mvvlvaValue(x: Move) i16 {
+fn mvvlvaValue(x: Move) i8 {
     if (!x.isCapture()) return 0;
-    const attacker: i16 = @intFromEnum(x.to().getType());
-    const victim: i16 = @intFromEnum(x.captured().?.getType());
+    const attacker: i8 = @intFromEnum(x.to().getType());
+    const victim: i8 = @intFromEnum(x.captured().?.getType());
     return 8 * victim - attacker; // analog hors
 }
 
@@ -507,7 +519,8 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
     // std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
     // std.sort.pdq(Move, move_buf[0..num_moves], void{}, historyCompare);
-    std.sort.insertion(Move, move_buf[0..num_moves], void{}, historyCompare);
+    // std.sort.insertion(Move, move_buf[0..num_moves], void{}, historyCompare);
+    std.sort.insertion(Move, move_buf[0..num_moves], turn, amendedHistoryCompare);
     if (best_score == -CHECKMATE_EVAL) {
         best_move = move_buf[0];
     }
@@ -807,6 +820,7 @@ pub fn reset() void {
     resetSoft();
     setTTSize(256) catch @panic("OOM");
     @memset(tt[0..tt_size], TTentry.null_entry);
+    @memset(std.mem.asBytes(&history), 0);
 }
 
 const MoveEvalPair = struct {
