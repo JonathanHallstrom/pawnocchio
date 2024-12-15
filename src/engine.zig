@@ -696,13 +696,13 @@ fn searchWithoutTurn(comptime is_pv: bool, board: *Board, current_depth: u8, dep
     };
 }
 
-inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves: []MoveEvalPair, move_buf: []Move, eval_state: EvalState, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) ?SearchInfo {
-    var new_evals: [256]i16 = undefined;
+inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves: []MoveScorePair, move_buf: []Move, eval_state: EvalState, alpha: i16, beta: i16, hash_history: *std.ArrayList(u64)) ?SearchInfo {
+    var new_scores: [256]i16 = undefined;
     var best_move = prev_best_move;
     const best_delta = getMoveDelta(board.turn, best_move);
     const best_inv = board.playMove(best_move);
     hash_history.appendAssumeCapacity(board.zobrist);
-    var best_eval = -searchWithoutTurn(
+    var best_score = -searchWithoutTurn(
         true,
         board,
         1,
@@ -717,7 +717,7 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
     board.undoMove(best_inv);
     if (shutdown) return null;
 
-    for (moves, new_evals[0..moves.len]) |entry, *new_eval| {
+    for (moves, new_scores[0..moves.len]) |entry, *new_score| {
         const move = entry.move;
         if (move.eql(prev_best_move)) {
             continue;
@@ -736,7 +736,7 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
             depth,
             eval_state.add(delta).flipped(),
             -beta,
-            -best_eval,
+            -best_score,
             move_buf,
             hash_history,
         );
@@ -745,21 +745,21 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
             log_writer.print("move: {}\n", .{move}) catch {};
         }
         if (shutdown) break;
-        new_eval.* = score;
+        new_score.* = score;
         // entry.eval = score;
-        if (score > best_eval) {
-            best_eval = score;
+        if (score > best_score) {
+            best_score = score;
             best_move = move;
         }
     }
     if (!shutdown) {
-        if (alpha < best_eval and best_eval < beta) {
-            for (moves, new_evals[0..moves.len]) |*entry, new_eval| {
-                entry.eval = new_eval;
+        if (alpha < best_score and best_score < beta) {
+            for (moves, new_scores[0..moves.len]) |*entry, new_eval| {
+                entry.score = new_eval;
             }
         }
     }
-    return SearchInfo.init(best_eval, best_move, depth + 1, nodes_searched, timer.read());
+    return SearchInfo.init(best_score, best_move, depth + 1, nodes_searched, timer.read());
 }
 
 var err: bool = false;
@@ -823,12 +823,12 @@ pub fn reset() void {
     @memset(std.mem.asBytes(&history), 0);
 }
 
-const MoveEvalPair = struct {
+const MoveScorePair = struct {
     move: Move,
-    eval: i16,
+    score: i16,
 
-    fn orderByEval(_: void, lhs: @This(), rhs: @This()) bool {
-        return lhs.eval > rhs.eval;
+    fn orderByScore(_: void, lhs: @This(), rhs: @This()) bool {
+        return lhs.score > rhs.score;
     }
 };
 
@@ -843,30 +843,30 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: u64, soft_time
     const raw_moves = move_buf[0..num_moves];
     var self = board;
 
-    var move_eval_buf: [256]MoveEvalPair = undefined;
+    var move_score_buf: [256]MoveScorePair = undefined;
     for (0..num_moves) |i| {
-        move_eval_buf[i] = .{ .move = raw_moves[i], .eval = mvvlvaValue(raw_moves[i]) };
+        move_score_buf[i] = .{ .move = raw_moves[i], .score = mvvlvaValue(raw_moves[i]) };
     }
 
-    const moves = move_eval_buf[0..num_moves];
+    const moves = move_score_buf[0..num_moves];
     const tt_entry = tt[getTTIndex(board.zobrist)];
     const tt_move = board.decompressMove(tt_entry.best_move);
     if (tt_entry.zobrist == board.zobrist) {
-        for (move_eval_buf[0..num_moves]) |*entry| {
+        for (move_score_buf[0..num_moves]) |*entry| {
             if (entry.move.eql(tt_move)) {
-                entry.eval = CHECKMATE_EVAL;
+                entry.score = CHECKMATE_EVAL;
                 break;
             }
         }
     }
-    std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
-    var best_move = move_eval_buf[0].move;
-    var best_eval: i16 = 0;
+    std.sort.pdq(MoveScorePair, moves, void{}, MoveScorePair.orderByScore);
+    var best_move = move_score_buf[0].move;
+    var best_score: i16 = 0;
 
     var depth_try: u8 = 0;
     var depth_evaluated: u8 = 0;
     const eval_state = EvalState.init(board);
-    while (depth_try < depth and (timer.read() <= soft_time or best_eval < 0)) : (depth_try += 1) {
+    while (depth_try < depth and (timer.read() <= soft_time or best_score < 0)) : (depth_try += 1) {
         const info = searchIteration(
             &self,
             depth_try,
@@ -879,16 +879,16 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: u64, soft_time
             hash_history,
         ) orelse break;
         depth_evaluated = depth_try + 1;
-        best_eval = info.best_eval;
+        best_score = info.best_eval;
         best_move = info.best_move;
         if (!disable_info)
             write("{}\n", .{info});
         if (info.is_mate) break;
         if (shutdown) break;
-        std.sort.pdq(MoveEvalPair, moves, void{}, MoveEvalPair.orderByEval);
+        std.sort.pdq(MoveScorePair, moves, void{}, MoveScorePair.orderByScore);
     }
 
-    return SearchInfo.init(best_eval, best_move, depth_evaluated, nodes_searched, timer.read());
+    return SearchInfo.init(best_score, best_move, depth_evaluated, nodes_searched, timer.read());
 }
 
 test "starting position even material" {
