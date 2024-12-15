@@ -566,12 +566,13 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                     alpha = score;
                 }
             } else {
+                const reduction = @intFromBool(!is_pv and move.isQuiet() and num_legal_moves > 3 and extension == 0 and depth_remaining >= 3);
                 var score = -search(
                     turn.flipped(),
                     false,
                     board,
                     current_depth + 1,
-                    depth_remaining - 1 + extension,
+                    depth_remaining - 1 + extension - reduction,
                     eval_state.add(delta).flipped(),
                     -(alpha + 1),
                     -alpha,
@@ -581,7 +582,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                 if (alpha < score and score < beta) {
                     score = -search(
                         turn.flipped(),
-                        true,
+                        is_pv,
                         board,
                         current_depth + 1,
                         depth_remaining - 1 + extension,
