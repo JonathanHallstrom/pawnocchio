@@ -260,10 +260,8 @@ inline fn readHistory(move: Move) i32 {
     return historyEntry(move).*;
 }
 
-inline fn updateHistory(move: Move, depth: u8) void {
-    const d: i32 = depth;
-
-    const clamped = std.math.clamp(d * d, -MAX_HISTORY, MAX_HISTORY);
+inline fn updateHistory(move: Move, bonus: i32) void {
+    const clamped = std.math.clamp(bonus, -MAX_HISTORY, MAX_HISTORY);
     const entry = historyEntry(move);
 
     entry.* += clamped - @divTrunc(clamped * entry.*, MAX_HISTORY);
@@ -514,7 +512,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
         best_move = move_buf[0];
     }
     var num_legal_moves: u8 = 0;
-    for (move_buf[0..num_moves]) |move| {
+    for (move_buf[0..num_moves], 0..) |move, i| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
             num_legal_moves += 1;
             defer board.undoMove(inv);
@@ -540,8 +538,15 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                 if (score > alpha) {
                     eval_type = .exact;
                     if (score >= beta) {
-                        if (move.isQuiet())
-                            updateHistory(move, current_depth);
+                        if (move.isQuiet()) {
+                            const bonus = @as(i32, current_depth) * current_depth;
+                            updateHistory(move, bonus);
+                            for (0..i) |j| {
+                                if (move_buf[j].isQuiet()) {
+                                    updateHistory(move_buf[j], -bonus);
+                                }
+                            }
+                        }
                         eval_type = .lower;
                         break;
                     }
@@ -583,8 +588,15 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                     best_score = score;
                     eval_type = .exact;
                     if (score >= beta) {
-                        if (move.isQuiet())
-                            updateHistory(move, current_depth);
+                        if (move.isQuiet()) {
+                            const bonus = @as(i32, current_depth) * current_depth;
+                            updateHistory(move, bonus);
+                            for (0..i) |j| {
+                                if (move_buf[j].isQuiet()) {
+                                    updateHistory(move_buf[j], -bonus);
+                                }
+                            }
+                        }
                         eval_type = .lower;
                         break;
                     }
