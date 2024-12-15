@@ -247,24 +247,6 @@ fn getPhaseBoard(board: Board) i16 {
     return phase;
 }
 
-fn moveDeltaEvaluator(comptime turn: lib.Side) fn (ctx: EvalState, move: Move) callconv(std.builtin.CallingConvention.Inline) i16 {
-    return struct {
-        inline fn impl(delta: EvalState, move: Move) i16 {
-            return delta.add(getMoveDelta(turn, move)).static() - delta.static();
-        }
-    }.impl;
-}
-
-fn moveDeltaComparator(comptime turn: lib.Side) fn (ctx: EvalState, lhs: Move, rhs: Move) bool {
-    return struct {
-        fn impl(ctx: EvalState, lhs: Move, rhs: Move) bool {
-            const moveDeltaValue = moveDeltaEvaluator(turn);
-            const mult: i64 = 1 << 32;
-            return moveDeltaValue(ctx, lhs) + mvvlvaValue(lhs) * mult > moveDeltaValue(ctx, rhs) + mvvlvaValue(rhs) * mult;
-        }
-    }.impl;
-}
-
 fn historyCompare(_: void, lhs: Move, rhs: Move) bool {
     const mult: i64 = 1 << 48;
     return mvvlvaValue(lhs) * mult + readHistory(lhs) > mvvlvaValue(rhs) * mult + readHistory(rhs);
