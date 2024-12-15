@@ -265,6 +265,28 @@ fn moveDeltaComparator(comptime turn: lib.Side) fn (ctx: EvalState, lhs: Move, r
     }.impl;
 }
 
+fn historyCompare(_: void, lhs: Move, rhs: Move) bool {
+    const mult: i64 = 1 << 48;
+    return mvvlvaValue(lhs) * mult + readHistory(lhs) > mvvlvaValue(rhs) * mult + readHistory(rhs);
+}
+
+inline fn historyEntry(move: Move) *i32 {
+    return &history[@intFromEnum(move.to().getType())][move.to().getLoc()];
+}
+
+inline fn readHistory(move: Move) i32 {
+    return historyEntry(move).*;
+}
+
+inline fn updateHistory(move: Move, depth: u8) void {
+    const d: i32 = depth;
+
+    const clamped = std.math.clamp(d * d, -MAX_HISTORY, MAX_HISTORY);
+    const entry = historyEntry(move);
+
+    entry.* += clamped - @divTrunc(clamped * entry.*, MAX_HISTORY);
+}
+
 fn evaluate(board: Board) i16 {
     return EvalState.init(board).static();
 }
@@ -503,7 +525,9 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
+    // std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
+    // std.sort.pdq(Move, move_buf[0..num_moves], void{}, historyCompare);
+    std.sort.insertion(Move, move_buf[0..num_moves], void{}, historyCompare);
     if (best_score == -CHECKMATE_EVAL) {
         best_move = move_buf[0];
     }
@@ -534,6 +558,8 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                 if (score > alpha) {
                     eval_type = .exact;
                     if (score >= beta) {
+                        if (move.isQuiet())
+                            updateHistory(move, current_depth);
                         eval_type = .lower;
                         break;
                     }
@@ -575,6 +601,8 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                     best_score = score;
                     eval_type = .exact;
                     if (score >= beta) {
+                        if (move.isQuiet())
+                            updateHistory(move, current_depth);
                         eval_type = .lower;
                         break;
                     }
@@ -727,15 +755,21 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
     return SearchInfo.init(best_eval, best_move, depth + 1, nodes_searched, timer.read());
 }
 
-var err = false;
+var err: bool = false;
 var nodes_searched: u64 = 0;
 var max_nodes: u64 = std.math.maxInt(u64);
 var max_depth: u8 = 255;
 var timer: std.time.Timer = undefined;
 var die_time: u64 = std.math.maxInt(u64);
-var shutdown = false;
+var shutdown: bool = false;
 var tt_hits: usize = 0;
 var tt_misses: usize = 0;
+var tt_size: usize = 0;
+var tt: []TTentry = &.{};
+var history: [PieceType.all.len][64]i32 = .{.{0} ** 64} ** PieceType.all.len;
+const MAX_HISTORY: i16 = 1 << 14;
+
+const Self = @This();
 
 const EvalType = enum(u8) {
     uninitialized,
@@ -753,8 +787,6 @@ const TTentry = struct {
     const null_entry: TTentry = .{};
 };
 
-var tt_size: usize = 0;
-var tt: []TTentry = &.{};
 fn getTTIndex(hash: u64) usize {
     return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt_size) >> 32;
 }
@@ -782,8 +814,6 @@ pub fn reset() void {
     setTTSize(256) catch @panic("OOM");
     @memset(tt[0..tt_size], TTentry.null_entry);
 }
-
-var rand = std.Random.DefaultPrng.init(0);
 
 const MoveEvalPair = struct {
     move: Move,
