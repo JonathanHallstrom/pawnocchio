@@ -729,28 +729,45 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
 
-        const score = -searchWithoutTurn(
-            true,
+        var score = -searchWithoutTurn(
+            false,
             board,
             1,
             depth,
             eval_state.add(delta).flipped(),
-            -beta,
+            -(best_score + 1),
             -best_score,
             move_buf,
             hash_history,
         );
-
-        if (err) {
+        if (std.debug.runtime_safety and err) {
             log_writer.print("move: {}\n", .{move}) catch {};
         }
         if (shutdown) break;
+        if (score >= best_score) {
+            score = -searchWithoutTurn(
+                true,
+                board,
+                1,
+                depth,
+                eval_state.add(delta).flipped(),
+                -beta,
+                -best_score,
+                move_buf,
+                hash_history,
+            );
+            if (std.debug.runtime_safety and err) {
+                log_writer.print("move: {}\n", .{move}) catch {};
+            }
+            if (shutdown) break;
+            if (score > best_score) {
+                best_score = score;
+                best_move = move;
+            }
+        }
+
         new_score.* = score;
         // entry.eval = score;
-        if (score > best_score) {
-            best_score = score;
-            best_move = move;
-        }
     }
     if (!shutdown) {
         if (alpha < best_score and best_score < beta) {
