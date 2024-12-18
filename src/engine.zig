@@ -445,30 +445,31 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
 
     const tt_entry = tt[getTTIndex(board.zobrist)];
 
-    var eval_type = EvalType.uninitialized;
+    var score_type = ScoreType.uninitialized;
     var best_score = -CHECKMATE_EVAL;
     var best_move = move_buf[0];
 
     if (tt_entry.zobrist == board.zobrist) {
         best_move = board.decompressMove(tt_entry.best_move);
         if (tt_entry.depth >= depth_remaining and !is_pv) {
-            switch (tt_entry.eval_type) {
+            switch (tt_entry.score_type) {
                 .uninitialized => unreachable,
                 .lower => {
-                    if (tt_entry.eval >= beta) {
-                        return tt_entry.eval;
+                    if (tt_entry.score >= beta) {
+                        return tt_entry.score;
                     }
                 },
                 .upper => {
-                    if (tt_entry.eval <= alpha) {
-                        return tt_entry.eval;
+                    if (tt_entry.score <= alpha) {
+                        return tt_entry.score;
                     }
                 },
                 .exact => {
-                    return tt_entry.eval;
+                    return tt_entry.score;
                 },
             }
         }
+        if (tt_entry.depth == 255) return tt_entry.score;
         if (std.debug.runtime_safety)
             tt_hits += 1;
 
@@ -493,9 +494,9 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
         );
 
         best_score = score;
-        eval_type = .upper;
+        score_type = .upper;
         if (score > alpha) {
-            eval_type = .exact;
+            score_type = .exact;
             if (score >= beta) {
                 return score;
             }
@@ -517,9 +518,6 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    // std.sort.pdq(Move, move_buf[0..num_moves], eval_state, moveDeltaComparator(turn));
-    // std.sort.pdq(Move, move_buf[0..num_moves], void{}, historyCompare);
-    // std.sort.insertion(Move, move_buf[0..num_moves], void{}, historyCompare);
     std.sort.insertion(Move, move_buf[0..num_moves], turn, amendedHistoryCompare);
     if (best_score == -CHECKMATE_EVAL) {
         best_move = move_buf[0];
@@ -549,7 +547,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                 best_move = move;
                 best_score = score;
                 if (score > alpha) {
-                    eval_type = .exact;
+                    score_type = .exact;
                     if (score >= beta) {
                         if (move.isQuiet()) {
                             const bonus = @as(i32, current_depth) * current_depth;
@@ -560,7 +558,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                                 }
                             }
                         }
-                        eval_type = .lower;
+                        score_type = .lower;
                         break;
                     }
                     alpha = score;
@@ -592,14 +590,14 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                         hash_history,
                     );
                     if (score > alpha) {
-                        eval_type = .exact;
+                        score_type = .exact;
                         alpha = score;
                     }
                 }
                 if (score > best_score) {
                     best_move = move;
                     best_score = score;
-                    eval_type = .exact;
+                    score_type = .exact;
                     if (score >= beta) {
                         if (move.isQuiet()) {
                             const bonus = @as(i32, current_depth) * current_depth;
@@ -610,7 +608,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                                 }
                             }
                         }
-                        eval_type = .lower;
+                        score_type = .lower;
                         break;
                     }
                 }
@@ -622,50 +620,58 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
         }
     }
     if (num_legal_moves == 0) {
-        return if (board.isInCheck(.auto)) -CHECKMATE_EVAL + current_depth else 0;
+        const score = if (board.isInCheck(.auto)) -CHECKMATE_EVAL + current_depth else 0;
+        tt[getTTIndex(board.zobrist)] = TTentry{
+            .zobrist = board.zobrist,
+            .best_move = 0,
+            .score_type = .exact,
+            .score = score,
+            .depth = 255,
+        };
+        return score;
     }
 
     tt[getTTIndex(board.zobrist)] = TTentry{
         .zobrist = board.zobrist,
         .best_move = board.compressMove(best_move),
-        .eval_type = eval_type,
-        .eval = best_score,
+        .score_type = score_type,
+        .score = best_score,
         .depth = depth_remaining,
     };
 
     return best_score;
 }
 
-fn convertEval(eval: i16) struct { bool, i16 } {
-    if (@abs(eval) >= CHECKMATE_EVAL - 255) {
-        const res = if (eval > 0)
-            @divTrunc(CHECKMATE_EVAL - eval + 1, 2)
+fn convertScore(score: i16) struct { bool, i16 } {
+    if (@abs(score) >= CHECKMATE_EVAL - 255) {
+        const res = if (score > 0)
+            @divTrunc(CHECKMATE_EVAL - score + 1, 2)
         else
-            -@divTrunc(CHECKMATE_EVAL + eval + 1, 2);
+            -@divTrunc(CHECKMATE_EVAL + score + 1, 2);
         return .{ true, res };
     } else {
-        return .{ false, eval };
+        return .{ false, score };
     }
 }
 
 pub const SearchInfo = struct {
-    best_eval: i16,
+    best_score: i16,
     best_move: Move,
-    depth_evaluated: u8,
-    nodes_evaluated: u64,
+    depth_searched: u8,
+    nodes_searched: u64,
     time_used: u64,
     is_mate: bool = false,
 
-    fn init(best_eval: i16, best_move: Move, depth_evaluated: u8, nodes: u64, ns_elapsed: u64) SearchInfo {
+    fn init(best_score: i16, best_move: Move, depth_searched: u8, nodes: u64, ns_elapsed: u64) SearchInfo {
         var res = SearchInfo{
-            .best_eval = best_eval,
+            .best_score = best_score,
             .best_move = best_move,
-            .depth_evaluated = depth_evaluated,
+            .depth_searched = depth_searched,
             .is_mate = false,
-            .nodes_evaluated = nodes,
+            .nodes_searched = nodes,
             .time_used = ns_elapsed,
         };
-        res.is_mate, res.best_eval = convertEval(best_eval);
+        res.is_mate, res.best_score = convertScore(best_score);
         return res;
     }
 
@@ -674,16 +680,16 @@ pub const SearchInfo = struct {
         _ = options;
         var buf: [256]u8 = undefined;
         var bytes_written: usize = 0;
-        bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "info depth {} score ", .{self.depth_evaluated})).len;
+        bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "info depth {} score ", .{self.depth_searched})).len;
         if (self.is_mate) {
-            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "mate {} ", .{self.best_eval})).len;
+            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "mate {} ", .{self.best_score})).len;
         } else {
-            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "cp {} ", .{self.best_eval})).len;
+            bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "cp {} ", .{self.best_score})).len;
         }
         bytes_written += (try std.fmt.bufPrint(buf[bytes_written..], "time {} nodes {} nps {} pv {s}", .{
             self.time_used / std.time.ns_per_ms,
-            self.nodes_evaluated,
-            self.nodes_evaluated * std.time.ns_per_s / self.time_used,
+            self.nodes_searched,
+            self.nodes_searched * std.time.ns_per_s / self.time_used,
             self.best_move.pretty().slice(),
         })).len;
         try writer.writeAll(buf[0..bytes_written]);
@@ -746,7 +752,6 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
         }
         if (shutdown) break;
         new_score.* = score;
-        // entry.eval = score;
         if (score > best_score) {
             best_score = score;
             best_move = move;
@@ -754,8 +759,8 @@ inline fn searchIteration(board: *Board, depth: u8, prev_best_move: Move, moves:
     }
     if (!shutdown) {
         if (alpha < best_score and best_score < beta) {
-            for (moves, new_scores[0..moves.len]) |*entry, new_eval| {
-                entry.score = new_eval;
+            for (moves, new_scores[0..moves.len]) |*entry, new_score| {
+                entry.score = new_score;
             }
         }
     }
@@ -778,7 +783,7 @@ const MAX_HISTORY: i16 = 1 << 14;
 
 const Self = @This();
 
-const EvalType = enum(u8) {
+const ScoreType = enum(u8) {
     uninitialized,
     lower,
     exact,
@@ -788,8 +793,8 @@ const EvalType = enum(u8) {
 const TTentry = struct {
     zobrist: u64 = 0,
     best_move: u16 = 0,
-    eval: i16 = 0,
-    eval_type: EvalType = .uninitialized,
+    score: i16 = 0,
+    score_type: ScoreType = .uninitialized,
     depth: u8 = 0,
     const null_entry: TTentry = .{};
 };
@@ -864,7 +869,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: u64, soft_time
     var best_score: i16 = 0;
 
     var depth_try: u8 = 0;
-    var depth_evaluated: u8 = 0;
+    var depth_searched: u8 = 0;
     const eval_state = EvalState.init(board);
     while (depth_try < depth and (timer.read() <= soft_time or best_score < 0)) : (depth_try += 1) {
         const info = searchIteration(
@@ -878,8 +883,8 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: u64, soft_time
             CHECKMATE_EVAL,
             hash_history,
         ) orelse break;
-        depth_evaluated = depth_try + 1;
-        best_score = info.best_eval;
+        depth_searched = depth_try + 1;
+        best_score = info.best_score;
         best_move = info.best_move;
         if (!disable_info)
             write("{}\n", .{info});
@@ -888,7 +893,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: u64, soft_time
         std.sort.pdq(MoveScorePair, moves, void{}, MoveScorePair.orderByScore);
     }
 
-    return SearchInfo.init(best_score, best_move, depth_evaluated, nodes_searched, timer.read());
+    return SearchInfo.init(best_score, best_move, depth_searched, nodes_searched, timer.read());
 }
 
 test "starting position even material" {

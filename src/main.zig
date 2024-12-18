@@ -124,7 +124,7 @@ pub fn main() !void {
                 defer _ = hash_history.pop();
                 const move_info = engine.findMove(board, move_buf, depth, std.math.maxInt(u64), std.math.maxInt(u64), std.math.maxInt(u64), &hash_history, true);
 
-                num_nodes += move_info.nodes_evaluated;
+                num_nodes += move_info.nodes_searched;
                 time += move_info.time_used;
             }
 
