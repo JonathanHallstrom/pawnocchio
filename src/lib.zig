@@ -1,4 +1,5 @@
 const std = @import("std");
+const zobrist = @import("zobrist.zig");
 const assert = std.debug.assert;
 
 pub const Row = enum(u8) {
@@ -960,19 +961,19 @@ pub const Board = struct {
     }
 
     fn zobristPiece(self: *Self, piece: Piece, turn: Side) void {
-        self.zobrist ^= @import("zobrist.zig").get(piece, turn);
+        self.zobrist ^= zobrist.get(piece, turn);
     }
 
     fn zobristTurn(self: *Self) void {
-        self.zobrist ^= @import("zobrist.zig").getTurn();
+        self.zobrist ^= zobrist.getTurn();
     }
 
     fn zobristEnPassant(self: *Self, ep: u6) void {
-        self.zobrist ^= @import("zobrist.zig").getEnPassant(ep);
+        self.zobrist ^= zobrist.getEnPassant(ep);
     }
 
     fn zobristCastling(self: *Self, rights: u4) void {
-        self.zobrist ^= @import("zobrist.zig").getCastling(rights);
+        self.zobrist ^= zobrist.getCastling(rights);
     }
 
     pub fn toFen(self: Self) std.BoundedArray(u8, 127) {
@@ -1354,7 +1355,7 @@ pub const Board = struct {
 
     // careful with lined up pieces!
     // remember the castling bug
-    fn areSquaresAttacked(self: Self, squares: BitBoard, comptime turn_mode: TurnMode) bool {
+    inline fn areSquaresAttacked(self: Self, squares: BitBoard, comptime turn_mode: TurnMode) bool {
         const is_white_turn = switch (turn_mode) {
             .auto => self.turn == .white,
             .flip => self.turn == .black,
@@ -1623,7 +1624,7 @@ pub const Board = struct {
         return first_move_count + second_move_count;
     }
 
-    pub inline fn getQuietKnightMovesUnchecked(self: Self, move_buffer: []Move, _: BitBoard) usize {
+    pub fn getQuietKnightMovesUnchecked(self: Self, move_buffer: []Move, possible_self_check_squares: BitBoard) usize {
         const should_flip = self.turn == .black;
         const knights = if (should_flip) self.black.knight else self.white.knight;
         if (knights.isEmpty()) return 0;
@@ -1643,7 +1644,7 @@ pub const Board = struct {
                 move_buffer[move_count] = Move.initQuiet(
                     Piece.knightFromBitBoard(knight),
                     Piece.knightFromBitBoard(moved),
-                    true,
+                    possible_self_check_squares.overlaps(knight),
                 );
                 move_count += 1;
             }
@@ -1662,17 +1663,22 @@ pub const Board = struct {
 
         var move_count: usize = 0;
 
-        inline for (knight_drs, knight_dcs) |dr, dc| {
-            var iter = knights.move(dr, dc).getOverlap(opponents_pieces).move(-dr, -dc).iterator();
-            while (iter.next()) |knight| {
+        var iter = knights.iterator();
+        while (iter.next()) |knight| {
+            const loc: isize = knight.toLoc();
+            const from_piece = Piece.initLoc(.knight, @intCast(loc));
+            inline for (knight_drs, knight_dcs) |dr, dc| {
                 const moved = knight.move(dr, dc);
-                move_buffer[move_count] = Move.initCapture(
-                    Piece.knightFromBitBoard(knight),
-                    Piece.knightFromBitBoard(moved),
-                    Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
-                    knight.overlaps(possible_self_check_squares),
-                );
-                move_count += 1;
+                const moved_loc = loc + 8 * dr + dc;
+                if (moved.overlaps(opponents_pieces)) {
+                    move_buffer[move_count] = Move.initCapture(
+                        from_piece,
+                        Piece.initLoc(.knight, @intCast(moved_loc)),
+                        Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
+                        knight.overlaps(possible_self_check_squares),
+                    );
+                    move_count += 1;
+                }
             }
         }
         return move_count;
@@ -1742,23 +1748,28 @@ pub const Board = struct {
 
         var iter = pieces_of_interest.iterator();
         while (iter.next()) |curr| {
-            for (drs, dcs) |dr, dc| {
+            const curr_loc = curr.toLoc();
+            const curr_piece = Piece.initLoc(piece_type, curr_loc);
+
+            inline for (drs, dcs) |dr, dc| {
                 var moved = if (captures_only) curr.getFirstOverLappingInDir(all_pieces, dr, dc) else curr.move(dr, dc);
+                var moved_loc: isize = if (captures_only) @ctz(moved.toInt()) else curr_loc + @as(isize, dr * 8 + dc);
                 const might_self_check = possible_self_check_squares.overlaps(curr);
                 if (!captures_only) {
                     while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
                         move_buffer[move_count] = Move.initQuiet(
-                            Piece.init(piece_type, curr),
-                            Piece.init(piece_type, moved),
+                            curr_piece,
+                            Piece.initLoc(piece_type, @intCast(moved_loc)),
                             might_self_check,
                         );
                         move_count += 1;
+                        moved_loc +%= 8 * dr + dc;
                     }
                 }
                 if (moved.overlaps(opponents_pieces)) {
                     move_buffer[move_count] = Move.initCapture(
-                        Piece.init(piece_type, curr),
-                        Piece.init(piece_type, moved),
+                        curr_piece,
+                        Piece.initLoc(piece_type, @intCast(moved_loc)),
                         Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
                         might_self_check,
                     );
