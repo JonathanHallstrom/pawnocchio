@@ -304,7 +304,7 @@ pub const BitBoard = enum(u64) {
 
     pub fn prettyPrint(self: Self) void {
         for (0..8) |i| {
-            std.debug.print("{b:0>8}\n", .{self.toInt() >> @intCast(8 * i) & 255});
+            std.debug.print("{b:0>8}\n", .{@bitReverse(self.toInt()) >> @intCast(8 * i) & 255});
         }
     }
 
@@ -1731,50 +1731,107 @@ pub const Board = struct {
         const opponent_side = if (is_black_turn) self.white else self.black;
         const opponents_pieces = opponent_side.all;
         const all_pieces = own_pieces.getCombination(opponents_pieces);
-        const allowed_squares = all_pieces.complement();
 
         var move_count: usize = 0;
 
-        // const all_squares_precomp = comptime blk: {
-        //     var res: [64]BitBoard = undefined;
-        //     for (0..64) |i| {
-        //         res[i] = BitBoard.initEmpty();
-        //         for (drs, dcs) |dr, dc| {
-        //             res[i].add(BitBoard.fromLoc(i).allDirection(dr, dc));
-        //         }
-        //     }
-        //     break :blk res;
-        // };
-
         var iter = pieces_of_interest.iterator();
         while (iter.next()) |curr| {
+            const might_self_check = curr.overlaps(possible_self_check_squares);
             const curr_loc = curr.toLoc();
             const curr_piece = Piece.initLoc(piece_type, curr_loc);
-
+            @setEvalBranchQuota(1 << 30);
             inline for (drs, dcs) |dr, dc| {
-                var moved = if (captures_only) curr.getFirstOverLappingInDir(all_pieces, dr, dc) else curr.move(dr, dc);
-                var moved_loc: isize = if (captures_only) @ctz(moved.toInt()) else curr_loc + @as(isize, dr * 8 + dc);
-                const might_self_check = possible_self_check_squares.overlaps(curr);
-                if (!captures_only) {
-                    while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
-                        move_buffer[move_count] = Move.initQuiet(
+                const all_squares_precomp = comptime blk: {
+                    var res: [64]BitBoard = undefined;
+                    for (0..64) |i| {
+                        res[i] = BitBoard.fromLoc(i).move(dr, dc).allDirection(dr, dc);
+                    }
+                    break :blk res;
+                };
+                const quiet_count_precomp = comptime blk: {
+                    var res: [64]u8 = undefined;
+                    for (0..64) |i| {
+                        res[i] = @popCount(all_squares_precomp[i].toInt());
+                    }
+                    break :blk res;
+                };
+                const d_loc: isize = dr * 8 + dc;
+                const msk = all_squares_precomp[curr_loc].getOverlap(all_pieces);
+
+                // std.debug.print("\n\n\n", .{});
+                // std.debug.print("{} {}\n", .{ dr, dc });
+                // std.debug.print("{} {}\n", .{ @clz(msk.toInt()), @ctz(msk.toInt()) });
+                // all_squares_precomp[curr_loc].prettyPrint();
+                // std.debug.print("\n", .{});
+                // curr.prettyPrint();
+                // std.debug.print("\n", .{});
+                // all_pieces.prettyPrint();
+                // std.debug.print("\n", .{});
+                // if (loc_first_overlapping <= 63 and BitBoard.fromLoc(@intCast(loc_first_overlapping)).overlaps(all_pieces)) {
+                //     curr.getFirstOverLappingInDir(all_pieces, dr, dc).prettyPrint();
+                //     std.debug.print("\n", .{});
+                //     BitBoard.fromLoc(@intCast(loc_first_overlapping)).prettyPrint();
+                //     assert(curr.getFirstOverLappingInDir(all_pieces, dr, dc).toLoc() == loc_first_overlapping);
+                // }
+
+                const loc_first_overlapping: u8 = if (d_loc > 0) @ctz(msk.toInt()) else @as(u8, 63) -% @clz(msk.toInt());
+                if (msk.isNonEmpty()) {
+                    if (!captures_only) {
+                        const num_non_captures = @divTrunc(loc_first_overlapping - d_loc - curr_loc, d_loc);
+                        for (0..@intCast(num_non_captures)) |i| {
+                            move_buffer[move_count] = Move.initQuiet(
+                                curr_piece,
+                                Piece.initLoc(piece_type, @intCast(curr_loc + @as(isize, @intCast(i + 1)) * d_loc)),
+                                might_self_check,
+                            );
+                            move_count += 1;
+                        }
+                    }
+                    if (opponents_pieces.toInt() >> @intCast(loc_first_overlapping) & 1 == 1) {
+                        move_buffer[move_count] = Move.initCapture(
                             curr_piece,
-                            Piece.initLoc(piece_type, @intCast(moved_loc)),
+                            Piece.initLoc(piece_type, @intCast(loc_first_overlapping)),
+                            Piece.initLoc(opponent_side.whichTypeUnchecked(BitBoard.fromLoc(@intCast(loc_first_overlapping))), @intCast(loc_first_overlapping)),
                             might_self_check,
                         );
                         move_count += 1;
-                        moved_loc +%= 8 * dr + dc;
+                    }
+                } else if (!captures_only) {
+                    const num_non_captures = quiet_count_precomp[curr_loc];
+                    for (0..@intCast(num_non_captures)) |i| {
+                        move_buffer[move_count] = Move.initQuiet(
+                            curr_piece,
+                            Piece.initLoc(piece_type, @intCast(curr_loc + @as(isize, @intCast(i + 1)) * d_loc)),
+                            might_self_check,
+                        );
+                        move_count += 1;
                     }
                 }
-                if (moved.overlaps(opponents_pieces)) {
-                    move_buffer[move_count] = Move.initCapture(
-                        curr_piece,
-                        Piece.initLoc(piece_type, @intCast(moved_loc)),
-                        Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
-                        might_self_check,
-                    );
-                    move_count += 1;
-                }
+
+                // const d_loc: isize = dr * 8 + dc;
+                // var moved = if (captures_only) curr.getFirstOverLappingInDir(all_pieces, dr, dc) else curr.move(dr, dc);
+                // var moved_loc: isize = if (captures_only) @ctz(moved.toInt()) else curr_loc + d_loc;
+                // const might_self_check = possible_self_check_squares.overlaps(curr);
+                // if (!captures_only) {
+                //     while (moved.overlaps(allowed_squares)) : (moved = moved.move(dr, dc)) {
+                //         move_buffer[move_count] = Move.initQuiet(
+                //             curr_piece,
+                //             Piece.initLoc(piece_type, @intCast(moved_loc)),
+                //             might_self_check,
+                //         );
+                //         move_count += 1;
+                //         moved_loc +%= 8 * dr + dc;
+                //     }
+                // }
+                // if (moved.overlaps(opponents_pieces)) {
+                //     move_buffer[move_count] = Move.initCapture(
+                //         curr_piece,
+                //         Piece.initLoc(piece_type, @intCast(moved_loc)),
+                //         Piece.init(opponent_side.whichTypeUnchecked(moved), moved),
+                //         might_self_check,
+                //     );
+                //     move_count += 1;
+                // }
             }
         }
         return move_count;
