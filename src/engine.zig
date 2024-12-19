@@ -534,6 +534,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                     }
                     alpha = score;
                 }
+                if (shutdown) break;
             } else {
                 var score = -search(
                     turn.flipped(),
@@ -547,6 +548,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                     move_buf[num_moves..],
                     hash_history,
                 );
+                if (shutdown) break;
                 if (alpha < score and score < beta and is_pv) {
                     score = -search(
                         turn.flipped(),
@@ -560,6 +562,7 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
                         move_buf[num_moves..],
                         hash_history,
                     );
+                    if (shutdown) break;
                     if (score > alpha) {
                         score_type = .exact;
                         alpha = score;
@@ -587,7 +590,6 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
             if (std.debug.runtime_safety and err) {
                 log_writer.print("move: {}\n", .{move}) catch {};
             }
-            if (shutdown) break;
         }
     }
     if (num_legal_moves == 0) {
@@ -602,13 +604,16 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
         return score;
     }
 
-    tt[getTTIndex(board.zobrist)] = TTentry{
-        .zobrist = board.zobrist,
-        .best_move = board.compressMove(best_move),
-        .score_type = score_type,
-        .score = best_score,
-        .depth = depth_remaining,
-    };
+    if (num_legal_moves >= 2 or !shutdown) {
+        if (shutdown and score_type == .exact) score_type = .lower;
+        tt[getTTIndex(board.zobrist)] = TTentry{
+            .zobrist = board.zobrist,
+            .best_move = board.compressMove(best_move),
+            .score_type = score_type,
+            .score = best_score,
+            .depth = depth_remaining,
+        };
+    }
 
     return best_score;
 }
