@@ -252,15 +252,22 @@ fn historyCompare(_: void, lhs: Move, rhs: Move) bool {
     return mvvlvaValue(lhs) * mult + readHistory(lhs) > mvvlvaValue(rhs) * mult + readHistory(rhs);
 }
 
-fn amendedHistoryCompare(side: lib.Side, lhs: Move, rhs: Move) bool {
+const CompareContext = struct {
+    turn: lib.Side,
+    tt_move: Move,
+};
+
+fn moveCompare(ctx: CompareContext, lhs: Move, rhs: Move) bool {
+    if (lhs.eql(ctx.tt_move)) return true;
+    if (rhs.eql(ctx.tt_move)) return false;
     var le: i32 = mvvlvaValue(lhs);
     var re: i32 = mvvlvaValue(rhs);
     if (le != re) return le > re;
     le = readHistory(lhs);
     re = readHistory(rhs);
     if (le != re) return le > re;
-    le = evalPieceMg(side, lhs.to());
-    re = evalPieceMg(side, rhs.to());
+    le = evalPieceMg(ctx.turn, lhs.to());
+    re = evalPieceMg(ctx.turn, rhs.to());
     return le > re;
 }
 
@@ -446,11 +453,9 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
     const tt_entry = tt[getTTIndex(board.zobrist)];
 
     var score_type = ScoreType.uninitialized;
-    var best_score = -CHECKMATE_EVAL;
-    var best_move = move_buf[0];
-
+    var tt_move = std.mem.zeroes(Move);
     if (tt_entry.zobrist == board.zobrist) {
-        best_move = board.decompressMove(tt_entry.best_move);
+        tt_move = board.decompressMove(tt_entry.best_move);
         if (tt_entry.depth >= depth_remaining and !is_pv) {
             switch (tt_entry.score_type) {
                 .uninitialized => unreachable,
@@ -470,39 +475,6 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
             }
         }
         if (tt_entry.depth == 255) return tt_entry.score;
-        if (std.debug.runtime_safety)
-            tt_hits += 1;
-
-        const inv = board.playMove(best_move);
-        defer board.undoMove(inv);
-        hash_history.appendAssumeCapacity(board.zobrist);
-        defer _ = hash_history.pop();
-        const delta = getMoveDelta(turn, best_move);
-        const extension: u8 = @intFromBool(board.isInCheck(.auto));
-
-        const score = -search(
-            turn.flipped(),
-            true,
-            board,
-            current_depth + 1,
-            depth_remaining - 1 + extension,
-            eval_state.add(delta).flipped(),
-            -beta,
-            -alpha,
-            move_buf,
-            hash_history,
-        );
-
-        best_score = score;
-        score_type = .upper;
-        if (score > alpha) {
-            score_type = .exact;
-            if (score >= beta) {
-                return score;
-            }
-            alpha = score;
-        }
-        if (shutdown) return 0;
     }
 
     {
@@ -518,10 +490,9 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
-    std.sort.insertion(Move, move_buf[0..num_moves], turn, amendedHistoryCompare);
-    if (best_score == -CHECKMATE_EVAL) {
-        best_move = move_buf[0];
-    }
+    std.sort.pdq(Move, move_buf[0..num_moves], CompareContext{ .turn = turn, .tt_move = tt_move }, moveCompare);
+    var best_score = -CHECKMATE_EVAL;
+    var best_move = move_buf[0];
     var num_legal_moves: u8 = 0;
     for (move_buf[0..num_moves], 0..) |move, i| {
         if (board.playMovePossibleSelfCheck(move)) |inv| {
