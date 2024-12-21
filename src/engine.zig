@@ -284,10 +284,11 @@ fn evaluate(board: Board) i16 {
 }
 
 fn mvvlvaValue(x: Move) i8 {
-    if (!x.isCapture()) return 0;
+    @setRuntimeSafety(false);
+    const is_cap: i8 = @intFromBool(x.isCapture());
     const attacker: i8 = @intFromEnum(x.to().getType());
-    const victim: i8 = @intFromEnum(x.captured().?.getType());
-    return 8 * victim - attacker; // analog hors
+    const victim: i8 = @intFromEnum(x._captured.getType());
+    return (8 * victim - attacker) & -is_cap; // analog hors
 }
 
 fn mvvlvaCompare(_: void, lhs: Move, rhs: Move) bool {
