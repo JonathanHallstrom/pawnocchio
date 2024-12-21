@@ -663,7 +663,7 @@ pub fn findMove(board: Board, move_buf: []Move, depth: u8, nodes: u64, soft_time
     var depth_try: u8 = 1;
     var depth_searched: u8 = 0;
     const eval_state = EvalState.init(board);
-    while (depth_try < depth and (timer.read() <= soft_time)) : (depth_try += 1) {
+    while (depth_try <= depth and (timer.read() <= soft_time)) : (depth_try += 1) {
         _ = searchWithoutTurn(true, &self, 0, depth_try, eval_state, -CHECKMATE_EVAL, CHECKMATE_EVAL, move_buf, hash_history);
         const tt_entry = tt[getTTIndex(board.zobrist)];
         if (tt_entry.zobrist == board.zobrist) {
