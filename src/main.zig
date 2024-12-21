@@ -124,7 +124,7 @@ pub fn main() !void {
                 defer _ = hash_history.pop();
                 const move_info = engine.findMove(board, move_buf, depth, std.math.maxInt(u64), std.math.maxInt(u64), std.math.maxInt(u64), &hash_history, true);
 
-                num_nodes += move_info.nodes_evaluated;
+                num_nodes += move_info.nodes_searched;
                 time += move_info.time_used;
             }
 
@@ -157,7 +157,7 @@ pub fn main() !void {
         try log_writer.print("got: {s}\n", .{line});
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
-            try stdout.writeAll("id name pawnocchio 0.0.5\n");
+            try stdout.writeAll("id name pawnocchio 0.0.6\n");
             try stdout.writeAll("option name Hash type spin default 256 min 1 max 65535\n");
             try stdout.writeAll("option name Threads type spin default 1 min 1 max 1\n");
             try stdout.writeAll("uciok\n");

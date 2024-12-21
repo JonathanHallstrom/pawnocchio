@@ -5,8 +5,12 @@
 ifndef EXE
 EXE=pawnocchio
 endif
+ifeq ($(OS),Windows_NT)
+MV=move .\zig-out\bin\pawnocchio $(EXE).exe
+else
+MV=mv ./zig-out/bin/pawnocchio $(EXE)
+endif
 
 default:
 	zig build --release=fast install
-
-	mv ./zig-out/bin/pawnocchio $(EXE)
+	@$(MV)
