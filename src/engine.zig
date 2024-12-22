@@ -423,16 +423,13 @@ fn quiesce(comptime turn: lib.Side, board: *Board, current_depth: u8, eval_state
     return alpha;
 }
 
-fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta_: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
+fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_depth: u8, depth_remaining: u8, eval_state: EvalState, alpha_: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) i16 {
     if (depth_remaining == 0 or current_depth == max_depth) {
-        return quiesce(turn, board, current_depth, eval_state, alpha_, beta_, move_buf);
+        return quiesce(turn, board, current_depth, eval_state, alpha_, beta, move_buf);
     }
 
     nodes_searched += 1;
     var alpha = alpha_;
-    var beta = beta_;
-    _ = &alpha;
-    _ = &beta;
     if (nodes_searched % 1024 == 0 and (nodes_searched >= max_nodes or timer.read() >= die_time)) {
         shutdown = true;
         return 0;
@@ -454,13 +451,21 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
     var tt_move = std.mem.zeroes(Move);
     const entry = tt[getTTIndex(board.zobrist)];
     if (entry.zobrist == board.zobrist) {
+        if (entry.depth >= depth_remaining) {
+            switch (entry.score_type) {
+                .uninitialized => {},
+                .lower => {}, //if (entry.score >= beta) return entry.score,
+                .upper => {}, //if (entry.score <= alpha_) return entry.score,
+                .exact => return entry.score,
+            }
+        }
         tt_move = board.decompressMove(entry.move);
     }
 
     const num_moves = board.getAllMovesUnchecked(move_buf, board.getSelfCheckSquares());
     std.sort.pdq(Move, move_buf[0..num_moves], CompareContext{ .turn = turn, .tt_move = tt_move }, moveCompare);
     var best_score = -CHECKMATE_EVAL;
-    var score_type: ScoreType = .uninitialized;
+    var score_type: ScoreType = .lower;
     var best_move = move_buf[0];
     var num_legal_moves: u8 = 0;
     for (move_buf[0..num_moves]) |move| {
@@ -506,12 +511,13 @@ fn search(comptime turn: lib.Side, comptime is_pv: bool, board: *Board, current_
         return if (board.isInCheck(.auto)) -CHECKMATE_EVAL + current_depth else 0;
     }
 
-    if (num_legal_moves >= 2 or !shutdown) {
+    if ((num_legal_moves >= 2 and !tt_move.eql(std.mem.zeroes(Move))) or !shutdown) {
         tt[getTTIndex(board.zobrist)] = TTentry{
             .zobrist = board.zobrist,
             .score = best_score,
             .move = board.compressMove(best_move),
-            .score_type = .exact,
+            .score_type = score_type,
+            .depth = depth_remaining,
         };
     }
 
