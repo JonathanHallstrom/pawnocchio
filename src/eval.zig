@@ -2,7 +2,6 @@ const std = @import("std");
 const testing = std.testing;
 const assert = std.debug.assert;
 
-
 const log_writer = &@import("main.zig").log_writer;
 const write = @import("main.zig").write;
 
