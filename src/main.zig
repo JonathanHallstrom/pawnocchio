@@ -1,9 +1,9 @@
 const std = @import("std");
-const lib = @import("lib.zig");
+const movegen = @import("movegen.zigzig");
 const engine = @import("engine.zig");
 
-const Board = lib.Board;
-const Move = lib.Move;
+const Board = movegen.Board;
+const Move = movegen.Move;
 
 pub var log_writer: std.io.AnyWriter = undefined;
 
@@ -62,7 +62,6 @@ pub fn main() !void {
 
     if (args.next()) |arg| {
         if (std.ascii.endsWithIgnoreCase(arg, "bench")) {
-            engine.init();
             const fens = [_][]const u8{
                 "r3k2r/2pb1ppp/2pp1q2/p7/1nP1B3/1P2P3/P2N1PPP/R2QK2R w KQkq - 0 14",
                 "4rrk1/2p1b1p1/p1p3q1/4p3/2P2n1p/1P1NR2P/PB3PP1/3R1QK1 b - - 2 24",
@@ -122,10 +121,11 @@ pub fn main() !void {
                 const board = try Board.parseFen(fen);
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
-                const move_info = engine.findMove(board, move_buf, depth, std.math.maxInt(u64), std.math.maxInt(u64), std.math.maxInt(u64), &hash_history, true);
 
-                num_nodes += move_info.nodes_searched;
-                time += move_info.time_used;
+                const info = engine.startAsyncSearch(board, .{ .fixed_depth = depth }, move_buf);                
+
+                num_nodes += info.nodes_searched;
+                time += info.time_used;
             }
 
             write("{} nodes {} nps\n", .{ num_nodes, num_nodes * std.time.ns_per_s / time });
@@ -140,7 +140,6 @@ pub fn main() !void {
     const reader = br.reader();
 
     var line_buf: [1 << 20]u8 = undefined;
-    engine.init();
     main_loop: while (reader.readUntilDelimiter(&line_buf, '\n') catch null) |line_raw| {
         const line = std.mem.trim(u8, line_raw, &std.ascii.whitespace);
         for (line) |c| {
@@ -328,9 +327,10 @@ pub fn main() !void {
 
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
-            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history, false);
-            const move = move_info.best_move;
-            write("bestmove {s}\n", .{move.pretty().slice()});
+            engine.startSearch(board, .{ .standard = .{
+                .soft = soft_time,
+                .hard = hard_time,
+            } });
         }
 
         if (std.ascii.eqlIgnoreCase(command, "quit")) {
