@@ -1,5 +1,7 @@
 const std = @import("std");
-const Side = @import("Side.zig");
+const Side = @import("side.zig").Side;
+const PieceSet = @import("PieceSet.zig");
+const PieceType = @import("piece_type.zig").PieceType;
 const Board = @This();
 
 // starting pos
@@ -25,12 +27,31 @@ const Board = @This();
 //    A  B  C  D  E  F  G  H
 
 turn: Side = .white,
-// if u can castle queenside as white `C1` will be set
-castling_squares: u4 = 0,
+castling_rights: u4 = 0,
 en_passant_target: ?u6 = null,
 
 halfmove_clock: u8 = 0,
 fullmove_clock: u64 = 1,
 zobrist: u64 = 0,
 
+white: PieceSet,
+black: PieceSet,
+mailbox: [8][8]?PieceType = .{.{null} ** 8} ** 8,
+
 const Self = @This();
+
+pub fn init() Board {
+    unreachable;
+}
+
+pub fn parseFen(fen: []const u8) !Board {
+    _ = fen; // autofix
+    unreachable;
+}
+
+pub fn currentColor(self: Self) PieceSet {
+    return switch (self.turn) {
+        .white => self.white,
+        .black => self.black,
+    };
+}

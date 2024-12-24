@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const PieceType = enum(u8) {
+pub const PieceType = enum(u3) {
     pawn = 0,
     knight = 1,
     bishop = 2,

@@ -31,22 +31,22 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const bench = b.addExecutable(.{
-        .name = "pawnocchio_perft_bench",
-        .root_source_file = b.path("src/perft_bench.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    // const bench = b.addExecutable(.{
+    //     .name = "pawnocchio_perft_bench",
+    //     .root_source_file = b.path("src/perft_bench.zig"),
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
 
     const check_step = b.step("check", "Check if project compiles");
-    check_step.dependOn(&bench.step);
+    // check_step.dependOn(&bench.step);
     check_step.dependOn(&exe.step);
 
-    const bench_step = b.step("bench", "Benchmark move generation");
-    b.installArtifact(bench);
-    const bench_cmd = b.addRunArtifact(bench);
-    bench_cmd.step.dependOn(&bench.step);
-    bench_step.dependOn(&bench_cmd.step);
+    // const bench_step = b.step("bench", "Benchmark move generation");
+    // b.installArtifact(bench);
+    // const bench_cmd = b.addRunArtifact(bench);
+    // bench_cmd.step.dependOn(&bench.step);
+    // bench_step.dependOn(&bench_cmd.step);
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) void {
 
     if (b.args) |args| {
         run_cmd.addArgs(args);
-        bench_cmd.addArgs(args);
+        // bench_cmd.addArgs(args);
     }
 
     // Similar to creating the run step earlier, this exposes a `test` step to

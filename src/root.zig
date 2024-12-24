@@ -1,4 +1,4 @@
 test {
-    _ = @import("lib.zig");
+    _ = @import("movegen_tests.zig");
     _ = @import("engine.zig");
 }

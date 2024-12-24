@@ -4,27 +4,6 @@ const assert = std.debug.assert;
 
 const Move = @import("Move.zig");
 const Board = @import("Board.zig");
-const = @import("Board.zig");
-
-pub const MoveInverse = struct {
-    move: Move,
-    halfmove: u8,
-    castling: u4,
-    en_passant: ?u6,
-};
-
-pub const GameResult = enum {
-    tie,
-    white,
-    black,
-
-    pub fn from(turn: Side) GameResult {
-        return switch (turn) {
-            .white => .white,
-            .black => .black,
-        };
-    }
-};
 
 const testing = std.testing;
 

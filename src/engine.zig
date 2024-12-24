@@ -60,5 +60,6 @@ pub fn searchSync(board: Board, search_parameters: SearchParameters, move_buf: [
     _ = board; // autofix
     _ = search_parameters; // autofix
     _ = move_buf; // autofix
+    unreachable;
 
 }

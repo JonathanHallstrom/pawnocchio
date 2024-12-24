@@ -1,9 +1,8 @@
 const std = @import("std");
-const movegen = @import("movegen.zigzig");
 const engine = @import("engine.zig");
 
-const Board = movegen.Board;
-const Move = movegen.Move;
+const Board = @import("Board.zig");
+const Move = @import("Move.zig");
 
 pub var log_writer: std.io.AnyWriter = undefined;
 
@@ -122,7 +121,7 @@ pub fn main() !void {
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
 
-                const info = engine.startAsyncSearch(board, .{ .fixed_depth = depth }, move_buf);                
+                const info = engine.searchSync(board, .{ .fixed_depth = depth }, move_buf);
 
                 num_nodes += info.nodes_searched;
                 time += info.time_used;
@@ -163,7 +162,7 @@ pub fn main() !void {
         }
 
         if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
-            engine.reset();
+            // engine.reset();
             board = Board.init();
         }
 
@@ -177,7 +176,8 @@ pub fn main() !void {
                     try log_writer.print("invalid hash size: '{s}'\n", .{hash_size_to_parts});
                     continue;
                 };
-                try engine.setTTSize(size);
+                _ = size; // autofix
+                // try engine.setTTSize(size);
             }
         }
 
@@ -205,10 +205,10 @@ pub fn main() !void {
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
             while (move_iter.next()) |played_move| {
                 if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
-                _ = board.playMoveFromSquare(played_move, move_buf) catch {
-                    try log_writer.print("invalid move: '{s}'\n", .{played_move});
-                    continue;
-                };
+                // _ = board.playMoveFromSquare(played_move, move_buf) catch {
+                //     try log_writer.print("invalid move: '{s}'\n", .{played_move});
+                //     continue;
+                // };
                 hash_history.appendAssumeCapacity(board.zobrist);
             }
         }
@@ -218,9 +218,9 @@ pub fn main() !void {
         }
 
         if (std.ascii.eqlIgnoreCase(command, "d")) {
-            for (board.toString()) |row| {
-                write("{s}\n", .{row});
-            }
+            // for (board.toString()) |row| {
+            //     write("{s}\n", .{row});
+            // }
         }
 
         if (std.ascii.eqlIgnoreCase(command, "go")) {
@@ -253,10 +253,12 @@ pub fn main() !void {
                         try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
+                    _ = depth; // autofix
                     var timer = std.time.Timer.start() catch unreachable;
-                    const nodes = board.perftSingleThreadedNonBulk(move_buf, depth);
+                    // const nodes = board.perftSingleThreadedNonBulk(move_buf, depth);
                     const elapsed_ns = timer.read();
-                    write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
+                    _ = elapsed_ns; // autofix
+                    // write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
 
                     continue :main_loop;
                 }
@@ -327,10 +329,10 @@ pub fn main() !void {
 
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
-            engine.startSearch(board, .{ .standard = .{
+            engine.startAsyncSearch(board, .{ .standard = .{
                 .soft = soft_time,
                 .hard = hard_time,
-            } });
+            } }, move_buf);
         }
 
         if (std.ascii.eqlIgnoreCase(command, "quit")) {
