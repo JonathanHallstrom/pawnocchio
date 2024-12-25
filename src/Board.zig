@@ -2,6 +2,7 @@ const std = @import("std");
 const Side = @import("side.zig").Side;
 const PieceSet = @import("PieceSet.zig");
 const PieceType = @import("piece_type.zig").PieceType;
+const Move = @import("Move.zig");
 const Board = @This();
 
 // starting pos
@@ -54,4 +55,10 @@ pub fn currentColor(self: Self) PieceSet {
         .white => self.white,
         .black => self.black,
     };
+}
+
+pub fn playMove(self: *Self, move: Move) void {
+    _ = self; // autofix
+    _ = move; // autofix
+
 }

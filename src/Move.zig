@@ -26,7 +26,7 @@ const MoveFlag = enum(u4) {
     castle_right = 14,
 
     fn isPromotion(self: MoveFlag) bool {
-        return @intFromEnum(self) -% 2 < 8;
+        return @intFromEnum(self) -% 2 <= @intFromEnum(MoveFlag.promote_queen_capture) -% 2;
     }
 
     fn isCapture(self: MoveFlag) bool {
@@ -130,13 +130,25 @@ pub fn getPromotedPieceType(self: Self) ?PieceType {
 }
 
 comptime {
-    @setEvalBranchQuota(1 << 20);
+    @setEvalBranchQuota(61 << 10);
+    assert(initCapture(0, 0).isCapture());
+    assert(initQuiet(0, 0).isQuiet());
+    assert(initCastling(0, 0).isCastlingMove());
+    assert(initEnPassant(0, 0).isEnPassant());
+    for ([_]PieceType{ .knight, .bishop, .rook, .queen }) |pt| {
+        assert(initPromotion(0, 0, pt).isPromotion());
+        assert(initPromotion(0, 0, pt).getPromotedPieceType() == pt);
+        assert(initPromotionCapture(0, 0, pt).isPromotion());
+        assert(initPromotionCapture(0, 0, pt).getPromotedPieceType() == pt);
+        assert(initPromotionCapture(0, 0, pt).isCapture());
+    }
+
     for (0..64) |from| {
         for (0..64) |to| {
-            // a lot of these are gonna be invalid moves (for example castling weird squares but oh well)
-            assert(initCapture(from, to).isCapture());
-            assert(initCastling(from, to).isCastlingMove());
-            assert(initEnPassant(from, to).isEnPassant());
+            assert(initQuiet(from, to).getFrom() == from);
+            assert(initQuiet(from, to).getTo() == to);
+            assert(initCapture(from, to).getFrom() == from);
+            assert(initCapture(from, to).getTo() == to);
         }
     }
 }
