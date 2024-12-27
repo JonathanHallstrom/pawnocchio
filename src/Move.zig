@@ -2,6 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 const Move = @This();
 const PieceType = @import("piece_type.zig").PieceType;
+const Square = @import("square.zig").Square;
 
 raw: u16,
 
@@ -44,27 +45,27 @@ const MoveFlag = enum(u4) {
 
 const Self = @This();
 
-fn initWithFlag(from: u6, to: u6, flag: MoveFlag) Self {
-    return .{ .raw = @as(u16, from) << 6 | to | @as(u16, @intFromEnum(flag)) << 12 };
+pub fn initWithFlag(from: Square, to: Square, flag: MoveFlag) Self {
+    return .{ .raw = @as(u16, from.toInt()) << 6 | to.toInt() | @as(u16, @intFromEnum(flag)) << 12 };
 }
 
-pub fn initQuiet(from: u6, to: u6) Move {
+pub fn initQuiet(from: Square, to: Square) Move {
     return initWithFlag(from, to, .quiet);
 }
 
-pub fn initCapture(from: u6, to: u6) Move {
+pub fn initCapture(from: Square, to: Square) Move {
     return initWithFlag(from, to, .capture);
 }
 
-pub fn initCastling(from: u6, to: u6) Move {
-    return initWithFlag(from, to, if (from > to) .castle_left else .castle_right);
+pub fn initCastling(from: Square, to: Square) Move {
+    return initWithFlag(from, to, if (from.toInt() > to.toInt()) .castle_left else .castle_right);
 }
 
-pub fn initEnPassant(from: u6, to: u6) Move {
+pub fn initEnPassant(from: Square, to: Square) Move {
     return initWithFlag(from, to, .en_passant);
 }
 
-pub fn initPromotion(from: u6, to: u6, promoted_type: PieceType) Move {
+pub fn initPromotion(from: Square, to: Square, promoted_type: PieceType) Move {
     comptime var lookup: [8]MoveFlag = undefined;
     lookup[@intFromEnum(PieceType.knight)] = .promote_knight;
     lookup[@intFromEnum(PieceType.bishop)] = .promote_bishop;
@@ -73,7 +74,7 @@ pub fn initPromotion(from: u6, to: u6, promoted_type: PieceType) Move {
     return initWithFlag(from, to, lookup[@intFromEnum(promoted_type)]);
 }
 
-pub fn initPromotionCapture(from: u6, to: u6, promoted_type: PieceType) Move {
+pub fn initPromotionCapture(from: Square, to: Square, promoted_type: PieceType) Move {
     comptime var lookup: [8]MoveFlag = undefined;
     lookup[@intFromEnum(PieceType.knight)] = .promote_knight_capture;
     lookup[@intFromEnum(PieceType.bishop)] = .promote_bishop_capture;
@@ -107,12 +108,12 @@ pub fn isPromotion(self: Self) bool {
     return self.getFlag().isPromotion();
 }
 
-pub fn getTo(self: Self) u6 {
-    return @intCast(self.raw & 63);
+pub fn getTo(self: Self) Square {
+    return Square.fromInt(@intCast(self.raw & 63));
 }
 
-pub fn getFrom(self: Self) u6 {
-    return @intCast(self.raw >> 6 & 63);
+pub fn getFrom(self: Self) Square {
+    return Square.fromInt(@intCast(self.raw >> 6 & 63));
 }
 
 pub fn getPromotedPieceType(self: Self) ?PieceType {
@@ -129,26 +130,36 @@ pub fn getPromotedPieceType(self: Self) ?PieceType {
     return options[@intFromEnum(self.getFlag())];
 }
 
+pub fn format(self: Move, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    _ = actual_fmt;
+    _ = options;
+    if (self.isPromotion()) {
+        return try writer.print("{s}{s}{}", .{ @tagName(self.getFrom()), @tagName(self.getTo()), self.getPromotedPieceType().?.toLetter() });
+    } else {
+        return try writer.print("{s}{s}", .{ @tagName(self.getFrom()), @tagName(self.getTo()) });
+    }
+}
+
 comptime {
-    @setEvalBranchQuota(61 << 10);
-    assert(initCapture(0, 0).isCapture());
-    assert(initQuiet(0, 0).isQuiet());
-    assert(initCastling(0, 0).isCastlingMove());
-    assert(initEnPassant(0, 0).isEnPassant());
+    @setEvalBranchQuota(1 << 30);
+    assert(initCapture(.a1, .a2).isCapture());
+    assert(initQuiet(.a1, .a2).isQuiet());
+    assert(initCastling(.a1, .a2).isCastlingMove());
+    assert(initEnPassant(.a1, .a2).isEnPassant());
     for ([_]PieceType{ .knight, .bishop, .rook, .queen }) |pt| {
-        assert(initPromotion(0, 0, pt).isPromotion());
-        assert(initPromotion(0, 0, pt).getPromotedPieceType() == pt);
-        assert(initPromotionCapture(0, 0, pt).isPromotion());
-        assert(initPromotionCapture(0, 0, pt).getPromotedPieceType() == pt);
-        assert(initPromotionCapture(0, 0, pt).isCapture());
+        assert(initPromotion(.a1, .a2, pt).isPromotion());
+        assert(initPromotion(.a1, .a2, pt).getPromotedPieceType() == pt);
+        assert(initPromotionCapture(.a1, .a2, pt).isPromotion());
+        assert(initPromotionCapture(.a1, .a2, pt).getPromotedPieceType() == pt);
+        assert(initPromotionCapture(.a1, .a2, pt).isCapture());
     }
 
     for (0..64) |from| {
         for (0..64) |to| {
-            assert(initQuiet(from, to).getFrom() == from);
-            assert(initQuiet(from, to).getTo() == to);
-            assert(initCapture(from, to).getFrom() == from);
-            assert(initCapture(from, to).getTo() == to);
+            assert(initQuiet(Square.fromInt(from), Square.fromInt(to)).getFrom().toInt() == from);
+            assert(initQuiet(Square.fromInt(from), Square.fromInt(to)).getTo().toInt() == to);
+            assert(initCapture(Square.fromInt(from), Square.fromInt(to)).getFrom().toInt() == from);
+            assert(initCapture(Square.fromInt(from), Square.fromInt(to)).getTo().toInt() == to);
         }
     }
 }

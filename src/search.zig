@@ -13,6 +13,8 @@ const engine = @import("engine.zig");
 
 const shouldStopSearching = engine.shouldStopSearching;
 
+const movegen = @import("movegen.zig");
+
 fn search() struct { i16, Move } {}
 
 fn iterativeDeepening(board: Board, max_depth: u8, searchParams: engine.SearchParams) struct { i16, Move } {

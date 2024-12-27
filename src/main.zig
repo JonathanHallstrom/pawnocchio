@@ -340,3 +340,8 @@ pub fn main() !void {
         }
     }
 }
+
+comptime {
+    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDeclsRecursive(@import("knight_moves.zig"));
+}

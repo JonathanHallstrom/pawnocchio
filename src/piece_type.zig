@@ -15,7 +15,7 @@ pub const PieceType = enum(u3) {
     }
 
     pub fn fromLetter(letter: u8) PieceType {
-        return switch (letter) {
+        return switch (std.ascii.toLower(letter)) {
             'p' => .pawn,
             'n' => .knight,
             'b' => .bishop,
