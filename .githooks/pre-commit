@@ -11,7 +11,7 @@ if ! zig build check; then
     exit 1
 fi
 
-# if ! zig build test -- tests/standard.epd; then
-#     echo "tests failed"
-#     exit 1
-# fi
+if ! zig build test -- tests/standard.epd; then
+    echo "tests failed"
+    exit 1
+fi

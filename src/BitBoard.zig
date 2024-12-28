@@ -80,14 +80,16 @@ pub const LocIterator = struct {
     }
 
     pub fn next(self: *LocIterator) ?Square {
+        if (self.state == 0) return null;
         const res = @ctz(self.state);
         self.state &= self.state -% 1;
-        return if (res == 64) null else Square.fromInt(@intCast(res));
+        return Square.fromInt(@intCast(res));
     }
 
     pub fn peek(self: *const LocIterator) ?Square {
+        if (self.state == 0) return null;
         const res = @ctz(self.state);
-        return if (res == 64) null else Square.fromInt(@intCast(res));
+        return Square.fromInt(@intCast(res));
     }
 };
 

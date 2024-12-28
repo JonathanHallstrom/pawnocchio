@@ -64,13 +64,6 @@ pub fn build(b: *std.Build) void {
     });
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
-    const perft_tests = b.addTest(.{
-        .root_source_file = b.path("src/perft_tests.zig"),
-        .target = target,
-        .optimize = .ReleaseSafe,
-    });
-    const run_perft_tests = b.addRunArtifact(perft_tests);
-
     if (b.args) |args| {
         run_cmd.addArgs(args);
         // bench_cmd.addArgs(args);
@@ -82,5 +75,4 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
-    test_step.dependOn(&run_perft_tests.step);
 }
