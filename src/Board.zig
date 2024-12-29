@@ -6,7 +6,8 @@ const PieceType = @import("piece_type.zig").PieceType;
 const Move = @import("Move.zig");
 const Board = @This();
 const Square = @import("square.zig").Square;
-const BitBoard = @import("BitBoard.zig");
+const File = @import("square.zig").File;
+const Bitboard = @import("Bitboard.zig");
 
 // starting pos
 // 8 r n b q k b n r
@@ -32,6 +33,8 @@ const BitBoard = @import("BitBoard.zig");
 
 turn: Side = .white,
 castling_rights: u4 = 0,
+left_rook_file: File = File.a,
+right_rook_file: File = File.h,
 en_passant_target: ?Square = null,
 
 halfmove_clock: u8 = 0,
@@ -111,8 +114,8 @@ pub fn parseFen(fen: []const u8) !Board {
             en_passant_target_square_string[1] != correct_row)
             return error.InvalidEnPassantTarget;
 
-        const board = BitBoard.fromSquare(try Square.parse(en_passant_target_square_string));
-        const should_overlap = if (res.turn == .white) BitBoard.forward(res.black.getBoard(.pawn), 1) else BitBoard.backward(res.white.getBoard(.pawn), 1);
+        const board = Bitboard.fromSquare(try Square.parse(en_passant_target_square_string));
+        const should_overlap = if (res.turn == .white) Bitboard.forward(res.black.getBoard(.pawn), 1) else Bitboard.backward(res.white.getBoard(.pawn), 1);
         if (board & should_overlap == 0) return error.EnPassantTargetDoesntExist;
         res.en_passant_target = Square.fromInt(@intCast(@ctz(board)));
     }

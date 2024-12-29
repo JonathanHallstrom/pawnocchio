@@ -1,6 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const BitBoard = @import("BitBoard.zig");
+const Bitboard = @import("Bitboard.zig");
 
 pub const Square = enum(u6) {
     // zig fmt: off
@@ -22,8 +22,17 @@ pub const Square = enum(u6) {
         return @intFromEnum(self);
     }
 
-    pub fn toBitBoard(self: Square) u64 {
-        return BitBoard.fromSquare(self);
+    pub fn getFile(self: Square) File {
+        return File.fromInt(self.toInt() % 8);
+    }
+
+    pub fn fromBitboard(bitboard: u64) Square {
+        assert(@popCount(bitboard) == 1);
+        return fromInt(@intCast(@ctz(bitboard)));
+    }
+
+    pub fn toBitboard(self: Square) u64 {
+        return Bitboard.fromSquare(self);
     }
 
     pub fn parse(square: []const u8) !Square {
@@ -32,6 +41,25 @@ pub const Square = enum(u6) {
         const file = std.ascii.toLower(square[0]) -% 'a';
         if (file > 7) return error.InvalidFile;
         return @enumFromInt(rank * 8 + file);
+    }
+};
+
+pub const File = enum {
+    a,
+    b,
+    c,
+    d,
+    e,
+    f,
+    g,
+    h,
+
+    pub fn fromInt(int: u3) File {
+        return @enumFromInt(int);
+    }
+
+    pub fn toInt(self: File) u3 {
+        return @intFromEnum(self);
     }
 };
 

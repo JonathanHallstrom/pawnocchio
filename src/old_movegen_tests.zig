@@ -221,10 +221,10 @@ test "all king moves" {
 
 test "en passant on d6" {
     var board = Board.init();
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A6")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("E2")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("E4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("A7")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("A6")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("E4")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("E5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("D7")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("D5")), true));
     var buf: [400]Move = undefined;
     const pawn_captures = board.getPawnCapturesUnchecked(&buf, board.getSelfCheckSquares());
     try testing.expectEqual(1, pawn_captures);
@@ -234,10 +234,10 @@ test "en passant on d6" {
 
 test "en passant on a6" {
     var board = Board.init();
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B4")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H6")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("B5")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("B2")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("B4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("H7")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("H6")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("B4")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("B5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("A7")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("A5")), true));
     var buf: [400]Move = undefined;
     const pawn_captures = board.getPawnCapturesUnchecked(&buf, board.getSelfCheckSquares());
     try testing.expectEqual(1, pawn_captures);
@@ -247,10 +247,10 @@ test "en passant on a6" {
 
 test "en passant on h6" {
     var board = Board.init();
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("A6")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G5")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("H5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("G2")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("G4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("A7")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("A6")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("G4")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("G5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("H7")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("H5")), true));
     var buf: [400]Move = undefined;
     const pawn_captures = board.getPawnCapturesUnchecked(&buf, board.getSelfCheckSquares());
     try testing.expectEqual(1, pawn_captures);
@@ -260,11 +260,11 @@ test "en passant on h6" {
 
 test "en passant on d3" {
     var board = Board.init();
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G3")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E7")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G3")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("G4")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E5")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("E4")), true));
-    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D2")), Piece.pawnFromBitBoard(BitBoard.fromSquareUnchecked("D4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("G2")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("G3")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("E7")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("E5")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("G3")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("G4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("E5")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("E4")), true));
+    _ = board.playMove(Move.initQuiet(Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("D2")), Piece.pawnFromBitboard(Bitboard.fromSquareUnchecked("D4")), true));
     var buf: [400]Move = undefined;
     const pawn_moves = board.getAllPawnMovesUnchecked(&buf, board.getSelfCheckSquares());
     try testing.expectEqual(16, pawn_moves);

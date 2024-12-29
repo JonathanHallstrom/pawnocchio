@@ -6,7 +6,7 @@ raw: [6]u64 = .{0} ** 6,
 all: u64 = 0,
 
 pub fn addPiece(self: *Self, tp: PieceType, square: Square) void {
-    self.addPieceBB(tp, square.toBitBoard());
+    self.addPieceBB(tp, square.toBitboard());
 }
 
 pub fn addPieceBB(self: *Self, tp: PieceType, bitboard: u64) void {
@@ -15,7 +15,7 @@ pub fn addPieceBB(self: *Self, tp: PieceType, bitboard: u64) void {
 }
 
 pub fn removePiece(self: *Self, tp: PieceType, square: Square) void {
-    self.removePieceBB(tp, square.toBitBoard());
+    self.removePieceBB(tp, square.toBitboard());
 }
 
 pub fn removePieceBB(self: *Self, tp: PieceType, bitboard: u64) void {
