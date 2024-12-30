@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const Bitboard = @import("Bitboard.zig");
 const Board = @import("Board.zig");
 const Square = @import("square.zig").Square;
@@ -32,10 +33,14 @@ pub fn getMasks(comptime turn: Side, board: Board) Masks {
 
         const threats = blockers & rooks;
         const non_threats = blockers & ~rooks;
-        const non_threat_ray = Bitboard.ray(non_threats, d_rank, d_file);
-        const threat_ray = ray & ~non_threat_ray;
-        rook_pins |= if (threats & non_threat_ray != 0) ray else 0;
-        checks |= if (threats & ~non_threat_ray != 0) threat_ray else 0;
+        const threat_ray = Bitboard.ray(threats, d_rank, d_file);
+
+        const check_blocking_pieces = non_threats & ray & ~threat_ray;
+
+        const num_in_between = @popCount(check_blocking_pieces);
+
+        rook_pins |= if (num_in_between == 1 and threats != 0) ray else 0;
+        checks |= if (num_in_between == 0 and threats != 0) ray & ~threat_ray else 0;
     }
     inline for (Bitboard.bishop_d_ranks, Bitboard.bishop_d_files) |d_rank, d_file| {
         const ray = Bitboard.ray(king, d_rank, d_file);
@@ -44,13 +49,24 @@ pub fn getMasks(comptime turn: Side, board: Board) Masks {
 
         const threats = blockers & bishops;
         const non_threats = blockers & ~bishops;
-        const non_threat_ray = Bitboard.ray(non_threats, d_rank, d_file);
-        const threat_ray = ray & ~non_threat_ray;
-        bishop_pins |= if (threats & non_threat_ray != 0) ray else 0;
-        checks |= if (threats & ~non_threat_ray != 0) threat_ray else 0;
+        const threat_ray = Bitboard.ray(threats, d_rank, d_file);
+
+        const check_blocking_pieces = non_threats & ray & ~threat_ray;
+
+        const num_in_between = @popCount(check_blocking_pieces);
+
+        bishop_pins |= if (num_in_between == 1 and threats != 0) ray else 0;
+        checks |= if (num_in_between == 0 and threats != 0) ray & ~threat_ray else 0;
     }
 
     checks |= knight_moves.knight_moves_arr[king_loc.toInt()] & them.getBoard(.knight);
+
+    const pawn_d_rank: i8 = if (turn == .white) 1 else -1;
+
+    const pawn_threats_left = Bitboard.move(king, pawn_d_rank, -1) & them.getBoard(.pawn);
+    const pawn_threats_right = Bitboard.move(king, pawn_d_rank, 1) & them.getBoard(.pawn);
+    checks |= pawn_threats_left;
+    checks |= pawn_threats_right;
 
     if (checks == 0) checks = ~checks;
 
@@ -123,4 +139,9 @@ test "mask generation" {
         .bishop_pins = Bitboard.ray(Square.d5.toBitboard(), -1, -1),
         .rook_pins = Bitboard.ray(Square.d5.toBitboard(), 0, 1) | Bitboard.ray(Square.d5.toBitboard(), -1, 0),
     }, getMasks(.black, Board.parseFen("8/8/8/3kn2Q/2pn4/8/B1PR4/1K6 b - - 0 1") catch unreachable));
+    try std.testing.expectEqualDeep(Masks{
+        .checks = Square.c7.toBitboard(),
+        .bishop_pins = 0,
+        .rook_pins = 0,
+    }, getMasks(.black, Board.parseFen("3k4/2P5/8/8/8/8/8/1K6 b - - 0 1") catch unreachable));
 }

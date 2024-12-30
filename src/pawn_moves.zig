@@ -7,12 +7,12 @@ const Side = @import("side.zig").Side;
 const PieceType = @import("piece_type.zig").PieceType;
 const assert = std.debug.assert;
 
-pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, check_mask: u64, pin_mask: u64) usize {
-    // TODO: correct pins for EP
+const magics = @import("magics.zig");
 
-    const current = board.getSide(turn);
-    const opponent = board.getSide(turn.flipped());
-    const pawns = current.getBoard(.pawn);
+pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, check_mask: u64, pin_mask: u64) usize {
+    const us = board.getSide(turn);
+    const them = board.getSide(turn.flipped());
+    const pawns = us.getBoard(.pawn);
     const pinned_pawns = pawns & pin_mask;
     const unpinned_pawns = pawns & ~pin_mask;
     var move_count: usize = 0;
@@ -21,14 +21,14 @@ pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board:
     const promotion_rank = comptime Bitboard.forward(255, if (turn == .white) 6 else 1);
     const double_move_rank = comptime Bitboard.forward(255, if (turn == .white) 1 else 6);
 
-    const empty_squares = ~(current.all | opponent.all);
+    const empty_squares = ~(us.all | them.all);
     const promoting_pawns = unpinned_pawns & promotion_rank;
     const non_promoting_unpinned_pawns = unpinned_pawns & ~promotion_rank;
     const non_promoting_pinned_pawns = pinned_pawns & ~promotion_rank;
 
     const promotion_target_types = [_]PieceType{ .queen, .knight, .rook, .bishop };
     { // pawns that capture to the left and promote
-        var iter = Bitboard.iterator(promoting_pawns & Bitboard.move(check_mask & opponent.all, -d_rank, 1));
+        var iter = Bitboard.iterator(promoting_pawns & Bitboard.move(check_mask & them.all, -d_rank, 1));
         while (iter.next()) |from| {
             for (promotion_target_types) |promo_type| {
                 move_buf[move_count] = Move.initPromotionCapture(from, Square.fromInt(@intCast(from.toInt() + 8 * d_rank - 1)), promo_type);
@@ -38,7 +38,7 @@ pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board:
     }
 
     { // pawns that capture to the right and promote
-        var iter = Bitboard.iterator(promoting_pawns & Bitboard.move(check_mask & opponent.all, -d_rank, -1));
+        var iter = Bitboard.iterator(promoting_pawns & Bitboard.move(check_mask & them.all, -d_rank, -1));
         while (iter.next()) |from| {
             for (promotion_target_types) |promo_type| {
                 move_buf[move_count] = Move.initPromotionCapture(from, Square.fromInt(@intCast(from.toInt() + 8 * d_rank + 1)), promo_type);
@@ -48,7 +48,7 @@ pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board:
     }
 
     { // pawns that capture to the left
-        var iter = Bitboard.iterator(non_promoting_unpinned_pawns & Bitboard.move(check_mask & opponent.all, -d_rank, 1));
+        var iter = Bitboard.iterator(non_promoting_unpinned_pawns & Bitboard.move(check_mask & them.all, -d_rank, 1));
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initCapture(from, Square.fromInt(@intCast(from.toInt() + 8 * d_rank - 1)));
             move_count += 1;
@@ -56,7 +56,7 @@ pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board:
     }
 
     { // pawns that capture to the right
-        var iter = Bitboard.iterator(non_promoting_unpinned_pawns & Bitboard.move(check_mask & opponent.all, -d_rank, -1));
+        var iter = Bitboard.iterator(non_promoting_unpinned_pawns & Bitboard.move(check_mask & them.all, -d_rank, -1));
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initCapture(from, Square.fromInt(@intCast(from.toInt() + 8 * d_rank + 1)));
             move_count += 1;
@@ -64,14 +64,37 @@ pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board:
     }
 
     if (board.en_passant_target) |from| {
-        // en passant to the left
-        const left_attacker_square = Square.fromInt(@intCast(from.toInt() - 8 * d_rank + 1));
-        move_buf[move_count] = Move.initEnPassant(left_attacker_square, from);
-        move_count += @intCast(unpinned_pawns >> left_attacker_square.toInt() & 1);
-        // en passant to the right
-        const right_attacker_square = Square.fromInt(@intCast(from.toInt() - 8 * d_rank - 1));
-        move_buf[move_count] = Move.initEnPassant(right_attacker_square, from);
-        move_count += @intCast(unpinned_pawns >> right_attacker_square.toInt() & 1);
+        const ep_bb = from.toBitboard();
+        const ep_pawn_bb = Bitboard.move(ep_bb, -d_rank, 0);
+
+        // is ep capture to the left possible
+        const king = us.getBoard(.king);
+        const occ = us.all | them.all;
+        for ([2]i8{ -1, 1 }) |d_file| {
+            if (Bitboard.move(ep_pawn_bb, 0, d_file) & pawns != 0) {
+                const to = Square.fromInt(@intCast(from.toInt() - 8 * d_rank + d_file));
+
+                const occ_change = ep_pawn_bb | from.toBitboard() | to.toBitboard();
+
+                const occ_after = occ ^ occ_change;
+
+                var attacked: u64 = 0;
+
+                var iter = Bitboard.iterator(them.getBoard(.bishop) | them.getBoard(.queen));
+                while (iter.next()) |attacker| {
+                    attacked |= magics.getBishopAttacks(attacker, occ_after);
+                }
+                iter = Bitboard.iterator(them.getBoard(.rook) | them.getBoard(.queen));
+                while (iter.next()) |attacker| {
+                    attacked |= magics.getRookAttacks(attacker, occ_after);
+                }
+
+                if (king & attacked == 0) {
+                    move_buf[move_count] = Move.initEnPassant(from, to);
+                    move_count += 1;
+                }
+            }
+        }
     }
 
     if (!captures_only) { // pawns that go straight ahead and promote
@@ -99,13 +122,13 @@ pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board:
         }
     }
     if (non_promoting_pinned_pawns != 0 and !captures_only) {
-        const pawns_that_can_capture_left = non_promoting_pinned_pawns & Bitboard.move(check_mask & opponent.all & pin_mask, -d_rank, 1);
+        const pawns_that_can_capture_left = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pin_mask, -d_rank, 1);
         var iter = Bitboard.iterator(pawns_that_can_capture_left);
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initCapture(from, Square.fromInt(@intCast(from.toInt() + 8 * d_rank - 1)));
             move_count += 1;
         }
-        const pawns_that_can_capture_right = non_promoting_pinned_pawns & Bitboard.move(check_mask & opponent.all & pin_mask, -d_rank, -1);
+        const pawns_that_can_capture_right = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pin_mask, -d_rank, -1);
         iter = Bitboard.iterator(pawns_that_can_capture_right);
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initCapture(from, Square.fromInt(@intCast(from.toInt() + 8 * d_rank + 1)));
@@ -135,9 +158,6 @@ test "pawn moves" {
     var buf: [256]Move = undefined;
     const zero: u64 = 0;
 
-    // TODO
-    // try std.testing.expectEqual(1, getAllPawnMoves(.white, false, try Board.parseFen("8/8/8/kr2Pp1K/8/8/8/8 w - - 0 1"), &buf, ~zero, Square.e5.toBitboard(), .e6));
-
     try std.testing.expectEqual(16, getAllPawnMoves(.white, false, try Board.parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), &buf, ~zero, zero));
     try std.testing.expectEqual(16, getAllPawnMoves(.black, false, try Board.parseFen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1"), &buf, ~zero, zero));
     try std.testing.expectEqual(2, getAllPawnMoves(.white, false, try Board.parseFen("4k3/8/8/4Pp2/8/8/8/4K3 w - f6 0 1"), &buf, ~zero, zero));
@@ -152,6 +172,8 @@ test "pawn moves" {
     try std.testing.expectEqual(1, getAllPawnMoves(.white, false, try Board.parseFen("4k3/8/8/1b6/P7/8/r2PK3/8 w - - 0 1"), &buf, Bitboard.ray(Square.e2.toBitboard(), 1, -1), Bitboard.all_left[Square.e2.toInt()]));
     try std.testing.expectEqual(1, getAllPawnMoves(.white, false, try Board.parseFen("1k6/8/8/8/8/3b4/2P5/1K6 w - - 0 1"), &buf, ~zero, Square.c2.toBitboard() | Square.d3.toBitboard()));
     try std.testing.expectEqual(0, getAllPawnMoves(.white, false, try Board.parseFen("1k6/8/8/8/4b3/8/2P5/1K6 w - - 0 1"), &buf, ~zero, Square.c2.toBitboard() | Square.d3.toBitboard() | Square.e4.toBitboard()));
+    try std.testing.expectEqual(1, getAllPawnMoves(.white, false, try Board.parseFen("8/8/8/kr2Pp1K/8/8/8/8 w - - 0 1"), &buf, ~zero, zero));
+    try std.testing.expectEqual(1, getAllPawnMoves(.white, false, try Board.parseFen("4k3/5b2/8/3Pp3/8/1K6/8/8 w - e6 0 1"), &buf, ~zero, Square.c4.toBitboard() | Square.d5.toBitboard() | Square.e6.toBitboard() | Square.f7.toBitboard()));
     @memset(std.mem.asBytes(&buf), 0);
     for (buf) |m| {
         if (m.getFrom() == m.getTo()) break;
