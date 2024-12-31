@@ -75,6 +75,7 @@ pub fn parseFen(fen: []const u8) !Board {
     for (0..8) |r| {
         var c: usize = 0;
         for (rows[7 - r]) |ch| {
+            if (c >= 8) return error.TooManyPiecesOnRank;
             const current_square = Square.fromInt(@intCast(8 * r + c));
             if (std.ascii.isLower(ch)) {
                 res.black.addPiece(PieceType.fromLetter(ch), current_square);
@@ -93,6 +94,7 @@ pub fn parseFen(fen: []const u8) !Board {
                 else => return error.InvalidCharacter,
             }
         }
+        if (c > 8) return error.TooManyPiecesOnRank;
     }
 
     if (white_king_square == null or black_king_square == null) return error.MissingKing;
@@ -273,8 +275,14 @@ pub fn playMove(self: *Self, move: Move) MoveInverse {
 
 }
 
+test "crazy fens" {
+    try std.testing.expect(std.meta.isError(Board.parseFen("k7/ppppppppp/8/8/8/8/8/K7 w - - 0 1")));
+    try std.testing.expect(std.meta.isError(Board.parseFen("k7/8/8/8/8/8/8/8/K7 w - - 0 1")));
+    try std.testing.expect(std.meta.isError(Board.parseFen("kK/8/8/8/8/8/8/8/8 w - - 0 1")));
+}
+
 test "ambiguous castling" {
-    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1RRK4 w Q - 0 1,")));
+    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1RRK4 w Q - 0 1")));
 }
 
 test "correctly take shredder fen castling" {
