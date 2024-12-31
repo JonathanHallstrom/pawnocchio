@@ -72,9 +72,6 @@ pub fn parseFen(fen: []const u8) !Board {
     var black_rooks_on_last_rank = try std.BoundedArray(File, 64).init(0);
     var res: Self = .{};
     for (0..8) |r| {
-        // why not support it?
-        // if (rows[r].len == 0) return error.emptyRow;
-
         var c: usize = 0;
         for (rows[7 - r]) |ch| {
             const current_square = Square.fromInt(@intCast(8 * r + c));

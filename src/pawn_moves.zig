@@ -67,7 +67,6 @@ pub fn getAllPawnMoves(comptime turn: Side, comptime captures_only: bool, board:
         const ep_bb = from.toBitboard();
         const ep_pawn_bb = Bitboard.move(ep_bb, -d_rank, 0);
 
-        // is ep capture to the left possible
         const king = us.getBoard(.king);
         const occ = us.all | them.all;
         for ([2]i8{ -1, 1 }) |d_file| {
