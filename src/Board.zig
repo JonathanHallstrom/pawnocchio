@@ -167,16 +167,16 @@ pub fn parseFen(fen: []const u8) !Board {
         // determine the white queenside castling file
         if (res.castling_rights & white_queenside_castle != 0 and white_queenside_file == null) {
             const king_file = white_king_square.?.getFile();
-            var candidate_rook: File = .a;
+            var candidate_rook: File = .h;
             var num_candidates: usize = 0;
             for (white_rooks_on_first_rank.slice()) |rook| {
                 if (rook.toInt() < king_file.toInt()) {
                     num_candidates += 1;
-                    candidate_rook = rook;
+                    candidate_rook = File.fromInt(@min(candidate_rook.toInt(), rook.toInt()));
                 }
             }
             if (num_candidates == 0) return error.NoRookForCastling;
-            if (num_candidates > 1) return error.AmbiguousRookCastlingFile;
+            if (num_candidates > 1 and candidate_rook != .a) return error.AmbiguousRookCastlingFile;
             white_queenside_file = candidate_rook;
         }
         if (res.castling_rights & white_kingside_castle != 0 and white_kingside_file == null) {
@@ -186,26 +186,26 @@ pub fn parseFen(fen: []const u8) !Board {
             for (white_rooks_on_first_rank.slice()) |rook| {
                 if (rook.toInt() > king_file.toInt()) {
                     num_candidates += 1;
-                    candidate_rook = rook;
+                    candidate_rook = File.fromInt(@max(candidate_rook.toInt(), rook.toInt()));
                 }
             }
             if (num_candidates == 0) return error.NoRookForCastling;
-            if (num_candidates > 1) return error.AmbiguousRookCastlingFile;
+            if (num_candidates > 1 and candidate_rook != .h) return error.AmbiguousRookCastlingFile;
             white_kingside_file = candidate_rook;
         }
 
         if (res.castling_rights & black_queenside_castle != 0 and black_queenside_file == null) {
             const king_file = black_king_square.?.getFile();
-            var candidate_rook: File = .a;
+            var candidate_rook: File = .h;
             var num_candidates: usize = 0;
             for (black_rooks_on_last_rank.slice()) |rook| {
                 if (rook.toInt() < king_file.toInt()) {
                     num_candidates += 1;
-                    candidate_rook = rook;
+                    candidate_rook = File.fromInt(@min(candidate_rook.toInt(), rook.toInt()));
                 }
             }
             if (num_candidates == 0) return error.NoRookForCastling;
-            if (num_candidates > 1) return error.AmbiguousRookCastlingFile;
+            if (num_candidates > 1 and candidate_rook != .a) return error.AmbiguousRookCastlingFile;
             black_queenside_file = candidate_rook;
         }
         if (res.castling_rights & black_kingside_castle != 0 and black_kingside_file == null) {
@@ -215,11 +215,11 @@ pub fn parseFen(fen: []const u8) !Board {
             for (black_rooks_on_last_rank.slice()) |rook| {
                 if (rook.toInt() > king_file.toInt()) {
                     num_candidates += 1;
-                    candidate_rook = rook;
+                    candidate_rook = File.fromInt(@max(candidate_rook.toInt(), rook.toInt()));
                 }
             }
             if (num_candidates == 0) return error.NoRookForCastling;
-            if (num_candidates > 1) return error.AmbiguousRookCastlingFile;
+            if (num_candidates > 1 and candidate_rook != .h) return error.AmbiguousRookCastlingFile;
             black_kingside_file = candidate_rook;
         }
         res.white_kingside_rook_file = white_kingside_file orelse white_king_square.?.getFile();
@@ -288,13 +288,20 @@ test "ambiguous castling" {
     try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1RRK4 w Q - 0 1")));
 }
 
-test "correctly take shredder fen castling" {
+test "shredder fen castling" {
     try std.testing.expectEqual(.a, (try Board.parseFen("3k4/8/8/8/8/8/8/RR1K4 w A - 0 1")).white_queenside_rook_file);
     try std.testing.expectEqual(.b, (try Board.parseFen("3k4/8/8/8/8/8/8/RR1K4 w B - 0 1")).white_queenside_rook_file);
     try std.testing.expectEqual(.g, (try Board.parseFen("3k4/8/8/8/8/8/8/3K2RR w G - 0 1")).white_kingside_rook_file);
     try std.testing.expectEqual(.h, (try Board.parseFen("3k4/8/8/8/8/8/8/3K2RR w H - 0 1")).white_kingside_rook_file);
-    try std.testing.expectEqual(.b, (try Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w QK - 0 1")).white_queenside_rook_file);
-    try std.testing.expectEqual(.g, (try Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w QK - 0 1")).white_kingside_rook_file);
-    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w AQ - 0 1")));
-    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w KH - 0 1")));
+    try std.testing.expectEqual(.b, (try Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w B - 0 1")).white_queenside_rook_file);
+    try std.testing.expectEqual(.g, (try Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w G - 0 1")).white_kingside_rook_file);
+    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w A - 0 1")));
+    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w H - 0 1")));
+}
+
+test "assume a or h if ambiguous" {
+    try std.testing.expectEqual(.a, (try Board.parseFen("4k3/8/8/8/8/8/8/RR2K3 w Q - 0 1")).white_queenside_rook_file);
+    try std.testing.expectEqual(.h, (try Board.parseFen("4k3/8/8/8/8/8/8/4K1RR w K - 0 1")).white_kingside_rook_file);
+    try std.testing.expectEqual(.a, (try Board.parseFen("rr2k3/8/8/8/8/8/8/4K3 w q - 0 1")).black_queenside_rook_file);
+    try std.testing.expectEqual(.h, (try Board.parseFen("4k1rr/8/8/8/8/8/8/4K3 w k - 0 1")).black_kingside_rook_file);
 }
