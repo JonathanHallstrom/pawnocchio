@@ -61,6 +61,9 @@ pub fn init() Board {
 }
 
 pub fn parseFen(fen: []const u8) !Board {
+    if (std.ascii.eqlIgnoreCase(fen, "startpos")) return init();
+    if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;
+    if (std.mem.count(u8, fen, "/") < 7) return error.TooFewRanks;
     var iter = std.mem.tokenizeAny(u8, fen, " /");
     var rows: [8][]const u8 = undefined;
     for (0..8) |i| {
