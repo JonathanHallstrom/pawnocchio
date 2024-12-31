@@ -23,7 +23,11 @@ pub const Square = enum(u6) {
     }
 
     pub fn getFile(self: Square) File {
-        return File.fromInt(self.toInt() % 8);
+        return File.fromInt(@intCast(self.toInt() % 8));
+    }
+
+    pub fn getRank(self: Square) Rank {
+        return Rank.fromInt(@intCast(self.toInt() / 8));
     }
 
     pub fn fromBitboard(bitboard: u64) Square {
@@ -60,6 +64,45 @@ pub const File = enum {
 
     pub fn toInt(self: File) u3 {
         return @intFromEnum(self);
+    }
+
+    pub fn parse(file: u8) !File {
+        const idx = std.ascii.toLower(file) -% 'a';
+        if (idx >= 8) return error.InvalidFile;
+        return @enumFromInt(idx);
+    }
+
+    pub fn cmp(_: void, lhs: File, rhs: File) bool {
+        return @intFromEnum(lhs) < @intFromEnum(rhs);
+    }
+};
+
+pub const Rank = enum {
+    first,
+    second,
+    third,
+    fourth,
+    fifth,
+    sixth,
+    seventh,
+    eighth,
+
+    pub fn fromInt(int: u3) Rank {
+        return @enumFromInt(int);
+    }
+
+    pub fn toInt(self: Rank) u3 {
+        return @intFromEnum(self);
+    }
+
+    pub fn parse(rank: u8) !Rank {
+        const idx = rank -% '1';
+        if (idx >= 8) return error.InvalidRank;
+        return @enumFromInt(idx);
+    }
+
+    pub fn cmp(_: void, lhs: Rank, rhs: Rank) bool {
+        return @intFromEnum(lhs) < @intFromEnum(rhs);
     }
 };
 

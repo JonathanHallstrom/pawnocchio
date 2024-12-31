@@ -23,8 +23,8 @@ const MoveFlag = enum(u4) {
     promote_queen_capture = 9,
 
     en_passant = 10,
-    castle_left = 12,
-    castle_right = 14,
+    castle_queenside = 12,
+    castle_kingside = 14,
 
     fn isPromotion(self: MoveFlag) bool {
         return @intFromEnum(self) -% 2 <= @intFromEnum(MoveFlag.promote_queen_capture) -% 2;
@@ -35,7 +35,7 @@ const MoveFlag = enum(u4) {
     }
 
     fn isCastlingMove(self: MoveFlag) bool {
-        return self == .castle_left or self == .castle_right;
+        return self == .castle_queenside or self == .castle_kingside;
     }
 
     fn isValid(int: u4) bool {
@@ -58,7 +58,15 @@ pub fn initCapture(from: Square, to: Square) Move {
 }
 
 pub fn initCastling(from: Square, to: Square) Move {
-    return initWithFlag(from, to, if (from.toInt() > to.toInt()) .castle_left else .castle_right);
+    return initWithFlag(from, to, if (from.toInt() > to.toInt()) .castle_queenside else .castle_kingside);
+}
+
+pub fn initCastlingQueenside(from: Square, to: Square) Move {
+    return initWithFlag(from, to, .castle_queenside);
+}
+
+pub fn initCastlingKingside(from: Square, to: Square) Move {
+    return initWithFlag(from, to, .castle_kingside);
 }
 
 pub fn initEnPassant(from: Square, to: Square) Move {
