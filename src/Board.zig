@@ -65,9 +65,9 @@ pub fn parseFen(fen: []const u8) !Board {
     if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;
     if (std.mem.count(u8, fen, "/") < 7) return error.TooFewRanks;
     var iter = std.mem.tokenizeAny(u8, fen, " /");
-    var rows: [8][]const u8 = undefined;
+    var ranks: [8][]const u8 = undefined;
     for (0..8) |i| {
-        rows[i] = iter.next() orelse return error.NotEnoughRows;
+        ranks[i] = iter.next().?;
     }
 
     var white_king_square: ?Square = null;
@@ -77,7 +77,7 @@ pub fn parseFen(fen: []const u8) !Board {
     var res: Self = .{};
     for (0..8) |r| {
         var c: usize = 0;
-        for (rows[7 - r]) |ch| {
+        for (ranks[7 - r]) |ch| {
             if (c >= 8) return error.TooManyPiecesOnRank;
             const current_square = Square.fromInt(@intCast(8 * r + c));
             if (std.ascii.isLower(ch)) {
@@ -232,9 +232,9 @@ pub fn parseFen(fen: []const u8) !Board {
     if (std.mem.eql(u8, en_passant_target_square_string, "-")) {
         res.en_passant_target = null;
     } else {
-        const correct_row: u8 = if (res.turn == .white) '6' else '3';
+        const correct_rank: u8 = if (res.turn == .white) '6' else '3';
         if (en_passant_target_square_string.len != 2 or
-            en_passant_target_square_string[1] != correct_row)
+            en_passant_target_square_string[1] != correct_rank)
             return error.InvalidEnPassantTarget;
 
         const en_passant_bitboard = Bitboard.fromSquare(try Square.parse(en_passant_target_square_string));
