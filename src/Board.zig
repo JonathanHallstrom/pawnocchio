@@ -9,6 +9,7 @@ const Square = @import("square.zig").Square;
 const File = @import("square.zig").File;
 const Rank = @import("square.zig").Rank;
 const Bitboard = @import("Bitboard.zig");
+const MoveInverse = @import("MoveInverse.zig");
 
 // starting pos
 // 8 r n b q k b n r
@@ -111,6 +112,10 @@ pub fn parseFen(fen: []const u8) !Board {
     const castling_string = iter.next() orelse return error.MissingCastling;
     if (castling_string.len > 4) return error.CastlingStringTooBig;
     if (!std.mem.eql(u8, "-", castling_string)) {
+        var white_queenside_file: ?File = null;
+        var white_kingside_file: ?File = null;
+        var black_queenside_file: ?File = null;
+        var black_kingside_file: ?File = null;
         for (castling_string) |castle_ch| {
             res.castling_rights |= switch (castle_ch) {
                 'K' => white_kingside_castle,
@@ -132,81 +137,90 @@ pub fn parseFen(fen: []const u8) !Board {
                     };
 
                     if (std.mem.count(File, rooks.slice(), &.{file}) == 0)
-                        return error.InvalidCastlingRights;
+                        return error.NoRookForCastling;
 
-                    if (@intFromEnum(file) < @intFromEnum(king_square.getFile()))
+                    if (@intFromEnum(file) > @intFromEnum(king_square.getFile())) {
+                        if (res.turn == .white) {
+                            white_kingside_file = file;
+                        } else {
+                            black_kingside_file = file;
+                        }
                         break :blk kingside_castle;
-                    if (@intFromEnum(file) > @intFromEnum(king_square.getFile()))
+                    }
+                    if (@intFromEnum(file) < @intFromEnum(king_square.getFile())) {
+                        if (res.turn == .white) {
+                            white_queenside_file = file;
+                        } else {
+                            black_queenside_file = file;
+                        }
                         break :blk queenside_castle;
+                    }
                     return error.CastlingRightsOverLapKing;
                 },
             };
         }
-        if (res.castling_rights & white_queenside_castle != 0) {
+        // determine the white queenside castling file
+        if (res.castling_rights & white_queenside_castle != 0 and white_queenside_file == null) {
             const king_file = white_king_square.?.getFile();
-            var rightmost_to_the_left: ?File = null;
+            var candidate_rook: File = .a;
+            var num_candidates: usize = 0;
             for (white_rooks_on_first_rank.slice()) |rook| {
                 if (rook.toInt() < king_file.toInt()) {
-                    if (rightmost_to_the_left) |cur_best| {
-                        if (rook.toInt() > cur_best.toInt())
-                            rightmost_to_the_left = rook;
-                    } else {
-                        rightmost_to_the_left = rook;
-                    }
+                    num_candidates += 1;
+                    candidate_rook = rook;
                 }
             }
-            if (rightmost_to_the_left == null) return error.InvalidCastlingRights;
-            res.white_queenside_rook_file = rightmost_to_the_left.?;
+            if (num_candidates == 0) return error.NoRookForCastling;
+            if (num_candidates > 1) return error.AmbiguousRookCastlingFile;
+            white_queenside_file = candidate_rook;
         }
-        if (res.castling_rights & white_kingside_castle != 0) {
+        if (res.castling_rights & white_kingside_castle != 0 and white_kingside_file == null) {
             const king_file = white_king_square.?.getFile();
-            var leftmost_to_the_right: ?File = null;
+            var candidate_rook: File = .a;
+            var num_candidates: usize = 0;
             for (white_rooks_on_first_rank.slice()) |rook| {
                 if (rook.toInt() > king_file.toInt()) {
-                    if (leftmost_to_the_right) |cur_best| {
-                        if (rook.toInt() < cur_best.toInt())
-                            leftmost_to_the_right = rook;
-                    } else {
-                        leftmost_to_the_right = rook;
-                    }
+                    num_candidates += 1;
+                    candidate_rook = rook;
                 }
             }
-            if (leftmost_to_the_right == null) return error.InvalidCastlingRights;
-            res.white_kingside_rook_file = leftmost_to_the_right.?;
+            if (num_candidates == 0) return error.NoRookForCastling;
+            if (num_candidates > 1) return error.AmbiguousRookCastlingFile;
+            white_kingside_file = candidate_rook;
         }
 
-        if (res.castling_rights & black_queenside_castle != 0) {
+        if (res.castling_rights & black_queenside_castle != 0 and black_queenside_file == null) {
             const king_file = black_king_square.?.getFile();
-            var rightmost_to_the_left: ?File = null;
+            var candidate_rook: File = .a;
+            var num_candidates: usize = 0;
             for (black_rooks_on_last_rank.slice()) |rook| {
                 if (rook.toInt() < king_file.toInt()) {
-                    if (rightmost_to_the_left) |cur_best| {
-                        if (rook.toInt() > cur_best.toInt())
-                            rightmost_to_the_left = rook;
-                    } else {
-                        rightmost_to_the_left = rook;
-                    }
+                    num_candidates += 1;
+                    candidate_rook = rook;
                 }
             }
-            if (rightmost_to_the_left == null) return error.InvalidCastlingRights;
-            res.black_queenside_rook_file = rightmost_to_the_left.?;
+            if (num_candidates == 0) return error.NoRookForCastling;
+            if (num_candidates > 1) return error.AmbiguousRookCastlingFile;
+            black_queenside_file = candidate_rook;
         }
-        if (res.castling_rights & black_kingside_castle != 0) {
+        if (res.castling_rights & black_kingside_castle != 0 and black_kingside_file == null) {
             const king_file = black_king_square.?.getFile();
-            var leftmost_to_the_right: ?File = null;
+            var candidate_rook: File = .a;
+            var num_candidates: usize = 0;
             for (black_rooks_on_last_rank.slice()) |rook| {
                 if (rook.toInt() > king_file.toInt()) {
-                    if (leftmost_to_the_right) |cur_best| {
-                        if (rook.toInt() < cur_best.toInt())
-                            leftmost_to_the_right = rook;
-                    } else {
-                        leftmost_to_the_right = rook;
-                    }
+                    num_candidates += 1;
+                    candidate_rook = rook;
                 }
             }
-            if (leftmost_to_the_right == null) return error.InvalidCastlingRights;
-            res.black_kingside_rook_file = leftmost_to_the_right.?;
+            if (num_candidates == 0) return error.NoRookForCastling;
+            if (num_candidates > 1) return error.AmbiguousRookCastlingFile;
+            black_kingside_file = candidate_rook;
         }
+        res.white_kingside_rook_file = white_kingside_file orelse white_king_square.?.getFile();
+        res.white_queenside_rook_file = white_queenside_file orelse white_king_square.?.getFile();
+        res.black_kingside_rook_file = black_kingside_file orelse black_king_square.?.getFile();
+        res.black_queenside_rook_file = black_queenside_file orelse black_king_square.?.getFile();
     }
 
     const en_passant_target_square_string = iter.next() orelse return error.MissingEnPassantTarget;
@@ -253,8 +267,23 @@ pub fn getSide(self: Self, turn: Side) PieceSet {
     };
 }
 
-pub fn playMove(self: *Self, move: Move) void {
+pub fn playMove(self: *Self, move: Move) MoveInverse {
     _ = self; // autofix
     _ = move; // autofix
 
+}
+
+test "ambiguous castling" {
+    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1RRK4 w Q - 0 1,")));
+}
+
+test "correctly take shredder fen castling" {
+    try std.testing.expectEqual(.a, (try Board.parseFen("3k4/8/8/8/8/8/8/RR1K4 w A - 0 1")).white_queenside_rook_file);
+    try std.testing.expectEqual(.b, (try Board.parseFen("3k4/8/8/8/8/8/8/RR1K4 w B - 0 1")).white_queenside_rook_file);
+    try std.testing.expectEqual(.g, (try Board.parseFen("3k4/8/8/8/8/8/8/3K2RR w G - 0 1")).white_kingside_rook_file);
+    try std.testing.expectEqual(.h, (try Board.parseFen("3k4/8/8/8/8/8/8/3K2RR w H - 0 1")).white_kingside_rook_file);
+    try std.testing.expectEqual(.b, (try Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w QK - 0 1")).white_queenside_rook_file);
+    try std.testing.expectEqual(.g, (try Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w QK - 0 1")).white_kingside_rook_file);
+    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w AQ - 0 1")));
+    try std.testing.expect(std.meta.isError(Board.parseFen("3k4/8/8/8/8/8/8/1R1K2R1 w KH - 0 1")));
 }
