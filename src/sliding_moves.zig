@@ -65,7 +65,7 @@ pub fn getSlidingMoves(comptime turn: Side, comptime captures_only: bool, board:
     }
 
     {
-        const pinned_bishops = rooks & pinned_by_bishop_mask;
+        const pinned_bishops = bishops & pinned_by_bishop_mask;
         var iter = Bitboard.iterator(pinned_bishops);
         while (iter.next()) |from| {
             const reachable = pinned_by_bishop_mask & allowed & magics.getBishopAttacks(from, all_pieces);
@@ -93,6 +93,7 @@ test "sliding moves" {
     try std.testing.expectEqual(5, getSlidingMoves(.black, false, try Board.parseFen("1k6/8/3q4/8/8/8/2P4B/1K6 b - - 0 1"), &buf, ~zero, Bitboard.rayArrayPtr(-1, 1)[Square.b8.toInt()], zero));
     try std.testing.expectEqual(1, getSlidingMoves(.black, true, try Board.parseFen("1k6/8/3q4/8/8/8/2P4B/1K6 b - - 0 1"), &buf, ~zero, Bitboard.rayArrayPtr(-1, 1)[Square.b8.toInt()], zero));
     try std.testing.expectEqual(6, getSlidingMoves(.black, false, try Board.parseFen("3k4/8/3q4/8/8/8/2P5/1K1R4 b - - 0 1"), &buf, ~zero, 0, Bitboard.rayArrayPtr(-1, 0)[Square.d8.toInt()]));
+    try std.testing.expectEqual(3, getSlidingMoves(.white, false, try Board.parseFen("4k3/8/8/q7/8/8/3B4/4K3 w - - 2 3"), &buf, ~zero, Bitboard.rayArrayPtr(1, -1)[Square.e1.toInt()], zero));
     @memset(std.mem.asBytes(&buf), 0);
     for (buf) |m| {
         if (m.getFrom() == m.getTo()) break;

@@ -26,6 +26,7 @@ pub fn getMasks(comptime turn: Side, board: Board) Masks {
     const king = us.getBoard(.king);
     const king_loc = Square.fromBitboard(king);
 
+    var num_checks: usize = 0;
     inline for (Bitboard.rook_d_ranks, Bitboard.rook_d_files) |d_rank, d_file| {
         const ray = Bitboard.ray(king, d_rank, d_file);
 
@@ -39,8 +40,9 @@ pub fn getMasks(comptime turn: Side, board: Board) Masks {
 
         const num_in_between = @popCount(check_blocking_pieces);
 
-        rook_pins |= if (num_in_between == 1 and threats != 0) ray else 0;
+        rook_pins |= if (num_in_between == 1 and threats != 0 and ray & ~threat_ray & us.all != 0) ray & ~threat_ray else 0;
         checks |= if (num_in_between == 0 and threats != 0) ray & ~threat_ray else 0;
+        num_checks += @intFromBool(num_in_between == 0 and threats != 0);
     }
     inline for (Bitboard.bishop_d_ranks, Bitboard.bishop_d_files) |d_rank, d_file| {
         const ray = Bitboard.ray(king, d_rank, d_file);
@@ -55,20 +57,25 @@ pub fn getMasks(comptime turn: Side, board: Board) Masks {
 
         const num_in_between = @popCount(check_blocking_pieces);
 
-        bishop_pins |= if (num_in_between == 1 and threats != 0) ray else 0;
+        bishop_pins |= if (num_in_between == 1 and threats != 0 and ray & ~threat_ray & us.all != 0) ray & ~threat_ray else 0;
         checks |= if (num_in_between == 0 and threats != 0) ray & ~threat_ray else 0;
+        num_checks += @intFromBool(num_in_between == 0 and threats != 0);
     }
 
     checks |= knight_moves.knight_moves_arr[king_loc.toInt()] & them.getBoard(.knight);
+    num_checks += @intFromBool(knight_moves.knight_moves_arr[king_loc.toInt()] & them.getBoard(.knight) != 0);
 
     const pawn_d_rank: i8 = if (turn == .white) 1 else -1;
 
     const pawn_threats_left = Bitboard.move(king, pawn_d_rank, -1) & them.getBoard(.pawn);
     const pawn_threats_right = Bitboard.move(king, pawn_d_rank, 1) & them.getBoard(.pawn);
     checks |= pawn_threats_left;
+    num_checks += @intFromBool(pawn_threats_left != 0);
     checks |= pawn_threats_right;
+    num_checks += @intFromBool(pawn_threats_right != 0);
 
     if (checks == 0) checks = ~checks;
+    if (num_checks > 1) checks = 0;
 
     return Masks{
         .checks = checks,
@@ -126,18 +133,18 @@ test "mask generation" {
     }, getMasks(.black, Board.parseFen("3k4/8/4N3/8/8/8/8/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ~zero,
-        .bishop_pins = ray_down_right_from_d8,
-        .rook_pins = ray_down_from_d8,
+        .bishop_pins = Bitboard.bishop_ray_between[Square.d8.toInt()][Square.f6.toInt()],
+        .rook_pins = Bitboard.rook_ray_between[Square.d8.toInt()][Square.d6.toInt()],
     }, getMasks(.black, Board.parseFen("3k4/3nn3/3R1B2/8/8/8/2P5/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ~zero,
-        .bishop_pins = ray_down_right_from_d8,
-        .rook_pins = ray_down_from_d8,
+        .bishop_pins = Bitboard.bishop_ray_between[Square.d8.toInt()][Square.f6.toInt()],
+        .rook_pins = Bitboard.rook_ray_between[Square.d8.toInt()][Square.d6.toInt()],
     }, getMasks(.black, Board.parseFen("3k4/3nn3/3R1B2/3R4/7Q/8/2P5/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ~zero,
-        .bishop_pins = Bitboard.ray(Square.d5.toBitboard(), -1, -1),
-        .rook_pins = Bitboard.ray(Square.d5.toBitboard(), 0, 1) | Bitboard.ray(Square.d5.toBitboard(), -1, 0),
+        .bishop_pins = Bitboard.bishop_ray_between[Square.d5.toInt()][Square.a2.toInt()],
+        .rook_pins = Bitboard.rook_ray_between[Square.d5.toInt()][Square.d2.toInt()] | Bitboard.rook_ray_between[Square.d5.toInt()][Square.h5.toInt()],
     }, getMasks(.black, Board.parseFen("8/8/8/3kn2Q/2pn4/8/B1PR4/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = Square.c7.toBitboard(),

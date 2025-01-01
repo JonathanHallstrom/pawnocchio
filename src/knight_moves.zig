@@ -18,7 +18,7 @@ pub const knight_moves_arr: [64]u64 = blk: {
     break :blk res;
 };
 
-pub fn getAllKnightMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, check_mask: u64, pin_mask: u64) usize {
+pub fn getKnightMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, check_mask: u64, pin_mask: u64) usize {
     const us = board.getSide(turn);
     const them = board.getSide(turn.flipped());
     const knights = us.getBoard(.knight) & ~pin_mask;
@@ -45,12 +45,12 @@ pub fn getAllKnightMoves(comptime turn: Side, comptime captures_only: bool, boar
 test "knight moves" {
     var buf: [256]Move = undefined;
     const zero: u64 = 0;
-    try std.testing.expectEqual(8, getAllKnightMoves(.white, false, try Board.parseFen("8/1k6/8/8/3N4/8/1K6/8 w - - 0 1"), &buf, ~zero, zero));
-    try std.testing.expectEqual(0, getAllKnightMoves(.white, false, try Board.parseFen("8/1k6/5b2/8/3N4/8/1K6/8 w - - 0 1"), &buf, ~zero, Square.d4.toBitboard()));
-    try std.testing.expectEqual(16, getAllKnightMoves(.white, false, try Board.parseFen("8/1k6/5b2/8/3N4/2N5/1K6/8 w - - 0 1"), &buf, ~zero, zero));
-    try std.testing.expectEqual(4, getAllKnightMoves(.white, false, try Board.parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), &buf, ~zero, zero));
-    try std.testing.expectEqual(0, getAllKnightMoves(.white, true, try Board.parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), &buf, ~zero, zero));
-    try std.testing.expectEqual(2, getAllKnightMoves(.white, false, try Board.parseFen("4k3/8/8/8/4N2b/8/8/4K3 w - - 0 1"), &buf, Square.f2.toBitboard() | Square.g3.toBitboard() | Square.h4.toBitboard(), zero));
-    try std.testing.expectEqual(7, getAllKnightMoves(.white, false, try Board.parseFen("4k3/8/8/8/4N2b/8/5N2/4K3 w - - 0 1"), &buf, ~zero, Square.f2.toBitboard()));
-    try std.testing.expectEqual(8, getAllKnightMoves(.white, false, try Board.parseFen("4k3/8/8/5N2/7b/8/5N2/4K3 w - - 0 1"), &buf, ~zero, Square.f2.toBitboard()));
+    try std.testing.expectEqual(8, getKnightMoves(.white, false, try Board.parseFen("8/1k6/8/8/3N4/8/1K6/8 w - - 0 1"), &buf, ~zero, zero));
+    try std.testing.expectEqual(0, getKnightMoves(.white, false, try Board.parseFen("8/1k6/5b2/8/3N4/8/1K6/8 w - - 0 1"), &buf, ~zero, Square.d4.toBitboard()));
+    try std.testing.expectEqual(16, getKnightMoves(.white, false, try Board.parseFen("8/1k6/5b2/8/3N4/2N5/1K6/8 w - - 0 1"), &buf, ~zero, zero));
+    try std.testing.expectEqual(4, getKnightMoves(.white, false, try Board.parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), &buf, ~zero, zero));
+    try std.testing.expectEqual(0, getKnightMoves(.white, true, try Board.parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), &buf, ~zero, zero));
+    try std.testing.expectEqual(2, getKnightMoves(.white, false, try Board.parseFen("4k3/8/8/8/4N2b/8/8/4K3 w - - 0 1"), &buf, Square.f2.toBitboard() | Square.g3.toBitboard() | Square.h4.toBitboard(), zero));
+    try std.testing.expectEqual(7, getKnightMoves(.white, false, try Board.parseFen("4k3/8/8/8/4N2b/8/5N2/4K3 w - - 0 1"), &buf, ~zero, Square.f2.toBitboard()));
+    try std.testing.expectEqual(8, getKnightMoves(.white, false, try Board.parseFen("4k3/8/8/5N2/7b/8/5N2/4K3 w - - 0 1"), &buf, ~zero, Square.f2.toBitboard()));
 }

@@ -253,13 +253,10 @@ pub fn main() !void {
                         try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
-                    _ = depth; // autofix
                     var timer = std.time.Timer.start() catch unreachable;
-                    // const nodes = board.perftSingleThreadedNonBulk(move_buf, depth);
+                    const nodes = board.perftSingleThreaded(move_buf, depth);
                     const elapsed_ns = timer.read();
-                    _ = elapsed_ns; // autofix
-                    // write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
-
+                    write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :main_loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "depth")) {

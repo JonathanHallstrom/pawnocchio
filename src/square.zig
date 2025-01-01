@@ -39,6 +39,16 @@ pub const Square = enum(u6) {
         return Bitboard.fromSquare(self);
     }
 
+    pub fn fromRankFile(rank: anytype, file: anytype) Square {
+        return Square.a1.move(rank, file);
+    }
+
+    pub fn move(self: Square, d_rank: anytype, d_file: anytype) Square {
+        const actual_d_rank = if (std.meta.hasFn(@TypeOf(d_rank), "toInt")) d_rank.toInt() else d_rank;
+        const actual_d_file = if (std.meta.hasFn(@TypeOf(d_file), "toInt")) d_file.toInt() else d_file;
+        return fromInt(@intCast(self.toInt() + @as(i8, @intCast(actual_d_rank)) * 8 + @as(i8, @intCast(actual_d_file))));
+    }
+
     pub fn parse(square: []const u8) !Square {
         const rank = square[1] -% '1';
         if (rank > 7) return error.InvalidRank;

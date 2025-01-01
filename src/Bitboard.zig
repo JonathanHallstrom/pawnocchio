@@ -148,6 +148,51 @@ pub const queen_ray_between: [64][64]u64 = blk: {
     break :blk res;
 };
 
+pub const rook_ray_between_inclusive: [64][64]u64 = blk: {
+    @setEvalBranchQuota(1 << 30);
+    var res: [64][64]u64 = undefined;
+    @memset(std.mem.asBytes(&res), 0);
+    for (0..64) |f| {
+        const from = Square.fromInt(@intCast(f));
+        for (rook_d_ranks, rook_d_files) |d_rank, d_file| {
+            const reachable = ray(from.toBitboard(), d_rank, d_file);
+            var iter = iterator(reachable);
+            while (iter.next()) |to| {
+                res[from.toInt()][to.toInt()] = (reachable & ~ray(to.toBitboard(), d_rank, d_file)) | from.toBitboard();
+            }
+        }
+    }
+
+    break :blk res;
+};
+
+pub const bishop_ray_between_inclusive: [64][64]u64 = blk: {
+    @setEvalBranchQuota(1 << 30);
+    var res: [64][64]u64 = undefined;
+    @memset(std.mem.asBytes(&res), 0);
+    for (0..64) |f| {
+        const from = Square.fromInt(@intCast(f));
+        for (bishop_d_ranks, bishop_d_files) |d_rank, d_file| {
+            const reachable = ray(from.toBitboard(), d_rank, d_file);
+            var iter = iterator(reachable);
+            while (iter.next()) |to| {
+                res[from.toInt()][to.toInt()] = (reachable & ~ray(to.toBitboard(), d_rank, d_file)) | from.toBitboard();
+            }
+        }
+    }
+
+    break :blk res;
+};
+
+pub const queen_ray_between_inclusive: [64][64]u64 = blk: {
+    @setEvalBranchQuota(1 << 30);
+    var res: [64][64]u64 = undefined;
+    for (0..64) |from| {
+        res[from] = @as(@Vector(64, u64), bishop_ray_between_inclusive[from]) | rook_ray_between_inclusive[from];
+    }
+    break :blk res;
+};
+
 pub const LocIterator = struct {
     state: u64,
 

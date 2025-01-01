@@ -22,7 +22,7 @@ const MoveFlag = enum(u4) {
     promote_queen = 8,
     promote_queen_capture = 9,
 
-    en_passant = 10,
+    en_passant = 11,
     castle_queenside = 12,
     castle_kingside = 14,
 
@@ -39,11 +39,20 @@ const MoveFlag = enum(u4) {
     }
 
     fn isValid(int: u4) bool {
-        return int <= 10 or int % 2 == 0;
+        inline for (std.meta.fields(MoveFlag)) |field| {
+            if (field.value == int) return true;
+        }
+        return false;
     }
 };
 
 const Self = @This();
+
+pub fn isSameAsStr(self: Move, str: []const u8) bool {
+    var print_buf: [32]u8 = undefined;
+    const move_str = std.fmt.bufPrint(&print_buf, "{}", .{self}) catch unreachable;
+    return std.ascii.eqlIgnoreCase(move_str, str);
+}
 
 pub fn initWithFlag(from: Square, to: Square, flag: MoveFlag) Self {
     return .{ .raw = @as(u16, from.toInt()) << 6 | to.toInt() | @as(u16, @intFromEnum(flag)) << 12 };
@@ -91,7 +100,7 @@ pub fn initPromotionCapture(from: Square, to: Square, promoted_type: PieceType) 
     return initWithFlag(from, to, lookup[@intFromEnum(promoted_type)]);
 }
 
-fn getFlag(self: Self) MoveFlag {
+pub fn getFlag(self: Self) MoveFlag {
     const int: u4 = @intCast(self.raw >> 12);
     assert(MoveFlag.isValid(int));
     return @enumFromInt(int);
@@ -142,7 +151,10 @@ pub fn format(self: Move, comptime actual_fmt: []const u8, options: std.fmt.Form
     _ = actual_fmt;
     _ = options;
     if (self.isPromotion()) {
-        return try writer.print("{s}{s}{}", .{ @tagName(self.getFrom()), @tagName(self.getTo()), self.getPromotedPieceType().?.toLetter() });
+        return try writer.print("{s}{s}{c}", .{ @tagName(self.getFrom()), @tagName(self.getTo()), self.getPromotedPieceType().?.toLetter() });
+    } else if (self.isCastlingMove()) {
+        if (self.getFrom().getFile() != .e) {}
+        return try writer.print("{s}{s}", .{ @tagName(self.getFrom()), @tagName(self.getTo()) });
     } else {
         return try writer.print("{s}{s}", .{ @tagName(self.getFrom()), @tagName(self.getTo()) });
     }
@@ -154,6 +166,7 @@ comptime {
     assert(initQuiet(.a1, .a2).isQuiet());
     assert(initCastling(.a1, .a2).isCastlingMove());
     assert(initEnPassant(.a1, .a2).isEnPassant());
+    assert(initEnPassant(.a1, .a2).isCapture());
     for ([_]PieceType{ .knight, .bishop, .rook, .queen }) |pt| {
         assert(initPromotion(.a1, .a2, pt).isPromotion());
         assert(initPromotion(.a1, .a2, pt).getPromotedPieceType() == pt);
