@@ -1,8 +1,8 @@
 const std = @import("std");
-const lib = @import("lib.zig");
 
-const Piece = lib.Piece;
-const PieceType = lib.PieceType;
+const Piece = @import("Piece.zig");
+const Side = @import("side.zig").Side;
+const PieceType = @import("piece_type.zig").PieceType;
 
 const piece_entries: usize = 64;
 const side_entries: usize = piece_entries * PieceType.all.len;
@@ -29,8 +29,8 @@ const data = blk: {
 
 const native_endianness = @import("builtin").cpu.arch.endian();
 
-pub fn get(piece: Piece, side: lib.Side) u64 {
-    const offset = @intFromEnum(piece.getType()) * piece_entries + piece.getLoc() + if (side == .white) side_entries else 0;
+pub fn get(piece: Piece, side: Side) u64 {
+    const offset = @intFromEnum(piece.tp) * piece_entries + piece.sq.toInt() + if (side == .white) side_entries else 0;
     return std.mem.readInt(u64, data[offset..][0..8], native_endianness);
 }
 

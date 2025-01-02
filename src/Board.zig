@@ -12,6 +12,7 @@ const Bitboard = @import("Bitboard.zig");
 const MoveInverse = @import("MoveInverse.zig");
 const Piece = @import("Piece.zig");
 const movegen = @import("movegen.zig");
+const Zobrist = @import("Zobrist.zig");
 
 // starting pos
 // 8 r n b q k b n r
@@ -258,7 +259,7 @@ pub fn parseFen(fen: []const u8) !Board {
     if (fullmove == 0)
         return error.InvalidFullMove;
     res.fullmove_clock = fullmove;
-    // res.resetZobrist();
+    res.resetZobrist();
 
     return res;
 }
@@ -313,6 +314,7 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
         .en_passant = self.en_passant_target,
         .halfmove = self.halfmove_clock,
         .captured = null,
+        .zobrist = self.zobrist,
     };
     const us = self.getSidePtr(turn);
     const them = self.getSidePtr(turn.flipped());
@@ -324,6 +326,7 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
 
     const pawn_double_move_mask: u64 = 255 * (1 << 8 | 1 << 24) * if (turn == .white) 1 else 1 << 24;
 
+    self.updateEnPassantZobrist();
     self.en_passant_target = null;
 
     if (move.isCapture()) {
@@ -339,10 +342,9 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             self.mailbox[from.toInt()] = null;
             self.mailbox[ep_pawn_square.toInt()] = null;
             self.mailbox[to.toInt()] = .pawn;
-            inverse.captured = Piece{
-                .sq = ep_pawn_square,
-                .tp = .pawn,
-            };
+            self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = .pawn });
+            self.updatePieceZobrist(turn, Piece{ .sq = to, .tp = .pawn });
+            self.updatePieceZobrist(turn.flipped(), Piece{ .sq = ep_pawn_square, .tp = .pawn });
         } else {
             const from_type = self.mailbox[from.toInt()].?;
             const captured_type = self.mailbox[to.toInt()].?;
@@ -358,6 +360,9 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             us.getBoardPtr(from_type).* ^= from.toBitboard();
             us.getBoardPtr(to_type).* ^= to.toBitboard();
 
+            self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = from_type });
+            self.updatePieceZobrist(turn, Piece{ .sq = to, .tp = to_type });
+            self.updatePieceZobrist(turn.flipped(), Piece{ .sq = to, .tp = captured_type });
             if (captured_type == .rook) {
                 const them_kingside_rook_starting_square = Square.fromRankFile(
                     if (turn == .black) Rank.first else Rank.eighth,
@@ -370,10 +375,14 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
                 );
 
                 if (to == them_kingside_rook_starting_square) {
+                    self.updateCastlingZobrist();
                     self.castling_rights &= ~if (turn == .black) white_kingside_castle else black_kingside_castle;
+                    self.updateCastlingZobrist();
                 }
                 if (to == them_queenside_rook_starting_square) {
+                    self.updateCastlingZobrist();
                     self.castling_rights &= ~if (turn == .black) white_queenside_castle else black_queenside_castle;
+                    self.updateCastlingZobrist();
                 }
             }
 
@@ -397,16 +406,15 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             }
 
             if (from_type == .king) {
+                self.updateCastlingZobrist();
                 self.castling_rights &= ~if (turn == .white) white_kingside_castle | white_queenside_castle else black_kingside_castle | black_queenside_castle;
+                self.updateCastlingZobrist();
             }
         }
     } else if (move.isCastlingMove()) {
         if (move.getFlag() == .castle_kingside) {
             us.all ^= update_bb;
-            const rook_from_square = Square.fromRankFile(
-                if (turn == .white) Rank.first else Rank.eighth,
-                if (turn == .white) self.white_kingside_rook_file else self.black_kingside_rook_file,
-            );
+            const rook_from_square = move.getTo();
             const king_destination = if (turn == .white) Square.g1 else Square.g8;
             const rook_destination = if (turn == .white) Square.f1 else Square.f8;
             us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
@@ -417,12 +425,13 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             self.mailbox[from.toInt()] = null;
             self.mailbox[rook_destination.toInt()] = .rook;
             self.mailbox[king_destination.toInt()] = .king;
+            self.updatePieceZobrist(turn, Piece{ .sq = rook_from_square, .tp = .rook });
+            self.updatePieceZobrist(turn, Piece{ .sq = rook_destination, .tp = .rook });
+            self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = .king });
+            self.updatePieceZobrist(turn, Piece{ .sq = king_destination, .tp = .king });
         } else {
             us.all ^= update_bb;
-            const rook_from_square = Square.fromRankFile(
-                if (turn == .white) Rank.first else Rank.eighth,
-                if (turn == .white) self.white_queenside_rook_file else self.black_queenside_rook_file,
-            );
+            const rook_from_square = move.getTo();
             const king_destination = if (turn == .white) Square.c1 else Square.c8;
             const rook_destination = if (turn == .white) Square.d1 else Square.d8;
             us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
@@ -433,18 +442,26 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             self.mailbox[from.toInt()] = null;
             self.mailbox[rook_destination.toInt()] = .rook;
             self.mailbox[king_destination.toInt()] = .king;
+
+            self.updatePieceZobrist(turn, Piece{ .sq = rook_from_square, .tp = .rook });
+            self.updatePieceZobrist(turn, Piece{ .sq = rook_destination, .tp = .rook });
+            self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = .king });
+            self.updatePieceZobrist(turn, Piece{ .sq = king_destination, .tp = .king });
         }
         self.castling_rights &= ~if (turn == .white) white_kingside_castle | white_queenside_castle else black_kingside_castle | black_queenside_castle;
     } else {
         const from_type = self.mailbox[from.toInt()].?;
         if (from_type == .pawn and update_bb & pawn_double_move_mask == update_bb) {
             self.en_passant_target = to.move(if (turn == .white) -1 else 1, 0);
+            self.updateEnPassantZobrist();
         }
         const to_type = if (move.getPromotedPieceType()) |pt| pt else from_type;
         self.mailbox[from.toInt()] = null;
         self.mailbox[to.toInt()] = to_type;
         us.getBoardPtr(from_type).* ^= from.toBitboard();
         us.getBoardPtr(to_type).* ^= to.toBitboard();
+        self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = from_type });
+        self.updatePieceZobrist(turn, Piece{ .sq = to, .tp = to_type });
 
         const kingside_rook_starting_square = Square.fromRankFile(
             if (turn == .white) Rank.first else Rank.eighth,
@@ -458,10 +475,14 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
 
         if (from_type == .rook) {
             if (from == kingside_rook_starting_square) {
+                self.updateCastlingZobrist();
                 self.castling_rights &= ~if (turn == .white) white_kingside_castle else black_kingside_castle;
+                self.updateCastlingZobrist();
             }
             if (from == queenside_rook_starting_square) {
+                self.updateCastlingZobrist();
                 self.castling_rights &= ~if (turn == .white) white_queenside_castle else black_queenside_castle;
+                self.updateCastlingZobrist();
             }
         }
 
@@ -481,10 +502,6 @@ pub fn playMoveCopy(self: Self, comptime turn: Side, move: Move) Board {
 }
 
 pub fn undoMove(self: *Self, comptime turn: Side, inverse: MoveInverse) void {
-    defer self.castling_rights = inverse.castling;
-    defer self.en_passant_target = inverse.en_passant;
-    defer self.halfmove_clock = inverse.halfmove;
-
     const us = self.getSidePtr(turn);
     const them = self.getSidePtr(turn.flipped());
     const move = inverse.move;
@@ -495,7 +512,6 @@ pub fn undoMove(self: *Self, comptime turn: Side, inverse: MoveInverse) void {
     us.all ^= update_bb;
 
     self.en_passant_target = null;
-
     if (move.isCapture()) {
         if (move.isEnPassant()) {
             const pawn_d_rank: i8 = if (turn == .white) 1 else -1;
@@ -564,6 +580,46 @@ pub fn undoMove(self: *Self, comptime turn: Side, inverse: MoveInverse) void {
         us.getBoardPtr(to_type).* ^= to.toBitboard();
     }
     self.turn = turn;
+    self.castling_rights = inverse.castling;
+    self.en_passant_target = inverse.en_passant;
+    self.halfmove_clock = inverse.halfmove;
+    self.zobrist = inverse.zobrist;
+}
+
+pub fn updatePieceZobrist(self: *Self, comptime side: Side, piece: Piece) void {
+    self.zobrist ^= Zobrist.get(piece, side);
+}
+
+pub fn updateCastlingZobrist(self: *Self) void {
+    self.zobrist ^= Zobrist.getCastling(self.castling_rights);
+}
+
+pub fn updateEnPassantZobrist(self: *Self) void {
+    if (self.en_passant_target) |ep|
+        self.zobrist ^= Zobrist.getEnPassant(ep.toInt());
+}
+
+pub fn updateTurnZobrist(self: *Self) void {
+    self.zobrist ^= Zobrist.getTurn();
+}
+
+pub fn resetZobrist(self: *Self) void {
+    self.zobrist = 0;
+    for (self.white.raw, PieceType.all) |bb, pt| {
+        var iter = Bitboard.iterator(bb);
+        while (iter.next()) |sq| {
+            self.updatePieceZobrist(.white, Piece{ .sq = sq, .tp = pt });
+        }
+    }
+    for (self.black.raw, PieceType.all) |bb, pt| {
+        var iter = Bitboard.iterator(bb);
+        while (iter.next()) |sq| {
+            self.updatePieceZobrist(.black, Piece{ .sq = sq, .tp = pt });
+        }
+    }
+    if (self.turn == .black) self.updateTurnZobrist();
+    self.updateCastlingZobrist();
+    self.updateEnPassantZobrist();
 }
 
 pub fn playMoveFromStr(self: *Self, str: []const u8) !MoveInverse {
@@ -624,6 +680,12 @@ pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth: usize, comptime
             }
             var res: u64 = 0;
             for (moves[0..num_moves]) |move| {
+                if (@import("builtin").is_test) {
+                    var cp = board.*;
+                    const inv = cp.playMove(turn, move);
+                    cp.undoMove(turn, inv);
+                    assert(std.meta.eql(cp, board.*));
+                }
                 const inv = board.playMove(turn, move);
                 const count = impl(board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
                 if (cur_depth == 0) {

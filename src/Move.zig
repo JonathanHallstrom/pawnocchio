@@ -3,6 +3,7 @@ const assert = std.debug.assert;
 const Move = @This();
 const PieceType = @import("piece_type.zig").PieceType;
 const Square = @import("square.zig").Square;
+const File = @import("square.zig").File;
 
 raw: u16,
 
@@ -47,6 +48,8 @@ const MoveFlag = enum(u4) {
 };
 
 const Self = @This();
+
+pub const null_move = std.mem.zeroes(Self);
 
 pub fn isSameAsStr(self: Move, str: []const u8) bool {
     var print_buf: [32]u8 = undefined;
@@ -153,7 +156,8 @@ pub fn format(self: Move, comptime actual_fmt: []const u8, options: std.fmt.Form
     if (self.isPromotion()) {
         return try writer.print("{s}{s}{c}", .{ @tagName(self.getFrom()), @tagName(self.getTo()), self.getPromotedPieceType().?.toLetter() });
     } else if (self.isCastlingMove()) {
-        if (self.getFrom().getFile() != .e) {}
+        var to = self.getTo();
+        to = Square.fromRankFile(to.getRank(), if (self.getFlag() == .castle_kingside) File.g else File.c);
         return try writer.print("{s}{s}", .{ @tagName(self.getFrom()), @tagName(self.getTo()) });
     } else {
         return try writer.print("{s}{s}", .{ @tagName(self.getFrom()), @tagName(self.getTo()) });

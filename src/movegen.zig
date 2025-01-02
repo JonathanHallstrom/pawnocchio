@@ -28,6 +28,16 @@ pub fn getMoves(comptime turn: Side, board: Board, move_buf: []Move) usize {
     return getMovesImpl(turn, false, board, move_buf);
 }
 
+pub fn getMovesWithInfo(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move) struct { usize, mask_generation.Masks } {
+    const masks = mask_generation.getMasks(turn, board);
+    var res: usize = 0;
+    res += getPawnMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += getKnightMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
+    res += getSlidingMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += getKingMoves(turn, captures_only, board, move_buf[res..], masks.rook_pins);
+    return .{ res, masks };
+}
+
 pub fn getMovesWithoutTurn(board: Board, move_buf: []Move) usize {
     return switch (board.turn) {
         inline else => |turn| getMovesImpl(turn, false, board, move_buf),

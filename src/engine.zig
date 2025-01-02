@@ -14,13 +14,30 @@ pub const SearchParameters = union(enum) {
     standard: struct { soft: u64, hard: u64 },
     fixed_time: u64,
     fixed_depth: u8,
+
+    pub fn softTime(self: SearchParameters) u64 {
+        return if (self == .standard) self.standard.soft else std.math.maxInt(u64);
+    }
+
+    pub fn hardTime(self: SearchParameters) u64 {
+        return if (self == .standard) self.standard.hard else std.math.maxInt(u64);
+    }
+
+    pub fn maxDepth(self: SearchParameters) u8 {
+        return if (self == .fixed_depth) self.fixed_depth else 255;
+    }
+};
+
+pub const SearchStatistics = struct {
+    ns_used: u64 = 0,
+    nodes: u64,
+    qnodes: u64,
 };
 
 pub const SearchResult = struct {
     move: Move,
     score: i16,
-    nodes_searched: u64,
-    time_used: u64,
+    stats: SearchStatistics,
 };
 
 var is_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = .{ .raw = false };
@@ -56,9 +73,6 @@ pub fn stopAsyncSearch() void {
         stop_searching.store(true, .release);
 }
 
-pub fn searchSync(board: Board, search_parameters: SearchParameters, move_buf: []Move) SearchResult {
-    _ = board; // autofix
-    _ = search_parameters; // autofix
-    _ = move_buf; // autofix
-    unreachable;
+pub fn searchSync(board: Board, search_parameters: SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) !SearchResult {
+    return Search.iterativeDeepening(board, search_parameters, move_buf, hash_history, silence_output);
 }

@@ -158,14 +158,12 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
             iter = Bitboard.iterator(pinned_pawns_that_can_move_one);
             while (iter.next()) |from| {
                 move_buf[move_count] = Move.initQuiet(from, from.move(d_rank, 0));
-
                 move_count += 1;
             }
             const pawns_that_can_go_two = pinned_pawns_that_can_move_one & double_move_rank & Bitboard.move(check_mask & empty_squares, -d_rank * 2, 0);
             iter = Bitboard.iterator(pawns_that_can_go_two);
             while (iter.next()) |from| {
                 move_buf[move_count] = Move.initQuiet(from, from.move(2 * d_rank, 0));
-
                 move_count += 1;
             }
         }

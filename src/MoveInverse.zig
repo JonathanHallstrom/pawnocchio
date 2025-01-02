@@ -7,3 +7,4 @@ halfmove: u8,
 castling: u4,
 en_passant: ?Square,
 captured: ?Piece,
+zobrist: u64, // couldn't be bothered updating zobrist in undomove

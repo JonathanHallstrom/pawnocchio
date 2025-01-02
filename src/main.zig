@@ -115,16 +115,16 @@ pub fn main() !void {
             };
             var num_nodes: u64 = 0;
             var time: u64 = 0;
-            const depth = 5;
+            const depth = 4;
             for (fens) |fen| {
                 const board = try Board.parseFen(fen);
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
 
-                const info = engine.searchSync(board, .{ .fixed_depth = depth }, move_buf);
+                const info = try engine.searchSync(board, .{ .fixed_depth = depth }, move_buf, &hash_history, true);
 
-                num_nodes += info.nodes_searched;
-                time += info.time_used;
+                num_nodes += info.stats.nodes + info.stats.qnodes;
+                time += info.stats.ns_used;
             }
 
             write("{} nodes {} nps\n", .{ num_nodes, num_nodes * std.time.ns_per_s / time });
@@ -332,6 +332,9 @@ pub fn main() !void {
             } }, move_buf);
         }
 
+        if (std.ascii.eqlIgnoreCase(command, "stop")) {
+            engine.stopAsyncSearch();
+        }
         if (std.ascii.eqlIgnoreCase(command, "quit")) {
             return;
         }
