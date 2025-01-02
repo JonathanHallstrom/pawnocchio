@@ -162,7 +162,7 @@ pub fn main() !void {
         }
 
         if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
-            // engine.reset();
+            engine.reset();
             board = Board.init();
         }
 
@@ -224,8 +224,8 @@ pub fn main() !void {
         }
 
         if (std.ascii.eqlIgnoreCase(command, "go")) {
-            var max_depth: u8 = 255;
-            var max_nodes: u64 = std.math.maxInt(u64);
+            var max_depth_opt: ?u8 = null;
+            var max_nodes_opt: ?u64 = null;
 
             // by default assume each player has 1000s
             // completely arbitrarily chosen value
@@ -261,14 +261,14 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "depth")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    max_depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
+                    max_depth_opt = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
                         try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "nodes")) {
                     const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    max_nodes = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
+                    max_nodes_opt = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
                         try log_writer.print("invalid nodes: '{s}'\n", .{nodes_to_parse});
                         continue;
                     };
@@ -309,8 +309,7 @@ pub fn main() !void {
                     });
                 }
             }
-            if (mate_finding_depth) |depth| max_depth = @min(max_depth, depth * 2);
-            log_writer.print("max depth: {}\n", .{max_depth}) catch {};
+            if (mate_finding_depth) |depth| max_depth_opt = @min(max_depth_opt orelse 255, depth * 2);
 
             const my_time = if (board.turn == .white) white_time else black_time;
             const my_increment = if (board.turn == .white) white_increment else black_increment;
@@ -326,10 +325,35 @@ pub fn main() !void {
 
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
-            engine.startAsyncSearch(board, .{ .standard = .{
-                .soft = soft_time,
-                .hard = hard_time,
-            } }, move_buf);
+            if (hard_time < 100) {
+                _ = try engine.searchSync(
+                    board,
+                    .{ .standard = .{
+                        .soft = soft_time,
+                        .hard = hard_time,
+                    } },
+                    move_buf,
+                    &hash_history,
+                    false,
+                );
+            } else if (max_depth_opt) |max_depth| {
+                engine.startAsyncSearch(
+                    board,
+                    .{ .fixed_depth = max_depth },
+                    move_buf,
+                    &hash_history,
+                );
+            } else {
+                engine.startAsyncSearch(
+                    board,
+                    .{ .standard = .{
+                        .soft = soft_time,
+                        .hard = hard_time,
+                    } },
+                    move_buf,
+                    &hash_history,
+                );
+            }
         }
 
         if (std.ascii.eqlIgnoreCase(command, "stop")) {

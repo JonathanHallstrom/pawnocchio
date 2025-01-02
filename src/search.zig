@@ -15,12 +15,11 @@ const eval = @import("eval.zig").eval;
 const shouldStopSearching = engine.shouldStopSearching;
 
 const checkmate_score: i16 = 16000;
-
-var nodes: u64 = 0;
+const max_search_depth = 255;
 
 fn search(comptime turn: Side, board: *Board, cur_depth: u8, depth_remaining: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) anyerror!struct { i16, Move } {
     nodes += 1;
-    if (cur_depth > 0 and shouldStopSearching()) return error.EarlyShutdown;
+    if (cur_depth > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) return error.EarlyShutdown;
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
     if (move_count == 0) {
         return .{ if (masks.checks == 0) 0 else -checkmate_score + cur_depth, Move.null_move };
@@ -59,37 +58,40 @@ fn search(comptime turn: Side, board: *Board, cur_depth: u8, depth_remaining: u8
         if (score > best_score) {
             best_score = score;
             best_move = move;
+
+            if (score >= checkmate_score - max_search_depth) {
+                break;
+            }
         }
     }
 
     return .{ best_score, best_move };
 }
 
-fn reset() void {
+pub fn reset() void {
     nodes = 0;
 }
 
 pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) !engine.SearchResult {
     reset();
-    var timer = try std.time.Timer.start();
-    _ = &timer; // autofix
+    timer = try std.time.Timer.start();
+    hard_time = search_params.hardTime();
     // const soft_time =search_params.
     // while (timer.read() < searchParams.)
     var board_copy = board;
     var score: i16 = 0;
     var move = Move.null_move;
     for (0..search_params.maxDepth()) |depth| {
-        if (timer.read() >= search_params.hardTime()) break;
-
         score, move = switch (board.turn) {
             inline else => |turn| search(turn, &board_copy, 0, @intCast(depth), move_buf, hash_history),
         } catch break;
         if (!silence_output) {
-            write("info depth {} score cp {} nodes {} nps {} pv {}\n", .{
+            write("info depth {} score cp {} nodes {} nps {} time {} pv {}\n", .{
                 depth + 1,
                 score,
                 nodes,
                 nodes * std.time.ns_per_s / timer.read(),
+                (timer.read() + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
                 move,
             });
         }
@@ -98,6 +100,9 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             break;
         }
     }
+    engine.stoppedSearching();
+    if (!silence_output)
+        write("bestmove {}\n", .{move});
     return engine.SearchResult{
         .move = move,
         .score = score,
@@ -108,3 +113,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         },
     };
 }
+
+var nodes: u64 = 0;
+var timer: std.time.Timer = undefined;
+var hard_time: u64 = 0;

@@ -8,7 +8,7 @@ const Move = @import("Move.zig");
 const log_writer = &@import("main.zig").log_writer;
 const write = @import("main.zig").write;
 
-const Search = @import("search.zig");
+const search = @import("search.zig");
 
 pub const SearchParameters = union(enum) {
     standard: struct { soft: u64, hard: u64 },
@@ -42,26 +42,33 @@ pub const SearchResult = struct {
 
 var is_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = .{ .raw = false };
 var stop_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = .{ .raw = false };
-var search_thread: ?std.Thread = null;
-var search_params: ?SearchParameters = null;
 
-fn worker() noreturn {
-    while (true) {
-        if (is_searching.load(.acquire)) {} else {
-            // std.Thread.yield();
+pub fn startAsyncSearch(board: Board, search_parameters: SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64)) void {
+    stopAsyncSearch();
+
+    const worker = struct {
+        fn impl(board_: Board, search_params_: SearchParameters, move_buf_: []Move, hash_history_: *std.ArrayList(u64)) void {
+            is_searching.store(true, .release);
+            stop_searching.store(false, .release);
+            _ = search.iterativeDeepening(board_, search_params_, move_buf_, hash_history_, false) catch unreachable;
         }
-    }
+    }.impl;
+
+    (std.Thread.spawn(.{}, worker, .{
+        board,
+        search_parameters,
+        move_buf,
+        hash_history,
+    }) catch unreachable).detach();
 }
 
-pub fn startAsyncSearch(board: Board, search_parameters: SearchParameters, move_buf: []Move) void {
-    if (search_thread == null) {
-        search_thread = std.Thread.spawn(.{}, worker, .{}) catch @panic("couldn't spawn thread");
-    }
+pub fn reset() void {
+    stopAsyncSearch();
+    search.reset();
+}
 
-    _ = move_buf; // autofix
-    _ = board; // autofix
-    _ = search_parameters; // autofix
-
+pub fn shouldKeepSearching() bool {
+    return is_searching.load(.acquire);
 }
 
 pub fn shouldStopSearching() bool {
@@ -69,10 +76,15 @@ pub fn shouldStopSearching() bool {
 }
 
 pub fn stopAsyncSearch() void {
-    if (is_searching.load(.acquire))
+    if (shouldKeepSearching()) {
         stop_searching.store(true, .release);
+    }
+}
+
+pub fn stoppedSearching() void {
+    is_searching.store(false, .release);
 }
 
 pub fn searchSync(board: Board, search_parameters: SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) !SearchResult {
-    return Search.iterativeDeepening(board, search_parameters, move_buf, hash_history, silence_output);
+    return search.iterativeDeepening(board, search_parameters, move_buf, hash_history, silence_output);
 }
