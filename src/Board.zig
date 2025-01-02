@@ -355,12 +355,8 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             };
             them.getBoardPtr(captured_type).* ^= to.toBitboard();
             them.all ^= to.toBitboard();
-            if (from_type == to_type) {
-                us.getBoardPtr(from_type).* ^= update_bb;
-            } else {
-                us.getBoardPtr(from_type).* ^= from.toBitboard();
-                us.getBoardPtr(to_type).* ^= to.toBitboard();
-            }
+            us.getBoardPtr(from_type).* ^= from.toBitboard();
+            us.getBoardPtr(to_type).* ^= to.toBitboard();
 
             if (captured_type == .rook) {
                 const them_kingside_rook_starting_square = Square.fromRankFile(
@@ -447,12 +443,8 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
         const to_type = if (move.getPromotedPieceType()) |pt| pt else from_type;
         self.mailbox[from.toInt()] = null;
         self.mailbox[to.toInt()] = to_type;
-        if (from_type == to_type) {
-            us.getBoardPtr(from_type).* ^= update_bb;
-        } else {
-            us.getBoardPtr(from_type).* ^= from.toBitboard();
-            us.getBoardPtr(to_type).* ^= to.toBitboard();
-        }
+        us.getBoardPtr(from_type).* ^= from.toBitboard();
+        us.getBoardPtr(to_type).* ^= to.toBitboard();
 
         const kingside_rook_starting_square = Square.fromRankFile(
             if (turn == .white) Rank.first else Rank.eighth,
@@ -488,14 +480,91 @@ pub fn playMoveCopy(self: Self, comptime turn: Side, move: Move) Board {
     return res;
 }
 
-pub fn undoMove(self: *Self, inverse: MoveInverse) void {
-    _ = self; // autofix
-    _ = inverse; // autofix
+pub fn undoMove(self: *Self, comptime turn: Side, inverse: MoveInverse) void {
+    defer self.castling_rights = inverse.castling;
+    defer self.en_passant_target = inverse.en_passant;
+    defer self.halfmove_clock = inverse.halfmove;
 
+    const us = self.getSidePtr(turn);
+    const them = self.getSidePtr(turn.flipped());
+    const move = inverse.move;
+    const from = move.getFrom();
+    const to = move.getTo();
+
+    const update_bb = from.toBitboard() | to.toBitboard();
+    us.all ^= update_bb;
+
+    self.en_passant_target = null;
+
+    if (move.isCapture()) {
+        if (move.isEnPassant()) {
+            const pawn_d_rank: i8 = if (turn == .white) 1 else -1;
+            const ep_pawn_square = to.move(-pawn_d_rank, 0);
+
+            const ep_pawn_bb = ep_pawn_square.toBitboard();
+
+            them.all ^= ep_pawn_bb;
+            them.getBoardPtr(.pawn).* ^= ep_pawn_bb;
+            us.getBoardPtr(.pawn).* ^= update_bb;
+            self.mailbox[from.toInt()] = .pawn;
+            self.mailbox[ep_pawn_square.toInt()] = .pawn;
+            self.mailbox[to.toInt()] = null;
+        } else {
+            const captured_type = inverse.captured.?.tp;
+
+            const to_type = self.mailbox[to.toInt()].?;
+            const from_type = if (move.isPromotion()) .pawn else to_type;
+            self.mailbox[from.toInt()] = from_type;
+            self.mailbox[to.toInt()] = captured_type;
+            them.getBoardPtr(captured_type).* ^= to.toBitboard();
+            them.all ^= to.toBitboard();
+            us.getBoardPtr(from_type).* ^= from.toBitboard();
+            us.getBoardPtr(to_type).* ^= to.toBitboard();
+        }
+    } else if (move.isCastlingMove()) {
+        if (move.getFlag() == .castle_kingside) {
+            us.all ^= update_bb;
+            const rook_from_square = Square.fromRankFile(
+                if (turn == .white) Rank.first else Rank.eighth,
+                if (turn == .white) self.white_kingside_rook_file else self.black_kingside_rook_file,
+            );
+            const king_destination = if (turn == .white) Square.g1 else Square.g8;
+            const rook_destination = if (turn == .white) Square.f1 else Square.f8;
+            us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+            us.getBoardPtr(.king).* ^= from.toBitboard() ^ king_destination.toBitboard();
+            us.all ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+            us.all ^= from.toBitboard() ^ king_destination.toBitboard();
+            self.mailbox[rook_destination.toInt()] = null;
+            self.mailbox[king_destination.toInt()] = null;
+            self.mailbox[rook_from_square.toInt()] = .rook;
+            self.mailbox[from.toInt()] = .king;
+        } else {
+            us.all ^= update_bb;
+            const rook_from_square = Square.fromRankFile(
+                if (turn == .white) Rank.first else Rank.eighth,
+                if (turn == .white) self.white_queenside_rook_file else self.black_queenside_rook_file,
+            );
+            const king_destination = if (turn == .white) Square.c1 else Square.c8;
+            const rook_destination = if (turn == .white) Square.d1 else Square.d8;
+            us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+            us.getBoardPtr(.king).* ^= from.toBitboard() ^ king_destination.toBitboard();
+            us.all ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+            us.all ^= from.toBitboard() ^ king_destination.toBitboard();
+            self.mailbox[rook_destination.toInt()] = null;
+            self.mailbox[king_destination.toInt()] = null;
+            self.mailbox[rook_from_square.toInt()] = .rook;
+            self.mailbox[from.toInt()] = .king;
+        }
+    } else {
+        const to_type = self.mailbox[to.toInt()].?;
+        const from_type = if (move.isPromotion()) .pawn else to_type;
+        self.mailbox[from.toInt()] = from_type;
+        self.mailbox[to.toInt()] = null;
+        us.getBoardPtr(from_type).* ^= from.toBitboard();
+        us.getBoardPtr(to_type).* ^= to.toBitboard();
+    }
+    self.turn = turn;
 }
-
-var moves_dbg: [100]Move = undefined;
-var num_dbg_moves: usize = 0;
 
 pub fn playMoveFromStr(self: *Self, str: []const u8) !MoveInverse {
     var buf: [256]Move = undefined;
@@ -512,23 +581,24 @@ pub fn playMoveFromStr(self: *Self, str: []const u8) !MoveInverse {
     return error.MoveNotFound;
 }
 
-pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth: usize) u64 {
+pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth: usize, comptime debug: bool) u64 {
     const impl = struct {
         fn impl(board: *Board, comptime turn: Side, cur_depth: u8, moves: []Move, d: usize) u64 {
             if (d == 0) return 1;
             const num_moves = movegen.getMoves(turn, board.*, moves);
             var res: u64 = 0;
             for (moves[0..num_moves]) |move| {
-                moves_dbg[num_dbg_moves] = move;
-                num_dbg_moves += 1;
-                var new_board = board.playMoveCopy(turn, move);
+                var new_board = board.*;
+                const inv = new_board.playMove(turn, move);
                 const count = impl(&new_board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
                 if (cur_depth == 0) {
-                    std.debug.print("{}: {}\n", .{ move, count });
+                    if (debug) {
+                        std.debug.print("{}: {}\n", .{ move, count });
+                    }
                     // std.debug.print("{}\n", .{ new_board });
                 }
                 res += count;
-                num_dbg_moves -= 1;
+                new_board.undoMove(turn, inv);
             }
             return res;
         }
@@ -554,17 +624,16 @@ pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth: usize, comptime
             }
             var res: u64 = 0;
             for (moves[0..num_moves]) |move| {
-                moves_dbg[num_dbg_moves] = move;
-                num_dbg_moves += 1;
-                var new_board = board.playMoveCopy(turn, move);
-                const count = impl(&new_board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
+                const inv = board.playMove(turn, move);
+                const count = impl(board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
                 if (cur_depth == 0) {
                     if (debug) {
                         std.debug.print("{}: {}\n", .{ move, count });
-                    } // std.debug.print("{}\n", .{new_board});
+                    }
+                    // std.debug.print("{}\n", .{ new_board });
                 }
                 res += count;
-                num_dbg_moves -= 1;
+                board.undoMove(turn, inv);
             }
             return res;
         }

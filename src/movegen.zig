@@ -1,3 +1,4 @@
+const std = @import("std");
 const Move = @import("Move.zig");
 const Side = @import("side.zig").Side;
 const Board = @import("Board.zig");
@@ -42,4 +43,18 @@ test "all movegen tests" {
     _ = pawn_moves;
     _ = sliding_moves;
     _ = king_moves;
+}
+
+test "double attack promotion" {
+    var buf: [256]Move = undefined;
+    try std.testing.expectEqual(1, getMoves(.black, try Board.parseFen("r4kQr/p1ppq1b1/bn4p1/4N3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQ - 0 3"), &buf));
+}
+
+test "pinned pawn can't capture" {
+    var buf: [256]Move = undefined;
+    try std.testing.expectEqual(49, getMoves(.black, try Board.parseFen("r6r/p1pkqpb1/bnp1pnp1/3P4/1p2P1B1/2NQ3p/PPPB1PPP/R3K2R b KQ - 3 3"), &buf));
+}
+
+test "perft" {
+    _ = @import("perft_tests.zig");
 }

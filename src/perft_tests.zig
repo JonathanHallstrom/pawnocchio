@@ -28,7 +28,7 @@ fn handleLine(line: []const u8, total_time: *u64, total_positions: *u64) void {
             std.debug.panic("error: {}", .{e});
         };
     }
-    std.log.info("{s} passed, total positions: {}", .{ fen, total_positions });
+    std.log.info("{s} passed, total positions: {}", .{ fen, total_positions.* });
 }
 
 fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anytype) !void {
@@ -43,9 +43,12 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anyty
     var line_number: u64 = 0;
 
     var tp: std.Thread.Pool = undefined;
+    const cpus = std.Thread.getCpuCount() catch 1;
+    // const cpus = 1;
+
     try tp.init(.{
         .allocator = allocator,
-        .n_jobs = 32,
+        .n_jobs = @intCast(cpus),
     });
     defer tp.deinit();
     var wg = std.Thread.WaitGroup{};
@@ -53,15 +56,13 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anyty
     var arena_wrapper = std.heap.ArenaAllocator.init(allocator);
     defer arena_wrapper.deinit();
 
-    const cpus = std.Thread.getCpuCount() catch 1;
-
     while (br.reader().readUntilDelimiter(&line_buf, '\n') catch null) |line| {
         const line_cp = try arena_wrapper.allocator().dupe(u8, line);
         line_number += 1;
 
         while (tp.run_queue.len() > 2 * cpus)
             try std.Thread.yield();
-        std.debug.print("starting tests for line: '{s}' (#{})\n", .{ line, line_number });
+        std.log.info("starting tests for line: '{s}' (#{})\n", .{ line, line_number });
         tp.spawnWg(&wg, handleLine, .{ line_cp, &total_time, &total_positions });
 
         const wall_time = timer.read();
