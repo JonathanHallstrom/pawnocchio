@@ -205,10 +205,10 @@ pub fn main() !void {
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
             while (move_iter.next()) |played_move| {
                 if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
-                // _ = board.playMoveFromSquare(played_move, move_buf) catch {
-                //     try log_writer.print("invalid move: '{s}'\n", .{played_move});
-                //     continue;
-                // };
+                _ = board.playMoveFromStr(played_move) catch {
+                    try log_writer.print("invalid move: '{s}'\n", .{played_move});
+                    continue;
+                };
                 hash_history.appendAssumeCapacity(board.zobrist);
             }
         }
@@ -218,9 +218,9 @@ pub fn main() !void {
         }
 
         if (std.ascii.eqlIgnoreCase(command, "d")) {
-            // for (board.toString()) |row| {
-            //     write("{s}\n", .{row});
-            // }
+            for (board.toString()) |row| {
+                write("{s}\n", .{row});
+            }
         }
 
         if (std.ascii.eqlIgnoreCase(command, "go")) {
@@ -254,7 +254,7 @@ pub fn main() !void {
                         continue;
                     };
                     var timer = std.time.Timer.start() catch unreachable;
-                    const nodes = board.perftSingleThreaded(move_buf, depth);
+                    const nodes = board.perftSingleThreaded(move_buf, depth, true);
                     const elapsed_ns = timer.read();
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :main_loop;
@@ -340,5 +340,5 @@ pub fn main() !void {
 
 comptime {
     std.testing.refAllDeclsRecursive(@This());
-    std.testing.refAllDeclsRecursive(@import("knight_moves.zig"));
+    std.testing.refAllDeclsRecursive(@import("movegen.zig"));
 }

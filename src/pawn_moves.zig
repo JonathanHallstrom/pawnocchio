@@ -24,6 +24,7 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
 
     const empty_squares = ~(us.all | them.all);
     const promoting_pawns = unpinned_pawns & promotion_rank;
+    const promoting_pinned_pawns = pinned_pawns & promotion_rank;
     const non_promoting_unpinned_pawns = unpinned_pawns & ~promotion_rank;
     const non_promoting_pinned_pawns = pinned_pawns & ~promotion_rank;
 
@@ -33,7 +34,6 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
         while (iter.next()) |from| {
             for (promotion_target_types) |promo_type| {
                 move_buf[move_count] = Move.initPromotionCapture(from, from.move(d_rank, -1), promo_type);
-
                 move_count += 1;
             }
         }
@@ -44,7 +44,6 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
         while (iter.next()) |from| {
             for (promotion_target_types) |promo_type| {
                 move_buf[move_count] = Move.initPromotionCapture(from, from.move(d_rank, 1), promo_type);
-
                 move_count += 1;
             }
         }
@@ -54,7 +53,6 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
         var iter = Bitboard.iterator(non_promoting_unpinned_pawns & Bitboard.move(check_mask & them.all, -d_rank, 1));
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initCapture(from, from.move(d_rank, -1));
-
             move_count += 1;
         }
     }
@@ -63,7 +61,6 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
         var iter = Bitboard.iterator(non_promoting_unpinned_pawns & Bitboard.move(check_mask & them.all, -d_rank, -1));
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initCapture(from, from.move(d_rank, 1));
-
             move_count += 1;
         }
     }
@@ -97,7 +94,6 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
 
                 if (king & attacked == 0) {
                     move_buf[move_count] = Move.initEnPassant(from, to);
-
                     move_count += 1;
                 }
             }
@@ -119,34 +115,46 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
         var iter = Bitboard.iterator(pawns_that_can_go_one);
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initQuiet(from, from.move(d_rank, 0));
-
             move_count += 1;
         }
         const pawns_that_can_go_two = non_promoting_unpinned_pawns & double_move_rank & Bitboard.move(empty_squares, -d_rank, 0) & Bitboard.move(check_mask & empty_squares, -d_rank * 2, 0);
         iter = Bitboard.iterator(pawns_that_can_go_two);
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initQuiet(from, from.move(2 * d_rank, 0));
-
             move_count += 1;
         }
     }
-    if (non_promoting_pinned_pawns != 0 and !captures_only) {
-        const pawns_that_can_capture_left = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, 1);
-        var iter = Bitboard.iterator(pawns_that_can_capture_left);
+    if (pinned_pawns != 0 and !captures_only) {
+        const non_promoting_pawns_that_can_capture_left = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, 1);
+        var iter = Bitboard.iterator(non_promoting_pawns_that_can_capture_left);
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initCapture(from, from.move(d_rank, -1));
-
             move_count += 1;
         }
-        const pawns_that_can_capture_right = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, -1);
-        iter = Bitboard.iterator(pawns_that_can_capture_right);
+        const non_promoting_pawns_that_can_capture_right = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, -1);
+        iter = Bitboard.iterator(non_promoting_pawns_that_can_capture_right);
         while (iter.next()) |from| {
             move_buf[move_count] = Move.initCapture(from, from.move(d_rank, 1));
-
             move_count += 1;
         }
+        const promoting_pawns_that_can_capture_left = promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, 1);
+        iter = Bitboard.iterator(promoting_pawns_that_can_capture_left);
+        while (iter.next()) |from| {
+            for (promotion_target_types) |promo_type| {
+                move_buf[move_count] = Move.initPromotionCapture(from, from.move(d_rank, -1), promo_type);
+                move_count += 1;
+            }
+        }
+        const promoting_pawns_that_can_capture_right = promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, -1);
+        iter = Bitboard.iterator(promoting_pawns_that_can_capture_right);
+        while (iter.next()) |from| {
+            for (promotion_target_types) |promo_type| {
+                move_buf[move_count] = Move.initPromotionCapture(from, from.move(d_rank, 1), promo_type);
+                move_count += 1;
+            }
+        }
         if (!captures_only) {
-            const pinned_pawns_that_can_move_one = non_promoting_pinned_pawns & Bitboard.move(check_mask & empty_squares & pin_mask, -d_rank, 0);
+            const pinned_pawns_that_can_move_one = non_promoting_pinned_pawns & Bitboard.move(check_mask & empty_squares & pinned_by_rook_mask, -d_rank, 0);
             iter = Bitboard.iterator(pinned_pawns_that_can_move_one);
             while (iter.next()) |from| {
                 move_buf[move_count] = Move.initQuiet(from, from.move(d_rank, 0));

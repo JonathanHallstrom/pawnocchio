@@ -413,10 +413,10 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             );
             const king_destination = if (turn == .white) Square.g1 else Square.g8;
             const rook_destination = if (turn == .white) Square.f1 else Square.f8;
-            us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() | rook_destination.toBitboard();
-            us.getBoardPtr(.king).* ^= from.toBitboard() | king_destination.toBitboard();
-            us.all ^= rook_from_square.toBitboard() | rook_destination.toBitboard();
-            us.all ^= from.toBitboard() | king_destination.toBitboard();
+            us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+            us.getBoardPtr(.king).* ^= from.toBitboard() ^ king_destination.toBitboard();
+            us.all ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+            us.all ^= from.toBitboard() ^ king_destination.toBitboard();
             self.mailbox[rook_from_square.toInt()] = null;
             self.mailbox[from.toInt()] = null;
             self.mailbox[rook_destination.toInt()] = .rook;
@@ -429,10 +429,10 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             );
             const king_destination = if (turn == .white) Square.c1 else Square.c8;
             const rook_destination = if (turn == .white) Square.d1 else Square.d8;
-            us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() | rook_destination.toBitboard();
-            us.getBoardPtr(.king).* ^= from.toBitboard() | king_destination.toBitboard();
-            us.all ^= rook_from_square.toBitboard() | rook_destination.toBitboard();
-            us.all ^= from.toBitboard() | king_destination.toBitboard();
+            us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+            us.getBoardPtr(.king).* ^= from.toBitboard() ^ king_destination.toBitboard();
+            us.all ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+            us.all ^= from.toBitboard() ^ king_destination.toBitboard();
             self.mailbox[rook_from_square.toInt()] = null;
             self.mailbox[from.toInt()] = null;
             self.mailbox[rook_destination.toInt()] = .rook;
@@ -537,12 +537,21 @@ pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth: usize) u
         inline else => |turn| impl(self, turn, 0, move_buf, depth),
     };
 }
-pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth: usize) u64 {
+pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth: usize, comptime debug: bool) u64 {
     const impl = struct {
         fn impl(board: *Board, comptime turn: Side, cur_depth: u8, moves: []Move, d: usize) u64 {
             if (d == 0) return 1;
-            if (d == 1) return movegen.getMoves(turn, board.*, moves);
             const num_moves = movegen.getMoves(turn, board.*, moves);
+            if (d == 1) {
+                if (cur_depth == 0) {
+                    for (moves[0..num_moves]) |move| {
+                        if (debug) {
+                            std.debug.print("{}: 1\n", .{move});
+                        }
+                    }
+                }
+                return num_moves;
+            }
             var res: u64 = 0;
             for (moves[0..num_moves]) |move| {
                 moves_dbg[num_dbg_moves] = move;
@@ -550,8 +559,9 @@ pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth: usize) u64 {
                 var new_board = board.playMoveCopy(turn, move);
                 const count = impl(&new_board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
                 if (cur_depth == 0) {
-                    std.debug.print("{}: {}\n", .{ move, count });
-                    // std.debug.print("{}\n", .{ new_board });
+                    if (debug) {
+                        std.debug.print("{}: {}\n", .{ move, count });
+                    } // std.debug.print("{}\n", .{new_board});
                 }
                 res += count;
                 num_dbg_moves -= 1;

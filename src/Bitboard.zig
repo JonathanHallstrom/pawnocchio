@@ -155,7 +155,7 @@ pub const rook_ray_between_inclusive: [64][64]u64 = blk: {
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
         for (rook_d_ranks, rook_d_files) |d_rank, d_file| {
-            const reachable = ray(from.toBitboard(), d_rank, d_file);
+            const reachable = ray(from.toBitboard(), d_rank, d_file) | from.toBitboard();
             var iter = iterator(reachable);
             while (iter.next()) |to| {
                 res[from.toInt()][to.toInt()] = (reachable & ~ray(to.toBitboard(), d_rank, d_file)) | from.toBitboard();
@@ -173,7 +173,7 @@ pub const bishop_ray_between_inclusive: [64][64]u64 = blk: {
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
         for (bishop_d_ranks, bishop_d_files) |d_rank, d_file| {
-            const reachable = ray(from.toBitboard(), d_rank, d_file);
+            const reachable = ray(from.toBitboard(), d_rank, d_file) | from.toBitboard();
             var iter = iterator(reachable);
             while (iter.next()) |to| {
                 res[from.toInt()][to.toInt()] = (reachable & ~ray(to.toBitboard(), d_rank, d_file)) | from.toBitboard();

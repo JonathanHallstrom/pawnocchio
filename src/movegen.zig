@@ -19,7 +19,7 @@ fn getMovesImpl(comptime turn: Side, comptime captures_only: bool, board: Board,
     res += getPawnMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
     res += getKnightMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
     res += getSlidingMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-    res += getKingMoves(turn, captures_only, board, move_buf[res..]);
+    res += getKingMoves(turn, captures_only, board, move_buf[res..], masks.rook_pins);
     return res;
 }
 
