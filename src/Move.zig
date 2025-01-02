@@ -51,10 +51,8 @@ const Self = @This();
 
 pub const null_move = std.mem.zeroes(Self);
 
-pub fn isSameAsStr(self: Move, str: []const u8) bool {
-    var print_buf: [32]u8 = undefined;
-    const move_str = std.fmt.bufPrint(&print_buf, "{}", .{self}) catch unreachable;
-    return std.ascii.eqlIgnoreCase(move_str, str);
+pub fn isSameAsStr(self: Move, str: []const u8, frc: bool) bool {
+    return std.ascii.eqlIgnoreCase(self.toString(frc).slice(), str);
 }
 
 pub fn initWithFlag(from: Square, to: Square, flag: MoveFlag) Self {
@@ -158,10 +156,33 @@ pub fn format(self: Move, comptime actual_fmt: []const u8, options: std.fmt.Form
     } else if (self.isCastlingMove()) {
         var to = self.getTo();
         to = Square.fromRankFile(to.getRank(), if (self.getFlag() == .castle_kingside) File.g else File.c);
-        return try writer.print("{s}{s}", .{ @tagName(self.getFrom()), @tagName(self.getTo()) });
+        return try writer.print("{s}{s}", .{ @tagName(self.getFrom()), @tagName(to) });
     } else {
         return try writer.print("{s}{s}", .{ @tagName(self.getFrom()), @tagName(self.getTo()) });
     }
+}
+
+pub fn toString(self: Move, frc: bool) std.BoundedArray(u8, 5) {
+    var res = std.BoundedArray(u8, 5).init(0) catch unreachable;
+    if (self.isPromotion()) {
+        res.appendSliceAssumeCapacity(@tagName(self.getFrom()));
+        res.appendSliceAssumeCapacity(@tagName(self.getTo()));
+        res.appendAssumeCapacity(self.getPromotedPieceType().?.toLetter());
+    } else if (self.isCastlingMove()) {
+        if (frc) {
+            res.appendSliceAssumeCapacity(@tagName(self.getFrom()));
+            res.appendSliceAssumeCapacity(@tagName(self.getTo()));
+        } else {
+            var to = self.getTo();
+            to = Square.fromRankFile(to.getRank(), if (self.getFlag() == .castle_kingside) File.g else File.c);
+            res.appendSliceAssumeCapacity(@tagName(self.getFrom()));
+            res.appendSliceAssumeCapacity(@tagName(to));
+        }
+    } else {
+        res.appendSliceAssumeCapacity(@tagName(self.getFrom()));
+        res.appendSliceAssumeCapacity(@tagName(self.getTo()));
+    }
+    return res;
 }
 
 comptime {

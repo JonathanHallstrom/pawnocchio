@@ -627,7 +627,14 @@ pub fn playMoveFromStr(self: *Self, str: []const u8) !MoveInverse {
     const num_moves = movegen.getMovesWithoutTurn(self.*, &buf);
 
     for (buf[0..num_moves]) |move| {
-        if (move.isSameAsStr(str)) {
+        if (move.isSameAsStr(str, false)) {
+            return switch (self.turn) {
+                inline else => |turn| self.playMove(turn, move),
+            };
+        }
+    }
+    for (buf[0..num_moves]) |move| {
+        if (move.isSameAsStr(str, true)) {
             return switch (self.turn) {
                 inline else => |turn| self.playMove(turn, move),
             };
