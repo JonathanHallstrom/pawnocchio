@@ -5,6 +5,8 @@ const engine = @import("engine.zig");
 const movegen = @import("movegen.zig");
 const Side = @import("side.zig").Side;
 const eval = @import("eval.zig");
+const move_ordering = @import("move_ordering.zig");
+
 const testing = std.testing;
 const assert = std.debug.assert;
 
@@ -39,6 +41,7 @@ fn search(comptime turn: Side, board: *Board, cur_depth: u8, depth_remaining: u8
 
     if (depth_remaining == 0) return .{ evaluate(board.*), move_buf[0] };
 
+    move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     for (move_buf[0..move_count]) |move| {
