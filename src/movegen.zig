@@ -10,9 +10,13 @@ const sliding_moves = @import("sliding_moves.zig");
 const king_moves = @import("king_moves.zig");
 
 pub const getKnightMoves = knight_moves.getKnightMoves;
+pub const countKnightMoves = knight_moves.countKnightMoves;
 pub const getPawnMoves = pawn_moves.getPawnMoves;
+pub const countPawnMoves = pawn_moves.countPawnMoves;
 pub const getSlidingMoves = sliding_moves.getSlidingMoves;
+pub const countSlidingMoves = sliding_moves.countSlidingMoves;
 pub const getKingMoves = king_moves.getKingMoves;
+pub const countKingMoves = king_moves.countKingMoves;
 
 fn getMovesImpl(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move) usize {
     const masks = mask_generation.getMasks(turn, board);
@@ -24,8 +28,22 @@ fn getMovesImpl(comptime turn: Side, comptime captures_only: bool, board: Board,
     return res;
 }
 
+fn countMovesImpl(comptime turn: Side, comptime captures_only: bool, board: Board) usize {
+    const masks = mask_generation.getMasks(turn, board);
+    var res: usize = 0;
+    res += countPawnMoves(turn, captures_only, board, masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += countKnightMoves(turn, captures_only, board, masks.checks, masks.bishop_pins | masks.rook_pins);
+    res += countSlidingMoves(turn, captures_only, board, masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += countKingMoves(turn, captures_only, board, masks.rook_pins);
+    return res;
+}
+
 pub fn getMoves(comptime turn: Side, board: Board, move_buf: []Move) usize {
     return getMovesImpl(turn, false, board, move_buf);
+}
+
+pub fn countMoves(comptime turn: Side, board: Board) usize {
+    return countMovesImpl(turn, false, board);
 }
 
 pub fn getMovesWithInfo(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move) struct { usize, mask_generation.Masks } {

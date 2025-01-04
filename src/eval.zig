@@ -197,74 +197,95 @@ const packed_table = blk: {
     break :blk res;
 };
 
-pub const Packed = enum(u32) {
+pub const Packed = enum(i32) {
     _,
 
-    pub fn init(int: u32) Packed {
+    pub fn init(int: i32) Packed {
         return @enumFromInt(int);
     }
 
-    pub fn toInt(self: Packed) u32 {
+    pub fn toInt(self: Packed) i32 {
         return @intFromEnum(self);
     }
 
     pub fn from(mg: i16, eg: i16) Packed {
-        return fromU(@bitCast(mg), @bitCast(eg));
-    }
-
-    fn fromU(mg: u16, eg: u16) Packed {
-        return init(mg * @as(u32, 1 << 16) | eg);
+        return @enumFromInt((@as(i32, eg) << 16) + mg);
     }
 
     pub fn midgame(self: Packed) i16 {
-        return @bitCast(self.midgameU());
+        return @truncate(self.toInt());
     }
 
     pub fn endgame(self: Packed) i16 {
-        return @bitCast(self.endgameU());
-    }
+        // this gives identical assembly but doesnt work at compile time, not quite sure why
+        // return @intCast((self + 0x8000) >> 16);
 
-    fn midgameU(self: Packed) u16 {
-        return @intCast(self.toInt() >> 16);
-    }
-
-    fn endgameU(self: Packed) u16 {
-        return @intCast(self.toInt() % (1 << 16));
+        var u: u32 = @bitCast(self.toInt() + 0x8000);
+        u >>= 16;
+        const low: u16 = @intCast(u);
+        const res: i16 = @bitCast(low);
+        if (!@inComptime()) {
+            assert(res == @as(i16, @intCast((self + 0x8000) >> 16)));
+        }
+        return res;
     }
 
     pub fn add(self: Packed, other: Packed) Packed {
-        return from(self.midgame() + other.midgame(), self.endgame() + other.endgame());
+        assert(init(self.toInt() +% other.toInt()) == from(self.midgame() + other.midgame(), self.endgame() + other.endgame()));
+        return init(self.toInt() +% other.toInt());
+    }
+
+    pub fn sub(self: Packed, other: Packed) Packed {
+        return self.add(other.negate());
+    }
+
+    pub fn addScalar(self: Packed, scalar: i16) Packed {
+        return self.add(from(scalar, scalar));
+    }
+
+    pub fn multiplyScalar(self: Packed, scalar: i16) Packed {
+        assert(init(self.toInt() *% scalar) == from(self.midgame() * scalar, self.endgame() * scalar));
+        return init(self.toInt() *% scalar);
     }
 
     pub fn negate(self: Packed) Packed {
-        return from(-self.midgame(), -self.endgame());
+        assert(init(-self.toInt()) == from(-self.midgame(), -self.endgame()));
+        return init(-self.toInt());
     }
 
     comptime {
         @setEvalBranchQuota(1 << 30);
-        for (0..64) |i| {
-            for (0..64) |j| {
-                var mg: i16 = @intCast(i);
-                mg -= 32;
-                var eg: i16 = @intCast(j);
-                eg -= 32;
+        for (0..32) |i| {
+            for (0..32) |j| {
+                var mg: i16 = i;
+                mg -= 16;
+                var eg: i16 = j;
+                eg -= 16;
+                if (from(mg, eg).midgame() != mg) {
+                    @compileLog(mg, eg);
+                    @compileError("");
+                }
+                if (from(mg, eg).endgame() != eg) {
+                    @compileLog(mg, eg);
+                    @compileError("");
+                }
                 if (from(mg, eg).negate() != from(-mg, -eg)) {
                     @compileError("");
                 }
             }
         }
-        for (0..64) |i| {
-            for (0..64) |j| {
-                var mg1: i16 = @intCast(i);
-                mg1 -= 32;
-                var eg1: i16 = @intCast(j);
-                eg1 -= 32;
-                for (0..64) |k| {
-                    for (0..64) |l| {
-                        var mg2: i16 = @intCast(k);
-                        mg2 -= 32;
-                        var eg2: i16 = @intCast(l);
-                        eg2 -= 32;
+        for (0..16) |i| {
+            for (0..16) |j| {
+                var mg1: i16 = i;
+                mg1 -= 8;
+                var eg1: i16 = j;
+                eg1 -= 8;
+                for (0..4) |k| {
+                    for (0..4) |l| {
+                        var mg2: i16 = k;
+                        mg2 -= 2;
+                        var eg2: i16 = l;
+                        eg2 -= 2;
 
                         if (from(mg1, eg1).add(from(mg2, eg2)) != from(mg1 + mg2, eg1 + eg2)) {
                             @compileError("");
@@ -273,6 +294,8 @@ pub const Packed = enum(u32) {
                 }
             }
         }
+
+        // @compileLog(Packed.from(-1, -2).toInt());
     }
 };
 
@@ -294,10 +317,17 @@ pub fn isMateScore(score: i16) bool {
     return @abs(score) >= checkmate_score - 255;
 }
 
+pub fn computePhase(board: Board) u8 {
+    var res: u8 = 0;
+    inline for (PieceType.all) |pt| {
+        res += gamephaseInc[@intFromEnum(pt)] * @popCount(board.white.getBoard(pt) | board.black.getBoard(pt));
+    }
+    return res;
+}
+
 pub fn evaluate(board: Board) i16 {
-    _ = &Packed;
     var res: i16 = 0;
-    
+
     for (PieceType.all) |pt| {
         const p: usize = @intFromEnum(pt);
         res += piece_values[p] * @popCount(board.white.raw[p]);

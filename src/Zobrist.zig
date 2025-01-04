@@ -12,7 +12,8 @@ const side_diff_entries: usize = 1;
 const data = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [side_entries * 2 + castling_entries + en_passant_entries + side_diff_entries + @sizeOf(u64) - 1]u8 = undefined;
-    const seed: [std.Random.DefaultCsprng.secret_seed_length]u8 = .{
+
+    var prng = std.Random.DefaultCsprng.init(.{
         83,  8,   124, 62,
         209, 228, 102, 90,
         139, 94,  247, 234,
@@ -21,8 +22,7 @@ const data = blk: {
         187, 168, 131, 116,
         40,  160, 121, 239,
         88,  54,  185, 83,
-    };
-    var prng = std.Random.DefaultCsprng.init(seed);
+    });
     prng.random().bytes(&res);
     break :blk res;
 };

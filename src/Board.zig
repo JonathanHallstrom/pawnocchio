@@ -674,17 +674,18 @@ pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth: usize, comptime
     const impl = struct {
         fn impl(board: *Board, comptime turn: Side, cur_depth: u8, moves: []Move, d: usize) u64 {
             if (d == 0) return 1;
-            const num_moves = movegen.getMoves(turn, board.*, moves);
             if (d == 1) {
                 if (cur_depth == 0) {
+                    const num_moves = movegen.getMoves(turn, board.*, moves);
                     for (moves[0..num_moves]) |move| {
                         if (debug) {
                             std.debug.print("{}: 1\n", .{move});
                         }
                     }
                 }
-                return num_moves;
+                return movegen.countMoves(turn, board.*);
             }
+            const num_moves = movegen.getMoves(turn, board.*, moves);
             var res: u64 = 0;
             for (moves[0..num_moves]) |move| {
                 if (@import("builtin").is_test) {

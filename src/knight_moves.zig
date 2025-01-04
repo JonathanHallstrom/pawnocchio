@@ -18,7 +18,7 @@ pub const knight_moves_arr: [64]u64 = blk: {
     break :blk res;
 };
 
-pub fn getKnightMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, check_mask: u64, pin_mask: u64) usize {
+fn getKnightMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime count_only: bool, board: Board, move_buf: []Move, check_mask: u64, pin_mask: u64) usize {
     const us = board.getSide(turn);
     const them = board.getSide(turn.flipped());
     const knights = us.getBoard(.knight) & ~pin_mask;
@@ -30,16 +30,27 @@ pub fn getKnightMoves(comptime turn: Side, comptime captures_only: bool, board: 
     while (iter.next()) |from| {
         const moves = knight_moves_arr[from.toInt()];
         const legal = moves & allowed;
-        var to_iter = Bitboard.iterator(legal);
 
-        // maybe refactor this to only update the count conditionally?
-        while (to_iter.next()) |to| {
-            move_buf[move_count] = Move.initWithFlag(from, to, if (captures_only or Bitboard.contains(them.all, to)) .capture else .quiet);
-            move_count += 1;
+        if (count_only) {
+            move_count += @popCount(legal);
+        } else {
+            var to_iter = Bitboard.iterator(legal);
+            while (to_iter.next()) |to| {
+                move_buf[move_count] = Move.initWithFlag(from, to, if (captures_only or Bitboard.contains(them.all, to)) .capture else .quiet);
+                move_count += 1;
+            }
         }
     }
 
     return move_count;
+}
+
+pub fn getKnightMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, check_mask: u64, pin_mask: u64) usize {
+    return getKnightMovesImpl(turn, captures_only, false, board, move_buf, check_mask, pin_mask);
+}
+
+pub fn countKnightMoves(comptime turn: Side, comptime captures_only: bool, board: Board, check_mask: u64, pin_mask: u64) usize {
+    return getKnightMovesImpl(turn, captures_only, true, board, &.{}, check_mask, pin_mask);
 }
 
 test "knight moves" {

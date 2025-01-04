@@ -70,11 +70,11 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anyty
     }
     tp.waitAndWork(&wg);
 
-    const wall_time = timer.lap();
+    const wall_time = timer.read();
 
     try result_writer.print("total nodes: {}, wall time: {}, cpu time {}\n", .{ total_positions, std.fmt.fmtDuration(wall_time), std.fmt.fmtDuration(total_time) });
-    try result_writer.print("overall nps (cpu time): {}\n", .{std.time.ns_per_s * total_positions / (total_time | 1)});
-    try result_writer.print("overall nps (wall time): {}\n", .{std.time.ns_per_s * total_positions / (wall_time | 1)});
+    try result_writer.print("overall nps: {} (cpu time)\n", .{@as(u128, std.time.ns_per_s) * total_positions / (total_time | 1)});
+    try result_writer.print("overall nps: {} (wall time)\n", .{@as(u128, std.time.ns_per_s) * total_positions / (wall_time | 1)});
 }
 
 test "perft tests" {

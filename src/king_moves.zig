@@ -23,7 +23,7 @@ const king_moves_arr = blk: {
     break :blk res;
 };
 
-pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, pinned_by_rook_mask: u64) usize {
+fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime count_only: bool, board: Board, move_buf: []Move, pinned_by_rook_mask: u64) usize {
     const us = board.getSide(turn);
     const them = board.getSide(turn.flipped());
     const king = us.getBoard(.king);
@@ -65,10 +65,15 @@ pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
     }
 
     { // normal king moves
-        var iter = Bitboard.iterator(king_moves_arr[king_square.toInt()] & allowed & ~attacked);
-        while (iter.next()) |to| {
-            move_buf[move_count] = Move.initWithFlag(king_square, to, if (captures_only or Bitboard.contains(them.all, to)) .capture else .quiet);
-            move_count += 1;
+        const legal = king_moves_arr[king_square.toInt()] & allowed & ~attacked;
+        if (count_only) {
+            move_count += @popCount(legal);
+        } else {
+            var iter = Bitboard.iterator(legal);
+            while (iter.next()) |to| {
+                move_buf[move_count] = Move.initWithFlag(king_square, to, if (captures_only or Bitboard.contains(them.all, to)) .capture else .quiet);
+                move_count += 1;
+            }
         }
     }
 
@@ -86,7 +91,8 @@ pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
             if (need_to_be_unattacked & (allowed | king | rook_square.toBitboard()) & ~attacked == need_to_be_unattacked) {
                 if (need_to_be_empty & occ == 0) {
                     if (!Bitboard.contains(pinned_by_rook_mask, rook_square)) {
-                        move_buf[move_count] = Move.initCastlingKingside(king_square, rook_square);
+                        if (!count_only)
+                            move_buf[move_count] = Move.initCastlingKingside(king_square, rook_square);
                         move_count += 1;
                     }
                 }
@@ -99,11 +105,11 @@ pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
             const need_to_be_empty =
                 ((Bitboard.rook_ray_between_inclusive[rook_square.toInt()][destination.move(0, 1).toInt()]) |
                 (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
-            // std.debug.print("{} {} {} {}\n", .{ need_to_be_unattacked, need_to_be_empty, occ, rook_square.toBitboard() });
             if (need_to_be_unattacked & (allowed | king | rook_square.toBitboard()) & ~attacked == need_to_be_unattacked) {
                 if (need_to_be_empty & occ == 0) {
                     if (!Bitboard.contains(pinned_by_rook_mask, rook_square)) {
-                        move_buf[move_count] = Move.initCastlingQueenside(king_square, rook_square);
+                        if (!count_only)
+                            move_buf[move_count] = Move.initCastlingQueenside(king_square, rook_square);
                         move_count += 1;
                     }
                 }
@@ -112,6 +118,14 @@ pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
     }
 
     return move_count;
+}
+
+pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, pinned_by_rook_mask: u64) usize {
+    return getKingMovesImpl(turn, captures_only, false, board, move_buf, pinned_by_rook_mask);
+}
+
+pub fn countKingMoves(comptime turn: Side, comptime captures_only: bool, board: Board, pinned_by_rook_mask: u64) usize {
+    return getKingMovesImpl(turn, captures_only, true, board, &.{}, pinned_by_rook_mask);
 }
 
 test "king moves" {
