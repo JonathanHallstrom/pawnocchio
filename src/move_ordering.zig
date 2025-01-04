@@ -10,10 +10,11 @@ fn mvvLvaValue(board: *const Board, move: Move) u8 {
     if (!move.isCapture()) return 0;
     const captured_type: PieceType = if (move.isEnPassant()) .pawn else board.mailbox[move.getTo().toInt()].?;
     const moved_type = board.mailbox[move.getFrom().toInt()].?;
-    return @intCast(@as(i16, @intFromEnum(captured_type)) * 8 - @intFromEnum(moved_type));
+    return @intCast(@as(i16, 1 + @intFromEnum(captured_type)) * 8 - @intFromEnum(moved_type));
 }
 
 fn mvvLvaCompare(board: *const Board, lhs: Move, rhs: Move) bool {
+    if (lhs.isCapture() != rhs.isCapture()) return @intFromBool(lhs.isCapture()) > @intFromBool(rhs.isCapture());
     return mvvLvaValue(board, lhs) > mvvLvaValue(board, rhs);
 }
 
