@@ -328,8 +328,9 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
 
     self.updateEnPassantZobrist();
     self.en_passant_target = null;
-
+    self.halfmove_clock += 1;
     if (move.isCapture()) {
+        self.halfmove_clock = 0;
         if (move.isEnPassant()) {
             const pawn_d_rank: i8 = if (turn == .white) 1 else -1;
             const ep_pawn_square = to.move(-pawn_d_rank, 0);
@@ -489,6 +490,9 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
         if (from_type == .king) {
             self.castling_rights &= ~if (turn == .white) white_kingside_castle | white_queenside_castle else black_kingside_castle | black_queenside_castle;
         }
+
+        if (from_type == .pawn)
+            self.halfmove_clock = 0;
     }
     self.turn = turn.flipped();
 
@@ -748,6 +752,23 @@ test "assume a or h if ambiguous" {
     try std.testing.expectEqual(.h, (try Board.parseFen("4k3/8/8/8/8/8/8/4K1RR w K - 0 1")).white_kingside_rook_file);
     try std.testing.expectEqual(.a, (try Board.parseFen("rr2k3/8/8/8/8/8/8/4K3 w q - 0 1")).black_queenside_rook_file);
     try std.testing.expectEqual(.h, (try Board.parseFen("4k1rr/8/8/8/8/8/8/4K3 w k - 0 1")).black_kingside_rook_file);
+}
+
+test "quiet move increments halfmove" {
+    var board = Board.init();
+    const before = board.halfmove_clock;
+    _ = try board.playMoveFromStr("b1c3");
+    try std.testing.expectEqual(before + 1, board.halfmove_clock);
+}
+
+test "pawn move resets halfmove" {
+    var board = Board.init();
+    const before = board.halfmove_clock;
+    _ = try board.playMoveFromStr("b1c3");
+    try std.testing.expectEqual(before + 1, board.halfmove_clock);
+    _ = try board.playMoveFromStr("e7e5");
+    const after = board.halfmove_clock;
+    try std.testing.expectEqual(0, after);
 }
 
 test playMoveCopy {

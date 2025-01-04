@@ -1,6 +1,9 @@
 const std = @import("std");
 const testing = std.testing;
 const assert = std.debug.assert;
+const Bitboard = @import("Bitboard.zig");
+const Side = @import("side.zig").Side;
+const Square = @import("square.zig").Square;
 
 const log_writer = &@import("main.zig").log_writer;
 const write = @import("main.zig").write;
@@ -162,7 +165,9 @@ const eg_pesto_table: [6][64]i16 = .{
     eg_king_table,
 };
 
-const gamephaseInc: [6]i16 = .{ 0, 1, 1, 2, 4, 0 };
+const gamephaseInc: [6]u8 = .{ 0, 1, 1, 2, 8, 0 };
+const total_phase = 16 * gamephaseInc[0] + 4 * gamephaseInc[1] + 4 * gamephaseInc[2] + 4 * gamephaseInc[3] + 2 * gamephaseInc[4] + 2 * gamephaseInc[5];
+
 const mg_table = blk: {
     var res: [12][64]i16 = undefined;
     for (PieceType.all) |pt| {
@@ -225,7 +230,7 @@ pub const Packed = enum(i32) {
         const low: u16 = @intCast(u);
         const res: i16 = @bitCast(low);
         if (!@inComptime()) {
-            assert(res == @as(i16, @intCast((self + 0x8000) >> 16)));
+            assert(res == @as(i16, @intCast((self.toInt() + 0x8000) >> 16)));
         }
         return res;
     }
@@ -299,6 +304,10 @@ pub const Packed = enum(i32) {
     }
 };
 
+inline fn readPieceSquareTable(side: Side, pt: PieceType, square: Square) Packed {
+    return packed_table[@as(usize, @intFromEnum(pt)) * 2 + @intFromBool(side == .black)][square.toInt()];
+}
+
 pub const checkmate_score: i16 = 16000;
 const piece_values: [PieceType.all.len]i16 = .{
     100,
@@ -317,7 +326,7 @@ pub fn isMateScore(score: i16) bool {
     return @abs(score) >= checkmate_score - 255;
 }
 
-pub fn computePhase(board: Board) u8 {
+pub fn computePhase(board: *const Board) u8 {
     var res: u8 = 0;
     inline for (PieceType.all) |pt| {
         res += gamephaseInc[@intFromEnum(pt)] * @popCount(board.white.getBoard(pt) | board.black.getBoard(pt));
@@ -325,7 +334,25 @@ pub fn computePhase(board: Board) u8 {
     return res;
 }
 
-pub fn evaluate(board: Board) i16 {
+fn evaluatePesto(board: *const Board) i16 {
+    var eval = Packed.from(0, 0);
+
+    for (PieceType.all) |pt| {
+        var iter = Bitboard.iterator(board.white.getBoard(pt));
+        while (iter.next()) |s| eval = eval.add(readPieceSquareTable(.white, pt, s));
+        iter = Bitboard.iterator(board.black.getBoard(pt));
+        while (iter.next()) |s| eval = eval.sub(readPieceSquareTable(.black, pt, s));
+    }
+
+    const mg_phase: i32 = @min(computePhase(board), total_phase);
+    const eg_phase = 24 - mg_phase;
+
+    const res: i16 = @intCast(@divTrunc(mg_phase * eval.midgame() + eg_phase * eval.endgame(), total_phase));
+
+    return if (board.turn == .white) res else -res;
+}
+
+fn evaluateMaterialOnly(board: *const Board) i16 {
     var res: i16 = 0;
 
     for (PieceType.all) |pt| {
@@ -335,3 +362,15 @@ pub fn evaluate(board: Board) i16 {
     }
     return if (board.turn == .white) res else -res;
 }
+
+fn shitEval(_: *const Board) i16 {
+    return 0;
+}
+
+// comptime {
+//     assert(readPieceSquareTable(.white, .pawn, .a7).midgame() > readPieceSquareTable(.white, .pawn, .a2).midgame());
+//     assert(readPieceSquareTable(.white, .pawn, .a7).endgame() > readPieceSquareTable(.white, .pawn, .a2).endgame());
+// }
+
+// pub const evaluate = evaluateMaterialOnly;
+pub const evaluate = evaluatePesto;

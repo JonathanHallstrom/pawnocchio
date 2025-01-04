@@ -28,7 +28,7 @@ fn quiesce(comptime turn: Side, board: *Board, cur_depth: u8, alpha_inp: i16, be
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
-    const static_eval = evaluate(board.*);
+    const static_eval = evaluate(board);
     if (move_count == 0) {
         return static_eval;
     }
@@ -76,15 +76,18 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, cur_depth: u8
     var alpha = alpha_inp;
     nodes += 1;
     if (cur_depth > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) return error.EarlyShutdown;
+
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
     const is_in_check = masks.checks != 0;
     if (move_count == 0) {
         return result(if (is_in_check) eval.mateIn(cur_depth) else 0, Move.null_move);
     }
+    if (board.halfmove_clock >= 100) return result(0, move_buf[0]);
 
     {
         var repetitions: u8 = 0;
-        for (hash_history.items[hash_history.items.len - @min(hash_history.items.len, board.halfmove_clock) .. hash_history.items.len]) |zobrist| {
+        const start = hash_history.items.len - @min(hash_history.items.len, board.halfmove_clock);
+        for (hash_history.items[start..hash_history.items.len]) |zobrist| {
             if (board.zobrist == zobrist) {
                 repetitions += 1;
             }
@@ -93,7 +96,7 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, cur_depth: u8
     }
 
     if (depth_remaining == 0) {
-        return result(evaluate(board.*), move_buf[0]);
+        return result(evaluate(board), move_buf[0]);
         // const score = quiesce(turn, board, cur_depth, alpha_inp, beta, move_buf);
         // if (shutdown)
         //     return error.EarlyShutdown;
@@ -147,6 +150,7 @@ pub fn reset() void {
 
 pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) !engine.SearchResult {
     reset();
+    assert(hash_history.items[hash_history.items.len - 1] == board.zobrist);
     timer = try std.time.Timer.start();
     hard_time = search_params.hardTime();
     // const soft_time =search_params.
