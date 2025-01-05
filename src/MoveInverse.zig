@@ -1,4 +1,4 @@
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 const Square = @import("square.zig").Square;
 const Piece = @import("Piece.zig");
 

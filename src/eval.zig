@@ -9,7 +9,7 @@ const log_writer = &@import("main.zig").log_writer;
 const write = @import("main.zig").write;
 
 const PieceType = @import("piece_type.zig").PieceType;
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 const Board = @import("Board.zig");
 
 const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 10_000 };

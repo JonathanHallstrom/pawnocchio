@@ -2,7 +2,7 @@ const std = @import("std");
 const engine = @import("engine.zig");
 
 const Board = @import("Board.zig");
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 
 pub var log_writer: std.io.AnyWriter = undefined;
 
@@ -59,6 +59,7 @@ pub fn main() !void {
     const move_buf = try allocator.alloc(Move, 1 << 20);
     defer allocator.free(move_buf);
 
+    try engine.setTTSize(256);
     if (args.next()) |arg| {
         if (std.ascii.endsWithIgnoreCase(arg, "bench")) {
             const fens = [_][]const u8{
@@ -177,8 +178,7 @@ pub fn main() !void {
                     try log_writer.print("invalid hash size: '{s}'\n", .{hash_size_to_parts});
                     continue;
                 };
-                _ = size; // autofix
-                // try engine.setTTSize(size);
+                try engine.setTTSize(size);
             }
         }
 

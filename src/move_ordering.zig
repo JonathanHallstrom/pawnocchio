@@ -1,5 +1,5 @@
 const std = @import("std");
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 const Board = @import("Board.zig");
 const engine = @import("engine.zig");
 const movegen = @import("movegen.zig");
@@ -18,6 +18,26 @@ fn mvvLvaCompare(board: *const Board, lhs: Move, rhs: Move) bool {
     return mvvLvaValue(board, lhs) > mvvLvaValue(board, rhs);
 }
 
+const MoveOrderContext = struct {
+    board: *const Board,
+    tt_move: Move,
+};
+
+fn compare(ctx: MoveOrderContext, lhs: Move, rhs: Move) bool {
+    if ((lhs == ctx.tt_move) != (rhs == ctx.tt_move)) {
+        return @intFromBool(lhs == ctx.tt_move) > @intFromBool(rhs == ctx.tt_move);
+    }
+    if (lhs.isCapture() != rhs.isCapture()) return @intFromBool(lhs.isCapture()) > @intFromBool(rhs.isCapture());
+    return mvvLvaValue(ctx.board, lhs) > mvvLvaValue(ctx.board, rhs);
+}
+
 pub fn mvvLva(board: *const Board, moves: []Move) void {
     std.sort.pdq(Move, moves, board, mvvLvaCompare);
+}
+
+pub fn order(board: *const Board, tt_move: Move, moves: []Move) void {
+    std.sort.pdq(Move, moves, MoveOrderContext{
+        .board = board,
+        .tt_move = tt_move,
+    }, compare);
 }

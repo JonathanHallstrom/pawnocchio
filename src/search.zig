@@ -1,5 +1,5 @@
 const std = @import("std");
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 const Board = @import("Board.zig");
 const engine = @import("engine.zig");
 const movegen = @import("movegen.zig");
@@ -20,7 +20,6 @@ const checkmate_score = eval.checkmate_score;
 const shouldStopSearching = engine.shouldStopSearching;
 
 const max_search_depth = 255;
-
 
 fn quiesce(
     comptime turn: Side,
@@ -98,6 +97,11 @@ fn search(
     nodes += 1;
     if (cur_depth > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) return error.EarlyShutdown;
 
+    const tt_entry = tt[getTTIndex(board.zobrist)];
+    if (tt_entry.zobrist == board.zobrist) {
+        if (tt_entry.depth >= depth_remaining) {}
+    }
+
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
     const is_in_check = masks.checks != 0;
     if (move_count == 0) {
@@ -131,7 +135,7 @@ fn search(
         return result(score, move_buf[0]);
     }
 
-    move_ordering.mvvLva(board, move_buf[0..move_count]);
+    move_ordering.order(board, tt_entry.move, move_buf[0..move_count]);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     for (move_buf[0..move_count]) |move| {
@@ -169,6 +173,17 @@ fn search(
             alpha = score;
         }
     }
+    var tp: ScoreType = .exact;
+    if (best_score < alpha_inp) tp = .upper;
+    if (best_score > beta) tp = .lower;
+
+    tt[getTTIndex(board.zobrist)] = TTEntry{
+        .zobrist = board.zobrist,
+        .move = best_move,
+        .depth = depth_remaining,
+        .tp = tp,
+    };
+
     return result(best_score, best_move);
 }
 
@@ -238,6 +253,30 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     };
 }
 
+const ScoreType = enum {
+    lower,
+    upper,
+    exact,
+};
+
+pub const TTEntry = struct {
+    zobrist: u64,
+    move: Move,
+    depth: u8,
+    tp: ScoreType,
+};
+
+pub fn setTTSize(mb: usize) !void {
+    if (@as(u128, mb) << 20 > std.math.maxInt(usize)) return error.TableTooBig;
+    tt = try std.heap.page_allocator.realloc(tt, (mb << 20) / @sizeOf(TTEntry));
+    assert(tt.len % (std.simd.suggestVectorLength(u8) orelse 64) == 0);
+    @memset(std.mem.sliceAsBytes(tt), 0);
+}
+fn getTTIndex(hash: u64) usize {
+    return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt.len) >> 32;
+}
+
+var tt: []align(16) TTEntry align(64) = &.{};
 var nodes: u64 = 0;
 var qnodes: u64 = 0;
 var timer: std.time.Timer = undefined;

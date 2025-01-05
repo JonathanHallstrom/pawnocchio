@@ -1,6 +1,6 @@
 const std = @import("std");
 const Board = @import("Board.zig");
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 
 threadlocal var move_buf: [32768]Move = undefined;
 fn handleLine(line: []const u8, total_time: *u64, total_positions: *u64) void {

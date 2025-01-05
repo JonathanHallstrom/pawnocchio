@@ -3,12 +3,14 @@ const testing = std.testing;
 const assert = std.debug.assert;
 
 const Board = @import("Board.zig");
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 
 const log_writer = &@import("main.zig").log_writer;
 const write = @import("main.zig").write;
 
 const search = @import("search.zig");
+
+pub const setTTSize = search.setTTSize;
 
 pub const SearchParameters = union(enum) {
     standard: struct { soft: u64, hard: u64 },
@@ -96,7 +98,7 @@ fn bestMove(board: Board, depth: u8, allocator: std.mem.Allocator) !Move {
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, bignum);
     defer hash_history.deinit();
     hash_history.appendAssumeCapacity(board.zobrist);
-
+    try search.setTTSize(256);
     return searchSync(board, .{ .fixed_depth = depth }, move_buf, &hash_history, true).move;
 }
 

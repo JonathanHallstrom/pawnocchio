@@ -1,5 +1,5 @@
 const std = @import("std");
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 const Side = @import("side.zig").Side;
 const Board = @import("Board.zig");
 const mask_generation = @import("mask_generation.zig");

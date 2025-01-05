@@ -1,5 +1,5 @@
 const std = @import("std");
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 const Board = @import("Board.zig");
 const Bitboard = @import("Bitboard.zig");
 const Square = @import("square.zig").Square;

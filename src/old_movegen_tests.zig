@@ -2,7 +2,7 @@ const std = @import("std");
 const zobrist = @import("zobrist.zig");
 const assert = std.debug.assert;
 
-const Move = @import("Move.zig");
+const Move = @import("Move.zig").Move;
 const Board = @import("Board.zig");
 
 const testing = std.testing;
