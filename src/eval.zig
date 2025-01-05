@@ -326,7 +326,7 @@ pub const EvalState = packed struct {
         };
     }
 
-    pub inline fn updateWith(self: EvalState, comptime turn: Side, board: *const Board, move: Move) EvalState {
+    pub fn updateWith(self: EvalState, comptime turn: Side, board: *const Board, move: Move) EvalState {
         assert(board.turn == turn);
         const from = move.getFrom();
         const to = move.getTo();
@@ -362,7 +362,6 @@ pub const EvalState = packed struct {
             }
         }
 
-        assert(self.state.add(update).negate() == init(&board.playMoveCopy(turn, move)).state);
         return .{
             .state = self.state.add(update).negate(),
             .phase = new_phase,

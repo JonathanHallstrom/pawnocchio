@@ -21,12 +21,14 @@ const shouldStopSearching = engine.shouldStopSearching;
 
 const max_search_depth = 255;
 
+
 fn quiesce(
     comptime turn: Side,
     board: *Board,
-    move_buf: []Move,
+    eval_state: EvalState,
     alpha_inp: i16,
     beta: i16,
+    move_buf: []Move,
 ) i16 {
     var alpha = alpha_inp;
     qnodes += 1;
@@ -35,7 +37,7 @@ fn quiesce(
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
-    const static_eval = EvalState.init(board).eval();
+    const static_eval = eval_state.eval();
     if (move_count == 0) {
         return static_eval;
     }
@@ -46,7 +48,7 @@ fn quiesce(
     move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = static_eval;
     for (move_buf[0..move_count]) |move| {
-        // const updated_eval_state = eval_state.updateWith(turn, board, move);
+        const updated_eval_state = eval_state.updateWith(turn, board, move);
         assert(move.isCapture());
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
@@ -54,9 +56,10 @@ fn quiesce(
         const score = -quiesce(
             turn.flipped(),
             board,
-            move_buf[move_count..],
+            updated_eval_state,
             -beta,
             -alpha,
+            move_buf[move_count..],
         );
         if (shutdown)
             break;
@@ -74,7 +77,18 @@ fn quiesce(
     return best_score;
 }
 
-fn search(comptime root: bool, comptime turn: Side, board: *Board, alpha_inp: i16, beta: i16, cur_depth: u8, depth_remaining: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) error{EarlyShutdown}!if (root) struct { i16, Move } else i16 {
+fn search(
+    comptime root: bool,
+    comptime turn: Side,
+    board: *Board,
+    eval_state: EvalState,
+    alpha_inp: i16,
+    beta: i16,
+    cur_depth: u8,
+    depth_remaining: u8,
+    move_buf: []Move,
+    hash_history: *std.ArrayList(u64),
+) error{EarlyShutdown}!if (root) struct { i16, Move } else i16 {
     const result = struct {
         inline fn impl(score: i16, move: Move) if (root) struct { i16, Move } else i16 {
             return if (root) .{ score, move } else score;
@@ -103,13 +117,13 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, alpha_inp: i1
     }
 
     if (depth_remaining == 0) {
-        // return result(evaluate(board), move_buf[0]);
         const score = quiesce(
             turn,
             board,
-            move_buf,
+            eval_state,
             alpha,
             beta,
+            move_buf,
         );
         if (shutdown) {
             return error.EarlyShutdown;
@@ -121,9 +135,8 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, alpha_inp: i1
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     for (move_buf[0..move_count]) |move| {
-        // const updated_eval_state = eval_state.updateWith(turn, board, move);
+        const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
-        // assert(updated_eval_state.state == eval.EvalState.init(board).state);
         defer board.undoMove(turn, inv);
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
@@ -132,6 +145,7 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, alpha_inp: i1
             false,
             turn.flipped(),
             board,
+            updated_eval_state,
             -beta,
             -alpha,
             cur_depth + 1,
@@ -174,12 +188,14 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     var board_copy = board;
     var score: i16 = 0;
     var move = Move.null_move;
+    const eval_state = EvalState.init(&board);
     for (0..search_params.maxDepth()) |depth| {
         score, move = switch (board.turn) {
             inline else => |turn| search(
                 true,
                 turn,
                 &board_copy,
+                eval_state,
                 -checkmate_score,
                 checkmate_score,
                 0,
