@@ -96,11 +96,12 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, cur_depth: u8
     }
 
     if (depth_remaining == 0) {
-        return result(evaluate(board), move_buf[0]);
-        // const score = quiesce(turn, board, cur_depth, alpha_inp, beta, move_buf);
-        // if (shutdown)
-        //     return error.EarlyShutdown;
-        // return result(score, move_buf[0]);
+        // return result(evaluate(board), move_buf[0]);
+        const score = quiesce(turn, board, cur_depth, alpha_inp, beta, move_buf);
+        if (shutdown) {
+            return error.EarlyShutdown;
+        }
+        return result(score, move_buf[0]);
     }
 
     move_ordering.mvvLva(board, move_buf[0..move_count]);
@@ -128,7 +129,7 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, cur_depth: u8
             best_score = score;
             best_move = move;
 
-            if (score >= checkmate_score - max_search_depth) {
+            if (score > 0 and eval.isMateScore(score)) {
                 break;
             }
         }
@@ -148,10 +149,10 @@ pub fn reset() void {
     shutdown = false;
 }
 
-pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) !engine.SearchResult {
+pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) engine.SearchResult {
     reset();
     assert(hash_history.items[hash_history.items.len - 1] == board.zobrist);
-    timer = try std.time.Timer.start();
+    timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
     // const soft_time =search_params.
     // while (timer.read() < searchParams.)
@@ -166,11 +167,15 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             write("info depth {} score cp {} nodes {} nps {} time {} pv {}\n", .{
                 depth + 1,
                 score,
-                nodes,
-                nodes * std.time.ns_per_s / timer.read(),
+                (nodes + qnodes),
+                (nodes + qnodes) * std.time.ns_per_s / timer.read(),
                 (timer.read() + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
                 move,
             });
+        }
+
+        if (score > 0 and eval.isMateScore(score)) {
+            break;
         }
 
         if (timer.read() >= search_params.softTime()) {
@@ -178,8 +183,9 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         }
     }
     engine.stoppedSearching();
-    if (!silence_output)
+    if (!silence_output) {
         write("bestmove {}\n", .{move});
+    }
     return engine.SearchResult{
         .move = move,
         .score = score,

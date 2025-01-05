@@ -367,10 +367,10 @@ fn shitEval(_: *const Board) i16 {
     return 0;
 }
 
-// comptime {
-//     assert(readPieceSquareTable(.white, .pawn, .a7).midgame() > readPieceSquareTable(.white, .pawn, .a2).midgame());
-//     assert(readPieceSquareTable(.white, .pawn, .a7).endgame() > readPieceSquareTable(.white, .pawn, .a2).endgame());
-// }
+comptime {
+    assert(readPieceSquareTable(.white, .pawn, .a7).midgame() > readPieceSquareTable(.white, .pawn, .a2).midgame());
+    assert(readPieceSquareTable(.white, .pawn, .a7).endgame() > readPieceSquareTable(.white, .pawn, .a2).endgame());
+}
 
 // pub const evaluate = evaluateMaterialOnly;
 pub const evaluate = evaluatePesto;

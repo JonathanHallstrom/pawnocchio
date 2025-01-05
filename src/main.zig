@@ -115,13 +115,13 @@ pub fn main() !void {
             };
             var num_nodes: u64 = 0;
             var time: u64 = 0;
-            const depth = 7;
+            const depth = 6;
             for (fens) |fen| {
                 const board = try Board.parseFen(fen);
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
 
-                const info = try engine.searchSync(board, .{ .fixed_depth = depth }, move_buf, &hash_history, true);
+                const info = engine.searchSync(board, .{ .fixed_depth = depth }, move_buf, &hash_history, true);
 
                 num_nodes += info.stats.nodes + info.stats.qnodes;
                 time += info.stats.ns_used;
@@ -156,6 +156,7 @@ pub fn main() !void {
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             try stdout.writeAll("id name pawnocchio 0.0.6\n");
+            try stdout.writeAll("id author Jonathan Hallström\n");
             try stdout.writeAll("option name Hash type spin default 256 min 1 max 65535\n");
             try stdout.writeAll("option name Threads type spin default 1 min 1 max 1\n");
             try stdout.writeAll("uciok\n");
@@ -326,7 +327,7 @@ pub fn main() !void {
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
             if (hard_time < 100) {
-                _ = try engine.searchSync(
+                _ = engine.searchSync(
                     board,
                     .{ .standard = .{
                         .soft = soft_time,
