@@ -304,7 +304,7 @@ pub const Packed = enum(i32) {
     }
 };
 
-pub const EvalState = struct {
+pub const EvalState = packed struct {
     state: Packed,
 
     pub fn init(board: *const Board) EvalState {
@@ -320,6 +320,42 @@ pub const EvalState = struct {
         state = if (board.turn == .white) state else state.negate();
 
         return .{ .state = state };
+    }
+
+    pub inline fn updateWith(self: EvalState, comptime turn: Side, board: *const Board, move: Move) EvalState {
+        assert(board.turn == turn);
+        const from = move.getFrom();
+        const to = move.getTo();
+        const from_type = board.mailbox[from.toInt()].?;
+        const to_type = if (move.isPromotion()) move.getPromotedPieceType().? else from_type;
+        var update = Packed.init(0);
+        if (move.isCapture()) {
+            if (move.isEnPassant()) {
+                update = update.add(readPieceSquareTable(turn.flipped(), .pawn, move.getEnPassantPawn(turn)));
+                update = update.sub(readPieceSquareTable(turn, .pawn, from));
+                update = update.add(readPieceSquareTable(turn, .pawn, to));
+            } else {
+                update = update.add(readPieceSquareTable(turn.flipped(), board.mailbox[to.toInt()].?, to));
+                update = update.sub(readPieceSquareTable(turn, from_type, from));
+                update = update.add(readPieceSquareTable(turn, to_type, to));
+            }
+        } else {
+            if (move.isCastlingMove()) {
+                const rook_from_square = move.getTo();
+                const king_destination = move.getCastlingKingDest(turn);
+                const rook_destination = move.getCastlingRookDest(turn);
+                update = update.sub(readPieceSquareTable(turn, .rook, rook_from_square));
+                update = update.add(readPieceSquareTable(turn, .rook, rook_destination));
+                update = update.sub(readPieceSquareTable(turn, .king, from));
+                update = update.add(readPieceSquareTable(turn, .king, king_destination));
+            } else {
+                update = update.sub(readPieceSquareTable(turn, from_type, from));
+                update = update.add(readPieceSquareTable(turn, to_type, to));
+            }
+        }
+
+        assert(self.state.add(update).negate() == init(&board.playMoveCopy(turn, move)).state);
+        return .{ .state = self.state.add(update).negate() };
     }
 
     pub fn eval(self: EvalState, board: *const Board) i16 {

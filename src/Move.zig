@@ -4,6 +4,7 @@ const Move = @This();
 const PieceType = @import("piece_type.zig").PieceType;
 const Square = @import("square.zig").Square;
 const File = @import("square.zig").File;
+const Side = @import("side.zig").Side;
 
 raw: u16,
 
@@ -146,6 +147,21 @@ pub fn getPromotedPieceType(self: Self) ?PieceType {
     options[@intFromEnum(MoveFlag.promote_queen_capture)] = .queen;
 
     return options[@intFromEnum(self.getFlag())];
+}
+
+pub fn getEnPassantPawn(self: Self, comptime turn: Side) Square {
+    assert(self.isEnPassant());
+    return self.getTo().move(if (turn == .white) -1 else 1, 0);
+}
+
+pub fn getCastlingKingDest(self: Self, comptime turn: Side) Square {
+    assert(self.isCastlingMove());
+    return if (self.getFlag() == .castle_kingside) (if (turn == .white) Square.g1 else Square.g8) else (if (turn == .white) Square.c1 else Square.c8);
+}
+
+pub fn getCastlingRookDest(self: Self, comptime turn: Side) Square {
+    assert(self.isCastlingMove());
+    return if (self.getFlag() == .castle_kingside) (if (turn == .white) Square.f1 else Square.f8) else (if (turn == .white) Square.d1 else Square.d8);
 }
 
 pub fn format(self: Move, comptime actual_fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {

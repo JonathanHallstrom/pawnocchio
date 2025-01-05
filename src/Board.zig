@@ -332,9 +332,7 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
     if (move.isCapture()) {
         self.halfmove_clock = 0;
         if (move.isEnPassant()) {
-            const pawn_d_rank: i8 = if (turn == .white) 1 else -1;
-            const ep_pawn_square = to.move(-pawn_d_rank, 0);
-
+            const ep_pawn_square = move.getEnPassantPawn(turn);
             const ep_pawn_bb = ep_pawn_square.toBitboard();
 
             them.all ^= ep_pawn_bb;
@@ -413,42 +411,22 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             }
         }
     } else if (move.isCastlingMove()) {
-        if (move.getFlag() == .castle_kingside) {
-            us.all ^= update_bb;
-            const rook_from_square = move.getTo();
-            const king_destination = if (turn == .white) Square.g1 else Square.g8;
-            const rook_destination = if (turn == .white) Square.f1 else Square.f8;
-            us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
-            us.getBoardPtr(.king).* ^= from.toBitboard() ^ king_destination.toBitboard();
-            us.all ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
-            us.all ^= from.toBitboard() ^ king_destination.toBitboard();
-            self.mailbox[rook_from_square.toInt()] = null;
-            self.mailbox[from.toInt()] = null;
-            self.mailbox[rook_destination.toInt()] = .rook;
-            self.mailbox[king_destination.toInt()] = .king;
-            self.updatePieceZobrist(turn, Piece{ .sq = rook_from_square, .tp = .rook });
-            self.updatePieceZobrist(turn, Piece{ .sq = rook_destination, .tp = .rook });
-            self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = .king });
-            self.updatePieceZobrist(turn, Piece{ .sq = king_destination, .tp = .king });
-        } else {
-            us.all ^= update_bb;
-            const rook_from_square = move.getTo();
-            const king_destination = if (turn == .white) Square.c1 else Square.c8;
-            const rook_destination = if (turn == .white) Square.d1 else Square.d8;
-            us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
-            us.getBoardPtr(.king).* ^= from.toBitboard() ^ king_destination.toBitboard();
-            us.all ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
-            us.all ^= from.toBitboard() ^ king_destination.toBitboard();
-            self.mailbox[rook_from_square.toInt()] = null;
-            self.mailbox[from.toInt()] = null;
-            self.mailbox[rook_destination.toInt()] = .rook;
-            self.mailbox[king_destination.toInt()] = .king;
-
-            self.updatePieceZobrist(turn, Piece{ .sq = rook_from_square, .tp = .rook });
-            self.updatePieceZobrist(turn, Piece{ .sq = rook_destination, .tp = .rook });
-            self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = .king });
-            self.updatePieceZobrist(turn, Piece{ .sq = king_destination, .tp = .king });
-        }
+        us.all ^= update_bb;
+        const rook_from_square = move.getTo();
+        const king_destination = move.getCastlingKingDest(turn);
+        const rook_destination = move.getCastlingRookDest(turn);
+        us.getBoardPtr(.rook).* ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+        us.getBoardPtr(.king).* ^= from.toBitboard() ^ king_destination.toBitboard();
+        us.all ^= rook_from_square.toBitboard() ^ rook_destination.toBitboard();
+        us.all ^= from.toBitboard() ^ king_destination.toBitboard();
+        self.mailbox[rook_from_square.toInt()] = null;
+        self.mailbox[from.toInt()] = null;
+        self.mailbox[rook_destination.toInt()] = .rook;
+        self.mailbox[king_destination.toInt()] = .king;
+        self.updatePieceZobrist(turn, Piece{ .sq = rook_from_square, .tp = .rook });
+        self.updatePieceZobrist(turn, Piece{ .sq = rook_destination, .tp = .rook });
+        self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = .king });
+        self.updatePieceZobrist(turn, Piece{ .sq = king_destination, .tp = .king });
         self.castling_rights &= ~if (turn == .white) white_kingside_castle | white_queenside_castle else black_kingside_castle | black_queenside_castle;
     } else {
         const from_type = self.mailbox[from.toInt()].?;

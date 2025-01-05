@@ -8,6 +8,7 @@ const eval = @import("eval.zig");
 const move_ordering = @import("move_ordering.zig");
 
 const testing = std.testing;
+const EvalState = eval.EvalState;
 const assert = std.debug.assert;
 
 const log_writer = &@import("main.zig").log_writer;
@@ -20,15 +21,21 @@ const shouldStopSearching = engine.shouldStopSearching;
 
 const max_search_depth = 255;
 
-fn quiesce(comptime turn: Side, board: *Board, cur_depth: u8, alpha_inp: i16, beta: i16, move_buf: []Move) i16 {
+fn quiesce(
+    comptime turn: Side,
+    board: *Board,
+    move_buf: []Move,
+    alpha_inp: i16,
+    beta: i16,
+) i16 {
     var alpha = alpha_inp;
     qnodes += 1;
-    if (cur_depth > 0 and qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
+    if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
         shutdown = true;
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
-    const static_eval = evaluate(board);
+    const static_eval = EvalState.init(board).eval(board);
     if (move_count == 0) {
         return static_eval;
     }
@@ -39,17 +46,17 @@ fn quiesce(comptime turn: Side, board: *Board, cur_depth: u8, alpha_inp: i16, be
     move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = static_eval;
     for (move_buf[0..move_count]) |move| {
-        if (!move.isCapture()) return -checkmate_score;
+        // const updated_eval_state = eval_state.updateWith(turn, board, move);
+        assert(move.isCapture());
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
 
         const score = -quiesce(
             turn.flipped(),
             board,
-            cur_depth + 1,
+            move_buf[move_count..],
             -beta,
             -alpha,
-            move_buf[move_count..],
         );
         if (shutdown)
             break;
@@ -67,7 +74,7 @@ fn quiesce(comptime turn: Side, board: *Board, cur_depth: u8, alpha_inp: i16, be
     return best_score;
 }
 
-fn search(comptime root: bool, comptime turn: Side, board: *Board, cur_depth: u8, depth_remaining: u8, alpha_inp: i16, beta: i16, move_buf: []Move, hash_history: *std.ArrayList(u64)) error{EarlyShutdown}!if (root) struct { i16, Move } else i16 {
+fn search(comptime root: bool, comptime turn: Side, board: *Board, alpha_inp: i16, beta: i16, cur_depth: u8, depth_remaining: u8, move_buf: []Move, hash_history: *std.ArrayList(u64)) error{EarlyShutdown}!if (root) struct { i16, Move } else i16 {
     const result = struct {
         inline fn impl(score: i16, move: Move) if (root) struct { i16, Move } else i16 {
             return if (root) .{ score, move } else score;
@@ -97,7 +104,13 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, cur_depth: u8
 
     if (depth_remaining == 0) {
         // return result(evaluate(board), move_buf[0]);
-        const score = quiesce(turn, board, cur_depth, alpha_inp, beta, move_buf);
+        const score = quiesce(
+            turn,
+            board,
+            move_buf,
+            alpha,
+            beta,
+        );
         if (shutdown) {
             return error.EarlyShutdown;
         }
@@ -108,7 +121,9 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, cur_depth: u8
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     for (move_buf[0..move_count]) |move| {
+        // const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
+        // assert(updated_eval_state.state == eval.EvalState.init(board).state);
         defer board.undoMove(turn, inv);
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
@@ -117,10 +132,10 @@ fn search(comptime root: bool, comptime turn: Side, board: *Board, cur_depth: u8
             false,
             turn.flipped(),
             board,
-            cur_depth + 1,
-            depth_remaining - 1,
             -beta,
             -alpha,
+            cur_depth + 1,
+            depth_remaining - 1,
             move_buf[move_count..],
             hash_history,
         ));
@@ -161,7 +176,17 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     var move = Move.null_move;
     for (0..search_params.maxDepth()) |depth| {
         score, move = switch (board.turn) {
-            inline else => |turn| search(true, turn, &board_copy, 0, @intCast(depth), -checkmate_score, checkmate_score, move_buf, hash_history),
+            inline else => |turn| search(
+                true,
+                turn,
+                &board_copy,
+                -checkmate_score,
+                checkmate_score,
+                0,
+                @intCast(depth),
+                move_buf,
+                hash_history,
+            ),
         } catch break;
         if (!silence_output) {
             write("info depth {} score cp {} nodes {} nps {} time {} pv {}\n", .{
