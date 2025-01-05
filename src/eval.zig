@@ -306,6 +306,7 @@ pub const Packed = enum(i32) {
 
 pub const EvalState = packed struct {
     state: Packed,
+    phase: u8,
 
     pub fn init(board: *const Board) EvalState {
         var state = Packed.from(0, 0);
@@ -319,7 +320,10 @@ pub const EvalState = packed struct {
 
         state = if (board.turn == .white) state else state.negate();
 
-        return .{ .state = state };
+        return .{
+            .state = state,
+            .phase = computePhase(board),
+        };
     }
 
     pub inline fn updateWith(self: EvalState, comptime turn: Side, board: *const Board, move: Move) EvalState {
@@ -329,15 +333,19 @@ pub const EvalState = packed struct {
         const from_type = board.mailbox[from.toInt()].?;
         const to_type = if (move.isPromotion()) move.getPromotedPieceType().? else from_type;
         var update = Packed.init(0);
+        var new_phase: u8 = self.phase + (gamephaseInc[@intFromEnum(to_type)] - gamephaseInc[@intFromEnum(from_type)]);
         if (move.isCapture()) {
             if (move.isEnPassant()) {
                 update = update.add(readPieceSquareTable(turn.flipped(), .pawn, move.getEnPassantPawn(turn)));
                 update = update.sub(readPieceSquareTable(turn, .pawn, from));
                 update = update.add(readPieceSquareTable(turn, .pawn, to));
+                new_phase -= gamephaseInc[@intFromEnum(PieceType.pawn)];
             } else {
-                update = update.add(readPieceSquareTable(turn.flipped(), board.mailbox[to.toInt()].?, to));
+                const captured_type = board.mailbox[to.toInt()].?;
+                update = update.add(readPieceSquareTable(turn.flipped(), captured_type, to));
                 update = update.sub(readPieceSquareTable(turn, from_type, from));
                 update = update.add(readPieceSquareTable(turn, to_type, to));
+                new_phase -= gamephaseInc[@intFromEnum(captured_type)];
             }
         } else {
             if (move.isCastlingMove()) {
@@ -355,11 +363,14 @@ pub const EvalState = packed struct {
         }
 
         assert(self.state.add(update).negate() == init(&board.playMoveCopy(turn, move)).state);
-        return .{ .state = self.state.add(update).negate() };
+        return .{
+            .state = self.state.add(update).negate(),
+            .phase = new_phase,
+        };
     }
 
-    pub fn eval(self: EvalState, board: *const Board) i16 {
-        const mg_phase: i32 = @min(computePhase(board), total_phase);
+    pub fn eval(self: EvalState) i16 {
+        const mg_phase: i32 = @min(self.phase, total_phase);
         const eg_phase = 24 - mg_phase;
 
         return @intCast(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), total_phase));

@@ -35,7 +35,7 @@ fn quiesce(
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
-    const static_eval = EvalState.init(board).eval(board);
+    const static_eval = EvalState.init(board).eval();
     if (move_count == 0) {
         return static_eval;
     }
