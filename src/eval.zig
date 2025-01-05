@@ -304,6 +304,32 @@ pub const Packed = enum(i32) {
     }
 };
 
+pub const EvalState = struct {
+    state: Packed,
+
+    pub fn init(board: *const Board) EvalState {
+        var state = Packed.from(0, 0);
+
+        for (PieceType.all) |pt| {
+            var iter = Bitboard.iterator(board.white.getBoard(pt));
+            while (iter.next()) |s| state = state.add(readPieceSquareTable(.white, pt, s));
+            iter = Bitboard.iterator(board.black.getBoard(pt));
+            while (iter.next()) |s| state = state.sub(readPieceSquareTable(.black, pt, s));
+        }
+
+        state = if (board.turn == .white) state else state.negate();
+
+        return .{ .state = state };
+    }
+
+    pub fn eval(self: EvalState, board: *const Board) i16 {
+        const mg_phase: i32 = @min(computePhase(board), total_phase);
+        const eg_phase = 24 - mg_phase;
+
+        return @intCast(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), total_phase));
+    }
+};
+
 inline fn readPieceSquareTable(side: Side, pt: PieceType, square: Square) Packed {
     return packed_table[@as(usize, @intFromEnum(pt)) * 2 + @intFromBool(side == .black)][square.toInt()];
 }
@@ -335,21 +361,7 @@ pub fn computePhase(board: *const Board) u8 {
 }
 
 fn evaluatePesto(board: *const Board) i16 {
-    var eval = Packed.from(0, 0);
-
-    for (PieceType.all) |pt| {
-        var iter = Bitboard.iterator(board.white.getBoard(pt));
-        while (iter.next()) |s| eval = eval.add(readPieceSquareTable(.white, pt, s));
-        iter = Bitboard.iterator(board.black.getBoard(pt));
-        while (iter.next()) |s| eval = eval.sub(readPieceSquareTable(.black, pt, s));
-    }
-
-    const mg_phase: i32 = @min(computePhase(board), total_phase);
-    const eg_phase = 24 - mg_phase;
-
-    const res: i16 = @intCast(@divTrunc(mg_phase * eval.midgame() + eg_phase * eval.endgame(), total_phase));
-
-    return if (board.turn == .white) res else -res;
+    return EvalState.init(board).eval(board);
 }
 
 fn evaluateMaterialOnly(board: *const Board) i16 {
