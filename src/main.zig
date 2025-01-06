@@ -323,11 +323,12 @@ pub fn main() !void {
             const overhead = @min(10 * std.time.ns_per_ms, my_time / 2);
 
             var soft_time = my_time / 20 + my_increment * 3 / 4;
-            const hard_time = if (move_time) |mt| mt -| overhead else my_time / 10 -| overhead;
+            var hard_time = if (move_time) |mt| mt -| overhead else my_time / 10 -| overhead;
+            hard_time = @max(std.time.ns_per_ms / 4, hard_time);
             soft_time = @min(soft_time, hard_time);
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
-            if (hard_time < 100) {
+            if (hard_time <= 10) {
                 _ = engine.searchSync(
                     board,
                     .{ .standard = .{

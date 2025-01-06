@@ -12,6 +12,7 @@ pub const Masks = struct {
     checks: u64,
     bishop_pins: u64,
     rook_pins: u64,
+    is_in_check: bool,
 };
 
 pub fn getMasks(comptime turn: Side, board: Board) Masks {
@@ -114,6 +115,7 @@ pub fn getMasks(comptime turn: Side, board: Board) Masks {
         .checks = checks,
         .bishop_pins = bishop_pins,
         .rook_pins = rook_pins,
+        .is_in_check = num_checks >= 1,
     };
 }
 
@@ -138,50 +140,60 @@ test "mask generation" {
         .checks = ~zero,
         .bishop_pins = 0,
         .rook_pins = ray_down_from_d8,
+        .is_in_check = false,
     }, getMasks(.black, Board.parseFen("3k4/8/3q4/8/8/8/2P5/1K1R4 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ray_down_from_d8,
         .bishop_pins = 0,
         .rook_pins = 0,
+        .is_in_check = true,
     }, getMasks(.black, Board.parseFen("3k4/8/2q5/8/8/8/2P5/1K1R4 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ray_down_right_from_d8,
         .bishop_pins = 0,
         .rook_pins = 0,
+        .is_in_check = true,
     }, getMasks(.black, Board.parseFen("3k4/8/2q5/8/7B/8/2P5/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ~zero,
         .bishop_pins = ray_down_right_from_d8,
         .rook_pins = 0,
+        .is_in_check = false,
     }, getMasks(.black, Board.parseFen("3k4/8/5q2/8/7B/8/2P5/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ~zero,
         .bishop_pins = ray_down_right_from_d8,
         .rook_pins = ray_down_from_d8,
+        .is_in_check = false,
     }, getMasks(.black, Board.parseFen("3k4/3nn3/8/8/7B/8/2P5/1K1R4 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = Square.e6.toBitboard(),
         .bishop_pins = 0,
         .rook_pins = 0,
+        .is_in_check = true,
     }, getMasks(.black, Board.parseFen("3k4/8/4N3/8/8/8/8/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ~zero,
         .bishop_pins = Bitboard.bishop_ray_between[Square.d8.toInt()][Square.f6.toInt()],
         .rook_pins = Bitboard.rook_ray_between[Square.d8.toInt()][Square.d6.toInt()],
+        .is_in_check = false,
     }, getMasks(.black, Board.parseFen("3k4/3nn3/3R1B2/8/8/8/2P5/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ~zero,
         .bishop_pins = Bitboard.bishop_ray_between[Square.d8.toInt()][Square.f6.toInt()],
         .rook_pins = Bitboard.rook_ray_between[Square.d8.toInt()][Square.d6.toInt()],
+        .is_in_check = false,
     }, getMasks(.black, Board.parseFen("3k4/3nn3/3R1B2/3R4/7Q/8/2P5/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = ~zero,
         .bishop_pins = Bitboard.bishop_ray_between[Square.d5.toInt()][Square.a2.toInt()],
         .rook_pins = Bitboard.rook_ray_between[Square.d5.toInt()][Square.d2.toInt()] | Bitboard.rook_ray_between[Square.d5.toInt()][Square.h5.toInt()],
+        .is_in_check = false,
     }, getMasks(.black, Board.parseFen("8/8/8/3kn2Q/2pn4/8/B1PR4/1K6 b - - 0 1") catch unreachable));
     try std.testing.expectEqualDeep(Masks{
         .checks = Square.c7.toBitboard(),
         .bishop_pins = 0,
         .rook_pins = 0,
+        .is_in_check = true,
     }, getMasks(.black, Board.parseFen("3k4/2P5/8/8/8/8/8/1K6 b - - 0 1") catch unreachable));
 }
