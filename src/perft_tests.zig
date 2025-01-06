@@ -3,7 +3,8 @@ const Board = @import("Board.zig");
 const Move = @import("Move.zig").Move;
 
 threadlocal var move_buf: [32768]Move = undefined;
-fn handleLine(line: []const u8, total_time: *u64, total_positions: *u64) void {
+threadlocal var hash_buf: [32768]struct { u64, u64 } = .{.{ 0, 0 }} ** 32768;
+fn handleLine(line: []const u8, total_time: *u64, total_positions: *u64, test_zobrist: bool) void {
     var parts = std.mem.tokenizeSequence(u8, line, " ;D");
     const fen = parts.next().?;
 
@@ -27,11 +28,16 @@ fn handleLine(line: []const u8, total_time: *u64, total_positions: *u64) void {
             std.log.err("got:      {}", .{actual_perft});
             std.debug.panic("error: {}", .{e});
         };
+        if (test_zobrist and actual_perft < 1 << 20) {
+            board.perftZobrist(&move_buf, &hash_buf, depth) catch {
+                std.debug.panic("{s} at depth {}\n", .{ fen, depth });
+            };
+        }
     }
     std.log.info("{s} passed, total positions: {}", .{ fen, total_positions.* });
 }
 
-fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anytype) !void {
+fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anytype, test_zobrist: bool) !void {
     const test_file = try std.fs.cwd().openFile(file, .{});
     defer test_file.close();
     var br = std.io.bufferedReader(test_file.reader());
@@ -63,7 +69,7 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anyty
         while (tp.run_queue.len() > 2 * cpus)
             try std.Thread.yield();
         std.log.info("starting tests for line: '{s}' (#{})\n", .{ line, line_number });
-        tp.spawnWg(&wg, handleLine, .{ line_cp, &total_time, &total_positions });
+        tp.spawnWg(&wg, handleLine, .{ line_cp, &total_time, &total_positions, test_zobrist });
 
         const wall_time = timer.read();
         try result_writer.print("total nodes: {}, wall time: {}, cpu time {}\n", .{ total_positions, std.fmt.fmtDuration(wall_time), std.fmt.fmtDuration(total_time) });
@@ -78,7 +84,7 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anyty
 }
 
 test "perft tests" {
-    try runTests("tests/reduced.epd", std.testing.allocator, std.io.null_writer);
+    try runTests("tests/reduced.epd", std.testing.allocator, std.io.null_writer, true);
 }
 
 pub fn main() !void {
@@ -90,5 +96,5 @@ pub fn main() !void {
     _ = args.next();
     defer args.deinit();
 
-    try runTests(args.next() orelse "tests/reduced.epd", allocator, std.io.getStdOut().writer());
+    try runTests(args.next() orelse "tests/reduced.epd", allocator, std.io.getStdOut().writer(), false);
 }

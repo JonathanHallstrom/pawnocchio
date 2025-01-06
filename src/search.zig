@@ -87,7 +87,7 @@ fn search(
     depth_remaining: u8,
     move_buf: []Move,
     hash_history: *std.ArrayList(u64),
-) error{EarlyShutdown}!if (root) struct { i16, Move } else i16 {
+) ?if (root) struct { i16, Move } else i16 {
     const result = struct {
         inline fn impl(score: i16, move: Move) if (root) struct { i16, Move } else i16 {
             return if (root) .{ score, move } else score;
@@ -95,11 +95,20 @@ fn search(
     }.impl;
     var alpha = alpha_inp;
     nodes += 1;
-    if (cur_depth > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) return error.EarlyShutdown;
-
+    if (cur_depth > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
+        shutdown = true;
+        return null;
+    }
     const tt_entry = tt[getTTIndex(board.zobrist)];
     if (tt_entry.zobrist == board.zobrist) {
-        if (tt_entry.depth >= depth_remaining) {}
+        if (tt_entry.depth >= depth_remaining) {
+            // this will have to wait for after PVS
+            // switch (tt_entry.tp) {
+            //     .exact => return result(tt_entry.score, tt_entry.move),
+            //     .lower => if (tt_entry.score >= beta) return result(tt_entry.score, tt_entry.move),
+            //     .upper => if (tt_entry.score <= alpha) return result(tt_entry.score, tt_entry.move),
+            // }
+        }
     }
 
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
@@ -130,7 +139,7 @@ fn search(
             move_buf,
         );
         if (shutdown) {
-            return error.EarlyShutdown;
+            return null;
         }
         return result(score, move_buf[0]);
     }
@@ -138,6 +147,7 @@ fn search(
     move_ordering.order(board, tt_entry.move, move_buf[0..move_count]);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
+    var num_searched: u8 = 0;
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
@@ -145,7 +155,7 @@ fn search(
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
 
-        const score = -(try search(
+        const score = -(search(
             false,
             turn.flipped(),
             board,
@@ -156,7 +166,15 @@ fn search(
             depth_remaining - 1,
             move_buf[move_count..],
             hash_history,
-        ));
+        ) orelse 0);
+        if (shutdown) {
+            if (num_searched >= 1) {
+                return result(best_score, best_move);
+            } else {
+                return null;
+            }
+        }
+        num_searched += 1;
 
         if (score > best_score) {
             best_score = score;
@@ -182,24 +200,30 @@ fn search(
         .move = best_move,
         .depth = depth_remaining,
         .tp = tp,
+        .score = best_score,
     };
 
     return result(best_score, best_move);
 }
 
-pub fn reset() void {
+pub fn resetSoft() void {
     nodes = 0;
     qnodes = 0;
     shutdown = false;
+    tt_hits = 0;
+    tt_collisions = 0;
+}
+
+pub fn resetHard() void {
+    resetSoft();
+    @memset(std.mem.sliceAsBytes(tt), 0);
 }
 
 pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) engine.SearchResult {
-    reset();
+    resetSoft();
     assert(hash_history.items[hash_history.items.len - 1] == board.zobrist);
     timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
-    // const soft_time =search_params.
-    // while (timer.read() < searchParams.)
     var board_copy = board;
     var score: i16 = 0;
     var move = Move.null_move;
@@ -218,7 +242,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 move_buf,
                 hash_history,
             ),
-        } catch break;
+        } orelse break;
         if (!silence_output) {
             write("info depth {} score cp {} nodes {} nps {} time {} pv {}\n", .{
                 depth + 1,
@@ -241,6 +265,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     engine.stoppedSearching();
     if (!silence_output) {
         write("bestmove {}\n", .{move});
+        write("tt performance: {}/{}\n", .{ tt_collisions, tt_collisions + tt_hits });
     }
     return engine.SearchResult{
         .move = move,
@@ -264,6 +289,7 @@ pub const TTEntry = struct {
     move: Move,
     depth: u8,
     tp: ScoreType,
+    score: i16,
 };
 
 pub fn setTTSize(mb: usize) !void {
@@ -272,7 +298,9 @@ pub fn setTTSize(mb: usize) !void {
     assert(tt.len % (std.simd.suggestVectorLength(u8) orelse 64) == 0);
     @memset(std.mem.sliceAsBytes(tt), 0);
 }
+
 fn getTTIndex(hash: u64) usize {
+    assert(tt.len > 0);
     return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt.len) >> 32;
 }
 
@@ -282,3 +310,5 @@ var qnodes: u64 = 0;
 var timer: std.time.Timer = undefined;
 var shutdown = false;
 var hard_time: u64 = 0;
+var tt_hits: usize = 0;
+var tt_collisions: usize = 0;

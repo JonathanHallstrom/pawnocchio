@@ -66,7 +66,7 @@ pub fn getCaptures(comptime turn: Side, board: Board, move_buf: []Move) usize {
     return getMovesImpl(turn, true, board, move_buf);
 }
 
-test "all movegen tests" {
+test {
     _ = knight_moves;
     _ = pawn_moves;
     _ = sliding_moves;
@@ -83,6 +83,6 @@ test "pinned pawn can't capture" {
     try std.testing.expectEqual(49, getMoves(.black, try Board.parseFen("r6r/p1pkqpb1/bnp1pnp1/3P4/1p2P1B1/2NQ3p/PPPB1PPP/R3K2R b KQ - 3 3"), &buf));
 }
 
-test "perft" {
+test {
     _ = @import("perft_tests.zig");
 }

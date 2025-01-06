@@ -56,7 +56,7 @@ pub fn main() !void {
 
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, 16384);
     defer hash_history.deinit();
-    const move_buf = try allocator.alloc(Move, 1 << 20);
+    const move_buf = try allocator.alloc(Move, 16384);
     defer allocator.free(move_buf);
 
     try engine.setTTSize(256);
@@ -134,6 +134,7 @@ pub fn main() !void {
     }
 
     var board = Board.init();
+    hash_history.appendAssumeCapacity(board.zobrist);
     const stdin = std.io.getStdIn();
     var br = std.io.bufferedReader(stdin.reader());
 
@@ -319,11 +320,11 @@ pub fn main() !void {
             // const my_increment = @min(white_increment, black_increment);
 
             // 10ms  seems fine
-            const overhead = 10 * std.time.ns_per_ms;
+            const overhead = @min(10 * std.time.ns_per_ms, my_time / 2);
 
-            const soft_time = my_time / 20 + my_increment * 3 / 4;
+            var soft_time = my_time / 20 + my_increment * 3 / 4;
             const hard_time = if (move_time) |mt| mt -| overhead else my_time / 10 -| overhead;
-
+            soft_time = @min(soft_time, hard_time);
             log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
             if (hard_time < 100) {
@@ -364,9 +365,4 @@ pub fn main() !void {
             return;
         }
     }
-}
-
-comptime {
-    std.testing.refAllDeclsRecursive(@This());
-    std.testing.refAllDeclsRecursive(@import("movegen.zig"));
 }

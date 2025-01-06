@@ -66,7 +66,7 @@ pub fn startAsyncSearch(board: Board, search_parameters: SearchParameters, move_
 
 pub fn reset() void {
     stopAsyncSearch();
-    search.reset();
+    search.resetHard();
 }
 
 pub fn shouldKeepSearching() bool {
@@ -101,6 +101,8 @@ fn bestMove(board: Board, depth: u8, allocator: std.mem.Allocator) !Move {
     try search.setTTSize(256);
     return searchSync(board, .{ .fixed_depth = depth }, move_buf, &hash_history, true).move;
 }
+
+test "s" {}
 
 test "50 move rule" {
     try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove(try Board.parseFen("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67"), 100, std.testing.allocator));
