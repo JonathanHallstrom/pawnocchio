@@ -30,7 +30,6 @@ fn quiesce(
     move_buf: []Move,
 ) i16 {
     var alpha = alpha_inp;
-    qnodes += 1;
     if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
         shutdown = true;
         return 0;
@@ -51,6 +50,7 @@ fn quiesce(
         assert(move.isCapture());
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
+        qnodes += 1;
 
         const score = -quiesce(
             turn.flipped(),
@@ -167,13 +167,7 @@ fn search(
             move_buf[move_count..],
             hash_history,
         ) orelse 0);
-        if (shutdown) {
-            if (num_searched >= 1) {
-                return result(best_score, best_move);
-            } else {
-                return null;
-            }
-        }
+        if (shutdown) break;
         num_searched += 1;
 
         if (score > best_score) {
@@ -189,6 +183,13 @@ fn search(
                 break;
             }
             alpha = score;
+        }
+    }
+    if (shutdown) {
+        if (num_searched >= 1) {
+            return result(best_score, best_move);
+        } else {
+            return null;
         }
     }
     var tp: ScoreType = .exact;
