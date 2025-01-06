@@ -94,7 +94,6 @@ fn search(
         }
     }.impl;
     var alpha = alpha_inp;
-    nodes += 1;
     if (cur_depth > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
         shutdown = true;
         return null;
@@ -150,24 +149,29 @@ fn search(
     var num_searched: u8 = 0;
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
-        const inv = board.playMove(turn, move);
-        defer board.undoMove(turn, inv);
-        hash_history.appendAssumeCapacity(board.zobrist);
-        defer _ = hash_history.pop();
 
-        const score = -(search(
-            false,
-            turn.flipped(),
-            board,
-            updated_eval_state,
-            -beta,
-            -alpha,
-            cur_depth + 1,
-            depth_remaining - 1,
-            move_buf[move_count..],
-            hash_history,
-        ) orelse 0);
-        if (shutdown) break;
+        const score: i16 = blk: {
+            const inv = board.playMove(turn, move);
+            defer board.undoMove(turn, inv);
+            defer _ = hash_history.pop();
+            hash_history.appendAssumeCapacity(board.zobrist);
+
+            const s = -(search(
+                false,
+                turn.flipped(),
+                board,
+                updated_eval_state,
+                -beta,
+                -alpha,
+                cur_depth + 1,
+                depth_remaining - 1,
+                move_buf[move_count..],
+                hash_history,
+            ) orelse 0);
+            if (shutdown) break;
+            break :blk s;
+        };
+
         num_searched += 1;
 
         if (score > best_score) {
@@ -180,6 +184,10 @@ fn search(
         }
         if (score > alpha) {
             if (score >= beta) {
+                if (move.isQuiet()) {
+                    const bonus = @as(i32, depth_remaining) * depth_remaining;
+                    move_ordering.updateHistory(board, move, bonus);
+                }
                 break;
             }
             alpha = score;
@@ -192,6 +200,7 @@ fn search(
             return null;
         }
     }
+    nodes += num_searched;
     var tp: ScoreType = .exact;
     if (best_score < alpha_inp) tp = .upper;
     if (best_score > beta) tp = .lower;
@@ -245,11 +254,12 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             ),
         } orelse break;
         if (!silence_output) {
+            const node_count = @max(1, nodes + qnodes);
             write("info depth {} score cp {} nodes {} nps {} time {} pv {}\n", .{
                 depth + 1,
                 score,
-                (nodes + qnodes),
-                (nodes + qnodes) * std.time.ns_per_s / timer.read(),
+                node_count,
+                node_count * std.time.ns_per_s / timer.read(),
                 (timer.read() + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
                 move,
             });

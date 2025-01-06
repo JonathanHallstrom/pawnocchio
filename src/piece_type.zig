@@ -36,6 +36,10 @@ pub const PieceType = enum(u3) {
         };
     }
 
+    pub fn toInt(self: PieceType) u3 {
+        return @intFromEnum(self);
+    }
+
     pub const all = [_]PieceType{
         .pawn,
         .knight,
