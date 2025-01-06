@@ -91,13 +91,20 @@ pub fn searchSync(board: Board, search_parameters: SearchParameters, move_buf: [
     return search.iterativeDeepening(board, search_parameters, move_buf, hash_history, silence_output);
 }
 
-fn bestMove(board: Board, depth: u8, allocator: std.mem.Allocator) !Move {
+fn bestMove(fen: []const u8, depth: u8, moves: []const u8, allocator: std.mem.Allocator) !Move {
+    var board = try Board.parseFen(fen);
+
     const bignum = 32768;
     const move_buf: []Move = try allocator.alloc(Move, bignum);
     defer allocator.free(move_buf);
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, bignum);
     defer hash_history.deinit();
     hash_history.appendAssumeCapacity(board.zobrist);
+    var iter = std.mem.tokenizeScalar(u8, moves, ' ');
+    while (iter.next()) |move| {
+        _ = try board.playMoveFromStr(move);
+        hash_history.appendAssumeCapacity(board.zobrist);
+    }
     try search.setTTSize(256);
     return searchSync(board, .{ .fixed_depth = depth }, move_buf, &hash_history, true).move;
 }
@@ -105,16 +112,11 @@ fn bestMove(board: Board, depth: u8, allocator: std.mem.Allocator) !Move {
 test "s" {}
 
 test "50 move rule" {
-    try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove(try Board.parseFen("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67"), 100, std.testing.allocator));
-    try std.testing.expectEqual(Move.initQuiet(.c7, .a7), bestMove(try Board.parseFen("1R6/2R5/7P/8/8/k7/8/2K5 w - - 99 67"), 100, std.testing.allocator));
-    try std.testing.expectEqual(Move.initCapture(.f4, .g6), bestMove(try Board.parseFen("1R6/8/6p1/8/5N2/k7/8/2KR4 w - - 99 67"), 100, std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67", 100, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.c7, .a7), bestMove("1R6/2R5/7P/8/8/k7/8/2K5 w - - 99 67", 100, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initCapture(.f4, .g6), bestMove("1R6/8/6p1/8/5N2/k7/8/2KR4 w - - 99 67", 100, "", std.testing.allocator));
 }
 
 test "repetitions" {
-    var board = try Board.parseFen("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62");
-    var iter = std.mem.tokenizeScalar(u8, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", ' ');
-    while (iter.next()) |move| {
-        _ = try board.playMoveFromStr(move);
-    }
-    try std.testing.expect(!std.meta.eql(try bestMove(board, 5, std.testing.allocator), Move.initQuiet(.c6, .d5)));
+    try std.testing.expect(!std.meta.eql(try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 255, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator), Move.initQuiet(.c6, .d5)));
 }
