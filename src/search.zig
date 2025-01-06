@@ -164,7 +164,7 @@ fn search(
             -beta,
             -alpha,
             cur_depth + 1,
-            depth_remaining - 1,
+            depth_remaining - 1 + @intFromBool(is_in_check),
             move_buf[move_count..],
             hash_history,
         ) orelse 0);

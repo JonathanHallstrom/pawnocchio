@@ -122,7 +122,7 @@ pub fn main() !void {
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
 
-                const info = engine.searchSync(board, .{ .fixed_depth = depth }, move_buf, &hash_history, true);
+                const info = engine.searchSync(board, .{ .depth = depth }, move_buf, &hash_history, true);
 
                 num_nodes += info.stats.nodes + info.stats.qnodes;
                 time += info.stats.ns_used;
@@ -324,35 +324,30 @@ pub fn main() !void {
 
             var soft_time = my_time / 20 + my_increment * 3 / 4;
             var hard_time = if (move_time) |mt| mt -| overhead else my_time / 10 -| overhead;
+            // std.debug.print("{}\n", .{std.fmt.fmtDuration(hard_time)});
             hard_time = @max(std.time.ns_per_ms / 4, hard_time);
             soft_time = @min(soft_time, hard_time);
-            log_writer.print("max time:  {}\n", .{hard_time}) catch {};
 
             if (hard_time <= 10) {
                 _ = engine.searchSync(
                     board,
-                    .{ .standard = .{
-                        .soft = soft_time,
-                        .hard = hard_time,
-                    } },
+                    .{
+                        .soft_time = soft_time,
+                        .hard_time = hard_time,
+                        .depth = max_depth_opt,
+                    },
                     move_buf,
                     &hash_history,
                     false,
                 );
-            } else if (max_depth_opt) |max_depth| {
-                engine.startAsyncSearch(
-                    board,
-                    .{ .fixed_depth = max_depth },
-                    move_buf,
-                    &hash_history,
-                );
             } else {
                 engine.startAsyncSearch(
                     board,
-                    .{ .standard = .{
-                        .soft = soft_time,
-                        .hard = hard_time,
-                    } },
+                    .{
+                        .soft_time = soft_time,
+                        .hard_time = hard_time,
+                        .depth = max_depth_opt,
+                    },
                     move_buf,
                     &hash_history,
                 );

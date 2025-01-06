@@ -12,21 +12,21 @@ const search = @import("search.zig");
 
 pub const setTTSize = search.setTTSize;
 
-pub const SearchParameters = union(enum) {
-    standard: struct { soft: u64, hard: u64 },
-    fixed_time: u64,
-    fixed_depth: u8,
+pub const SearchParameters = struct {
+    soft_time: ?u64 = null,
+    hard_time: ?u64 = null,
+    depth: ?u8 = null,
 
     pub fn softTime(self: SearchParameters) u64 {
-        return if (self == .standard) self.standard.soft else std.math.maxInt(u64);
+        return self.soft_time orelse std.math.maxInt(u64);
     }
 
     pub fn hardTime(self: SearchParameters) u64 {
-        return if (self == .standard) self.standard.hard else std.math.maxInt(u64);
+        return self.hard_time orelse std.math.maxInt(u64);
     }
 
     pub fn maxDepth(self: SearchParameters) u8 {
-        return if (self == .fixed_depth) self.fixed_depth else 255;
+        return self.depth orelse 255;
     }
 };
 
@@ -106,7 +106,7 @@ fn bestMove(fen: []const u8, depth: u8, moves: []const u8, allocator: std.mem.Al
         hash_history.appendAssumeCapacity(board.zobrist);
     }
     try search.setTTSize(256);
-    return searchSync(board, .{ .fixed_depth = depth }, move_buf, &hash_history, true).move;
+    return searchSync(board, .{ .depth = depth }, move_buf, &hash_history, true).move;
 }
 
 test "s" {}
