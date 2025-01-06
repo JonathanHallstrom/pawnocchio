@@ -24,7 +24,6 @@ pub fn updateHistory(board: *const Board, move: Move, bonus: i32) void {
     const clamped = std.math.clamp(bonus, -MAX_HISTORY, MAX_HISTORY);
     const entry = historyEntry(board, move);
 
-    // entry.* += @intCast(clamped - @divTrunc(clamped * entry.*, MAX_HISTORY));
     entry.* = @intCast(std.math.clamp(entry.* + clamped, -MAX_HISTORY, MAX_HISTORY));
 }
 
