@@ -7,20 +7,13 @@ const Move = @import("Move.zig").Move;
 pub var log_writer: std.io.AnyWriter = undefined;
 
 var stdout: std.fs.File = undefined;
-
+var write_mutex = std.Thread.Mutex{};
 pub fn write(comptime fmt: []const u8, args: anytype) void {
+    write_mutex.lock();
+    defer write_mutex.unlock();
     var buf: [4096]u8 = undefined;
     const to_print = std.fmt.bufPrint(&buf, fmt, args) catch "";
 
-    const non_printable_opt = for (to_print) |c| {
-        if (!std.ascii.isPrint(c) and !std.ascii.isWhitespace(c)) {
-            break c;
-        }
-    } else null;
-    if (non_printable_opt) |non_printable| {
-        log_writer.print("tried to send non printable char: '{c}' (ascii: {})\n", .{ non_printable, @as(i32, non_printable) }) catch {};
-        return;
-    }
     log_writer.print("sent: {s}", .{to_print}) catch {};
     stdout.writer().writeAll(to_print) catch |e| {
         std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
@@ -59,7 +52,9 @@ pub fn main() !void {
     const move_buf = try allocator.alloc(Move, 16384);
     defer allocator.free(move_buf);
 
+    engine.reset();
     try engine.setTTSize(256);
+
     if (args.next()) |arg| {
         if (std.ascii.endsWithIgnoreCase(arg, "bench")) {
             const fens = [_][]const u8{
@@ -153,15 +148,19 @@ pub fn main() !void {
         const command = parts.next() orelse {
             continue; // empty command
         };
+        {
+            write_mutex.lock();
+            defer write_mutex.unlock();
 
-        try log_writer.print("got: {s}\n", .{line});
+            try log_writer.print("got: {s}\n", .{line});
+        }
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
-            try stdout.writeAll("id name pawnocchio 0.0.6\n");
-            try stdout.writeAll("id author Jonathan Hallström\n");
-            try stdout.writeAll("option name Hash type spin default 256 min 1 max 65535\n");
-            try stdout.writeAll("option name Threads type spin default 1 min 1 max 1\n");
-            try stdout.writeAll("uciok\n");
+            write("id name pawnocchio 0.0.6\n", .{});
+            write("id author Jonathan Hallström\n", .{});
+            write("option name Hash type spin default 256 min 1 max 65535\n", .{});
+            write("option name Threads type spin default 1 min 1 max 1\n", .{});
+            write("uciok\n", .{});
         }
 
         if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
@@ -176,6 +175,8 @@ pub fn main() !void {
                 if (!std.ascii.eqlIgnoreCase("value", parts.next() orelse "")) continue;
                 const hash_size_to_parts = parts.next() orelse "";
                 const size = std.fmt.parseInt(u16, hash_size_to_parts, 10) catch {
+                    write_mutex.lock();
+                    defer write_mutex.unlock();
                     try log_writer.print("invalid hash size: '{s}'\n", .{hash_size_to_parts});
                     continue;
                 };
@@ -191,11 +192,17 @@ pub fn main() !void {
 
             if (std.ascii.eqlIgnoreCase(sub_command, "fen")) {
                 const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {
+                    write_mutex.lock();
+                    defer write_mutex.unlock();
+
                     try log_writer.print("no fen: '{s}'\n", .{rest});
                     continue;
                 }, &std.ascii.whitespace);
 
                 board = Board.parseFen(fen_to_parse) catch {
+                    write_mutex.lock();
+                    defer write_mutex.unlock();
+
                     try log_writer.print("invalid fen: '{s}'\n", .{fen_to_parse});
                     continue;
                 };
@@ -208,6 +215,9 @@ pub fn main() !void {
             while (move_iter.next()) |played_move| {
                 if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
                 _ = board.playMoveFromStr(played_move) catch {
+                    write_mutex.lock();
+                    defer write_mutex.unlock();
+
                     try log_writer.print("invalid move: '{s}'\n", .{played_move});
                     continue;
                 };
@@ -242,6 +252,9 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
@@ -252,6 +265,9 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
                     const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
@@ -264,6 +280,9 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "depth")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     max_depth_opt = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
@@ -271,6 +290,9 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "nodes")) {
                     const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     max_nodes_opt = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid nodes: '{s}'\n", .{nodes_to_parse});
                         continue;
                     };
@@ -278,6 +300,9 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "wtime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     white_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid time: '{s}'\n", .{time});
                         continue;
                     });
@@ -285,6 +310,9 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "btime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     black_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid time: '{s}'\n", .{time});
                         continue;
                     });
@@ -292,6 +320,9 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "movetime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     move_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid time: '{s}'\n", .{time});
                         continue;
                     });
@@ -299,6 +330,9 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "winc")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     white_increment = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid time: '{s}'\n", .{time});
                         continue;
                     });
@@ -306,9 +340,15 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "binc")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     black_increment = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                        write_mutex.lock();
+                        defer write_mutex.unlock();
+
                         try log_writer.print("invalid time: '{s}'\n", .{time});
                         continue;
                     });
+                }
+                if (std.ascii.eqlIgnoreCase(command_part, "infinite")) {
+                    engine.setInfinite();
                 }
             }
             if (mate_finding_depth) |depth| max_depth_opt = @min(max_depth_opt orelse 255, depth * 2);

@@ -103,12 +103,12 @@ fn search(
     const tt_entry = tt[getTTIndex(board.zobrist)];
     if (tt_entry.zobrist == board.zobrist) {
         if (tt_entry.depth >= depth_remaining) {
-            // this will have to wait for after PVS
-            // switch (tt_entry.tp) {
-            //     .exact => return result(tt_entry.score, tt_entry.move),
-            //     .lower => if (tt_entry.score >= beta) return result(tt_entry.score, tt_entry.move),
-            //     .upper => if (tt_entry.score <= alpha) return result(tt_entry.score, tt_entry.move),
-            // }
+            switch (tt_entry.tp) {
+                .exact => {},
+                // .exact => return result(tt_entry.score, tt_entry.move),
+                .lower => if (tt_entry.score >= beta) return result(tt_entry.score, tt_entry.move),
+                .upper => if (tt_entry.score <= alpha) return result(tt_entry.score, tt_entry.move),
+            }
         }
     }
 
@@ -174,10 +174,6 @@ fn search(
         if (score > best_score) {
             best_score = score;
             best_move = move;
-
-            if (score > 0 and eval.isMateScore(score)) {
-                break;
-            }
         }
         if (score > alpha) {
             if (score >= beta) {
@@ -271,22 +267,19 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 hash_history,
             ),
         } orelse break;
-        if (!silence_output) {
+        if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth));
-        }
-
-        if (score > 0 and eval.isMateScore(score)) {
-            break;
         }
 
         if (timer.read() >= search_params.softTime()) {
             break;
         }
     }
-    engine.stoppedSearching();
     if (!silence_output) {
+        engine.waitUntilWritingBestMoveAllowed();
         write("bestmove {}\n", .{move});
     }
+    engine.stoppedSearching();
     return engine.SearchResult{
         .move = move,
         .score = score,

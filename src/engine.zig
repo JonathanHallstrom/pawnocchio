@@ -42,10 +42,19 @@ pub const SearchResult = struct {
     stats: SearchStatistics,
 };
 
-var is_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = .{ .raw = false };
-var stop_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = .{ .raw = false };
+var is_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
+var stop_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
+pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
+var thread_pool: ?std.Thread.Pool = null;
 
 pub fn startAsyncSearch(board: Board, search_parameters: SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64)) void {
+    if (thread_pool == null) {
+        thread_pool = @as(std.Thread.Pool, undefined);
+        thread_pool.?.init(.{
+            .allocator = std.heap.page_allocator,
+            .n_jobs = 1,
+        }) catch @panic("sadge");
+    }
     stopAsyncSearch();
 
     const worker = struct {
@@ -56,35 +65,54 @@ pub fn startAsyncSearch(board: Board, search_parameters: SearchParameters, move_
         }
     }.impl;
 
-    (std.Thread.spawn(.{}, worker, .{
+    thread_pool.?.spawn(worker, .{
         board,
         search_parameters,
         move_buf,
         hash_history,
-    }) catch unreachable).detach();
+    }) catch @panic("sadge");
 }
 
 pub fn reset() void {
+    if (thread_pool == null) {
+        thread_pool = @as(std.Thread.Pool, undefined);
+        thread_pool.?.init(.{
+            .allocator = std.heap.page_allocator,
+            .n_jobs = 1,
+        }) catch @panic("sadge");
+    }
     stopAsyncSearch();
     search.resetHard();
 }
 
 pub fn shouldKeepSearching() bool {
-    return is_searching.load(.acquire);
+    return is_searching.load(.seq_cst);
 }
 
 pub fn shouldStopSearching() bool {
-    return stop_searching.load(.acquire);
+    return stop_searching.load(.seq_cst);
 }
 
 pub fn stopAsyncSearch() void {
-    if (shouldKeepSearching()) {
-        stop_searching.store(true, .release);
+    if (is_searching.load(.seq_cst)) {
+        is_searching.store(false, .seq_cst);
+        infinite.store(false, .seq_cst);
+        stop_searching.store(true, .seq_cst);
     }
 }
 
 pub fn stoppedSearching() void {
-    is_searching.store(false, .release);
+    is_searching.store(false, .seq_cst);
+}
+
+pub fn setInfinite() void {
+    infinite.store(true, .seq_cst);
+}
+
+pub fn waitUntilWritingBestMoveAllowed() void {
+    while (infinite.load(.seq_cst)) {
+        std.time.sleep(1);
+    }
 }
 
 pub fn searchSync(board: Board, search_parameters: SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) SearchResult {
@@ -109,14 +137,12 @@ fn bestMove(fen: []const u8, depth: u8, moves: []const u8, allocator: std.mem.Al
     return searchSync(board, .{ .depth = depth }, move_buf, &hash_history, true).move;
 }
 
-test "s" {}
-
 test "50 move rule" {
-    try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67", 100, "", std.testing.allocator));
-    try std.testing.expectEqual(Move.initQuiet(.c7, .a7), bestMove("1R6/2R5/7P/8/8/k7/8/2K5 w - - 99 67", 100, "", std.testing.allocator));
-    try std.testing.expectEqual(Move.initCapture(.f4, .g6), bestMove("1R6/8/6p1/8/5N2/k7/8/2KR4 w - - 99 67", 100, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67", 5, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.c7, .a7), bestMove("1R6/2R5/7P/8/8/k7/8/2K5 w - - 99 67", 5, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initCapture(.f4, .g6), bestMove("1R6/8/6p1/8/5N2/k7/8/2KR4 w - - 99 67", 5, "", std.testing.allocator));
 }
 
 test "repetitions" {
-    try std.testing.expect(!std.meta.eql(try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 255, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator), Move.initQuiet(.c6, .d5)));
+    try std.testing.expect(!std.meta.eql(try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 5, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator), Move.initQuiet(.c6, .d5)));
 }
