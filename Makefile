@@ -6,7 +6,7 @@ ifndef EXE
 EXE=pawnocchio
 endif
 ifeq ($(OS),Windows_NT)
-MV=move .\zig-out\bin\pawnocchio $(EXE).exe
+MV=move .\zig-out\bin\pawnocchio.exe $(EXE).exe
 else
 MV=mv ./zig-out/bin/pawnocchio $(EXE)
 endif
