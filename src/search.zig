@@ -149,7 +149,7 @@ fn search(
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     var num_searched: u8 = 0;
-    for (move_buf[0..move_count]) |move| {
+    for (move_buf[0..move_count], 0..) |move, i| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
 
         const score = blk: {
@@ -184,6 +184,11 @@ fn search(
                 if (move.isQuiet()) {
                     const bonus = @as(i32, depth_remaining) * depth_remaining;
                     move_ordering.updateHistory(board, move, bonus);
+                    for (0..i) |j| {
+                        if (move_buf[j].isQuiet()) {
+                            move_ordering.updateHistory(board, move_buf[j], -bonus);
+                        }
+                    }
                 }
                 break;
             }
