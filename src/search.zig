@@ -151,24 +151,28 @@ fn search(
     var num_searched: u8 = 0;
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
-        const inv = board.playMove(turn, move);
-        defer board.undoMove(turn, inv);
-        hash_history.appendAssumeCapacity(board.zobrist);
-        defer _ = hash_history.pop();
 
-        const score = -(search(
-            false,
-            turn.flipped(),
-            board,
-            updated_eval_state,
-            -beta,
-            -alpha,
-            cur_depth + 1,
-            depth_remaining - 1 + @intFromBool(is_in_check),
-            move_buf[move_count..],
-            hash_history,
-        ) orelse 0);
-        if (shutdown) break;
+        const score = blk: {
+            const inv = board.playMove(turn, move);
+            defer board.undoMove(turn, inv);
+            hash_history.appendAssumeCapacity(board.zobrist);
+            defer _ = hash_history.pop();
+
+            const sco = -(search(
+                false,
+                turn.flipped(),
+                board,
+                updated_eval_state,
+                -beta,
+                -alpha,
+                cur_depth + 1,
+                depth_remaining - 1 + @intFromBool(is_in_check),
+                move_buf[move_count..],
+                hash_history,
+            ) orelse 0);
+            if (shutdown) break;
+            break :blk sco;
+        };
         num_searched += 1;
 
         if (score > best_score) {
@@ -177,6 +181,10 @@ fn search(
         }
         if (score > alpha) {
             if (score >= beta) {
+                if (move.isQuiet()) {
+                    const bonus = @as(i32, depth_remaining) * depth_remaining;
+                    move_ordering.updateHistory(board, move, bonus);
+                }
                 break;
             }
             alpha = score;
@@ -210,6 +218,7 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
+    move_ordering.reset();
 }
 
 pub fn resetHard() void {
