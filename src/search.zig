@@ -80,6 +80,7 @@ fn quiesce(
 fn search(
     comptime root: bool,
     comptime turn: Side,
+    comptime pv: bool,
     board: *Board,
     eval_state: EvalState,
     alpha_inp: i16,
@@ -100,15 +101,14 @@ fn search(
         shutdown = true;
         return null;
     }
+    // assert that root implies pv
+    assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    if (tt_entry.zobrist == board.zobrist) {
-        if (tt_entry.depth >= depth_remaining) {
-            switch (tt_entry.tp) {
-                .exact => {},
-                // .exact => return result(tt_entry.score, tt_entry.move),
-                .lower => if (tt_entry.score >= beta) return result(tt_entry.score, tt_entry.move),
-                .upper => if (tt_entry.score <= alpha) return result(tt_entry.score, tt_entry.move),
-            }
+    if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth_remaining) {
+        switch (tt_entry.tp) {
+            .exact => return result(tt_entry.score, tt_entry.move),
+            .lower => if (tt_entry.score >= beta) return result(tt_entry.score, tt_entry.move),
+            .upper => if (tt_entry.score <= alpha) return result(tt_entry.score, tt_entry.move),
         }
     }
 
@@ -149,37 +149,89 @@ fn search(
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     var num_searched: u8 = 0;
-    for (move_buf[0..move_count]) |move| {
+    for (move_buf[0..move_count], 0..) |move, i| {
+        _ = i; // autofix
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
-        defer board.undoMove(turn, inv);
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
 
-        const score = -(search(
-            false,
-            turn.flipped(),
-            board,
-            updated_eval_state,
-            -beta,
-            -alpha,
-            cur_depth + 1,
-            depth_remaining - 1 + @intFromBool(is_in_check),
-            move_buf[move_count..],
-            hash_history,
-        ) orelse 0);
-        if (shutdown) break;
-        num_searched += 1;
+        if (num_searched == 0) {
+            const score = -(search(
+                false,
+                turn.flipped(),
+                pv,
+                board,
+                updated_eval_state,
+                -beta,
+                -alpha,
+                cur_depth + 1,
+                depth_remaining - 1 + @intFromBool(is_in_check),
+                move_buf[move_count..],
+                hash_history,
+            ) orelse 0);
+            board.undoMove(turn, inv);
+            if (shutdown) break;
+            num_searched += 1;
 
-        if (score > best_score) {
             best_score = score;
             best_move = move;
-        }
-        if (score > alpha) {
-            if (score >= beta) {
+            if (score > alpha) {
+                if (score >= beta) {
+                    break;
+                }
+                alpha = score;
+            }
+        } else {
+            var score = -(search(
+                false,
+                turn.flipped(),
+                false,
+                board,
+                updated_eval_state,
+                -(alpha + 1),
+                -alpha,
+                cur_depth + 1,
+                depth_remaining - 1 + @intFromBool(is_in_check),
+                move_buf[move_count..],
+                hash_history,
+            ) orelse 0);
+            if (shutdown) {
+                board.undoMove(turn, inv);
                 break;
             }
-            alpha = score;
+            num_searched += 1;
+
+            if (alpha < score and score < beta and pv) {
+                score = -(search(
+                    false,
+                    turn.flipped(),
+                    true,
+                    board,
+                    updated_eval_state,
+                    -beta,
+                    -alpha,
+                    cur_depth + 1,
+                    depth_remaining - 1 + @intFromBool(is_in_check),
+                    move_buf[move_count..],
+                    hash_history,
+                ) orelse 0);
+                board.undoMove(turn, inv);
+                if (shutdown) break;
+                if (score > alpha) {
+                    alpha = score;
+                }
+            } else {
+                board.undoMove(turn, inv);
+            }
+
+            if (score > best_score) {
+                best_score = score;
+                best_move = move;
+                if (score >= beta) {
+                    break;
+                }
+            }
         }
     }
     if (shutdown) {
@@ -203,20 +255,6 @@ fn search(
 
     return result(best_score, best_move);
 }
-
-pub fn resetSoft() void {
-    nodes = 0;
-    qnodes = 0;
-    shutdown = false;
-    tt_hits = 0;
-    tt_collisions = 0;
-}
-
-pub fn resetHard() void {
-    resetSoft();
-    @memset(std.mem.sliceAsBytes(tt), 0);
-}
-
 fn writeInfo(score: i16, move: Move, depth: u8) void {
     const node_count = @max(1, nodes + qnodes);
 
@@ -257,6 +295,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             inline else => |turn| search(
                 true,
                 turn,
+                true,
                 &board_copy,
                 eval_state,
                 -checkmate_score,
@@ -315,6 +354,19 @@ pub fn setTTSize(mb: usize) !void {
 fn getTTIndex(hash: u64) usize {
     assert(tt.len > 0);
     return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt.len) >> 32;
+}
+
+pub fn resetSoft() void {
+    nodes = 0;
+    qnodes = 0;
+    shutdown = false;
+    tt_hits = 0;
+    tt_collisions = 0;
+}
+
+pub fn resetHard() void {
+    resetSoft();
+    @memset(std.mem.sliceAsBytes(tt), 0);
 }
 
 var tt: []align(16) TTEntry align(64) = &.{};
