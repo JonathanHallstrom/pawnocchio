@@ -6,13 +6,13 @@ const movegen = @import("movegen.zig");
 const Side = @import("side.zig").Side;
 const PieceType = @import("piece_type.zig").PieceType;
 
-pub fn historyEntry(board: *const Board, move: Move) *i16 {
+pub fn historyEntry(board: *const Board, move: Move) *i32 {
     const from_idx: usize = move.getFrom().toInt();
     const tp = board.mailbox[from_idx].?;
     return &history[@intFromBool(board.turn == .black)][tp.toInt()][from_idx];
 }
 
-pub fn readHistory(board: *const Board, move: Move) i16 {
+pub fn readHistory(board: *const Board, move: Move) i32 {
     return historyEntry(board, move).*;
 }
 
@@ -64,7 +64,7 @@ pub fn mvvLva(board: *const Board, moves: []Move) void {
 
 const ScoreMovePair = struct {
     move: Move,
-    score: i16,
+    score: i32,
 
     fn cmp(_: void, lhs: ScoreMovePair, rhs: ScoreMovePair) bool {
         return lhs.score > rhs.score;
@@ -101,5 +101,5 @@ pub fn reset() void {
     @memset(std.mem.asBytes(&history), 0);
 }
 
-var history: [2][PieceType.all.len][64]i16 = .{.{.{0} ** 64} ** PieceType.all.len} ** 2;
-const MAX_HISTORY: i16 = 1 << 14;
+var history: [2][PieceType.all.len][64]i32 = .{.{.{0} ** 64} ** PieceType.all.len} ** 2;
+const MAX_HISTORY: i32 = 1 << 30;
