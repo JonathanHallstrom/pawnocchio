@@ -31,13 +31,50 @@ fn compare(ctx: MoveOrderContext, lhs: Move, rhs: Move) bool {
     return mvvLvaValue(ctx.board, lhs) > mvvLvaValue(ctx.board, rhs);
 }
 
+inline fn sort(
+    comptime T: type,
+    items: []T,
+    context: anytype,
+    comptime lessThanFn: fn (context: @TypeOf(context), lhs: T, rhs: T) bool,
+) void {
+    @call(.always_inline, std.sort.pdq, .{ T, items, context, lessThanFn });
+}
+
 pub fn mvvLva(board: *const Board, moves: []Move) void {
     std.sort.pdq(Move, moves, board, mvvLvaCompare);
 }
 
+const ScoreMovePair = struct {
+    move: Move,
+    score: i16,
+
+    fn cmp(_: void, lhs: ScoreMovePair, rhs: ScoreMovePair) bool {
+        return lhs.score > rhs.score;
+    }
+};
+
 pub fn order(board: *const Board, tt_move: Move, moves: []Move) void {
-    std.sort.pdq(Move, moves, MoveOrderContext{
-        .board = board,
-        .tt_move = tt_move,
-    }, compare);
+    // var quiets = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
+    var quiets = std.BoundedArray(Move, 256).init(0) catch unreachable;
+    var captures = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
+    var has_tt_move = false;
+    for (moves) |move| {
+        if (tt_move != Move.null_move and move == tt_move) {
+            has_tt_move = true;
+            continue;
+        }
+        if (move.isCapture()) {
+            captures.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
+        } else {
+            quiets.appendAssumeCapacity(move);
+        }
+    }
+    sort(ScoreMovePair, captures.slice(), void{}, ScoreMovePair.cmp);
+    moves[0] = tt_move;
+    for (0..captures.len) |i| {
+        moves[@intFromBool(has_tt_move) + i] = captures.slice()[i].move;
+    }
+    for (0..quiets.len) |i| {
+        moves[captures.len + @intFromBool(has_tt_move) + i] = quiets.slice()[i];
+    }
 }
