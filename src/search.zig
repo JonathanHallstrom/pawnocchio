@@ -218,10 +218,10 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
-    move_ordering.reset();
 }
 
 pub fn resetHard() void {
+    move_ordering.reset();
     resetSoft();
     @memset(std.mem.sliceAsBytes(tt), 0);
 }
