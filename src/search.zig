@@ -86,7 +86,7 @@ fn search(
     alpha_inp: i16,
     beta: i16,
     cur_depth: u8,
-    depth_remaining: u8,
+    depth: u8,
     move_buf: []Move,
     hash_history: *std.ArrayList(u64),
 ) ?if (root) struct { i16, Move } else i16 {
@@ -104,7 +104,7 @@ fn search(
     // assert that root implies pv
     assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth_remaining) {
+    if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth) {
         switch (tt_entry.tp) {
             .exact => return result(tt_entry.score, tt_entry.move),
             .lower => if (tt_entry.score >= beta) return result(tt_entry.score, tt_entry.move),
@@ -130,7 +130,7 @@ fn search(
         if (repetitions >= 3) return result(0, move_buf[0]);
     }
 
-    if (depth_remaining == 0) {
+    if (depth == 0) {
         const score = quiesce(
             turn,
             board,
@@ -155,35 +155,11 @@ fn search(
         const inv = board.playMove(turn, move);
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
-
-        if (num_searched == 0) {
-            const score = -(search(
-                false,
-                turn.flipped(),
-                pv,
-                board,
-                updated_eval_state,
-                -beta,
-                -alpha,
-                cur_depth + 1,
-                depth_remaining - 1 + @intFromBool(is_in_check),
-                move_buf[move_count..],
-                hash_history,
-            ) orelse 0);
-            board.undoMove(turn, inv);
-            if (shutdown) break;
-            num_searched += 1;
-
-            best_score = score;
-            best_move = move;
-            if (score > alpha) {
-                if (score >= beta) {
-                    break;
-                }
-                alpha = score;
-            }
-        } else {
-            var score = -(search(
+        const extension: u8 = @intFromBool(is_in_check);
+        var score: i16 = 0;
+        const new_depth = depth - 1 + extension;
+        if (!pv or num_searched > 0) {
+            score = -(search(
                 false,
                 turn.flipped(),
                 false,
@@ -192,46 +168,39 @@ fn search(
                 -(alpha + 1),
                 -alpha,
                 cur_depth + 1,
-                depth_remaining - 1 + @intFromBool(is_in_check),
+                new_depth,
                 move_buf[move_count..],
                 hash_history,
             ) orelse 0);
-            if (shutdown) {
-                board.undoMove(turn, inv);
+        }
+        if (pv and (num_searched == 0 or score > alpha)) {
+            score = -(search(
+                false,
+                turn.flipped(),
+                true,
+                board,
+                updated_eval_state,
+                -beta,
+                -alpha,
+                cur_depth + 1,
+                new_depth,
+                move_buf[move_count..],
+                hash_history,
+            ) orelse 0);
+        }
+        board.undoMove(turn, inv);
+        if (shutdown) break;
+        num_searched += 1;
+
+        if (score > best_score) {
+            best_score = score;
+            best_move = move;
+        }
+        if (score > alpha) {
+            if (score >= beta) {
                 break;
             }
-            num_searched += 1;
-
-            if (alpha < score and score < beta and pv) {
-                score = -(search(
-                    false,
-                    turn.flipped(),
-                    true,
-                    board,
-                    updated_eval_state,
-                    -beta,
-                    -alpha,
-                    cur_depth + 1,
-                    depth_remaining - 1 + @intFromBool(is_in_check),
-                    move_buf[move_count..],
-                    hash_history,
-                ) orelse 0);
-                board.undoMove(turn, inv);
-                if (shutdown) break;
-                if (score > alpha) {
-                    alpha = score;
-                }
-            } else {
-                board.undoMove(turn, inv);
-            }
-
-            if (score > best_score) {
-                best_score = score;
-                best_move = move;
-                if (score >= beta) {
-                    break;
-                }
-            }
+            alpha = score;
         }
     }
     if (shutdown) {
@@ -241,15 +210,15 @@ fn search(
             return null;
         }
     }
-    var tp: ScoreType = .exact;
-    if (best_score <= alpha_inp) tp = .upper;
-    if (best_score >= beta) tp = .lower;
+    var score_type: ScoreType = .exact;
+    if (best_score <= alpha_inp) score_type = .upper;
+    if (best_score >= beta) score_type = .lower;
 
     tt[getTTIndex(board.zobrist)] = TTEntry{
         .zobrist = board.zobrist,
         .move = best_move,
-        .depth = depth_remaining,
-        .tp = tp,
+        .depth = depth,
+        .tp = score_type,
         .score = best_score,
     };
 
