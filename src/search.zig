@@ -242,8 +242,8 @@ fn search(
         }
     }
     var tp: ScoreType = .exact;
-    if (best_score < alpha_inp) tp = .upper;
-    if (best_score > beta) tp = .lower;
+    if (best_score <= alpha_inp) tp = .upper;
+    if (best_score >= beta) tp = .lower;
 
     tt[getTTIndex(board.zobrist)] = TTEntry{
         .zobrist = board.zobrist,
