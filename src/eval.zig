@@ -433,8 +433,36 @@ comptime {
 
 // TODO: TUNING
 pub var mobility_mult: i32 = 1 << 16;
+pub var passed_pawn_mult: i32 = 20 << 16;
 // pub var tempo: i16 = 20;
 // pub var overwhelming_threshold: i16 = 900;
+
+pub fn passedPawnScore(board: *const Board) i16 {
+    var white_non_promoting = board.black.getBoard(.pawn);
+    white_non_promoting |= Bitboard.move(white_non_promoting, -1, -1);
+    white_non_promoting |= Bitboard.move(white_non_promoting, -1, 1);
+
+    white_non_promoting |= Bitboard.move(white_non_promoting, -1, 0);
+    white_non_promoting |= Bitboard.move(white_non_promoting, -2, 0);
+    white_non_promoting |= Bitboard.move(white_non_promoting, -4, 0);
+    var black_non_promoting = board.white.getBoard(.pawn);
+    black_non_promoting |= Bitboard.move(black_non_promoting, 1, -1);
+    black_non_promoting |= Bitboard.move(black_non_promoting, 1, 1);
+
+    black_non_promoting |= Bitboard.move(black_non_promoting, 1, 0);
+    black_non_promoting |= Bitboard.move(black_non_promoting, 2, 0);
+    black_non_promoting |= Bitboard.move(black_non_promoting, 4, 0);
+
+    return @as(i16, @popCount(~white_non_promoting & board.white.getBoard(.pawn))) - @popCount(~black_non_promoting & board.black.getBoard(.pawn));
+}
+
+comptime {
+    @setEvalBranchQuota(1 << 30);
+    assert(passedPawnScore(&Board.init()) == 0);
+    assert(passedPawnScore(&(Board.parseFen("3k4/8/8/8/8/8/3P4/3K4 w - - 0 1") catch unreachable)) > 0);
+    assert(passedPawnScore(&(Board.parseFen("3k4/3p4/8/8/8/8/8/3K4 w - - 0 1") catch unreachable)) < 0);
+    assert(passedPawnScore(&(Board.parseFen("1k6/8/8/8/2P5/6P1/3P4/1K6 w - - 0 1") catch unreachable)) > 0);
+}
 
 pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
     const psqt_eval = eval_state.eval();
@@ -443,6 +471,9 @@ pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
     const mobility = @as(i16, @intCast(movegen.countMoves(.white, board.*))) - @as(i16, @intCast(movegen.countMoves(.black, board.*)));
     var side_independent: i16 = 0;
     side_independent += @intCast(mobility * mobility_mult >> 16);
+
+    // passed pawns are only really useful in the endgame, so essentially add them to the eg score
+    side_independent += @intCast(@divTrunc((passedPawnScore(board) * passed_pawn_mult >> 16) * (total_phase - eval_state.phase), total_phase));
     // side_independent += tempo;
     return psqt_eval + if (board.turn == .white) side_independent else -side_independent;
 }
