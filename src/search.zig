@@ -197,10 +197,10 @@ fn search(
             best_move = move;
         }
         if (score > alpha) {
+            alpha = score;
             if (score >= beta) {
                 break;
             }
-            alpha = score;
         }
     }
     if (shutdown) {
