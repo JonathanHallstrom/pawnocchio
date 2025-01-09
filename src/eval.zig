@@ -11,6 +11,7 @@ const write = @import("main.zig").write;
 const PieceType = @import("piece_type.zig").PieceType;
 const Move = @import("Move.zig").Move;
 const Board = @import("Board.zig");
+const movegen = @import("movegen.zig");
 
 const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 10_000 };
 const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 10_000 };
@@ -430,5 +431,18 @@ comptime {
     assert(readPieceSquareTable(.white, .pawn, .a7).endgame() > readPieceSquareTable(.white, .pawn, .a2).endgame());
 }
 
-// pub const evaluate = evaluateMaterialOnly;
-pub const evaluate = evaluatePesto;
+// TODO: TUNING
+pub var mobility_mult: i32 = 1 << 16;
+// pub var tempo: i16 = 20;
+// pub var overwhelming_threshold: i16 = 900;
+
+pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
+    const psqt_eval = eval_state.eval();
+
+    // if (@abs(psqt_eval) > overwhelming_threshold) return psqt_eval;
+    const mobility = @as(i16, @intCast(movegen.countMoves(.white, board.*))) - @as(i16, @intCast(movegen.countMoves(.black, board.*)));
+    var side_independent: i16 = 0;
+    side_independent += @intCast(mobility * mobility_mult >> 16);
+    // side_independent += tempo;
+    return psqt_eval + if (board.turn == .white) side_independent else -side_independent;
+}
