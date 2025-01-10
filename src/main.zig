@@ -44,8 +44,8 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
-    const name = args.next() orelse "pawnocchio";
-    _ = name;
+    const process_name = args.next() orelse "pawnocchio";
+    _ = process_name;
 
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, 16384);
     defer hash_history.deinit();
@@ -129,6 +129,7 @@ pub fn main() !void {
     }
 
     var board = Board.init();
+    var frc: bool = false;
     hash_history.appendAssumeCapacity(board.zobrist);
     const stdin = std.io.getStdIn();
     var br = std.io.bufferedReader(stdin.reader());
@@ -160,82 +161,43 @@ pub fn main() !void {
             write("id author Jonathan Hallström\n", .{});
             write("option name Hash type spin default 256 min 1 max 65535\n", .{});
             write("option name Threads type spin default 1 min 1 max 1\n", .{});
+            write("option name UCI_Chess960 type check default false\n", .{});
             write("uciok\n", .{});
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             engine.reset();
             board = Board.init();
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "setoption")) {
+            frc = false;
+        } else if (std.ascii.eqlIgnoreCase(command, "setoption")) {
             if (!std.ascii.eqlIgnoreCase("name", parts.next() orelse "")) continue;
+            const name = parts.next() orelse "";
+            if (!std.ascii.eqlIgnoreCase("value", parts.next() orelse "")) continue;
+            const value = parts.next() orelse "";
 
-            if (std.ascii.eqlIgnoreCase("Hash", parts.next() orelse "")) {
-                if (!std.ascii.eqlIgnoreCase("value", parts.next() orelse "")) continue;
-                const hash_size_to_parts = parts.next() orelse "";
-                const size = std.fmt.parseInt(u16, hash_size_to_parts, 10) catch {
+            if (std.ascii.eqlIgnoreCase("Hash", name)) {
+                const size = std.fmt.parseInt(u16, value, 10) catch {
                     write_mutex.lock();
                     defer write_mutex.unlock();
-                    try log_writer.print("invalid hash size: '{s}'\n", .{hash_size_to_parts});
+                    try log_writer.print("invalid hash size: '{s}'\n", .{value});
                     continue;
                 };
                 try engine.setTTSize(size);
             }
-        }
 
-        if (std.ascii.eqlIgnoreCase(command, "position")) {
-            const sub_command = parts.next() orelse "";
-            const rest = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
-
-            var pos_iter = std.mem.tokenizeSequence(u8, rest, " moves ");
-
-            if (std.ascii.eqlIgnoreCase(sub_command, "fen")) {
-                const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {
-                    write_mutex.lock();
-                    defer write_mutex.unlock();
-
-                    try log_writer.print("no fen: '{s}'\n", .{rest});
-                    continue;
-                }, &std.ascii.whitespace);
-
-                board = Board.parseFen(fen_to_parse) catch {
-                    write_mutex.lock();
-                    defer write_mutex.unlock();
-
-                    try log_writer.print("invalid fen: '{s}'\n", .{fen_to_parse});
-                    continue;
-                };
-            } else if (std.ascii.eqlIgnoreCase(sub_command, "startpos")) {
-                board = Board.init();
+            if (std.ascii.eqlIgnoreCase("UCI_Chess960", name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    frc = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    frc = false;
+                }
             }
-            hash_history.clearRetainingCapacity();
-            hash_history.appendAssumeCapacity(board.zobrist);
-            var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
-            while (move_iter.next()) |played_move| {
-                if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
-                _ = board.playMoveFromStr(played_move) catch {
-                    write_mutex.lock();
-                    defer write_mutex.unlock();
-
-                    try log_writer.print("invalid move: '{s}'\n", .{played_move});
-                    continue;
-                };
-                hash_history.appendAssumeCapacity(board.zobrist);
-            }
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "isready")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             write("readyok\n", .{});
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "d")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "d")) {
             for (board.toString()) |row| {
                 write("{s}\n", .{row});
             }
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "go")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "go")) {
             var max_depth_opt: ?u8 = null;
             var max_nodes_opt: ?u64 = null;
 
@@ -375,6 +337,7 @@ pub fn main() !void {
                         .soft_time = soft_time,
                         .hard_time = hard_time,
                         .depth = max_depth_opt,
+                        .frc = frc,
                     },
                     move_buf,
                     &hash_history,
@@ -387,18 +350,71 @@ pub fn main() !void {
                         .soft_time = soft_time,
                         .hard_time = hard_time,
                         .depth = max_depth_opt,
+                        .frc = frc,
                     },
                     move_buf,
                     &hash_history,
                 );
             }
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "stop")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
             engine.stopAsyncSearch();
-        }
-        if (std.ascii.eqlIgnoreCase(command, "quit")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
             return;
+        } else {
+            const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
+            const sub_command = parts.next() orelse "";
+            const rest = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
+
+            var pos_iter = std.mem.tokenizeSequence(u8, if (started_with_position) rest else line, " moves ");
+
+            if (std.ascii.eqlIgnoreCase(sub_command, "fen") or !started_with_position) {
+                const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {
+                    write_mutex.lock();
+                    defer write_mutex.unlock();
+
+                    try log_writer.print("no fen: '{s}'\n", .{rest});
+                    continue;
+                }, &std.ascii.whitespace);
+
+                board = Board.parseFen(fen_to_parse) catch {
+                    write_mutex.lock();
+                    defer write_mutex.unlock();
+
+                    try log_writer.print("invalid fen: '{s}'\n", .{fen_to_parse});
+                    continue;
+                };
+
+                // detect FRC/shredder fen castling string
+                var fen_part_iter = std.mem.tokenizeScalar(u8, fen_to_parse, ' ');
+                _ = fen_part_iter.next(); // discard board part
+                _ = fen_part_iter.next(); // discard side to move part
+                if (fen_part_iter.next()) |castling_rights_string| {
+                    for (castling_rights_string) |ch| {
+                        switch (ch) {
+                            'K', 'k', 'Q', 'q', '-' => continue,
+                            'A'...'H' => frc = true,
+                            'a'...'h' => frc = true,
+                            else => {},
+                        }
+                    }
+                }
+            } else if (std.ascii.eqlIgnoreCase(sub_command, "startpos")) {
+                board = Board.init();
+            }
+            hash_history.clearRetainingCapacity();
+            hash_history.appendAssumeCapacity(board.zobrist);
+            var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
+            while (move_iter.next()) |played_move| {
+                if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
+                _ = board.playMoveFromStr(played_move) catch {
+                    write_mutex.lock();
+                    defer write_mutex.unlock();
+
+                    try log_writer.print("invalid move: '{s}'\n", .{played_move});
+                    continue;
+                };
+                hash_history.appendAssumeCapacity(board.zobrist);
+            }
         }
     }
 }

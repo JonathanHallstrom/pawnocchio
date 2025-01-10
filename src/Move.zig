@@ -185,7 +185,8 @@ pub const Move = enum(u16) {
             res.appendSliceAssumeCapacity(@tagName(self.getTo()));
             res.appendAssumeCapacity(self.getPromotedPieceType().?.toLetter());
         } else if (self.isCastlingMove()) {
-            if (frc) {
+            const rook_file = self.getTo().getFile();
+            if (frc or (rook_file != .a and rook_file != .h)) {
                 res.appendSliceAssumeCapacity(@tagName(self.getFrom()));
                 res.appendSliceAssumeCapacity(@tagName(self.getTo()));
             } else {

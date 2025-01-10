@@ -224,28 +224,28 @@ fn search(
 
     return result(best_score, best_move);
 }
-fn writeInfo(score: i16, move: Move, depth: u8) void {
+fn writeInfo(score: i16, move: Move, depth: u8, frc: bool) void {
     const node_count = @max(1, nodes + qnodes);
 
     if (eval.isMateScore(score)) {
         const plies_to_mate = if (score > 0) eval.checkmate_score - score else eval.checkmate_score + score;
-        write("info depth {} score mate {s}{} nodes {} nps {} time {} pv {}\n", .{
+        write("info depth {} score mate {s}{} nodes {} nps {} time {} pv {s}\n", .{
             depth + 1,
             if (score > 0) "" else "-",
             @divTrunc(plies_to_mate + 1, 2),
             node_count,
             node_count * std.time.ns_per_s / timer.read(),
             (timer.read() + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
-            move,
+            move.toString(frc).slice(),
         });
     } else {
-        write("info depth {} score cp {} nodes {} nps {} time {} pv {}\n", .{
+        write("info depth {} score cp {} nodes {} nps {} time {} pv {s}\n", .{
             depth + 1,
             score,
             node_count,
             node_count * std.time.ns_per_s / timer.read(),
             (timer.read() + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
-            move,
+            move.toString(frc).slice(),
         });
     }
 }
@@ -276,7 +276,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             ),
         } orelse break;
         if (!silence_output and !shouldStopSearching()) {
-            writeInfo(score, move, @intCast(depth));
+            writeInfo(score, move, @intCast(depth), search_params.frc);
         }
 
         if (timer.read() >= search_params.softTime()) {
