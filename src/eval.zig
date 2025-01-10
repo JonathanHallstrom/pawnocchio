@@ -464,13 +464,32 @@ comptime {
     assert(passedPawnScore(&(Board.parseFen("1k6/8/8/8/2P5/6P1/3P4/1K6 w - - 0 1") catch unreachable)) > 0);
 }
 
+fn mobilityScore(board: *const Board) i16 {
+    const white_masks = movegen.getMasks(.white, board.*);
+    const black_masks = movegen.getMasks(.black, board.*);
+
+    var res: i16 = 0;
+    res += @intCast(movegen.countPawnMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins, white_masks.rook_pins));
+    res -= @intCast(movegen.countPawnMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins, black_masks.rook_pins));
+
+    res += @intCast(movegen.countKnightMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins | white_masks.rook_pins));
+    res -= @intCast(movegen.countKnightMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins | black_masks.rook_pins));
+
+    res += @intCast(movegen.countSlidingMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins, white_masks.rook_pins));
+    res -= @intCast(movegen.countSlidingMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins, black_masks.rook_pins));
+
+    res -= @intCast(movegen.countKingMoves(.white, false, board.*, white_masks.rook_pins));
+    res += @intCast(movegen.countKingMoves(.black, false, board.*, black_masks.rook_pins));
+
+    return res;
+}
+
 pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
     const psqt_eval = eval_state.eval();
 
     // if (@abs(psqt_eval) > overwhelming_threshold) return psqt_eval;
-    const mobility = @as(i16, @intCast(movegen.countMoves(.white, board.*))) - @as(i16, @intCast(movegen.countMoves(.black, board.*)));
     var side_independent: i16 = 0;
-    side_independent += @intCast(mobility * mobility_mult >> 16);
+    side_independent += @intCast(mobilityScore(board) * mobility_mult >> 16);
 
     // passed pawns are only really useful in the endgame, so essentially add them to the eg score
     side_independent += @intCast(@divTrunc((passedPawnScore(board) * passed_pawn_mult >> 16) * (total_phase - eval_state.phase), total_phase));
