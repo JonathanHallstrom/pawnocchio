@@ -478,8 +478,8 @@ fn mobilityScore(board: *const Board) i16 {
     res += @intCast(movegen.countSlidingMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins, white_masks.rook_pins));
     res -= @intCast(movegen.countSlidingMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins, black_masks.rook_pins));
 
-    res -= @intCast(movegen.countKingMoves(.white, false, board.*, white_masks.rook_pins));
-    res += @intCast(movegen.countKingMoves(.black, false, board.*, black_masks.rook_pins));
+    res += @intCast(movegen.countKingMoves(.white, false, board.*, white_masks.rook_pins));
+    res -= @intCast(movegen.countKingMoves(.black, false, board.*, black_masks.rook_pins));
 
     return res;
 }
