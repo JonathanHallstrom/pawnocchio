@@ -197,7 +197,7 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
             }
         }
         if (!captures_only) {
-            const pinned_pawns_that_can_move_one = non_promoting_pinned_pawns & Bitboard.move(check_mask & empty_squares & pinned_by_rook_mask, -d_rank, 0);
+            const pinned_pawns_that_can_move_one = non_promoting_pinned_pawns & ~pinned_by_bishop_mask & Bitboard.move(check_mask & empty_squares & pinned_by_rook_mask, -d_rank, 0);
             const pinned_pawns_that_can_move_two = pinned_pawns_that_can_move_one & double_move_rank & Bitboard.move(check_mask & empty_squares, -d_rank * 2, 0);
             if (count_only) {
                 move_count += @popCount(pinned_pawns_that_can_move_one);
