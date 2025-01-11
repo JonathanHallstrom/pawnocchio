@@ -3,6 +3,7 @@ const Move = @import("Move.zig").Move;
 const Board = @import("Board.zig");
 const Bitboard = @import("Bitboard.zig");
 const Square = @import("square.zig").Square;
+const Rank = @import("square.zig").Rank;
 const Side = @import("side.zig").Side;
 const PieceType = @import("piece_type.zig").PieceType;
 const assert = std.debug.assert;
@@ -86,36 +87,39 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
     }
 
     if (board.en_passant_target) |to| {
-        const ep_pawn_square = to.move(-d_rank, 0);
-        const ep_pawn_bb = ep_pawn_square.toBitboard();
+        // if this is false then we're counting moves for mobility calculation
+        if (to.getRank() == (if (turn == .white) Rank.sixth else Rank.third)) {
+            const ep_pawn_square = to.move(-d_rank, 0);
+            const ep_pawn_bb = ep_pawn_square.toBitboard();
 
-        assert(Bitboard.contains(them.getBoard(.pawn), ep_pawn_square));
+            assert(Bitboard.contains(them.getBoard(.pawn), ep_pawn_square));
 
-        const king = us.getBoard(.king);
-        const occ = us.all | them.all;
-        for ([2]i8{ -1, 1 }) |d_file| {
-            if (Bitboard.move(ep_pawn_bb, 0, d_file) & pawns != 0) {
-                const from = ep_pawn_square.move(0, d_file);
+            const king = us.getBoard(.king);
+            const occ = us.all | them.all;
+            for ([2]i8{ -1, 1 }) |d_file| {
+                if (Bitboard.move(ep_pawn_bb, 0, d_file) & pawns != 0) {
+                    const from = ep_pawn_square.move(0, d_file);
 
-                const occ_change = ep_pawn_bb | to.toBitboard() | from.toBitboard();
+                    const occ_change = ep_pawn_bb | to.toBitboard() | from.toBitboard();
 
-                const occ_after = occ ^ occ_change;
+                    const occ_after = occ ^ occ_change;
 
-                var attacked: u64 = 0;
+                    var attacked: u64 = 0;
 
-                var iter = Bitboard.iterator(them.getBoard(.bishop) | them.getBoard(.queen));
-                while (iter.next()) |attacker| {
-                    attacked |= magics.getBishopAttacks(attacker, occ_after);
-                }
-                iter = Bitboard.iterator(them.getBoard(.rook) | them.getBoard(.queen));
-                while (iter.next()) |attacker| {
-                    attacked |= magics.getRookAttacks(attacker, occ_after);
-                }
+                    var iter = Bitboard.iterator(them.getBoard(.bishop) | them.getBoard(.queen));
+                    while (iter.next()) |attacker| {
+                        attacked |= magics.getBishopAttacks(attacker, occ_after);
+                    }
+                    iter = Bitboard.iterator(them.getBoard(.rook) | them.getBoard(.queen));
+                    while (iter.next()) |attacker| {
+                        attacked |= magics.getRookAttacks(attacker, occ_after);
+                    }
 
-                if (king & attacked == 0) {
-                    if (!count_only)
-                        move_buf[move_count] = Move.initEnPassant(from, to);
-                    move_count += 1;
+                    if (king & attacked == 0) {
+                        if (!count_only)
+                            move_buf[move_count] = Move.initEnPassant(from, to);
+                        move_count += 1;
+                    }
                 }
             }
         }
