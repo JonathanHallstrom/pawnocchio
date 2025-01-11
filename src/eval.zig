@@ -492,7 +492,7 @@ pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
     side_independent += @intCast(mobilityScore(board) * mobility_mult >> 16);
 
     // passed pawns are only really useful in the endgame, so essentially add them to the eg score
-    side_independent += @intCast(@divTrunc((passedPawnScore(board) * passed_pawn_mult >> 16) * (total_phase - eval_state.phase), total_phase));
+    side_independent += @intCast(@divTrunc((passedPawnScore(board) * passed_pawn_mult >> 16) * (@as(i16, total_phase) - eval_state.phase), total_phase));
     // side_independent += tempo;
     return psqt_eval + if (board.turn == .white) side_independent else -side_independent;
 }
