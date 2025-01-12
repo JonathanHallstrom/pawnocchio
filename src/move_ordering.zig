@@ -37,7 +37,7 @@ inline fn sort(
     context: anytype,
     comptime lessThanFn: fn (context: @TypeOf(context), lhs: T, rhs: T) bool,
 ) void {
-    @call(.always_inline, std.sort.pdq, .{ T, items, context, lessThanFn });
+    @call(.always_inline, std.mem.sort, .{ T, items, context, lessThanFn });
 }
 
 pub fn mvvLva(board: *const Board, moves: []Move) void {
@@ -54,8 +54,7 @@ const ScoreMovePair = struct {
 };
 
 pub fn order(board: *const Board, tt_move: Move, moves: []Move) void {
-    // var quiets = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
-    var quiets = std.BoundedArray(Move, 256).init(0) catch unreachable;
+    var quiets = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var captures = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var has_tt_move = false;
     for (moves) |move| {
@@ -66,15 +65,38 @@ pub fn order(board: *const Board, tt_move: Move, moves: []Move) void {
         if (move.isCapture()) {
             captures.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
         } else {
-            quiets.appendAssumeCapacity(move);
+            quiets.appendAssumeCapacity(.{ .move = move, .score = getHistory(board, move) });
         }
     }
     sort(ScoreMovePair, captures.slice(), void{}, ScoreMovePair.cmp);
+    sort(ScoreMovePair, quiets.slice(), void{}, ScoreMovePair.cmp);
     moves[0] = tt_move;
     for (0..captures.len) |i| {
         moves[@intFromBool(has_tt_move) + i] = captures.slice()[i].move;
     }
     for (0..quiets.len) |i| {
-        moves[captures.len + @intFromBool(has_tt_move) + i] = quiets.slice()[i];
+        moves[captures.len + @intFromBool(has_tt_move) + i] = quiets.slice()[i].move;
     }
 }
+
+pub fn reset() void {
+    @memset(std.mem.asBytes(&history), 0);
+}
+
+pub fn historyEntry(board: *const Board, move: Move) *i16 {
+    return &history[if (board.turn == .white) 0 else 1][move.getFrom().toInt()][move.getTo().toInt()];
+}
+
+pub fn getHistory(board: *const Board, move: Move) i16 {
+    return historyEntry(board, move).*;
+}
+
+pub fn updateHistory(board: *const Board, move: Move, bonus: anytype) void {
+    const clamped_bonus: i16 = @intCast(std.math.clamp(bonus, -max_history, max_history));
+    const entry = historyEntry(board, move);
+    // entry.* = @intCast(clamped_bonus - @divTrunc(clamped_bonus * entry.*, max_history));
+    entry.* = @intCast(std.math.clamp(entry.* + @as(i32, clamped_bonus), -max_history, max_history));
+}
+
+const max_history = 1 << 14;
+var history = std.mem.zeroes([2][64][64]i16);

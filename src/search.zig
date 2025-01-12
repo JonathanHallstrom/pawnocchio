@@ -219,6 +219,9 @@ fn search(
         if (score > alpha) {
             alpha = score;
             if (score >= beta) {
+                if (move.isQuiet()) {
+                    move_ordering.updateHistory(board, move, depth + 1);
+                }
                 break;
             }
         }
@@ -358,6 +361,7 @@ pub fn resetSoft() void {
 }
 
 pub fn resetHard() void {
+    move_ordering.reset();
     resetSoft();
     @memset(std.mem.sliceAsBytes(tt), 0);
 }
