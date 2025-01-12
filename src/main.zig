@@ -1,50 +1,50 @@
 const std = @import("std");
-const lib = @import("lib.zig");
 const engine = @import("engine.zig");
 
-const Board = lib.Board;
-const Move = lib.Move;
+const Board = @import("Board.zig");
+const Move = @import("Move.zig").Move;
 
-pub var log_writer: std.io.AnyWriter = undefined;
+pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+    const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
+
+    if (std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only })) |lf| {
+        lf.writer().writeAll(fbs.getWritten()) catch {};
+        lf.writer().writeAll(msg) catch {};
+        lf.close();
+    } else |_| {
+        std.debug.print("{s}\n", .{fbs.getWritten()});
+        std.debug.print("{s}\n", .{msg});
+    }
+    const defaultPanic = if (@hasDecl(std.builtin, "default_panic")) std.builtin.default_panic else std.debug.defaultPanic;
+    defaultPanic(msg, error_return_trace, ret_addr);
+}
+
+var log_mutex = std.Thread.Mutex{};
+pub fn writeLog(comptime fmt: []const u8, args: anytype) void {
+    log_mutex.lock();
+    defer log_mutex.unlock();
+    fbs.writer().print(fmt, args) catch {};
+}
+
+var error_log_buf: [64 << 20]u8 = undefined;
+var fbs = std.io.fixedBufferStream(&error_log_buf);
 
 var stdout: std.fs.File = undefined;
-
+var write_mutex = std.Thread.Mutex{};
 pub fn write(comptime fmt: []const u8, args: anytype) void {
+    write_mutex.lock();
+    defer write_mutex.unlock();
     var buf: [4096]u8 = undefined;
     const to_print = std.fmt.bufPrint(&buf, fmt, args) catch "";
 
-    const non_printable_opt = for (to_print) |c| {
-        if (!std.ascii.isPrint(c) and !std.ascii.isWhitespace(c)) {
-            break c;
-        }
-    } else null;
-    if (non_printable_opt) |non_printable| {
-        log_writer.print("tried to send non printable char: '{c}' (ascii: {})\n", .{ non_printable, @as(i32, non_printable) }) catch {};
-        return;
-    }
-    log_writer.print("sent: {s}", .{to_print}) catch {};
+    writeLog("sent: {s}", .{to_print});
     stdout.writer().writeAll(to_print) catch |e| {
         std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
     };
 }
 
 pub fn main() !void {
-    log_writer = if (std.debug.runtime_safety)
-        std.io.getStdErr().writer().any()
-    else
-        std.io.null_writer.any();
-
     stdout = std.io.getStdOut();
-    // disgusting ik
-    const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
-    const log_file = std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only }) catch null;
-    defer if (log_file) |log| log.close();
-
-    if (log_file) |lf| {
-        if (std.debug.runtime_safety) {
-            log_writer = lf.writer().any();
-        }
-    }
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -52,17 +52,19 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
-    const name = args.next() orelse "pawnocchio";
-    _ = name;
+    const process_name = args.next() orelse "pawnocchio";
+    _ = process_name;
 
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, 16384);
     defer hash_history.deinit();
-    const move_buf = try allocator.alloc(Move, 1 << 20);
+    const move_buf = try allocator.alloc(Move, 16384);
     defer allocator.free(move_buf);
+
+    engine.reset();
+    try engine.setTTSize(256);
 
     if (args.next()) |arg| {
         if (std.ascii.endsWithIgnoreCase(arg, "bench")) {
-            engine.init();
             const fens = [_][]const u8{
                 "r3k2r/2pb1ppp/2pp1q2/p7/1nP1B3/1P2P3/P2N1PPP/R2QK2R w KQkq - 0 14",
                 "4rrk1/2p1b1p1/p1p3q1/4p3/2P2n1p/1P1NR2P/PB3PP1/3R1QK1 b - - 2 24",
@@ -117,15 +119,16 @@ pub fn main() !void {
             };
             var num_nodes: u64 = 0;
             var time: u64 = 0;
-            const depth = 5;
+            const depth = 7;
             for (fens) |fen| {
                 const board = try Board.parseFen(fen);
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
-                const move_info = engine.findMove(board, move_buf, depth, std.math.maxInt(u64), std.math.maxInt(u64), std.math.maxInt(u64), &hash_history, true);
 
-                num_nodes += move_info.nodes_searched;
-                time += move_info.time_used;
+                const info = engine.searchSync(board, .{ .depth = depth }, move_buf, &hash_history, true);
+
+                num_nodes += info.stats.nodes + info.stats.qnodes;
+                time += info.stats.ns_used;
             }
 
             write("{} nodes {} nps\n", .{ num_nodes, num_nodes * std.time.ns_per_s / time });
@@ -134,13 +137,14 @@ pub fn main() !void {
     }
 
     var board = Board.init();
+    var frc: bool = false;
+    hash_history.appendAssumeCapacity(board.zobrist);
     const stdin = std.io.getStdIn();
     var br = std.io.bufferedReader(stdin.reader());
 
     const reader = br.reader();
 
     var line_buf: [1 << 20]u8 = undefined;
-    engine.init();
     main_loop: while (reader.readUntilDelimiter(&line_buf, '\n') catch null) |line_raw| {
         const line = std.mem.trim(u8, line_raw, &std.ascii.whitespace);
         for (line) |c| {
@@ -153,80 +157,50 @@ pub fn main() !void {
         const command = parts.next() orelse {
             continue; // empty command
         };
-
-        try log_writer.print("got: {s}\n", .{line});
+        writeLog("got: {s}\n", .{line});
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
-            try stdout.writeAll("id name pawnocchio 0.0.6\n");
-            try stdout.writeAll("option name Hash type spin default 256 min 1 max 65535\n");
-            try stdout.writeAll("option name Threads type spin default 1 min 1 max 1\n");
-            try stdout.writeAll("uciok\n");
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
+            write("id name pawnocchio 0.0.6\n", .{});
+            write("id author Jonathan Hallström\n", .{});
+            write("option name Hash type spin default 256 min 1 max 65535\n", .{});
+            write("option name Threads type spin default 1 min 1 max 1\n", .{});
+            write("option name UCI_Chess960 type check default false\n", .{});
+            write("uciok\n", .{});
+        } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             engine.reset();
             board = Board.init();
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "setoption")) {
+            frc = false;
+        } else if (std.ascii.eqlIgnoreCase(command, "setoption")) {
             if (!std.ascii.eqlIgnoreCase("name", parts.next() orelse "")) continue;
+            const name = parts.next() orelse "";
+            if (!std.ascii.eqlIgnoreCase("value", parts.next() orelse "")) continue;
+            const value = parts.next() orelse "";
 
-            if (std.ascii.eqlIgnoreCase("Hash", parts.next() orelse "")) {
-                if (!std.ascii.eqlIgnoreCase("value", parts.next() orelse "")) continue;
-                const hash_size_to_parts = parts.next() orelse "";
-                const size = std.fmt.parseInt(u16, hash_size_to_parts, 10) catch {
-                    try log_writer.print("invalid hash size: '{s}'\n", .{hash_size_to_parts});
+            if (std.ascii.eqlIgnoreCase("Hash", name)) {
+                const size = std.fmt.parseInt(u16, value, 10) catch {
+                    writeLog("invalid hash size: '{s}'\n", .{value});
                     continue;
                 };
                 try engine.setTTSize(size);
             }
-        }
 
-        if (std.ascii.eqlIgnoreCase(command, "position")) {
-            const sub_command = parts.next() orelse "";
-            const rest = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
-
-            var pos_iter = std.mem.tokenizeSequence(u8, rest, " moves ");
-
-            if (std.ascii.eqlIgnoreCase(sub_command, "fen")) {
-                const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {
-                    try log_writer.print("no fen: '{s}'\n", .{rest});
-                    continue;
-                }, &std.ascii.whitespace);
-
-                board = Board.parseFen(fen_to_parse) catch {
-                    try log_writer.print("invalid fen: '{s}'\n", .{fen_to_parse});
-                    continue;
-                };
-            } else if (std.ascii.eqlIgnoreCase(sub_command, "startpos")) {
-                board = Board.init();
+            if (std.ascii.eqlIgnoreCase("UCI_Chess960", name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    frc = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    frc = false;
+                }
             }
-            hash_history.clearRetainingCapacity();
-            hash_history.appendAssumeCapacity(board.zobrist);
-            var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
-            while (move_iter.next()) |played_move| {
-                if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
-                _ = board.playMoveFromSquare(played_move, move_buf) catch {
-                    try log_writer.print("invalid move: '{s}'\n", .{played_move});
-                    continue;
-                };
-                hash_history.appendAssumeCapacity(board.zobrist);
-            }
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "isready")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             write("readyok\n", .{});
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "d")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "d")) {
             for (board.toString()) |row| {
                 write("{s}\n", .{row});
             }
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "go")) {
-            var max_depth: u8 = 255;
-            var max_nodes: u64 = std.math.maxInt(u64);
+        } else if (std.ascii.eqlIgnoreCase(command, "go")) {
+            var max_depth_opt: ?u8 = null;
+            var max_nodes_opt: ?u64 = null;
 
             // by default assume each player has 1000s
             // completely arbitrarily chosen value
@@ -241,7 +215,7 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
-                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
 
@@ -251,68 +225,69 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
                     const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
-                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
                     var timer = std.time.Timer.start() catch unreachable;
-                    const nodes = board.perftSingleThreadedNonBulk(move_buf, depth);
+                    const nodes = board.perftSingleThreaded(move_buf, depth, true);
                     const elapsed_ns = timer.read();
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
-
                     continue :main_loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "depth")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    max_depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
-                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                    max_depth_opt = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
+                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "nodes")) {
                     const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    max_nodes = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
-                        try log_writer.print("invalid nodes: '{s}'\n", .{nodes_to_parse});
+                    max_nodes_opt = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
+                        writeLog("invalid nodes: '{s}'\n", .{nodes_to_parse});
                         continue;
                     };
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "wtime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     white_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "btime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     black_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "movetime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     move_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "winc")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     white_increment = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "binc")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     black_increment = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
+                if (std.ascii.eqlIgnoreCase(command_part, "infinite")) {
+                    engine.setInfinite();
+                }
             }
-            if (mate_finding_depth) |depth| max_depth = @min(max_depth, depth * 2);
-            log_writer.print("max depth: {}\n", .{max_depth}) catch {};
+            if (mate_finding_depth) |depth| max_depth_opt = @min(max_depth_opt orelse 255, depth * 2 + 1);
 
             const my_time = if (board.turn == .white) white_time else black_time;
             const my_increment = if (board.turn == .white) white_increment else black_increment;
@@ -321,20 +296,90 @@ pub fn main() !void {
             // const my_increment = @min(white_increment, black_increment);
 
             // 10ms  seems fine
-            const overhead = 10 * std.time.ns_per_ms;
+            const overhead = @min(10 * std.time.ns_per_ms, my_time / 2);
 
-            const soft_time = my_time / 20 + my_increment * 3 / 4;
-            const hard_time = if (move_time) |mt| mt -| overhead else my_time / 10 -| overhead;
+            var soft_time = my_time / 20 + my_increment * 3 / 4;
+            var hard_time = if (move_time) |mt| mt -| overhead else my_time / 10 -| overhead;
+            // std.debug.print("{}\n", .{std.fmt.fmtDuration(hard_time)});
+            hard_time = @max(std.time.ns_per_ms / 4, hard_time);
+            soft_time = @min(soft_time, hard_time);
 
-            log_writer.print("max time:  {}\n", .{hard_time}) catch {};
-
-            const move_info = engine.findMove(board, move_buf, max_depth, max_nodes, soft_time, hard_time, &hash_history, false);
-            const move = move_info.best_move;
-            write("bestmove {s}\n", .{move.pretty().slice()});
-        }
-
-        if (std.ascii.eqlIgnoreCase(command, "quit")) {
+            if (hard_time <= 10) {
+                _ = engine.searchSync(
+                    board,
+                    .{
+                        .soft_time = soft_time,
+                        .hard_time = hard_time,
+                        .depth = max_depth_opt,
+                        .frc = frc,
+                    },
+                    move_buf,
+                    &hash_history,
+                    false,
+                );
+            } else {
+                engine.startAsyncSearch(
+                    board,
+                    .{
+                        .soft_time = soft_time,
+                        .hard_time = hard_time,
+                        .depth = max_depth_opt,
+                        .frc = frc,
+                    },
+                    move_buf,
+                    &hash_history,
+                );
+            }
+        } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
+            engine.stopAsyncSearch();
+        } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
             return;
+        } else {
+            const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
+            const sub_command = parts.next() orelse "";
+            const rest = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
+
+            var pos_iter = std.mem.tokenizeSequence(u8, if (started_with_position) rest else line, " moves ");
+
+            if (std.ascii.eqlIgnoreCase(sub_command, "fen") or !started_with_position) {
+                const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {
+                    writeLog("no fen: '{s}'\n", .{rest});
+                    continue;
+                }, &std.ascii.whitespace);
+
+                board = Board.parseFen(fen_to_parse) catch {
+                    writeLog("invalid fen: '{s}'\n", .{fen_to_parse});
+                    continue;
+                };
+
+                // detect FRC/shredder fen castling string
+                var fen_part_iter = std.mem.tokenizeScalar(u8, fen_to_parse, ' ');
+                _ = fen_part_iter.next(); // discard board part
+                _ = fen_part_iter.next(); // discard side to move part
+                if (fen_part_iter.next()) |castling_rights_string| {
+                    for (castling_rights_string) |ch| {
+                        switch (ch) {
+                            'K', 'k', 'Q', 'q', '-' => continue,
+                            'A'...'H' => frc = true,
+                            'a'...'h' => frc = true,
+                            else => {},
+                        }
+                    }
+                }
+            } else if (std.ascii.eqlIgnoreCase(sub_command, "startpos")) {
+                board = Board.init();
+            }
+            hash_history.clearRetainingCapacity();
+            hash_history.appendAssumeCapacity(board.zobrist);
+            var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
+            while (move_iter.next()) |played_move| {
+                if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
+                _ = board.playMoveFromStr(played_move) catch {
+                    writeLog("invalid move: '{s}'\n", .{played_move});
+                    continue;
+                };
+                hash_history.appendAssumeCapacity(board.zobrist);
+            }
         }
     }
 }

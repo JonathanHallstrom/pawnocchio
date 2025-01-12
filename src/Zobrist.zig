@@ -1,8 +1,8 @@
 const std = @import("std");
-const lib = @import("lib.zig");
 
-const Piece = lib.Piece;
-const PieceType = lib.PieceType;
+const Piece = @import("Piece.zig");
+const Side = @import("side.zig").Side;
+const PieceType = @import("piece_type.zig").PieceType;
 
 const piece_entries: usize = 64;
 const side_entries: usize = piece_entries * PieceType.all.len;
@@ -12,7 +12,8 @@ const side_diff_entries: usize = 1;
 const data = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [side_entries * 2 + castling_entries + en_passant_entries + side_diff_entries + @sizeOf(u64) - 1]u8 = undefined;
-    const seed: [std.Random.DefaultCsprng.secret_seed_length]u8 = .{
+
+    var prng = std.Random.DefaultCsprng.init(.{
         83,  8,   124, 62,
         209, 228, 102, 90,
         139, 94,  247, 234,
@@ -21,16 +22,15 @@ const data = blk: {
         187, 168, 131, 116,
         40,  160, 121, 239,
         88,  54,  185, 83,
-    };
-    var prng = std.Random.DefaultCsprng.init(seed);
+    });
     prng.random().bytes(&res);
     break :blk res;
 };
 
 const native_endianness = @import("builtin").cpu.arch.endian();
 
-pub fn get(piece: Piece, side: lib.Side) u64 {
-    const offset = @intFromEnum(piece.getType()) * piece_entries + piece.getLoc() + if (side == .white) side_entries else 0;
+pub fn get(piece: Piece, side: Side) u64 {
+    const offset = @intFromEnum(piece.tp) * piece_entries + piece.sq.toInt() + if (side == .white) side_entries else 0;
     return std.mem.readInt(u64, data[offset..][0..8], native_endianness);
 }
 
