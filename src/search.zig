@@ -220,7 +220,7 @@ fn search(
             alpha = score;
             if (score >= beta) {
                 if (move.isQuiet()) {
-                    move_ordering.updateHistory(board, move, depth + 1);
+                    move_ordering.updateHistory(board, move, move_ordering.getBonus(depth));
                 }
                 break;
             }

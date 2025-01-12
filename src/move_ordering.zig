@@ -91,11 +91,15 @@ pub fn getHistory(board: *const Board, move: Move) i16 {
     return historyEntry(board, move).*;
 }
 
+pub fn getBonus(depth: u8) i16 {
+    // TODO: tuning
+    return @min(@as(i16, depth) * 300 - 300, 2300);
+}
+
 pub fn updateHistory(board: *const Board, move: Move, bonus: anytype) void {
     const clamped_bonus: i16 = @intCast(std.math.clamp(bonus, -max_history, max_history));
     const entry = historyEntry(board, move);
-    // entry.* = @intCast(clamped_bonus - @divTrunc(clamped_bonus * entry.*, max_history));
-    entry.* = @intCast(std.math.clamp(entry.* + @as(i32, clamped_bonus), -max_history, max_history));
+    entry.* = @intCast(clamped_bonus - @divTrunc(@as(i32, @abs(clamped_bonus)) * entry.*, max_history));
 }
 
 const max_history = 1 << 14;
