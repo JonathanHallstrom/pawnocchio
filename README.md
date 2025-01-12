@@ -10,4 +10,4 @@ A/B, iterative deepening, qsearch, mvv-lva, pvs
 
 ## Build instructions
 1. Install zig (0.13.0)
-2. zig build --release=fast
+2. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
