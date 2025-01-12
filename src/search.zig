@@ -346,7 +346,7 @@ pub fn setTTSize(mb: usize) !void {
 
 fn getTTIndex(hash: u64) usize {
     assert(tt.len > 0);
-    return (((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt.len) >> 32;
+    return @intCast((((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt.len) >> 32);
 }
 
 pub fn resetSoft() void {
