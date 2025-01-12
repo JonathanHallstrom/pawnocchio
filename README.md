@@ -7,3 +7,7 @@ A/B, iterative deepening, qsearch, mvv-lva, pvs
 ## TODO
 - lmr (loglog?)
 - history
+
+## Build instructions
+1. Install zig (0.13.0)
+2. zig build --release=fast
