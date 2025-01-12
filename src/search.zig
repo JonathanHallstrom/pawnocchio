@@ -12,7 +12,7 @@ const testing = std.testing;
 const EvalState = eval.EvalState;
 const assert = std.debug.assert;
 
-const log_writer = &@import("main.zig").log_writer;
+const writeLog = @import("main.zig").writeLog;
 const write = @import("main.zig").write;
 
 const evaluate = eval.evaluate;
@@ -49,6 +49,16 @@ fn quiesce(
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         assert(move.isCapture());
+        if (std.debug.runtime_safety) {
+            if (board.mailbox[move.getTo().toInt()]) |cap| {
+                if (cap == .king) {
+                    writeLog("{} captures king\nboard:{}\n", .{ move, board.* });
+                    err = true;
+                    shutdown = true;
+                    return 0;
+                }
+            }
+        }
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
         qnodes += 1;
@@ -61,6 +71,11 @@ fn quiesce(
             -alpha,
             move_buf[move_count..],
         );
+        if (errored()) {
+            writeLog("{}\n", .{move});
+            break;
+        }
+
         if (shutdown)
             break;
 
@@ -95,6 +110,7 @@ fn search(
             return if (root) .{ score, move } else score;
         }
     }.impl;
+    if (std.debug.runtime_safety and err) return result(0, Move.null_move);
     var alpha = alpha_inp;
     nodes += 1;
     if (cur_depth > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
@@ -139,7 +155,7 @@ fn search(
             beta,
             move_buf,
         );
-        if (shutdown) {
+        if (shutdown or errored()) {
             return null;
         }
         return result(score, move_buf[0]);
@@ -188,6 +204,10 @@ fn search(
                 hash_history,
             ) orelse 0);
         }
+        if (errored()) {
+            writeLog("{}\n", .{move});
+            break;
+        }
         board.undoMove(turn, inv);
         if (shutdown) break;
         num_searched += 1;
@@ -203,6 +223,7 @@ fn search(
             }
         }
     }
+
     if (shutdown) {
         if (num_searched >= 1) {
             return result(best_score, best_move);
@@ -283,6 +304,9 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             break;
         }
     }
+    if (errored()) {
+        std.debug.panic("error encountered, writing logs!\n", .{});
+    }
     if (!silence_output) {
         engine.waitUntilWritingBestMoveAllowed();
         write("bestmove {}\n", .{move});
@@ -346,3 +370,11 @@ var shutdown = false;
 var hard_time: u64 = 0;
 var tt_hits: usize = 0;
 var tt_collisions: usize = 0;
+fn errored() bool {
+    if (std.debug.runtime_safety) {
+        return err;
+    } else {
+        return false;
+    }
+}
+var err = if (std.debug.runtime_safety) false else @compileError("you shouldn't be reading this variable!");

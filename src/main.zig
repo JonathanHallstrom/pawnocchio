@@ -4,7 +4,29 @@ const engine = @import("engine.zig");
 const Board = @import("Board.zig");
 const Move = @import("Move.zig").Move;
 
-pub var log_writer: std.io.AnyWriter = undefined;
+pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+    const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
+
+    if (std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only })) |lf| {
+        lf.writer().writeAll(fbs.getWritten()) catch {};
+        lf.writer().writeAll(msg) catch {};
+        lf.close();
+    } else |_| {
+        std.debug.print("{s}\n", .{fbs.getWritten()});
+        std.debug.print("{s}\n", .{msg});
+    }
+    std.builtin.default_panic(msg, error_return_trace, ret_addr);
+}
+
+var log_mutex = std.Thread.Mutex{};
+pub fn writeLog(comptime fmt: []const u8, args: anytype) void {
+    log_mutex.lock();
+    defer log_mutex.unlock();
+    fbs.writer().print(fmt, args) catch {};
+}
+
+var error_log_buf: [64 << 20]u8 = undefined;
+var fbs = std.io.fixedBufferStream(&error_log_buf);
 
 var stdout: std.fs.File = undefined;
 var write_mutex = std.Thread.Mutex{};
@@ -14,29 +36,14 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
     var buf: [4096]u8 = undefined;
     const to_print = std.fmt.bufPrint(&buf, fmt, args) catch "";
 
-    log_writer.print("sent: {s}", .{to_print}) catch {};
+    writeLog("sent: {s}", .{to_print});
     stdout.writer().writeAll(to_print) catch |e| {
         std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
     };
 }
 
 pub fn main() !void {
-    log_writer = if (std.debug.runtime_safety)
-        std.io.getStdErr().writer().any()
-    else
-        std.io.null_writer.any();
-
     stdout = std.io.getStdOut();
-    // disgusting ik
-    const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
-    const log_file = std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only }) catch null;
-    defer if (log_file) |log| log.close();
-
-    if (log_file) |lf| {
-        if (std.debug.runtime_safety) {
-            log_writer = lf.writer().any();
-        }
-    }
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -149,12 +156,7 @@ pub fn main() !void {
         const command = parts.next() orelse {
             continue; // empty command
         };
-        {
-            write_mutex.lock();
-            defer write_mutex.unlock();
-
-            try log_writer.print("got: {s}\n", .{line});
-        }
+        writeLog("got: {s}\n", .{line});
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             write("id name pawnocchio 0.0.6\n", .{});
@@ -175,9 +177,7 @@ pub fn main() !void {
 
             if (std.ascii.eqlIgnoreCase("Hash", name)) {
                 const size = std.fmt.parseInt(u16, value, 10) catch {
-                    write_mutex.lock();
-                    defer write_mutex.unlock();
-                    try log_writer.print("invalid hash size: '{s}'\n", .{value});
+                    writeLog("invalid hash size: '{s}'\n", .{value});
                     continue;
                 };
                 try engine.setTTSize(size);
@@ -214,10 +214,7 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
 
@@ -227,10 +224,7 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
                     const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
                     var timer = std.time.Timer.start() catch unreachable;
@@ -242,70 +236,49 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "depth")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     max_depth_opt = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid depth: '{s}'\n", .{depth_to_parse});
+                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "nodes")) {
                     const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     max_nodes_opt = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid nodes: '{s}'\n", .{nodes_to_parse});
+                        writeLog("invalid nodes: '{s}'\n", .{nodes_to_parse});
                         continue;
                     };
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "wtime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     white_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "btime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     black_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "movetime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     move_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "winc")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     white_increment = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "binc")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     black_increment = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
-                        write_mutex.lock();
-                        defer write_mutex.unlock();
-
-                        try log_writer.print("invalid time: '{s}'\n", .{time});
+                        writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
                 }
@@ -369,18 +342,12 @@ pub fn main() !void {
 
             if (std.ascii.eqlIgnoreCase(sub_command, "fen") or !started_with_position) {
                 const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {
-                    write_mutex.lock();
-                    defer write_mutex.unlock();
-
-                    try log_writer.print("no fen: '{s}'\n", .{rest});
+                    writeLog("no fen: '{s}'\n", .{rest});
                     continue;
                 }, &std.ascii.whitespace);
 
                 board = Board.parseFen(fen_to_parse) catch {
-                    write_mutex.lock();
-                    defer write_mutex.unlock();
-
-                    try log_writer.print("invalid fen: '{s}'\n", .{fen_to_parse});
+                    writeLog("invalid fen: '{s}'\n", .{fen_to_parse});
                     continue;
                 };
 
@@ -407,10 +374,7 @@ pub fn main() !void {
             while (move_iter.next()) |played_move| {
                 if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
                 _ = board.playMoveFromStr(played_move) catch {
-                    write_mutex.lock();
-                    defer write_mutex.unlock();
-
-                    try log_writer.print("invalid move: '{s}'\n", .{played_move});
+                    writeLog("invalid move: '{s}'\n", .{played_move});
                     continue;
                 };
                 hash_history.appendAssumeCapacity(board.zobrist);

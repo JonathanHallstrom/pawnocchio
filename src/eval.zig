@@ -300,8 +300,6 @@ pub const Packed = enum(i32) {
                 }
             }
         }
-
-        // @compileLog(Packed.from(-1, -2).toInt());
     }
 };
 

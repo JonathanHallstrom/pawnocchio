@@ -364,6 +364,7 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
             self.updatePieceZobrist(turn, Piece{ .sq = from, .tp = from_type });
             self.updatePieceZobrist(turn, Piece{ .sq = to, .tp = to_type });
             self.updatePieceZobrist(turn.flipped(), Piece{ .sq = to, .tp = captured_type });
+            assert(captured_type != .king);
             if (captured_type == .rook) {
                 const them_kingside_rook_starting_square = Square.fromRankFile(
                     if (turn == .black) Rank.first else Rank.eighth,
