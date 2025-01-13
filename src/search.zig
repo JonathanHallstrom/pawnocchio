@@ -167,10 +167,12 @@ fn search(
     var num_searched: u8 = 0;
     for (move_buf[0..move_count], 0..) |move, i| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
+        const moved_piece = board.mailbox[move.getFrom().toInt()].?;
         const inv = board.playMove(turn, move);
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
-        const extension: u8 = @intFromBool(is_in_check);
+        const is_pawn_on_last_rank = moved_piece == .pawn and (move.getTo().getRank() == .second or move.getTo().getRank() == .seventh);
+        const extension: u8 = @intFromBool(is_in_check or is_pawn_on_last_rank);
         var score: i16 = 0;
         const new_depth = depth - 1 + extension;
         if (!pv or num_searched > 0) {
