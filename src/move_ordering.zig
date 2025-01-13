@@ -99,7 +99,8 @@ pub fn getBonus(depth: u8) i16 {
 pub fn updateHistory(board: *const Board, move: Move, bonus: anytype) void {
     const clamped_bonus: i16 = @intCast(std.math.clamp(bonus, -max_history, max_history));
     const entry = historyEntry(board, move);
-    entry.* = @intCast(clamped_bonus - @divTrunc(@as(i32, @abs(clamped_bonus)) * entry.*, max_history));
+    const magnitude: i32 = @abs(clamped_bonus); // i32 to avoid overflows
+    entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * entry.*, max_history));
 }
 
 const max_history = 1 << 14;
