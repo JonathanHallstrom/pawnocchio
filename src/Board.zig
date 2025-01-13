@@ -65,7 +65,7 @@ pub fn init() Board {
     return parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") catch unreachable;
 }
 
-pub fn parseFen(fen: []const u8) !Board {
+fn parseFenImpl(fen: []const u8, permissive: bool) !Board {
     if (std.ascii.eqlIgnoreCase(fen, "startpos")) return init();
     if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;
     if (std.mem.count(u8, fen, "/") < 7) return error.TooFewRanks;
@@ -105,7 +105,7 @@ pub fn parseFen(fen: []const u8) !Board {
         if (c > 8) return error.TooManyPiecesOnRank;
     }
 
-    if (white_king_square == null or black_king_square == null) return error.MissingKing;
+    if (!permissive and white_king_square == null or black_king_square == null) return error.MissingKing;
 
     const turn_str = iter.next() orelse return error.MissingTurn;
     assert(turn_str.len > 0); // tokenize should only return non-empty strings
@@ -146,7 +146,7 @@ pub fn parseFen(fen: []const u8) !Board {
                         &black_rooks_on_last_rank,
                     };
 
-                    if (std.mem.count(File, rooks.slice(), &.{file}) == 0)
+                    if (!permissive and std.mem.count(File, rooks.slice(), &.{file}) == 0)
                         return error.NoRookForCastling;
 
                     if (@intFromEnum(file) > @intFromEnum(king_square.getFile())) {
@@ -238,32 +238,50 @@ pub fn parseFen(fen: []const u8) !Board {
         res.en_passant_target = null;
     } else {
         const correct_rank: u8 = if (res.turn == .white) '6' else '3';
+        const EPError = error{ InvalidEnPassantTarget, EnPassantTargetDoesntExist, EnPassantCantBeCaptured };
+        var err_opt: ?EPError = null;
         if (en_passant_target_square_string.len != 2 or
             en_passant_target_square_string[1] != correct_rank)
-            return error.InvalidEnPassantTarget;
+            err_opt = err_opt orelse error.InvalidEnPassantTarget;
 
         const en_passant_bitboard = Bitboard.fromSquare(try Square.parse(en_passant_target_square_string));
         const pawn_d_rank: i8 = if (res.turn == .white) 1 else -1;
         const us_pawns = res.getSide(res.turn).getBoard(.pawn);
         const them_pawns = res.getSide(res.turn.flipped()).getBoard(.pawn);
 
-        if (en_passant_bitboard & Bitboard.move(them_pawns, pawn_d_rank, 0) == 0)
-            return error.EnPassantTargetDoesntExist;
-        if (en_passant_bitboard & (Bitboard.move(us_pawns, pawn_d_rank, 1) | Bitboard.move(us_pawns, pawn_d_rank, -1)) == 0)
-            return error.EnPassantCantBeCaptured;
-        res.en_passant_target = Square.fromBitboard(en_passant_bitboard);
+        if (!permissive and en_passant_bitboard & Bitboard.move(them_pawns, pawn_d_rank, 0) == 0)
+            err_opt = err_opt orelse error.EnPassantTargetDoesntExist;
+        if (!permissive and en_passant_bitboard & (Bitboard.move(us_pawns, pawn_d_rank, 1) | Bitboard.move(us_pawns, pawn_d_rank, -1)) == 0)
+            err_opt = err_opt orelse error.EnPassantCantBeCaptured;
+        if (err_opt) |err| {
+            if (permissive) {
+                res.en_passant_target = null;
+            } else {
+                return err;
+            }
+        } else {
+            res.en_passant_target = Square.fromBitboard(en_passant_bitboard);
+        }
     }
 
     const halfmove_clock_string = iter.next() orelse "0";
     res.halfmove_clock = try std.fmt.parseInt(u8, halfmove_clock_string, 10);
     const fullmove_clock_str = iter.next() orelse "1";
     const fullmove = try std.fmt.parseInt(u64, fullmove_clock_str, 10);
-    if (fullmove == 0)
+    if (!permissive and fullmove == 0)
         return error.InvalidFullMove;
     res.fullmove_clock = fullmove;
     res.resetZobrist();
 
     return res;
+}
+
+pub fn parseFen(fen: []const u8) !Board {
+    return parseFenImpl(fen, false);
+}
+
+pub fn parseFenPermissive(fen: []const u8) !Board {
+    return parseFenImpl(fen, true);
 }
 
 pub fn toString(self: Board) [17][33]u8 {
