@@ -173,7 +173,26 @@ fn search(
         const extension: u8 = @intFromBool(is_in_check);
         var score: i16 = 0;
         const new_depth = depth - 1 + extension;
-        if (!pv or num_searched > 0) {
+        if (depth >= 3 and !is_in_check and !pv and num_searched > 0 and extension == 0) {
+            // TODO: tuning
+            const reduction = 1 + @as(u8, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched | 1) / 4;
+            const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
+            const reduced_depth = depth - clamped_reduction;
+
+            score = -(search(
+                false,
+                turn.flipped(),
+                false,
+                board,
+                updated_eval_state,
+                -(alpha + 1),
+                -alpha,
+                cur_depth + 1,
+                reduced_depth,
+                move_buf[move_count..],
+                hash_history,
+            ) orelse 0);
+        } else if (!pv or num_searched > 0) {
             score = -(search(
                 false,
                 turn.flipped(),
