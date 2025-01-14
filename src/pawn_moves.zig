@@ -104,18 +104,10 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
 
                     const occ_after = occ ^ occ_change;
 
-                    var attacked: u64 = 0;
-
-                    var iter = Bitboard.iterator(them.getBoard(.bishop) | them.getBoard(.queen));
-                    while (iter.next()) |attacker| {
-                        attacked |= magics.getBishopAttacks(attacker, occ_after);
-                    }
-                    iter = Bitboard.iterator(them.getBoard(.rook) | them.getBoard(.queen));
-                    while (iter.next()) |attacker| {
-                        attacked |= magics.getRookAttacks(attacker, occ_after);
-                    }
-
-                    if (king & attacked == 0) {
+                    const threatening_pieces: u64 =
+                        (magics.getBishopAttacks(Square.fromBitboard(king), occ_after) & (them.getBoard(.bishop) | them.getBoard(.queen))) | // pretend king is a bishop
+                        (magics.getRookAttacks(Square.fromBitboard(king), occ_after) & (them.getBoard(.rook) | them.getBoard(.queen))); // pretend king is a rook
+                    if (threatening_pieces == 0) {
                         if (!count_only)
                             move_buf[move_count] = Move.initEnPassant(from, to);
                         move_count += 1;
@@ -226,6 +218,12 @@ pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Bo
 
 pub fn countPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Board, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
     return getPawnMovesImpl(turn, captures_only, true, board, &.{}, check_mask, pinned_by_bishop_mask, pinned_by_rook_mask);
+}
+
+test "failing" {
+    var buf: [256]Move = undefined;
+    const zero: u64 = 0;
+    try std.testing.expectEqual(0, getPawnMoves(.white, false, try Board.parseFen("4k3/7b/8/4pP2/8/8/8/1K6 w - e6 0 1"), &buf, ~zero, Bitboard.ray(Square.c2.toBitboard(), 1, 1), 0));
 }
 
 // manually giving the pin and check masks, as thats not whats being tested here
