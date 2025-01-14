@@ -335,7 +335,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     }
     if (!silence_output) {
         engine.waitUntilWritingBestMoveAllowed();
-        write("bestmove {}\n", .{move});
+        write("bestmove {s}\n", .{move.toString(search_params.frc).slice()});
     }
     engine.stoppedSearching();
     return engine.SearchResult{
