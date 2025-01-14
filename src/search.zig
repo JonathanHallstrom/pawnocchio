@@ -166,7 +166,7 @@ fn search(
     // TODO: tuning
     // reverse futility pruning
     // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-    if (!pv and !is_in_check and depth <= 5 and static_eval >= @as(i32, 250) * depth)
+    if (!pv and !is_in_check and depth <= 5 and static_eval >= beta + @as(i32, 150) * depth)
         return result(static_eval, move_buf[0]);
 
     move_ordering.order(board, tt_entry.move, move_buf[0..move_count]);
@@ -185,7 +185,7 @@ fn search(
             // TODO: tuning
 
             // late move reduction
-            const reduction = 3 + @as(u8, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched | 1) / 4;
+            const reduction = 3 + @as(u8, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) / 4;
             const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
             const reduced_depth = depth - clamped_reduction;
 
