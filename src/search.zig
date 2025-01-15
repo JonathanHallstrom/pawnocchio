@@ -161,7 +161,18 @@ fn search(
         return result(score, move_buf[0]);
     }
 
-    const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
+    var static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
+    if (tt_entry.zobrist == board.zobrist) {
+        switch (tt_entry.tp) {
+            .exact => static_eval = tt_entry.score,
+            .lower => {
+                if (tt_entry.score >= static_eval) static_eval = tt_entry.score;
+            },
+            .upper => {
+                if (tt_entry.score <= static_eval) static_eval = tt_entry.score;
+            },
+        }
+    }
 
     // TODO: tuning
     // reverse futility pruning
