@@ -62,7 +62,7 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anyty
     var arena_wrapper = std.heap.ArenaAllocator.init(allocator);
     defer arena_wrapper.deinit();
 
-    while (br.reader().readUntilDelimiter(&line_buf, '\n') catch null) |line| {
+    while (br.reader().readUntilDelimiterOrEof(&line_buf, '\n') catch null) |line| {
         const line_cp = try arena_wrapper.allocator().dupe(u8, line);
         line_number += 1;
 
