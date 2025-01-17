@@ -127,6 +127,18 @@ fn search(
             .upper => if (tt_entry.score <= alpha) return result(tt_entry.score, tt_entry.move),
         }
     }
+    const worst_possible = eval.mateIn(cur_depth);
+    const best_possible = -worst_possible;
+    if (!root and best_possible < beta) {
+        if (alpha >= best_possible) {
+            return result(best_possible, Move.null_move);
+        }
+    }
+    if (!root and worst_possible > alpha) {
+        if (beta <= worst_possible) {
+            return result(worst_possible, Move.null_move);
+        }
+    }
 
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
     const is_in_check = masks.is_in_check;
@@ -335,7 +347,6 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth), search_params.frc);
         }
-
         if (timer.read() >= search_params.softTime()) {
             break;
         }

@@ -329,7 +329,6 @@ pub fn main() !void {
                     engine.setInfinite();
                 }
             }
-            if (mate_finding_depth) |depth| max_depth_opt = @min(max_depth_opt orelse 255, depth * 2 + 1);
 
             const my_time = if (board.turn == .white) white_time else black_time;
             const my_increment = if (board.turn == .white) white_increment else black_increment;
