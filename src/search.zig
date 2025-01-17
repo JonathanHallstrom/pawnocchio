@@ -176,9 +176,9 @@ fn search(
     const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
 
     // TODO: tuning
-    // reverse futility pruning
+    // rfp, reverse futility pruning
     // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-    if (!pv and !is_in_check and depth <= 5 and static_eval >= beta + @as(i32, 150) * depth)
+    if (!pv and !is_in_check and depth <= 5 and static_eval >= beta + @as(i32, 200) * depth)
         return result(static_eval, move_buf[0]);
 
     move_ordering.order(board, tt_entry.move, move_buf[0..move_count]);
