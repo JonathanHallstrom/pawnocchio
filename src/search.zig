@@ -325,25 +325,66 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
     var board_copy = board;
-    var score: i16 = 0;
+    var score: i16 = -checkmate_score;
     var move = Move.null_move;
     const eval_state = EvalState.init(&board);
     for (0..search_params.maxDepth()) |depth| {
-        score, move = switch (board.turn) {
-            inline else => |turn| search(
-                true,
-                turn,
-                true,
-                &board_copy,
-                eval_state,
-                -checkmate_score,
-                checkmate_score,
-                0,
-                @intCast(depth),
-                move_buf,
-                hash_history,
-            ),
-        } orelse break;
+        if (depth != 0) {
+            var fail_lows: usize = 0;
+            var fail_highs: usize = 0;
+            var window: i16 = 20; // 19 and 21 give higher bench values
+            var alpha: i16 = score - window;
+            var beta: i16 = score + window;
+            var aspiration_score, var aspiration_move = .{ score, move };
+            while (true) {
+                aspiration_score, aspiration_move = switch (board.turn) {
+                    inline else => |turn| search(
+                        true,
+                        turn,
+                        true,
+                        &board_copy,
+                        eval_state,
+                        alpha,
+                        beta,
+                        0,
+                        @intCast(depth),
+                        move_buf,
+                        hash_history,
+                    ),
+                } orelse break;
+                if (aspiration_score >= beta) {
+                    beta = @min(checkmate_score, beta +| window);
+                    fail_highs += 1;
+                } else if (aspiration_score <= alpha) {
+                    alpha = @max(-checkmate_score, alpha -| window);
+                    fail_lows += 1;
+                } else {
+                    break;
+                }
+                window *= 2;
+            }
+            if (!silence_output) {
+                write("info string fail_lows {} fail_highs {}\n", .{ fail_lows, fail_highs });
+            }
+            score = aspiration_score;
+            move = aspiration_move;
+        } else {
+            score, move = switch (board.turn) {
+                inline else => |turn| search(
+                    true,
+                    turn,
+                    true,
+                    &board_copy,
+                    eval_state,
+                    -checkmate_score,
+                    checkmate_score,
+                    0,
+                    @intCast(depth),
+                    move_buf,
+                    hash_history,
+                ),
+            } orelse break;
+        }
         if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth), search_params.frc);
         }
