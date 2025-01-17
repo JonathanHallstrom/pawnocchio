@@ -186,7 +186,7 @@ fn search(
 
             // late move reduction
             const reduction = 3 + @as(u8, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) / 4;
-            const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
+            const clamped_reduction = std.math.clamp(reduction, 1, @min(std.math.sqrt(num_searched), depth - 1));
             const reduced_depth = depth - clamped_reduction;
 
             score = -(search(
