@@ -145,8 +145,9 @@ fn search(
     if (move_count == 0) {
         return result(if (is_in_check) eval.mateIn(cur_depth) else 0, Move.null_move);
     }
-    if (board.halfmove_clock >= 100) return result(0, move_buf[0]);
-
+    if (board.halfmove_clock >= 100) {
+        return result(0, move_buf[0]);
+    }
     {
         var repetitions: u8 = 0;
         const start = hash_history.items.len - @min(hash_history.items.len, board.halfmove_clock);
@@ -155,7 +156,9 @@ fn search(
                 repetitions += 1;
             }
         }
-        if (repetitions >= 3) return result(0, move_buf[0]);
+        if (repetitions >= 3) {
+            return result(0, move_buf[0]);
+        }
     }
 
     if (depth == 0) {
@@ -293,8 +296,53 @@ fn search(
 
     return result(best_score, best_move);
 }
+
+fn collectPv(board: *Board, cur_depth: u8) void {
+    const entry = tt[getTTIndex(board.zobrist)];
+    if (entry.tp != .exact or entry.zobrist != board.zobrist) {
+        return;
+    }
+    const globals = struct {
+        var move_buf: [256]Move = undefined;
+        var already_seen = std.StaticBitSet(8192).initEmpty();
+    };
+    if (cur_depth == 0) globals.already_seen = std.StaticBitSet(8192).initEmpty();
+    if (globals.already_seen.isSet(board.zobrist % 8192)) return;
+    globals.already_seen.set(board.zobrist % 8192);
+    var buf: []Move = &globals.move_buf;
+
+    switch (board.turn) {
+        inline else => |t| {
+            const num_moves = movegen.getMoves(t, board.*, buf);
+            var tt_move_valid = false;
+            for (buf[0..num_moves]) |move| {
+                tt_move_valid = tt_move_valid or move == entry.move;
+            }
+            if (!tt_move_valid) return;
+            pv_moves[cur_depth] = entry.move;
+            num_pv_moves = cur_depth;
+            const inv = board.playMove(t, entry.move);
+            collectPv(board, cur_depth + 1);
+            board.undoMove(t, inv);
+        },
+    }
+}
+
 fn writeInfo(score: i16, move: Move, depth: u8, frc: bool) void {
     const node_count = @max(1, nodes + qnodes);
+
+    var pv_buf: [4096]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&pv_buf);
+    if (num_pv_moves == 0 or pv_moves[0] != move) {
+        pv_moves[0] = move;
+        num_pv_moves = 1;
+    }
+    for (0..num_pv_moves) |i| {
+        if (i != 0) {
+            fbs.writer().writeByte(' ') catch unreachable;
+        }
+        fbs.writer().writeAll(pv_moves[i].toString(frc).slice()) catch unreachable;
+    }
 
     if (eval.isMateScore(score)) {
         const plies_to_mate = if (score > 0) eval.checkmate_score - score else eval.checkmate_score + score;
@@ -305,7 +353,7 @@ fn writeInfo(score: i16, move: Move, depth: u8, frc: bool) void {
             node_count,
             node_count * std.time.ns_per_s / timer.read(),
             (timer.read() + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
-            move.toString(frc).slice(),
+            fbs.getWritten(),
         });
     } else {
         write("info depth {} score cp {} nodes {} nps {} time {} pv {s}\n", .{
@@ -314,7 +362,7 @@ fn writeInfo(score: i16, move: Move, depth: u8, frc: bool) void {
             node_count,
             node_count * std.time.ns_per_s / timer.read(),
             (timer.read() + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
-            move.toString(frc).slice(),
+            fbs.getWritten(),
         });
     }
 }
@@ -363,7 +411,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 }
                 window *= 2;
             }
-            if (!silence_output) {
+            if (!silence_output and std.debug.runtime_safety) {
                 write("info string fail_lows {} fail_highs {}\n", .{ fail_lows, fail_highs });
             }
             score = aspiration_score;
@@ -385,6 +433,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 ),
             } orelse break;
         }
+        collectPv(&board_copy, 0);
         if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth), search_params.frc);
         }
@@ -451,6 +500,8 @@ pub fn resetHard() void {
     @memset(std.mem.sliceAsBytes(tt), 0);
 }
 
+var pv_moves: [256]Move = undefined;
+var num_pv_moves: usize = 0;
 var tt: []align(16) TTEntry align(64) = &.{};
 var nodes: u64 = 0;
 var qnodes: u64 = 0;
