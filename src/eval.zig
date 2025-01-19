@@ -432,7 +432,7 @@ comptime {
 // TODO: TUNING
 pub var mobility_mult: i32 = 1 << 16;
 pub var passed_pawn_mult: i32 = 20 << 16;
-// pub var tempo: i16 = 20;
+pub var tempo: i32 = 20 << 16;
 // pub var overwhelming_threshold: i16 = 900;
 
 pub fn passedPawnScore(board: *const Board) i16 {
@@ -491,7 +491,7 @@ pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
 
     // passed pawns are only really useful in the endgame, so essentially add them to the eg score
     side_independent_big += @divTrunc(passedPawnScore(board) * passed_pawn_mult * (total_phase -| eval_state.phase), total_phase);
-    // side_independent += tempo;
+    side_independent_big += tempo;
 
     const side_independent: i16 = @intCast(side_independent_big >> 16);
 
