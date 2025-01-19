@@ -53,13 +53,18 @@ const ScoreMovePair = struct {
     }
 };
 
-pub fn order(board: *const Board, tt_move: Move, moves: []Move) void {
+pub fn order(board: *const Board, tt_move: Move, killer_move: Move, moves: []Move) void {
     var quiets = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var captures = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var has_tt_move = false;
+    var has_killer_move = false;
     for (moves) |move| {
-        if (tt_move != Move.null_move and move == tt_move) {
+        if (move == tt_move) {
             has_tt_move = true;
+            continue;
+        }
+        if (move == killer_move) {
+            has_killer_move = true;
             continue;
         }
         if (move.isCapture()) {
@@ -70,12 +75,25 @@ pub fn order(board: *const Board, tt_move: Move, moves: []Move) void {
     }
     sort(ScoreMovePair, captures.slice(), void{}, ScoreMovePair.cmp);
     sort(ScoreMovePair, quiets.slice(), void{}, ScoreMovePair.cmp);
-    moves[0] = tt_move;
-    for (0..captures.len) |i| {
-        moves[@intFromBool(has_tt_move) + i] = captures.slice()[i].move;
+    var num_written: usize = 0;
+    if (has_tt_move) {
+        moves[num_written] = tt_move;
+        num_written += 1;
     }
-    for (0..quiets.len) |i| {
-        moves[captures.len + @intFromBool(has_tt_move) + i] = quiets.slice()[i].move;
+
+    for (captures.slice()) |pair| {
+        moves[num_written] = pair.move;
+        num_written += 1;
+    }
+
+    if (has_killer_move) {
+        moves[num_written] = killer_move;
+        num_written += 1;
+    }
+
+    for (quiets.slice()) |pair| {
+        moves[num_written] = pair.move;
+        num_written += 1;
     }
 }
 

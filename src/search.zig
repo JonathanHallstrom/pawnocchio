@@ -184,7 +184,8 @@ fn search(
     if (!pv and !is_in_check and depth <= 5 and static_eval >= beta + @as(i32, 150) * depth)
         return result(static_eval, move_buf[0]);
 
-    move_ordering.order(board, tt_entry.move, move_buf[0..move_count]);
+    const killer = killers[cur_depth];
+    move_ordering.order(board, tt_entry.move, killer, move_buf[0..move_count]);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     var num_searched: u8 = 0;
@@ -263,6 +264,7 @@ fn search(
             alpha = score;
             if (score >= beta) {
                 if (move.isQuiet()) {
+                    killers[cur_depth] = move;
                     move_ordering.updateHistory(board, move, move_ordering.getBonus(depth));
                     for (0..i) |j| {
                         if (move_buf[j].isQuiet()) {
@@ -492,6 +494,7 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
+    @memset(&killers, Move.null_move);
 }
 
 pub fn resetHard() void {
@@ -510,6 +513,7 @@ var shutdown = false;
 var hard_time: u64 = 0;
 var tt_hits: usize = 0;
 var tt_collisions: usize = 0;
+var killers: [256]Move = .{Move.null_move} ** 256;
 fn errored() bool {
     if (std.debug.runtime_safety) {
         return err;
