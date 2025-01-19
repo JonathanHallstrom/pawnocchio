@@ -492,6 +492,7 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
+    move_ordering.decayHistory();
 }
 
 pub fn resetHard() void {
