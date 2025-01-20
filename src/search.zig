@@ -307,8 +307,8 @@ fn collectPv(board: *Board, cur_depth: u8) void {
         var already_seen = std.StaticBitSet(8192).initEmpty();
     };
     if (cur_depth == 0) globals.already_seen = std.StaticBitSet(8192).initEmpty();
-    if (globals.already_seen.isSet(board.zobrist % 8192)) return;
-    globals.already_seen.set(board.zobrist % 8192);
+    if (globals.already_seen.isSet(@intCast(board.zobrist % 8192))) return;
+    globals.already_seen.set(@intCast(board.zobrist % 8192));
     var buf: []Move = &globals.move_buf;
 
     switch (board.turn) {
