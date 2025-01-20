@@ -284,6 +284,10 @@ pub fn parseFenPermissive(fen: []const u8) !Board {
     return parseFenImpl(fen, true);
 }
 
+pub fn computePhase(self: Board) u8 {
+    return eval.computePhase(&self);
+}
+
 pub fn toString(self: Board) [17][33]u8 {
     const row: [33]u8 = ("+" ++ "---+" ** 8).*;
     var res: [17][33]u8 = .{row} ++ (.{("|" ++ "   |" ** 8).*} ++ .{row}) ** 8;

@@ -339,8 +339,8 @@ pub fn main() !void {
             // 10ms  seems fine
             const overhead = @min(10 * std.time.ns_per_ms, my_time / 2);
 
-            var soft_time = my_time / 20 + my_increment * 3 / 4;
-            var hard_time = if (move_time) |mt| mt -| overhead else my_time / 10 -| overhead;
+            var soft_time = my_time / @max(board.computePhase(), 8) + my_increment * 3 / 4;
+            var hard_time = if (move_time) |mt| mt -| overhead else my_time / 5 -| overhead;
             // std.debug.print("{}\n", .{std.fmt.fmtDuration(hard_time)});
             hard_time = @max(std.time.ns_per_ms / 4, hard_time);
             soft_time = @min(soft_time, hard_time);
