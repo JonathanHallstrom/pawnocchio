@@ -103,15 +103,5 @@ pub fn updateHistory(board: *const Board, move: Move, bonus: anytype) void {
     entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * entry.*, max_history));
 }
 
-pub fn decayHistory() void {
-    for (0..2) |i| {
-        for (0..64) |j| {
-            for (0..64) |k| {
-                history[i][j][k] >>= 1;
-            }
-        }
-    }
-}
-
 const max_history = 1 << 14;
 var history = std.mem.zeroes([2][64][64]i16);

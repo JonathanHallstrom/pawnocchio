@@ -166,8 +166,11 @@ const eg_pesto_table: [6][64]i16 = .{
     eg_king_table,
 };
 
-const gamephaseInc: [6]u8 = .{ 0, 1, 1, 2, 8, 0 };
-const total_phase = 16 * gamephaseInc[0] + 4 * gamephaseInc[1] + 4 * gamephaseInc[2] + 4 * gamephaseInc[3] + 2 * gamephaseInc[4] + 2 * gamephaseInc[5];
+const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
+const total_phase = blk: {
+    @setEvalBranchQuota(1 << 30);
+    break :blk computePhase(&Board.init());
+};
 
 const mg_table = blk: {
     var res: [12][64]i16 = undefined;
