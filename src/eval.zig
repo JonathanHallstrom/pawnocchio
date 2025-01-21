@@ -167,7 +167,7 @@ const eg_pesto_table: [6][64]i16 = .{
 };
 
 const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
-const total_phase = blk: {
+const max_phase = blk: {
     @setEvalBranchQuota(1 << 30);
     break :blk computePhase(&Board.init());
 };
@@ -371,10 +371,10 @@ pub const EvalState = packed struct {
     }
 
     pub fn eval(self: EvalState) i16 {
-        const mg_phase: i32 = @min(self.phase, total_phase);
+        const mg_phase: i32 = @min(self.phase, max_phase);
         const eg_phase = 24 - mg_phase;
 
-        return @intCast(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), total_phase));
+        return @intCast(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), max_phase));
     }
 };
 
@@ -432,12 +432,6 @@ comptime {
     assert(readPieceSquareTable(.white, .pawn, .a7).endgame() > readPieceSquareTable(.white, .pawn, .a2).endgame());
 }
 
-// TODO: TUNING
-pub var mobility_mult: i32 = 1 << 16;
-pub var passed_pawn_mult: i32 = 20 << 16;
-// pub var tempo: i16 = 20;
-// pub var overwhelming_threshold: i16 = 900;
-
 pub fn passedPawnScore(board: *const Board) i16 {
     var white_non_promoting = board.black.getBoard(.pawn);
     white_non_promoting |= Bitboard.move(white_non_promoting, -1, -1);
@@ -486,17 +480,29 @@ fn mobilityScore(board: *const Board) i16 {
 }
 
 pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
-    const psqt_eval = eval_state.eval();
+    var mg = eval_state.state.midgame();
+    var eg = eval_state.state.endgame();
 
-    // if (@abs(psqt_eval) > overwhelming_threshold) return psqt_eval;
-    var side_independent_big: i32 = 0;
-    side_independent_big += mobilityScore(board) * mobility_mult;
+    const side_mult: i16 = if (board.turn == .white) 1 else -1;
 
-    // passed pawns are only really useful in the endgame, so essentially add them to the eg score
-    side_independent_big += @divTrunc(passedPawnScore(board) * passed_pawn_mult * (total_phase -| eval_state.phase), total_phase);
-    // side_independent += tempo;
+    const mobility_score = mobilityScore(board) * side_mult;
+    mg += mobility_score * mg_mobility_mult;
+    eg += mobility_score * eg_mobility_mult;
 
-    const side_independent: i16 = @intCast(side_independent_big >> 16);
+    const passed_pawn_score = passedPawnScore(board) * side_mult;
+    mg += passed_pawn_score * mg_passed_pawn_mult;
+    eg += passed_pawn_score * eg_passed_pawn_mult;
 
-    return psqt_eval + if (board.turn == .white) side_independent else -side_independent;
+    const mg_phase: i32 = @min(eval_state.phase, max_phase);
+    const eg_phase = max_phase - mg_phase;
+
+    return @intCast(@divTrunc(mg_phase * mg + eg_phase * eg, max_phase));
 }
+
+// TODO: TUNING
+pub var mg_mobility_mult: i16 = 1;
+pub var eg_mobility_mult: i16 = 1;
+pub var mg_passed_pawn_mult: i16 = 0;
+pub var eg_passed_pawn_mult: i16 = 20;
+// pub var tempo: i16 = 20;
+// pub var overwhelming_threshold: i16 = 900;
