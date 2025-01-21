@@ -68,6 +68,20 @@ pub fn getCaptures(comptime turn: Side, board: Board, move_buf: []Move) usize {
     return getMovesImpl(turn, true, board, move_buf);
 }
 
+pub fn getCapturesOrEvasionsWithInfo(comptime turn: Side, board: Board, move_buf: []Move) struct { usize, mask_generation.Masks } {
+    const masks = mask_generation.getMasks(turn, board);
+    var res: usize = 0;
+    switch (masks.is_in_check) {
+        inline else => |is_in_check| {
+            res += getPawnMoves(turn, !is_in_check, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+            res += getKnightMoves(turn, !is_in_check, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
+            res += getSlidingMoves(turn, !is_in_check, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+            res += getKingMoves(turn, !is_in_check, board, move_buf[res..], masks.rook_pins);
+        },
+    }
+    return .{ res, masks };
+}
+
 test {
     _ = knight_moves;
     _ = pawn_moves;

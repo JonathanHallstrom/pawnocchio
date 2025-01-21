@@ -35,8 +35,9 @@ fn quiesce(
         shutdown = true;
         return 0;
     }
-    const move_count = movegen.getCaptures(turn, board.*, move_buf);
+    const move_count, _ = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
     const static_eval = evaluate(board, eval_state);
+
     if (move_count == 0) {
         return static_eval;
     }
@@ -48,7 +49,6 @@ fn quiesce(
     var best_score = static_eval;
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
-        assert(move.isCapture());
         if (std.debug.runtime_safety) {
             if (board.mailbox[move.getTo().toInt()]) |cap| {
                 if (cap == .king) {
