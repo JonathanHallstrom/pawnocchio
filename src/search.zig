@@ -36,7 +36,23 @@ fn quiesce(
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
-    const static_eval = evaluate(board, eval_state);
+    var static_eval = evaluate(board, eval_state);
+
+    const tt_entry = tt[getTTIndex(board.zobrist)];
+    if (tt_entry.zobrist == board.zobrist) {
+        switch (tt_entry.tp) {
+            .exact => return tt_entry.score,
+            .lower => {
+                if (tt_entry.score >= beta) return tt_entry.score;
+                if (tt_entry.score >= static_eval) static_eval = tt_entry.score;
+            },
+            .upper => {
+                if (tt_entry.score <= alpha) return tt_entry.score;
+                if (tt_entry.score <= static_eval) static_eval = tt_entry.score;
+            },
+        }
+    }
+
     if (move_count == 0) {
         return static_eval;
     }
