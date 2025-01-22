@@ -493,6 +493,9 @@ pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
     mg += passed_pawn_score * mg_passed_pawn_mult;
     eg += passed_pawn_score * eg_passed_pawn_mult;
 
+    mg += tempo;
+    eg += tempo;
+
     const mg_phase: i32 = @min(eval_state.phase, max_phase);
     const eg_phase = max_phase - mg_phase;
 
@@ -504,5 +507,5 @@ pub var mg_mobility_mult: i16 = 1;
 pub var eg_mobility_mult: i16 = 1;
 pub var mg_passed_pawn_mult: i16 = 0;
 pub var eg_passed_pawn_mult: i16 = 20;
-// pub var tempo: i16 = 20;
+pub var tempo: i16 = 5;
 // pub var overwhelming_threshold: i16 = 900;
