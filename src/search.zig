@@ -35,11 +35,11 @@ fn quiesce(
         shutdown = true;
         return 0;
     }
+    if (eval_state.state.midgame() < alpha - 1000 and eval_state.phase > 8) return alpha;
+
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
     const static_eval = evaluate(board, eval_state);
-    if (move_count == 0) {
-        return static_eval;
-    }
+    if (move_count == 0) return static_eval;
 
     if (static_eval >= beta) return beta;
     if (static_eval > alpha) alpha = static_eval;
@@ -181,8 +181,9 @@ fn search(
     // TODO: tuning
     // reverse futility pruning
     // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-    if (!pv and !is_in_check and depth <= 5 and static_eval >= beta + @as(i32, 150) * depth)
+    if (!pv and !is_in_check and depth <= 5 and static_eval >= beta + @as(i32, 150) * depth) {
         return result(static_eval, move_buf[0]);
+    }
 
     move_ordering.order(board, tt_entry.move, move_buf[0..move_count]);
     var best_score = -checkmate_score;
