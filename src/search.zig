@@ -58,18 +58,19 @@ fn quiesce(
                 }
             }
         }
-        const inv = board.playMove(turn, move);
-        defer board.undoMove(turn, inv);
-        qnodes += 1;
-
-        const score = if (updated_eval_state.state.midgame() < -beta - 1000 and updated_eval_state.phase > 8) beta else -quiesce(
-            turn.flipped(),
-            board,
-            updated_eval_state,
-            -beta,
-            -alpha,
-            move_buf[move_count..],
-        );
+        const score = if (updated_eval_state.state.midgame() < -beta - 1000 and updated_eval_state.phase > 8) beta else blk: {
+            const inv = board.playMove(turn, move);
+            defer board.undoMove(turn, inv);
+            qnodes += 1;
+            break :blk -quiesce(
+                turn.flipped(),
+                board,
+                updated_eval_state,
+                -beta,
+                -alpha,
+                move_buf[move_count..],
+            );
+        };
         if (errored()) {
             writeLog("{}\n", .{move});
             break;
