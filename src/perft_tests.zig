@@ -3,7 +3,7 @@ const Board = @import("Board.zig");
 const Move = @import("Move.zig").Move;
 
 threadlocal var move_buf: [32768]Move = undefined;
-threadlocal var hash_buf: [32768]struct { u64, u64 } = .{.{ 0, 0 }} ** 32768;
+threadlocal var hash_buf: [1 << 20]struct { u64, u64 } = .{.{ 0, 0 }} ** (1 << 20);
 fn handleLine(line: []const u8, total_time: *u64, total_positions: *u64, test_zobrist: bool) void {
     var parts = std.mem.tokenizeSequence(u8, line, " ;D");
     const fen = parts.next().?;
@@ -28,7 +28,7 @@ fn handleLine(line: []const u8, total_time: *u64, total_positions: *u64, test_zo
             std.log.err("got:      {}", .{actual_perft});
             std.debug.panic("error: {}", .{e});
         };
-        if (test_zobrist and actual_perft < 1 << 20) {
+        if (test_zobrist) {
             board.perftZobrist(&move_buf, &hash_buf, depth) catch {
                 std.debug.panic("{s} at depth {}\n", .{ fen, depth });
             };
