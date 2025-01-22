@@ -35,7 +35,6 @@ fn quiesce(
         shutdown = true;
         return 0;
     }
-    if (eval_state.state.midgame() < alpha - 1000 and eval_state.phase > 8) return alpha;
 
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
     const static_eval = evaluate(board, eval_state);
@@ -63,7 +62,7 @@ fn quiesce(
         defer board.undoMove(turn, inv);
         qnodes += 1;
 
-        const score = -quiesce(
+        const score = if (updated_eval_state.state.midgame() < -beta - 1000 and updated_eval_state.phase > 8) beta else -quiesce(
             turn.flipped(),
             board,
             updated_eval_state,
