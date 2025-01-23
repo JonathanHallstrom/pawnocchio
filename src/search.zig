@@ -106,7 +106,6 @@ fn search(
     move_buf: []Move,
     hash_history: *std.ArrayList(u64),
 ) ?if (root) struct { i16, Move } else i16 {
-    _ = allow_nmp; // autofix
     const result = struct {
         inline fn impl(score: i16, move: Move) if (root) struct { i16, Move } else i16 {
             return if (root) .{ score, move } else score;
@@ -190,7 +189,7 @@ fn search(
         const us = board.getSide(turn);
         const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
 
-        if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0) {
+        if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0 and allow_nmp) {
             const reduction = 4 + depth / 5;
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
