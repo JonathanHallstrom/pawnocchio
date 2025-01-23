@@ -122,7 +122,7 @@ fn search(
     // assert that root implies pv
     assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth) {
+    if ((!pv or depth == 0) and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth) {
         switch (tt_entry.tp) {
             .exact => return result(tt_entry.score, tt_entry.move),
             .lower => if (tt_entry.score >= beta) return result(tt_entry.score, tt_entry.move),
