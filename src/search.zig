@@ -200,11 +200,7 @@ fn search(
             board.undoNullMove(inv);
 
             if (score >= beta) {
-                const anti_zugzwang_score = search(false, turn, false, false, board, eval_state, beta - 1, beta, cur_depth + 1, depth - reduction, move_buf[move_count..], hash_history) orelse 0;
-
-                if (anti_zugzwang_score >= beta) {
-                    return anti_zugzwang_score;
-                }
+                return score;
             }
         }
     }
