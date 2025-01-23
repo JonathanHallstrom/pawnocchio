@@ -353,6 +353,9 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
     self.updateEnPassantZobrist();
     self.en_passant_target = null;
     self.halfmove_clock += 1;
+    self.fullmove_clock += @intFromBool(self.turn == .black);
+    self.turn = turn.flipped();
+    self.updateTurnZobrist();
     if (move.isCapture()) {
         self.halfmove_clock = 0;
         if (move.isEnPassant()) {
@@ -505,9 +508,25 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
         if (from_type == .pawn)
             self.halfmove_clock = 0;
     }
-    self.turn = turn.flipped();
-    self.updateTurnZobrist();
     return inverse;
+}
+
+pub fn playNullMove(self: *Self) ?Square {
+    self.fullmove_clock += @intFromBool(self.turn == .black);
+    self.turn = self.turn.flipped();
+    self.updateTurnZobrist();
+    const res = self.en_passant_target;
+    self.updateEnPassantZobrist();
+    self.en_passant_target = null;
+    return res;
+}
+
+pub fn undoNullMove(self: *Self, en_passant_target: ?Square) void {
+    self.en_passant_target = en_passant_target;
+    self.updateEnPassantZobrist();
+    self.turn = self.turn.flipped();
+    self.fullmove_clock -= @intFromBool(self.turn == .black);
+    self.updateTurnZobrist();
 }
 
 pub fn playMoveCopy(self: Self, comptime turn: Side, move: Move) Board {
@@ -595,6 +614,7 @@ pub fn undoMove(self: *Self, comptime turn: Side, inverse: MoveInverse) void {
         us.getBoardPtr(to_type).* ^= to.toBitboard();
     }
     self.turn = turn;
+    self.fullmove_clock -= @intFromBool(self.turn == .black);
     self.castling_rights = inverse.castling;
     self.en_passant_target = inverse.en_passant;
     self.halfmove_clock = inverse.halfmove;

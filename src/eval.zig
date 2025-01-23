@@ -370,6 +370,13 @@ pub const EvalState = packed struct {
         };
     }
 
+    pub fn negate(self: EvalState) EvalState {
+        return .{
+            .phase = self.phase,
+            .state = self.state.negate(),
+        };
+    }
+
     pub fn eval(self: EvalState) i16 {
         const mg_phase: i32 = @min(self.phase, max_phase);
         const eg_phase = 24 - mg_phase;

@@ -96,6 +96,7 @@ fn search(
     comptime root: bool,
     comptime turn: Side,
     comptime pv: bool,
+    comptime allow_nmp: bool,
     board: *Board,
     eval_state: EvalState,
     alpha_inp: i16,
@@ -105,6 +106,7 @@ fn search(
     move_buf: []Move,
     hash_history: *std.ArrayList(u64),
 ) ?if (root) struct { i16, Move } else i16 {
+    _ = allow_nmp; // autofix
     const result = struct {
         inline fn impl(score: i16, move: Move) if (root) struct { i16, Move } else i16 {
             return if (root) .{ score, move } else score;
@@ -179,10 +181,33 @@ fn search(
     const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
 
     // TODO: tuning
-    // reverse futility pruning
-    // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-    if (!pv and !is_in_check and depth <= 5 and static_eval >= beta + @as(i32, 150) * depth)
-        return result(static_eval, move_buf[0]);
+    if (!pv and !is_in_check) {
+        // reverse futility pruning
+        // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
+        if (depth <= 5 and static_eval >= beta + @as(i32, 150) * depth)
+            return result(static_eval, move_buf[0]);
+
+        const us = board.getSide(turn);
+        const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
+
+        if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0) {
+            const reduction = 4 + depth / 5;
+            const updated_eval_state = eval_state.negate();
+            const inv = board.playNullMove();
+            hash_history.appendAssumeCapacity(board.zobrist);
+            const score = -(search(false, turn.flipped(), false, true, board, updated_eval_state, -beta, -beta + 1, cur_depth + 1, depth - reduction, move_buf[move_count..], hash_history) orelse 0);
+            _ = hash_history.pop();
+            board.undoNullMove(inv);
+
+            if (score >= beta) {
+                const anti_zugzwang_score = search(false, turn, false, false, board, eval_state, beta - 1, beta, cur_depth + 1, depth - reduction, move_buf[move_count..], hash_history) orelse 0;
+
+                if (anti_zugzwang_score >= beta) {
+                    return anti_zugzwang_score;
+                }
+            }
+        }
+    }
 
     move_ordering.order(board, tt_entry.move, move_buf[0..move_count]);
     var best_score = -checkmate_score;
@@ -208,6 +233,7 @@ fn search(
                 false,
                 turn.flipped(),
                 false,
+                true,
                 board,
                 updated_eval_state,
                 -(alpha + 1),
@@ -222,6 +248,7 @@ fn search(
                 false,
                 turn.flipped(),
                 false,
+                true,
                 board,
                 updated_eval_state,
                 -(alpha + 1),
@@ -236,6 +263,7 @@ fn search(
             score = -(search(
                 false,
                 turn.flipped(),
+                true,
                 true,
                 board,
                 updated_eval_state,
@@ -390,6 +418,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                         true,
                         turn,
                         true,
+                        true,
                         &board_copy,
                         eval_state,
                         alpha,
@@ -421,6 +450,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 inline else => |turn| search(
                     true,
                     turn,
+                    true,
                     true,
                     &board_copy,
                     eval_state,
