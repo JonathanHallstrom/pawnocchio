@@ -213,7 +213,9 @@ fn search(
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     var num_searched: u8 = 0;
+    var prune_quiets = false;
     for (move_buf[0..move_count], 0..) |move, i| {
+        if (prune_quiets and move.isQuiet() and !move.isPromotion()) continue;
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
         hash_history.appendAssumeCapacity(board.zobrist);
@@ -300,6 +302,9 @@ fn search(
                 }
                 break;
             }
+        }
+        if (!(eval.isMateScore(alpha) and score < 0) and move.isQuiet() and num_searched > depth * depth and !pv) {
+            prune_quiets = true;
         }
     }
 
