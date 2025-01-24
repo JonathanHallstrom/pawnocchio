@@ -500,6 +500,10 @@ pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
     mg += passed_pawn_score * mg_passed_pawn_mult;
     eg += passed_pawn_score * eg_passed_pawn_mult;
 
+    const bishop_pair_score = @as(i16, @intFromBool(@popCount(board.white.getBoard(.bishop)) == 2)) - @as(i16, @intFromBool(@popCount(board.black.getBoard(.bishop)) == 2)) * side_mult;
+    mg += bishop_pair_score * mg_bishop_pair_mult;
+    eg += bishop_pair_score * eg_bishop_pair_mult;
+
     const mg_phase: i32 = @min(eval_state.phase, max_phase);
     const eg_phase = max_phase - mg_phase;
 
@@ -511,5 +515,7 @@ pub var mg_mobility_mult: i16 = 1;
 pub var eg_mobility_mult: i16 = 1;
 pub var mg_passed_pawn_mult: i16 = 0;
 pub var eg_passed_pawn_mult: i16 = 20;
+pub var mg_bishop_pair_mult: i16 = 20;
+pub var eg_bishop_pair_mult: i16 = 100;
 // pub var tempo: i16 = 20;
 // pub var overwhelming_threshold: i16 = 900;
