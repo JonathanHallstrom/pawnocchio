@@ -500,7 +500,9 @@ pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
     mg += passed_pawn_score * mg_passed_pawn_mult;
     eg += passed_pawn_score * eg_passed_pawn_mult;
 
-    const bishop_pair_score = @as(i16, @intFromBool(@popCount(board.white.getBoard(.bishop)) == 2)) - @as(i16, @intFromBool(@popCount(board.black.getBoard(.bishop)) == 2)) * side_mult;
+    const white_has_two_bishops: i16 = @intFromBool(@popCount(board.white.getBoard(.bishop)) == 2);
+    const black_has_two_bishops: i16 = @intFromBool(@popCount(board.black.getBoard(.bishop)) == 2);
+    const bishop_pair_score = (white_has_two_bishops - black_has_two_bishops) * side_mult;
     mg += bishop_pair_score * mg_bishop_pair_mult;
     eg += bishop_pair_score * eg_bishop_pair_mult;
 
@@ -515,7 +517,7 @@ pub var mg_mobility_mult: i16 = 1;
 pub var eg_mobility_mult: i16 = 1;
 pub var mg_passed_pawn_mult: i16 = 0;
 pub var eg_passed_pawn_mult: i16 = 20;
-pub var mg_bishop_pair_mult: i16 = 10;
-pub var eg_bishop_pair_mult: i16 = 10;
+pub var mg_bishop_pair_mult: i16 = 5;
+pub var eg_bishop_pair_mult: i16 = 50;
 // pub var tempo: i16 = 20;
 // pub var overwhelming_threshold: i16 = 900;
