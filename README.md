@@ -1,12 +1,10 @@
 # pawnocchio
 
-~2100 ELO CCRL based on play against [stash-bot](https://gitlab.com/mhouppin/stash-bot)
-
-A/B, iterative deepening, qsearch, mvv-lva, pvs
+~2500 ELO CCRL based on play against [stash-bot](https://gitlab.com/mhouppin/stash-bot)
 
 ## TODO
-- lmr (loglog?)
-- history
+- NNUE
+- SEE
 
 ## Build instructions
 1. Install zig (0.13.0)
