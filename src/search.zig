@@ -299,7 +299,9 @@ fn search(
                 break;
             }
         }
-        if (!(eval.isMateScore(alpha) and score < 0) and move.isQuiet() and num_searched > depth * depth and !pv) {
+
+        // lmp
+        if (!(eval.isMateScore(alpha) and score < 0) and !is_in_check and move.isQuiet() and num_searched > depth * depth and !pv) {
             prune_quiets = true;
         }
     }
