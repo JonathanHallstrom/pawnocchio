@@ -105,4 +105,6 @@ test scoreMove {
     try std.testing.expect(!scoreMove(&(Board.parseFen("k7/8/8/8/8/2p5/1p6/BK6 w - - 0 1") catch unreachable), Move.initCapture(.a1, .b2), 93));
     try std.testing.expect(scoreMove(&(Board.parseFen("k7/8/8/8/8/2q5/1p6/BK6 w - - 0 1") catch unreachable), Move.initCapture(.a1, .b2), 93));
     try std.testing.expect(!scoreMove(&(Board.parseFen("k6b/8/8/8/8/2q5/1p6/BK6 w - - 0 1") catch unreachable), Move.initCapture(.a1, .b2), 93));
+    try std.testing.expect(!scoreMove(&(Board.parseFen("k3n2r/3P4/8/8/8/8/8/1K6 w - - 0 1") catch unreachable), Move.initPromotionCapture(.d7, .e8, .queen), 500));
+    try std.testing.expect(scoreMove(&(Board.parseFen("k3n3/3P4/8/8/8/8/8/1K6 w - - 0 1") catch unreachable), Move.initPromotionCapture(.d7, .e8, .queen), 500));
 }
