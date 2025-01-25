@@ -5,6 +5,7 @@ const engine = @import("engine.zig");
 const movegen = @import("movegen.zig");
 const Side = @import("side.zig").Side;
 const PieceType = @import("piece_type.zig").PieceType;
+const SEE = @import("see.zig");
 
 fn mvvLvaValue(board: *const Board, move: Move) u8 {
     if (!move.isCapture()) return 0;
@@ -63,7 +64,9 @@ pub fn order(board: *const Board, tt_move: Move, moves: []Move) void {
             continue;
         }
         if (move.isCapture()) {
-            captures.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
+            const see_bonus: i16 = if (SEE.scoreMove(board, move, -90)) 1000 else 0;
+
+            captures.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) + see_bonus });
         } else {
             quiets.appendAssumeCapacity(.{ .move = move, .score = getHistory(board, move) });
         }

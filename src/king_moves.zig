@@ -9,7 +9,7 @@ const knight_moves = @import("knight_moves.zig");
 const assert = std.debug.assert;
 const mask_generation = @import("mask_generation.zig");
 
-const king_moves_arr = blk: {
+pub const king_moves_arr = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64]u64 = undefined;
     for (0..64) |i| {
