@@ -19,7 +19,7 @@ pub const SEE_weight = [_]i16{ 93, 308, 346, 521, 994, 0 };
 
 fn getAttacks(comptime turn: anytype, comptime tp: PieceType, sq: Square, occ: u64) u64 {
     return switch (tp) {
-        .pawn => Bitboard.move(sq.toBitboard(), if (turn == .white) 1 else -1, 1) | Bitboard.move(sq.toBitboard(), if (turn == .white) 1 else -1, -1),
+        .pawn => Bitboard.move(sq.toBitboard(), if (turn == .white) -1 else 1, 1) | Bitboard.move(sq.toBitboard(), if (turn == .white) -1 else 1, -1),
         .knight => knight_moves.knight_moves_arr[sq.toInt()],
         .bishop => magics.getBishopAttacks(sq, occ),
         .rook => magics.getRookAttacks(sq, occ),
@@ -32,7 +32,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i16) bool {
     const from = move.getFrom();
     const to = move.getTo();
     const from_type = board.mailbox[from.toInt()].?;
-    const captured_type: ?PieceType = if (move.isEnPassant()) .pawn else board.mailbox[from.toInt()];
+    const captured_type: ?PieceType = if (move.isEnPassant()) .pawn else board.mailbox[to.toInt()];
     const captured_value: i16 = if (move.isCapture()) SEE_weight[captured_type.?.toInt()] else 0;
 
     var score = captured_value - threshold;
@@ -55,8 +55,6 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i16) bool {
     const rooks = board.white.getBoard(.rook) | board.black.getBoard(.rook) | queens;
     const bishops = board.white.getBoard(.bishop) | board.black.getBoard(.bishop) | queens;
     const knights = board.white.getBoard(.knight) | board.black.getBoard(.knight);
-    const pawns = board.white.getBoard(.pawn) | board.black.getBoard(.pawn);
-    _ = pawns; // autofix
 
     var stm = board.turn.flipped();
 
@@ -99,4 +97,12 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i16) bool {
         }
     }
     return stm != board.turn;
+}
+
+test scoreMove {
+    try std.testing.expect(scoreMove(&(Board.parseFen("k6b/8/8/8/8/8/1p6/BK6 w - - 0 1") catch unreachable), Move.initCapture(.a1, .b2), 93));
+    try std.testing.expect(!scoreMove(&(Board.parseFen("k6b/8/8/8/8/2p5/1p6/BK6 w - - 0 1") catch unreachable), Move.initCapture(.a1, .b2), 93));
+    try std.testing.expect(!scoreMove(&(Board.parseFen("k7/8/8/8/8/2p5/1p6/BK6 w - - 0 1") catch unreachable), Move.initCapture(.a1, .b2), 93));
+    try std.testing.expect(scoreMove(&(Board.parseFen("k7/8/8/8/8/2q5/1p6/BK6 w - - 0 1") catch unreachable), Move.initCapture(.a1, .b2), 93));
+    try std.testing.expect(!scoreMove(&(Board.parseFen("k6b/8/8/8/8/2q5/1p6/BK6 w - - 0 1") catch unreachable), Move.initCapture(.a1, .b2), 93));
 }
