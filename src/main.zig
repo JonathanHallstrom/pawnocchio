@@ -246,10 +246,10 @@ pub fn main() !void {
 
             // by default assume each player has 1000s
             // completely arbitrarily chosen value
-            var white_time: u64 = 1000 * std.time.ns_per_s;
-            var black_time: u64 = 1000 * std.time.ns_per_s;
-            var white_increment: u64 = 1000 * std.time.ns_per_s;
-            var black_increment: u64 = 1000 * std.time.ns_per_s;
+            var white_time: u64 = 1000_000_000 * std.time.ns_per_s;
+            var black_time: u64 = 1000_000_000 * std.time.ns_per_s;
+            var white_increment: u64 = 1000_000_000 * std.time.ns_per_s;
+            var black_increment: u64 = 1000_000_000 * std.time.ns_per_s;
             var mate_finding_depth: ?u8 = null;
             var move_time: ?u64 = null;
 
@@ -339,38 +339,28 @@ pub fn main() !void {
             // 10ms  seems fine
             const overhead = @min(10 * std.time.ns_per_ms, my_time / 2);
 
-            var soft_time = my_time / @max(board.computePhase(), 8) + my_increment * 3 / 4;
-            var hard_time = if (move_time) |mt| mt -| overhead else my_time / 5 -| overhead;
+            var soft_time = my_time / @max(board.computePhase() * 3 / 2, 8) + my_increment;
+            var hard_time = my_time / 5 -| overhead;
             // std.debug.print("{}\n", .{std.fmt.fmtDuration(hard_time)});
             hard_time = @max(std.time.ns_per_ms / 4, hard_time);
             soft_time = @min(soft_time, hard_time);
 
-            if (hard_time <= 10) {
-                _ = engine.searchSync(
-                    board,
-                    .{
-                        .soft_time = soft_time,
-                        .hard_time = hard_time,
-                        .depth = max_depth_opt,
-                        .frc = frc,
-                    },
-                    move_buf,
-                    &hash_history,
-                    false,
-                );
-            } else {
-                engine.startAsyncSearch(
-                    board,
-                    .{
-                        .soft_time = soft_time,
-                        .hard_time = hard_time,
-                        .depth = max_depth_opt,
-                        .frc = frc,
-                    },
-                    move_buf,
-                    &hash_history,
-                );
+            if (move_time) |mt| {
+                soft_time = mt;
+                hard_time = mt;
             }
+
+            engine.startAsyncSearch(
+                board,
+                .{
+                    .soft_time = soft_time,
+                    .hard_time = hard_time,
+                    .depth = max_depth_opt,
+                    .frc = frc,
+                },
+                move_buf,
+                &hash_history,
+            );
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
             engine.stopAsyncSearch();
         } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
