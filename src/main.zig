@@ -158,7 +158,7 @@ pub fn main() !void {
             };
             var num_nodes: u64 = 0;
             var time: u64 = 0;
-            const depth = 9;
+            const depth = 10;
             for (fens) |fen| {
                 const board = Board.parseFenPermissive(fen) catch |e| {
                     writeLog("error: {}\nfor fen: {s}\n", .{ e, fen });
