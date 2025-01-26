@@ -183,6 +183,7 @@ pub fn main() !void {
     hash_history.appendAssumeCapacity(board.zobrist);
     const stdin = std.io.getStdIn();
     var br = std.io.bufferedReader(stdin.reader());
+    var overhead: u64 = std.time.ns_per_ms * 10;
 
     const reader = br.reader();
 
@@ -206,6 +207,7 @@ pub fn main() !void {
             write("id author Jonathan Hallström\n", .{});
             write("option name Hash type spin default 256 min 1 max 65535\n", .{});
             write("option name Threads type spin default 1 min 1 max 1\n", .{});
+            write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
             write("uciok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
@@ -214,8 +216,14 @@ pub fn main() !void {
             frc = false;
         } else if (std.ascii.eqlIgnoreCase(command, "setoption")) {
             if (!std.ascii.eqlIgnoreCase("name", parts.next() orelse "")) continue;
-            const name = parts.next() orelse "";
-            if (!std.ascii.eqlIgnoreCase("value", parts.next() orelse "")) continue;
+            var name = parts.next() orelse "";
+            var value_part = parts.next() orelse "";
+            if (!std.ascii.eqlIgnoreCase("value", value_part)) {
+                // yes this is cursed
+                while (name.ptr[name.len..] != value_part.ptr[value_part.len..])
+                    name.len += 1;
+                value_part = parts.next() orelse "";
+            }
             const value = parts.next() orelse "";
 
             if (std.ascii.eqlIgnoreCase("Hash", name)) {
@@ -234,6 +242,13 @@ pub fn main() !void {
                     frc = false;
                 }
             }
+
+            if (std.ascii.eqlIgnoreCase("Move Overhead", name)) {
+                overhead = std.time.ns_per_ms * (std.fmt.parseInt(u64, value, 10) catch {
+                    writeLog("invalid overhead: '{s}'\n", .{value});
+                    continue;
+                });
+            }
         } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             write("readyok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "d")) {
@@ -248,8 +263,8 @@ pub fn main() !void {
             // completely arbitrarily chosen value
             var white_time: u64 = 1000_000_000 * std.time.ns_per_s;
             var black_time: u64 = 1000_000_000 * std.time.ns_per_s;
-            var white_increment: u64 = 1000_000_000 * std.time.ns_per_s;
-            var black_increment: u64 = 1000_000_000 * std.time.ns_per_s;
+            var white_increment: u64 = 0 * std.time.ns_per_s;
+            var black_increment: u64 = 0 * std.time.ns_per_s;
             var mate_finding_depth: ?u8 = null;
             var move_time: ?u64 = null;
 
@@ -337,10 +352,10 @@ pub fn main() !void {
             // const my_increment = @min(white_increment, black_increment);
 
             // 10ms  seems fine
-            const overhead = @min(10 * std.time.ns_per_ms, my_time / 2);
+            const overhead_use = @min(overhead, my_time / 2);
 
             var soft_time = my_time / @max(board.computePhase() * 3 / 2, 8) + my_increment;
-            var hard_time = my_time / 5 -| overhead;
+            var hard_time = my_time / 5 -| overhead_use;
             // std.debug.print("{}\n", .{std.fmt.fmtDuration(hard_time)});
             hard_time = @max(std.time.ns_per_ms / 4, hard_time);
             soft_time = @min(soft_time, hard_time);
