@@ -187,14 +187,13 @@ fn search(
     const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
 
     // TODO: tuning
+    const us = board.getSide(turn);
+    const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
     if (!pv and !is_in_check) {
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
         if (depth <= 5 and static_eval >= beta + @as(i32, 150) * depth)
             return result(static_eval, move_buf[0]);
-
-        const us = board.getSide(turn);
-        const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
 
         if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0) {
             const reduction = 4 + depth / 5;
@@ -245,7 +244,13 @@ fn search(
     var num_searched: u8 = 0;
     var prune_quiets = false;
     for (move_buf[0..move_count], 0..) |move, i| {
-        if (prune_quiets and move.isQuiet() and !move.isPromotion()) continue;
+        const is_losing = best_score <= eval.mateIn(max_search_depth);
+        if (prune_quiets and move.isQuiet() and !move.isPromotion())
+            continue;
+        const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * -80 else @as(i16, depth) * depth * -40;
+        if (!pv and !is_in_check and !is_losing and not_pawn_or_king != 0 and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
+            continue;
+
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
         hash_history.appendAssumeCapacity(board.zobrist);
@@ -330,7 +335,7 @@ fn search(
                 break;
             }
         }
-        if (!(eval.isMateScore(alpha) and score < 0) and move.isQuiet() and num_searched > depth * depth and !pv) {
+        if (!is_losing and move.isQuiet() and num_searched > depth * depth and !pv) {
             prune_quiets = true;
         }
     }
