@@ -439,7 +439,7 @@ comptime {
     assert(readPieceSquareTable(.white, .pawn, .a7).endgame() > readPieceSquareTable(.white, .pawn, .a2).endgame());
 }
 
-pub fn passedPawnScore(board: *const Board) i16 {
+fn passedPawnScore(board: *const Board) i16 {
     var white_non_promoting = board.black.getBoard(.pawn);
     white_non_promoting |= Bitboard.move(white_non_promoting, -1, -1);
     white_non_promoting |= Bitboard.move(white_non_promoting, -1, 1);

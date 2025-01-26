@@ -7,6 +7,7 @@ const Side = @import("side.zig").Side;
 const eval = @import("eval.zig");
 const move_ordering = @import("move_ordering.zig");
 const Square = @import("square.zig").Square;
+const SEE = @import("see.zig");
 
 const testing = std.testing;
 const EvalState = eval.EvalState;
@@ -46,6 +47,8 @@ fn quiesce(
 
     move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = static_eval;
+    const us = board.getSide(turn);
+    const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         assert(move.isCapture());
@@ -59,6 +62,11 @@ fn quiesce(
                 }
             }
         }
+
+        // if we're not in a pawn and king endgame and the capture is really bad, just skip it
+        if (not_pawn_or_king != 0)
+            if (!SEE.scoreMove(board, move, -100))
+                continue;
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
         qnodes += 1;
