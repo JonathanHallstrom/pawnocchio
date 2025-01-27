@@ -12,6 +12,7 @@ const PieceType = @import("piece_type.zig").PieceType;
 const Move = @import("Move.zig").Move;
 const Board = @import("Board.zig");
 const movegen = @import("movegen.zig");
+const magics = @import("magics.zig");
 
 const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 10_000 };
 const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 10_000 };
@@ -439,7 +440,7 @@ comptime {
     assert(readPieceSquareTable(.white, .pawn, .a7).endgame() > readPieceSquareTable(.white, .pawn, .a2).endgame());
 }
 
-fn passedPawnScore(board: *const Board) i16 {
+fn passedPawnScore(board: *const Board) Packed {
     var white_non_promoting = board.black.getBoard(.pawn);
     white_non_promoting |= Bitboard.move(white_non_promoting, -1, -1);
     white_non_promoting |= Bitboard.move(white_non_promoting, -1, 1);
@@ -455,60 +456,48 @@ fn passedPawnScore(board: *const Board) i16 {
     black_non_promoting |= Bitboard.move(black_non_promoting, 2, 0);
     black_non_promoting |= Bitboard.move(black_non_promoting, 4, 0);
 
-    return @as(i16, @popCount(~white_non_promoting & board.white.getBoard(.pawn))) - @popCount(~black_non_promoting & board.black.getBoard(.pawn));
+    const count_difference = @as(i16, @popCount(~white_non_promoting & board.white.getBoard(.pawn))) - @popCount(~black_non_promoting & board.black.getBoard(.pawn));
+    return Packed.from(mg_passed_pawn_mult * count_difference, eg_passed_pawn_mult * count_difference);
 }
 
-comptime {
-    @setEvalBranchQuota(1 << 30);
-    assert(passedPawnScore(&Board.init()) == 0);
-    assert(passedPawnScore(&(Board.parseFen("3k4/8/8/8/8/8/3P4/3K4 w - - 0 1") catch unreachable)) > 0);
-    assert(passedPawnScore(&(Board.parseFen("3k4/3p4/8/8/8/8/8/3K4 w - - 0 1") catch unreachable)) < 0);
-    assert(passedPawnScore(&(Board.parseFen("1k6/8/8/8/2P5/6P1/3P4/1K6 w - - 0 1") catch unreachable)) > 0);
-}
-
-fn mobilityScore(board: *const Board) i16 {
+fn mobilityScore(board: *const Board) Packed {
     const white_masks = movegen.getMasks(.white, board.*);
     const black_masks = movegen.getMasks(.black, board.*);
 
-    var res: i16 = 0;
-    res += @intCast(movegen.countPawnMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins, white_masks.rook_pins));
-    res -= @intCast(movegen.countPawnMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins, black_masks.rook_pins));
+    var mobility: i16 = 0;
+    mobility += @intCast(movegen.countKnightMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins | white_masks.rook_pins));
+    mobility -= @intCast(movegen.countKnightMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins | black_masks.rook_pins));
 
-    res += @intCast(movegen.countKnightMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins | white_masks.rook_pins));
-    res -= @intCast(movegen.countKnightMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins | black_masks.rook_pins));
+    mobility += @intCast(movegen.countSlidingMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins, white_masks.rook_pins));
+    mobility -= @intCast(movegen.countSlidingMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins, black_masks.rook_pins));
 
-    res += @intCast(movegen.countSlidingMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins, white_masks.rook_pins));
-    res -= @intCast(movegen.countSlidingMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins, black_masks.rook_pins));
+    const occ = board.white.all | board.black.all;
+    const white_king_attacks = (magics.getBishopAttacks(Square.fromBitboard(board.white.getBoard(.king)), occ) | magics.getRookAttacks(Square.fromBitboard(board.white.getBoard(.king)), occ)) & ~occ;
+    const white_king_moves_as_queen: i16 = @popCount(white_king_attacks);
+    const black_king_attacks = (magics.getBishopAttacks(Square.fromBitboard(board.black.getBoard(.king)), occ) | magics.getRookAttacks(Square.fromBitboard(board.black.getBoard(.king)), occ)) & ~occ;
+    const black_king_moves_as_queen: i16 = @popCount(black_king_attacks);
 
-    res += @intCast(movegen.countKingMoves(.white, false, board.*, white_masks.rook_pins));
-    res -= @intCast(movegen.countKingMoves(.black, false, board.*, black_masks.rook_pins));
-
-    return res;
+    return Packed.from(mobility - 4 * (white_king_moves_as_queen - black_king_moves_as_queen), mobility + (white_king_moves_as_queen - black_king_moves_as_queen));
 }
 
 pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
-    var mg = eval_state.state.midgame();
-    var eg = eval_state.state.endgame();
+    var res = eval_state.state;
 
     const side_mult: i16 = if (board.turn == .white) 1 else -1;
 
-    const mobility_score = mobilityScore(board) * side_mult;
-    mg += mobility_score * mg_mobility_mult;
-    eg += mobility_score * eg_mobility_mult;
+    const mobility_score = mobilityScore(board).multiplyScalar(side_mult);
+    res = res.add(mobility_score);
 
-    const passed_pawn_score = passedPawnScore(board) * side_mult;
-    mg += passed_pawn_score * mg_passed_pawn_mult;
-    eg += passed_pawn_score * eg_passed_pawn_mult;
+    const passed_pawn_score = passedPawnScore(board).multiplyScalar(side_mult);
+    res = res.add(passed_pawn_score);
 
     const mg_phase: i32 = @min(eval_state.phase, max_phase);
     const eg_phase = max_phase - mg_phase;
 
-    return @intCast(@divTrunc(mg_phase * mg + eg_phase * eg, max_phase));
+    return @intCast(@divTrunc(mg_phase * res.midgame() + eg_phase * res.endgame(), max_phase));
 }
 
 // TODO: TUNING
-pub var mg_mobility_mult: i16 = 1;
-pub var eg_mobility_mult: i16 = 1;
 pub var mg_passed_pawn_mult: i16 = 0;
 pub var eg_passed_pawn_mult: i16 = 20;
 // pub var tempo: i16 = 20;
