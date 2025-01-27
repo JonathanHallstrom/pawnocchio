@@ -23,6 +23,8 @@ const shouldStopSearching = engine.shouldStopSearching;
 
 const max_search_depth = 255;
 
+const tunable_constants = @import("tuning.zig").tunable_constants;
+
 fn quiesce(
     comptime turn: Side,
     board: *Board,
@@ -65,7 +67,7 @@ fn quiesce(
 
         // if we're not in a pawn and king endgame and the capture is really bad, just skip it
         if (not_pawn_or_king != 0)
-            if (!SEE.scoreMove(board, move, -100))
+            if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
                 continue;
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
@@ -126,7 +128,7 @@ fn search(
         return null;
     }
     // assert that root implies pv
-    assert(if (root) pv else true);
+    comptime assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
     if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth) {
         switch (tt_entry.tp) {
@@ -150,13 +152,17 @@ fn search(
 
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
     const is_in_check = masks.is_in_check;
-    if (move_count == 0) {
-        return result(if (is_in_check) eval.mateIn(cur_depth) else 0, Move.null_move);
+    if (!root and move_count == 0) {
+        return if (is_in_check) eval.mateIn(cur_depth) else 0;
     }
-    if (board.halfmove_clock >= 100) {
-        return result(0, move_buf[0]);
+    if (!root and board.halfmove_clock >= 100) {
+        return 0;
     }
-    {
+
+    const repetition_idx = board.zobrist % repetition_table.len;
+    repetition_table[repetition_idx] += 1;
+    defer repetition_table[repetition_idx] -= 1;
+    if (!root and repetition_table[repetition_idx] >= 3) {
         var repetitions: u8 = 0;
         const start = hash_history.items.len - @min(hash_history.items.len, board.halfmove_clock);
         for (hash_history.items[start..hash_history.items.len]) |zobrist| {
@@ -165,7 +171,7 @@ fn search(
             }
         }
         if (repetitions >= 3) {
-            return result(0, move_buf[0]);
+            return 0;
         }
     }
 
@@ -192,7 +198,7 @@ fn search(
     if (!pv and !is_in_check) {
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and static_eval >= beta + @as(i32, 150) * depth)
+        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_multiplier * depth)
             return result(static_eval, move_buf[0]);
 
         if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0) {
@@ -247,7 +253,7 @@ fn search(
         const is_losing = best_score <= eval.mateIn(max_search_depth);
         if (prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
-        const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * -80 else @as(i16, depth) * depth * -40;
+        const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i16, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
         if (!pv and !is_in_check and !is_losing and not_pawn_or_king != 0 and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
             continue;
 
@@ -262,7 +268,7 @@ fn search(
             // TODO: tuning
 
             // late move reduction
-            const reduction = 3 + @as(u8, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) / 4;
+            const reduction = (tunable_constants.lmr_base + @as(u8, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
             const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
             const reduced_depth = depth - clamped_reduction;
 
@@ -435,6 +441,7 @@ fn writeInfo(score: i16, move: Move, depth: u8, frc: bool) void {
 pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) engine.SearchResult {
     resetSoft();
     assert(hash_history.items[hash_history.items.len - 1] == board.zobrist);
+    for (hash_history.items) |zobrist| repetition_table[zobrist % repetition_table.len] += 1;
     timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
     var board_copy = board;
@@ -557,6 +564,7 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
+    @memset(&repetition_table, 0);
 }
 
 pub fn resetHard() void {
@@ -565,6 +573,8 @@ pub fn resetHard() void {
     @memset(std.mem.sliceAsBytes(tt), 0);
 }
 
+var repetition_check_fast: u64 = 0;
+var repetition_table: [8192]u8 = undefined;
 var pv_moves: [256]Move = undefined;
 var num_pv_moves: usize = 0;
 var tt: []align(16) TTEntry align(64) = &.{};
