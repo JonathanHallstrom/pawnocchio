@@ -88,7 +88,7 @@ pub fn reset() void {
 }
 
 pub fn historyEntry(board: *const Board, move: Move) *i16 {
-    return &history[if (board.turn == .white) 0 else 1][move.getFrom().toInt()][move.getTo().toInt()];
+    return &history[if (board.turn == .white) 0 else 1][board.mailbox[move.getFrom().toInt()].?.toInt()][move.getFrom().toInt()][move.getTo().toInt()];
 }
 
 pub fn getHistory(board: *const Board, move: Move) i16 {
@@ -108,4 +108,4 @@ pub fn updateHistory(board: *const Board, move: Move, bonus: anytype) void {
 }
 
 const max_history = 1 << 14;
-var history = std.mem.zeroes([2][64][64]i16);
+var history = std.mem.zeroes([2][6][64][64]i16);
