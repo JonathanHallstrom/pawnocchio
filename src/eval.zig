@@ -466,7 +466,19 @@ fn pawnScore(board: *const Board) Packed {
     white_reachable |= Bitboard.move(white_reachable, 4, 0);
 
     const count_difference = @as(i16, @popCount(~(black_attackable | black_reachable) & board.white.getBoard(.pawn))) - @popCount(~(white_attackable | white_reachable) & board.black.getBoard(.pawn));
-    return Packed.from(mg_passed_pawn_mult * count_difference, eg_passed_pawn_mult * count_difference);
+    var res = Packed.from(mg_passed_pawn_mult * count_difference, eg_passed_pawn_mult * count_difference);
+
+    // give bonuns for pieces on strong squares
+    const white_strong_squares = ~black_attackable;
+    const black_strong_squares = ~white_attackable;
+    res = res.add(Packed.from((@as(i16, @popCount(white_strong_squares & board.white.all)) - @popCount(@popCount(black_strong_squares & board.black.all))) * 5, 0));
+
+    // give big bonuns for knights on strong squares that are also supported by our own pawns
+    // const white_supported_strong_squares = white_strong_squares & white_directly_attackable;
+    // const black_supported_strong_squares = black_strong_squares & black_directly_attackable;
+    // res = res.add(Packed.from((@as(i16, @popCount(white_supported_strong_squares & board.white.getBoard(.knight))) - @popCount(@popCount(black_supported_strong_squares & board.black.getBoard(.knight)))) * 10, 0));
+
+    return res;
 }
 
 fn movegenScore(board: *const Board) Packed {
