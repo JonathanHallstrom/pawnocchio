@@ -28,7 +28,7 @@ fn getAttacks(comptime turn: anytype, comptime tp: PieceType, sq: Square, occ: u
     };
 }
 
-pub fn scoreMove(board: *const Board, move: Move, threshold: i16) bool {
+pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
     const from = move.getFrom();
     const to = move.getTo();
     const from_type = board.mailbox[from.toInt()].?;

@@ -254,7 +254,7 @@ fn search(
         const is_losing = best_score <= eval.mateIn(max_search_depth);
         if (prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
-        const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i16, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
+        const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
         if (!pv and !is_in_check and !is_losing and not_pawn_or_king != 0 and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
             continue;
 
@@ -269,9 +269,9 @@ fn search(
             // TODO: tuning
 
             // late move reduction
-            const reduction = (tunable_constants.lmr_base + @as(u8, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
+            const reduction = (tunable_constants.lmr_base + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
             const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
-            const reduced_depth = depth - clamped_reduction;
+            const reduced_depth: u8 = @intCast(depth - clamped_reduction);
 
             score = -(search(
                 false,
@@ -342,7 +342,7 @@ fn search(
                 break;
             }
         }
-        if (!is_losing and move.isQuiet() and num_searched > depth * depth and !pv) {
+        if (!is_losing and move.isQuiet() and num_searched > @as(u16, depth) * depth and !pv) {
             prune_quiets = true;
         }
     }
@@ -482,7 +482,12 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 } else {
                     break;
                 }
-                window *= 2;
+                if (eval.isMateScore(aspiration_score)) {
+                    alpha = -checkmate_score;
+                    beta = checkmate_score;
+                } else {
+                    window *|= 2;
+                }
             }
             if (!silence_output and std.debug.runtime_safety) {
                 write("info string fail_lows {} fail_highs {}\n", .{ fail_lows, fail_highs });

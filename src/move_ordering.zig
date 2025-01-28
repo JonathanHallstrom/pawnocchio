@@ -97,7 +97,7 @@ pub fn getHistory(board: *const Board, move: Move) i16 {
 
 pub fn getBonus(depth: u8) i16 {
     // TODO: tuning
-    return @min(@as(i16, depth) * 300 - 300, 2300);
+    return @intCast(@min(@as(i32, depth) * 300 - 300, 2300));
 }
 
 pub fn updateHistory(board: *const Board, move: Move, bonus: anytype) void {
