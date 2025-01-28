@@ -471,7 +471,14 @@ fn pawnScore(board: *const Board) Packed {
     // give bonuns for pieces on strong squares
     const white_strong_squares = ~black_attackable;
     const black_strong_squares = ~white_attackable;
-    res = res.add(Packed.from((@as(i16, @popCount(white_strong_squares & board.white.all)) - @popCount(@popCount(black_strong_squares & board.black.all))) * 5, 0));
+
+    const white_pieces_on_strong_squares = white_strong_squares & board.white.all;
+    const black_pieces_on_strong_squares = black_strong_squares & board.black.all;
+
+    const num_white_pieces_on_strong_squares: i16 = @popCount(white_pieces_on_strong_squares);
+    const num_black_pieces_on_strong_squares: i16 = @popCount(black_pieces_on_strong_squares);
+
+    res = res.add(Packed.from((num_white_pieces_on_strong_squares - num_black_pieces_on_strong_squares) * 5, 0));
 
     // give big bonuns for knights on strong squares that are also supported by our own pawns
     // const white_supported_strong_squares = white_strong_squares & white_directly_attackable;
