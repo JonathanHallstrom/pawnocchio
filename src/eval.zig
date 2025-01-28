@@ -525,7 +525,7 @@ fn movegenScore(board: *const Board) Packed {
     const black_king_attacks = (magics.getBishopAttacks(Square.fromBitboard(board.black.getBoard(.king)), occ) | magics.getRookAttacks(Square.fromBitboard(board.black.getBoard(.king)), occ)) & ~occ;
     const black_king_moves_as_queen: i16 = @popCount(black_king_attacks);
 
-    return Packed.from(mobility - 2 * (white_king_moves_as_queen - black_king_moves_as_queen), mobility + (white_king_moves_as_queen - black_king_moves_as_queen));
+    return Packed.from(mobility - 5 * (white_king_moves_as_queen - black_king_moves_as_queen), mobility + (white_king_moves_as_queen - black_king_moves_as_queen));
 }
 
 pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
