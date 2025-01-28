@@ -440,27 +440,36 @@ comptime {
     assert(readPieceSquareTable(.white, .pawn, .a7).endgame() > readPieceSquareTable(.white, .pawn, .a2).endgame());
 }
 
-fn passedPawnScore(board: *const Board) Packed {
-    var white_non_promoting = board.black.getBoard(.pawn);
-    white_non_promoting |= Bitboard.move(white_non_promoting, -1, -1);
-    white_non_promoting |= Bitboard.move(white_non_promoting, -1, 1);
+fn pawnScore(board: *const Board) Packed {
+    const black_pawns = board.black.getBoard(.pawn);
 
-    white_non_promoting |= Bitboard.move(white_non_promoting, -1, 0);
-    white_non_promoting |= Bitboard.move(white_non_promoting, -2, 0);
-    white_non_promoting |= Bitboard.move(white_non_promoting, -4, 0);
-    var black_non_promoting = board.white.getBoard(.pawn);
-    black_non_promoting |= Bitboard.move(black_non_promoting, 1, -1);
-    black_non_promoting |= Bitboard.move(black_non_promoting, 1, 1);
+    const black_directly_attackable = Bitboard.move(black_pawns, -1, -1) | Bitboard.move(black_pawns, -1, 1);
+    var black_attackable = black_directly_attackable;
+    var black_reachable = black_pawns;
+    black_attackable |= Bitboard.move(black_attackable, -1, 0);
+    black_attackable |= Bitboard.move(black_attackable, -2, 0);
+    black_attackable |= Bitboard.move(black_attackable, -4, 0);
+    black_reachable |= Bitboard.move(black_reachable, -1, 0);
+    black_reachable |= Bitboard.move(black_reachable, -2, 0);
+    black_reachable |= Bitboard.move(black_reachable, -4, 0);
 
-    black_non_promoting |= Bitboard.move(black_non_promoting, 1, 0);
-    black_non_promoting |= Bitboard.move(black_non_promoting, 2, 0);
-    black_non_promoting |= Bitboard.move(black_non_promoting, 4, 0);
+    const white_pawns = board.white.getBoard(.pawn);
 
-    const count_difference = @as(i16, @popCount(~white_non_promoting & board.white.getBoard(.pawn))) - @popCount(~black_non_promoting & board.black.getBoard(.pawn));
+    const white_directly_attackable = Bitboard.move(white_pawns, 1, -1) | Bitboard.move(white_pawns, 1, 1);
+    var white_attackable = white_directly_attackable;
+    var white_reachable = white_pawns;
+    white_attackable |= Bitboard.move(white_attackable, 1, 0);
+    white_attackable |= Bitboard.move(white_attackable, 2, 0);
+    white_attackable |= Bitboard.move(white_attackable, 4, 0);
+    white_reachable |= Bitboard.move(white_reachable, 1, 0);
+    white_reachable |= Bitboard.move(white_reachable, 2, 0);
+    white_reachable |= Bitboard.move(white_reachable, 4, 0);
+
+    const count_difference = @as(i16, @popCount(~(black_attackable | black_reachable) & board.white.getBoard(.pawn))) - @popCount(~(white_attackable | white_reachable) & board.black.getBoard(.pawn));
     return Packed.from(mg_passed_pawn_mult * count_difference, eg_passed_pawn_mult * count_difference);
 }
 
-fn mobilityScore(board: *const Board) Packed {
+fn movegenScore(board: *const Board) Packed {
     const white_masks = movegen.getMasks(.white, board.*);
     const black_masks = movegen.getMasks(.black, board.*);
 
@@ -485,11 +494,11 @@ pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
 
     const side_mult: i16 = if (board.turn == .white) 1 else -1;
 
-    const mobility_score = mobilityScore(board).multiplyScalar(side_mult);
-    res = res.add(mobility_score);
+    const movegen_score = movegenScore(board).multiplyScalar(side_mult);
+    res = res.add(movegen_score);
 
-    const passed_pawn_score = passedPawnScore(board).multiplyScalar(side_mult);
-    res = res.add(passed_pawn_score);
+    const pawn_score = pawnScore(board).multiplyScalar(side_mult);
+    res = res.add(pawn_score);
 
     const mg_phase: i32 = @min(eval_state.phase, max_phase);
     const eg_phase = max_phase - mg_phase;
