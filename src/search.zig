@@ -131,10 +131,11 @@ fn search(
     comptime assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
     if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth) {
+        const tt_score = eval.scoreFromTt(tt_entry.score, cur_depth);
         switch (tt_entry.tp) {
-            .exact => return result(tt_entry.score, tt_entry.move),
-            .lower => if (tt_entry.score >= beta) return result(tt_entry.score, tt_entry.move),
-            .upper => if (tt_entry.score <= alpha) return result(tt_entry.score, tt_entry.move),
+            .exact => return result(tt_score, tt_entry.move),
+            .lower => if (tt_score >= beta) return result(tt_score, tt_entry.move),
+            .upper => if (tt_score <= alpha) return result(tt_score, tt_entry.move),
         }
     }
     const worst_possible = eval.mateIn(cur_depth);
@@ -195,7 +196,7 @@ fn search(
     // TODO: tuning
     const us = board.getSide(turn);
     const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
-    if (!pv and !is_in_check) {
+    if (!pv and !is_in_check and beta >= eval.mateIn(max_search_depth)) {
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_multiplier * depth)
@@ -362,7 +363,7 @@ fn search(
         .move = best_move,
         .depth = depth,
         .tp = score_type,
-        .score = best_score,
+        .score = eval.scoreToTt(best_score, cur_depth),
     };
 
     return result(best_score, best_move);

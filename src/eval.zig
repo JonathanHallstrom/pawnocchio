@@ -391,6 +391,7 @@ inline fn readPieceSquareTable(side: Side, pt: PieceType, square: Square) Packed
 }
 
 pub const checkmate_score: i16 = 16000;
+pub const win_score: i16 = checkmate_score - 255;
 const piece_values: [PieceType.all.len]i16 = .{
     100,
     300,
@@ -405,7 +406,26 @@ pub fn mateIn(plies: u8) i16 {
 }
 
 pub fn isMateScore(score: i16) bool {
-    return @abs(score) >= checkmate_score - 255;
+    return @abs(score) >= win_score;
+}
+
+// from https://github.com/Ciekce/Stormphrax/blob/15e9d26a74198ee01a1205741213d79cbaac1912/src/ttable.cpp#L35
+pub fn scoreToTt(score: i16, ply: u8) i16 {
+    if (score < -win_score) {
+        return score - ply;
+    } else if (score > win_score) {
+        return score + ply;
+    }
+    return score;
+}
+
+pub fn scoreFromTt(score: i16, ply: u8) i16 {
+    if (score < -win_score) {
+        return score + ply;
+    } else if (score > win_score) {
+        return score - ply;
+    }
+    return score;
 }
 
 pub fn computePhase(board: *const Board) u8 {
