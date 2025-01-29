@@ -113,6 +113,7 @@ fn search(
     cur_depth: u8,
     depth: u8,
     move_buf: []Move,
+    previous_move: Move,
     hash_history: *std.ArrayList(u64),
 ) ?if (root) struct { i16, Move } else i16 {
     const result = struct {
@@ -218,6 +219,7 @@ fn search(
                 cur_depth + 1,
                 depth - reduction,
                 move_buf[move_count..],
+                Move.null_move,
                 hash_history,
             ) orelse 0);
             _ = hash_history.pop();
@@ -235,6 +237,7 @@ fn search(
                     cur_depth + 1,
                     depth - reduction,
                     move_buf[move_count..],
+                    previous_move,
                     hash_history,
                 ) orelse 0;
 
@@ -245,7 +248,7 @@ fn search(
         }
     }
 
-    move_ordering.order(board, tt_entry.move, move_buf[0..move_count]);
+    move_ordering.order(board, tt_entry.move, previous_move, move_buf[0..move_count]);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     var num_searched: u8 = 0;
@@ -284,6 +287,7 @@ fn search(
                 cur_depth + 1,
                 reduced_depth,
                 move_buf[move_count..],
+                move,
                 hash_history,
             ) orelse 0);
         } else if (!pv or num_searched > 0) {
@@ -298,6 +302,7 @@ fn search(
                 cur_depth + 1,
                 new_depth,
                 move_buf[move_count..],
+                move,
                 hash_history,
             ) orelse 0);
         }
@@ -313,6 +318,7 @@ fn search(
                 cur_depth + 1,
                 new_depth,
                 move_buf[move_count..],
+                move,
                 hash_history,
             ) orelse 0);
         }
@@ -332,10 +338,10 @@ fn search(
             alpha = score;
             if (score >= beta) {
                 if (move.isQuiet()) {
-                    move_ordering.updateHistory(board, move, move_ordering.getBonus(depth));
+                    move_ordering.updateHistory(board, move, previous_move, move_ordering.getBonus(depth));
                     for (0..i) |j| {
                         if (move_buf[j].isQuiet()) {
-                            move_ordering.updateHistory(board, move_buf[j], -move_ordering.getBonus(depth));
+                            move_ordering.updateHistory(board, move_buf[j], previous_move, -move_ordering.getBonus(depth));
                         }
                     }
                 }
@@ -470,6 +476,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                         0,
                         @intCast(depth),
                         move_buf,
+                        Move.null_move,
                         hash_history,
                     ),
                 } orelse break;
@@ -507,6 +514,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     0,
                     @intCast(depth),
                     move_buf,
+                    Move.null_move,
                     hash_history,
                 ),
             } orelse break;
