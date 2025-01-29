@@ -44,7 +44,7 @@ fn quiesce(
         return static_eval;
     }
 
-    if (static_eval >= beta) return beta;
+    if (static_eval >= beta) return static_eval;
     if (static_eval > alpha) alpha = static_eval;
 
     move_ordering.mvvLva(board, move_buf[0..move_count]);
