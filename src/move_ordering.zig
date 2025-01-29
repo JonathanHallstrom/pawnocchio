@@ -89,15 +89,27 @@ pub fn reset() void {
 }
 
 fn historyEntry(board: *const Board, move: Move) *i16 {
-    return &history[if (board.turn == .white) 0 else 1][board.mailbox[move.getFrom().toInt()].?.toInt()][move.getFrom().toInt()][move.getTo().toInt()];
+    const from = move.getFrom().toInt();
+    const to = move.getTo().toInt();
+    const moved_type = board.mailbox[from].?.toInt();
+    return &history[if (board.turn == .white) 0 else 1][moved_type][from][to];
 }
 
 fn contHistEntry(board: *const Board, move: Move, previous_move: Move) *i16 {
-    return &cont_hist[if (board.turn == .white) 0 else 1][move.getFrom().toInt()][move.getTo().toInt()][previous_move.getFrom().toInt()][previous_move.getTo().toInt()];
+    const from = move.getFrom().toInt();
+    const to = move.getTo().toInt();
+    const moved_type = board.mailbox[from].?.toInt();
+    const prev_to = previous_move.getTo().toInt();
+    const prev_moved_type = board.mailbox[prev_to].?.toInt();
+    return &cont_hist[if (board.turn == .white) 0 else 1][moved_type][to][prev_moved_type][prev_to];
 }
 
 pub fn getHistory(board: *const Board, move: Move, previous_move: Move) i16 {
-    return @intCast(@as(i32, historyEntry(board, move).*) + contHistEntry(board, move, previous_move).* >> 1);
+    if (previous_move == Move.null_move) {
+        return historyEntry(board, move).*;
+    } else {
+        return @intCast(@as(i32, historyEntry(board, move).*) + contHistEntry(board, move, previous_move).* >> 1);
+    }
 }
 
 pub fn getBonus(depth: u8) i16 {
@@ -120,4 +132,4 @@ pub fn updateHistory(board: *const Board, move: Move, previous_move: Move, bonus
 
 const max_history = 1 << 14;
 var history = std.mem.zeroes([2][6][64][64]i16);
-var cont_hist = std.mem.zeroes([2][64][64][64][64]i16);
+var cont_hist = std.mem.zeroes([2][6][64][6][64]i16);
