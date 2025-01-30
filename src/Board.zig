@@ -15,6 +15,7 @@ const movegen = @import("movegen.zig");
 const Zobrist = @import("Zobrist.zig");
 const eval = @import("eval.zig");
 const EvalState = eval.EvalState;
+const magics = @import("magics.zig");
 
 // starting pos
 // 8 r n b q k b n r
@@ -328,6 +329,34 @@ pub fn getSidePtr(self: *Self, turn: Side) *PieceSet {
     return switch (turn) {
         .white => &self.white,
         .black => &self.black,
+    };
+}
+
+pub fn getFromType(self: Self, move: Move) PieceType {
+    return self.mailbox[move.getFrom().toInt()].?;
+}
+
+pub fn getToType(self: Self, move: Move) PieceType {
+    return move.getPromotedPieceType() orelse self.mailbox[move.getFrom().toInt()].?;
+}
+
+// approximate, doesn't consider discovered checks
+pub fn moveGivesCheck(self: Self, comptime turn: Side, move: Move) bool {
+    const tp = self.getToType(move);
+    const occ = (self.white.all | self.black.all);
+    const opponent_king = self.getSide(turn.flipped()).getBoard(.king);
+    const to_bb = move.getTo().toBitboard();
+    return 0 != opponent_king & switch (tp) {
+        .pawn => blk: {
+            const forward = Bitboard.move(to_bb, if (turn == .white) 1 else -1, 0);
+            const attacked_squares = Bitboard.move(forward, 0, 1) | Bitboard.move(forward, 0, -1);
+            break :blk attacked_squares;
+        },
+        .knight => @import("knight_moves.zig").knight_moves_arr[move.getTo().toInt()],
+        .bishop => magics.getBishopAttacks(move.getTo(), occ),
+        .rook => magics.getBishopAttacks(move.getTo(), occ),
+        .queen => magics.getBishopAttacks(move.getTo(), occ) | magics.getRookAttacks(move.getTo(), occ),
+        .king => 0,
     };
 }
 

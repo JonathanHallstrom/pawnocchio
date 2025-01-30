@@ -50,7 +50,7 @@ fn quiesce(
     move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = static_eval;
     const us = board.getSide(turn);
-    const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
+    _ = us; // autofix
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         assert(move.isCapture());
@@ -66,9 +66,9 @@ fn quiesce(
         }
 
         // if we're not in a pawn and king endgame and the capture is really bad, just skip it
-        if (not_pawn_or_king != 0)
-            if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
-                continue;
+        // no longer checking for pawn and king endgames, ty toanth
+        if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
+            continue;
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
         qnodes += 1;
@@ -258,7 +258,9 @@ fn search(
         if (prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
         const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
-        if (!pv and !is_in_check and !is_losing and not_pawn_or_king != 0 and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
+
+        // no longer checking for pawn and king endgames, ty toanth
+        if (!pv and !is_in_check and !is_losing and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
             continue;
 
         const updated_eval_state = eval_state.updateWith(turn, board, move);
