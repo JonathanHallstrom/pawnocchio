@@ -38,19 +38,17 @@ fn quiesce(
         shutdown = true;
         return 0;
     }
-    const move_count = movegen.getCaptures(turn, board.*, move_buf);
+    const move_count, const masks = movegen.getMovesWithInfo(turn, true, board.*, move_buf);
     const static_eval = evaluate(board, eval_state);
     if (move_count == 0) {
         return static_eval;
     }
 
-    if (static_eval >= beta) return beta;
+    if (static_eval >= beta and !masks.is_in_check) return beta;
     if (static_eval > alpha) alpha = static_eval;
 
     move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = static_eval;
-    const us = board.getSide(turn);
-    _ = us; // autofix
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         assert(move.isCapture());
