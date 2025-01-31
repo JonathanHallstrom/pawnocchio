@@ -457,11 +457,12 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     var score: i16 = -checkmate_score;
     var move = Move.null_move;
     const eval_state = EvalState.init(&board);
+    var last_score: i16 = 0;
     for (0..search_params.maxDepth()) |depth| {
         if (depth != 0) {
             var fail_lows: usize = 0;
             var fail_highs: usize = 0;
-            var window: i16 = 20; // 19 and 21 give higher bench values
+            var window: i16 = @intCast(std.math.clamp(@abs(@as(i32, score) - last_score), 15, 100));
             var alpha: i16 = score - window;
             var beta: i16 = score + window;
             var aspiration_score, var aspiration_move = .{ score, move };
@@ -521,6 +522,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 ),
             } orelse break;
         }
+        last_score = score;
         collectPv(&board_copy, 0);
         if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth), search_params.frc);
