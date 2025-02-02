@@ -203,7 +203,11 @@ fn search(
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_multiplier * depth)
             return result(static_eval, move_buf[0]);
 
-        if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0) {
+        if (depth >= 4 and
+            static_eval >= beta and
+            not_pawn_or_king != 0 and
+            previous_move != Move.null_move)
+        {
             const reduction = 4 + depth / 5;
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
