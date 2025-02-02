@@ -204,9 +204,13 @@ fn search(
             return result(static_eval, move_buf[0]);
 
         if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0) {
-            const reduction = 4 + depth / 5;
+            // cie suggested B + depth / D + min((eval - beta) / E, M)
+            // with E=200 and M=3
+            const eval_based_reduction = @min(@divTrunc(@as(i32, static_eval) - beta, 200), 3);
+            const reduction = 4 + depth / 5 + eval_based_reduction;
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
+            const reduced_depth: u8 = @intCast(std.math.clamp(depth - reduction, 0, 255));
             hash_history.appendAssumeCapacity(board.zobrist);
             const score = -(search(
                 false,
@@ -217,7 +221,7 @@ fn search(
                 -beta,
                 -beta + 1,
                 cur_depth + 1,
-                depth - reduction,
+                reduced_depth,
                 move_buf[move_count..],
                 Move.null_move,
                 hash_history,
@@ -235,7 +239,7 @@ fn search(
                     beta - 1,
                     beta,
                     cur_depth + 1,
-                    depth - reduction,
+                    reduced_depth,
                     move_buf[move_count..],
                     previous_move,
                     hash_history,
