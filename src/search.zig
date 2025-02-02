@@ -248,7 +248,7 @@ fn search(
         }
     }
 
-    move_ordering.order(board, tt_entry.move, previous_move, move_buf[0..move_count]);
+    move_ordering.order(turn, board, tt_entry.move, previous_move, move_buf[0..move_count]);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     var num_searched: u8 = 0;
@@ -340,10 +340,10 @@ fn search(
             alpha = score;
             if (score >= beta) {
                 if (move.isQuiet()) {
-                    move_ordering.updateHistory(board, move, previous_move, move_ordering.getBonus(depth));
+                    move_ordering.updateHistory(turn, board, move, previous_move, move_ordering.getBonus(depth));
                     for (0..i) |j| {
                         if (move_buf[j].isQuiet()) {
-                            move_ordering.updateHistory(board, move_buf[j], previous_move, -move_ordering.getBonus(depth));
+                            move_ordering.updateHistory(turn, board, move_buf[j], previous_move, -move_ordering.getBonus(depth));
                         }
                     }
                 }
