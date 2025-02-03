@@ -206,8 +206,9 @@ fn search(
         if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0) {
             // cie suggested B + depth / D + min((eval - beta) / E, M)
             // with E=200 and M=3
-            const eval_based_reduction = @min(@divTrunc(@as(i32, static_eval) - beta, 200), 3);
-            const reduction = 4 + depth / 5 + eval_based_reduction;
+            // M=0 is from yukari
+            const eval_based_reduction = @max(@divTrunc(@as(i32, static_eval) - beta, 200), 0);
+            const reduction: i32 = 4 + depth / 5 + eval_based_reduction;
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
             const reduced_depth: u8 = @intCast(std.math.clamp(depth - reduction, 0, 255));
