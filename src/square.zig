@@ -56,6 +56,10 @@ pub const Square = enum(u6) {
         if (file > 7) return error.InvalidFile;
         return @enumFromInt(rank * 8 + file);
     }
+
+    pub fn flipRank(self: Square) Square {
+        return fromInt(self.toInt() ^ 56);
+    }
 };
 
 pub const File = enum {

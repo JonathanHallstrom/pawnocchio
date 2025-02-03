@@ -1,5 +1,6 @@
 const std = @import("std");
 const engine = @import("engine.zig");
+const nnue = @import("nnue.zig");
 
 const Board = @import("Board.zig");
 const Move = @import("Move.zig").Move;
@@ -59,6 +60,7 @@ pub fn main() !void {
     const move_buf = try allocator.alloc(Move, 16384);
     defer allocator.free(move_buf);
 
+    nnue.init();
     engine.reset();
     try engine.setTTSize(256);
 
@@ -380,6 +382,8 @@ pub fn main() !void {
             engine.stopAsyncSearch();
         } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
             return;
+        } else if (std.ascii.eqlIgnoreCase(command, "raweval")) {
+            write("{}\n", .{nnue.nnEval(&board)});
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
             const sub_command = parts.next() orelse "";
