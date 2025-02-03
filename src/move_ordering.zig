@@ -54,7 +54,7 @@ const ScoreMovePair = struct {
     }
 };
 
-pub fn order(board: *const Board, tt_move: Move, previous_move: Move, moves: []Move) void {
+pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_move: Move, moves: []Move) void {
     var quiets = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var captures = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var has_tt_move = false;
@@ -69,7 +69,7 @@ pub fn order(board: *const Board, tt_move: Move, previous_move: Move, moves: []M
 
             captures.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) + see_bonus });
         } else {
-            quiets.appendAssumeCapacity(.{ .move = move, .score = getHistory(board, move, previous_move) });
+            quiets.appendAssumeCapacity(.{ .move = move, .score = getHistory(turn, board, move, previous_move) });
         }
     }
     sort(ScoreMovePair, captures.slice(), void{}, ScoreMovePair.cmp);
@@ -95,20 +95,20 @@ fn historyEntry(board: *const Board, move: Move) *i16 {
     return &history[if (board.turn == .white) 0 else 1][moved_type][from][to];
 }
 
-fn contHistEntry(board: *const Board, move: Move, previous_move: Move) *i16 {
+fn contHistEntry(comptime turn: Side, board: *const Board, move: Move, previous_move: Move) *i16 {
     const from = move.getFrom().toInt();
     const to = move.getTo().toInt();
     const moved_type = board.mailbox[from].?.toInt();
-    const prev_to = previous_move.getTo().toInt();
+    const prev_to = if (previous_move.isCastlingMove()) previous_move.getCastlingKingDest(turn.flipped()).toInt() else previous_move.getTo().toInt();
     const prev_moved_type = board.mailbox[prev_to].?.toInt();
     return &cont_hist[if (board.turn == .white) 0 else 1][moved_type][to][prev_moved_type][prev_to];
 }
 
-pub fn getHistory(board: *const Board, move: Move, previous_move: Move) i16 {
+pub fn getHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move) i16 {
     if (previous_move == Move.null_move) {
         return historyEntry(board, move).*;
     } else {
-        return @intCast(@as(i32, historyEntry(board, move).*) + contHistEntry(board, move, previous_move).* >> 1);
+        return @intCast(@as(i32, historyEntry(board, move).*) + contHistEntry(turn, board, move, previous_move).* >> 1);
     }
 }
 
@@ -117,7 +117,7 @@ pub fn getBonus(depth: u8) i16 {
     return @intCast(@min(@as(i32, depth) * 300 - 300, 2300));
 }
 
-pub fn updateHistory(board: *const Board, move: Move, previous_move: Move, bonus: anytype) void {
+pub fn updateHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move, bonus: anytype) void {
     const clamped_bonus: i16 = @intCast(std.math.clamp(bonus, -max_history, max_history));
     const magnitude: i32 = @abs(clamped_bonus); // i32 to avoid overflows
 
@@ -125,7 +125,7 @@ pub fn updateHistory(board: *const Board, move: Move, previous_move: Move, bonus
     hist_entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * hist_entry.*, max_history));
 
     if (previous_move != Move.null_move) {
-        const cont_hist_entry = contHistEntry(board, move, previous_move);
+        const cont_hist_entry = contHistEntry(turn, board, move, previous_move);
         cont_hist_entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * cont_hist_entry.*, max_history));
     }
 }
