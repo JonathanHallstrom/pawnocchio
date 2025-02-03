@@ -7,6 +7,26 @@ const Side = @import("side.zig").Side;
 const eval = @import("eval.zig");
 const Move = @import("Move.zig").Move;
 
+fn madd(
+    comptime N: comptime_int,
+    a: @Vector(N, i16),
+    b: @Vector(N, i16),
+) @Vector(N / 2, i32) {
+    const a0 = @as(@Vector(N / 2, i32), @intCast(std.simd.deinterlace(2, a)[0]));
+    const a1 = @as(@Vector(N / 2, i32), @intCast(std.simd.deinterlace(2, a)[1]));
+    const b0 = @as(@Vector(N / 2, i32), @intCast(std.simd.deinterlace(2, b)[0]));
+    const b1 = @as(@Vector(N / 2, i32), @intCast(std.simd.deinterlace(2, b)[1]));
+    return (a0 * b0 + a1 * b1);
+}
+
+fn mullo(
+    comptime N: comptime_int,
+    a: @Vector(N, i16),
+    b: @Vector(N, i16),
+) @Vector(N, i16) {
+    return a *% b;
+}
+
 // dummy weights
 const Weights = struct {
     hidden_layer_weights: [HIDDEN_SIZE * INPUT_SIZE]i16 align(64) = .{0} ** (HIDDEN_SIZE * INPUT_SIZE),
@@ -103,13 +123,35 @@ pub const Accumulator = struct {
         const us_acc = if (turn == .white) &self.white else &self.black;
         const them_acc = if (turn == .white) &self.black else &self.white;
 
-        var res: i32 = 0;
+        const vec_size = 2 * (std.simd.suggestVectorLength(i16) orelse 8);
+        std.debug.assert(HIDDEN_SIZE % 32 == 0);
+        const Vec16 = @Vector(vec_size, i16);
+        var acc: @Vector(vec_size / 2, i32) = @splat(0);
+        const vz: Vec16 = @splat(0);
+        const vqa: Vec16 = @splat(QA);
+        var i: usize = 0;
+        while (i < HIDDEN_SIZE) : (i += vec_size) {
+            const us: Vec16 = us_acc[i..][0..vec_size].*;
+            const us_clamped: Vec16 = @max(@min(us, vqa), vz);
+            const them: Vec16 = them_acc[i..][0..vec_size].*;
+            const them_clamped: Vec16 = @max(@min(them, vqa), vz);
 
-        for (0..HIDDEN_SIZE) |i| {
-            res += screlu(us_acc[i]) * weights.output_weights[i];
-            res += screlu(them_acc[i]) * weights.output_weights[i + HIDDEN_SIZE];
+            const us_weights: Vec16 = weights.output_weights[i..][0..vec_size].*;
+            const them_weights: Vec16 = weights.output_weights[i + HIDDEN_SIZE ..][0..vec_size].*;
+
+            acc += madd(vec_size, mullo(vec_size, us_weights, us_clamped), us_clamped);
+            acc += madd(vec_size, mullo(vec_size, them_weights, them_clamped), them_clamped);
         }
 
+        var res: i32 = @reduce(std.builtin.ReduceOp.Add, acc);
+        if (std.debug.runtime_safety) {
+            var verify_res: i32 = 0;
+            for (0..HIDDEN_SIZE) |j| {
+                verify_res += screlu(us_acc[j]) * weights.output_weights[j];
+                verify_res += screlu(them_acc[j]) * weights.output_weights[j + HIDDEN_SIZE];
+            }
+            std.debug.assert(res == verify_res);
+        }
         res = @divTrunc(res, QA); // res /= QA
 
         res += weights.output_bias;
@@ -147,6 +189,10 @@ pub const Accumulator = struct {
 };
 
 pub const EvalState = Accumulator;
+
+pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
+    return eval_state.forward(board.turn);
+}
 
 fn screlu(x: i32) i32 {
     const clamped = std.math.clamp(x, 0, QA);

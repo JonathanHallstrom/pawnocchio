@@ -11,13 +11,16 @@ const SEE = @import("see.zig");
 const nnue = @import("nnue.zig");
 
 const testing = std.testing;
-const EvalState = nnue.EvalState;
+
+const use_hce = false;
+const EvalState = if (use_hce) eval.EvalState else nnue.EvalState;
+const evaluate = if (use_hce) eval.evaluate else nnue.evaluate;
+
 const assert = std.debug.assert;
 
 const writeLog = @import("main.zig").writeLog;
 const write = @import("main.zig").write;
 
-const evaluate = nnue.nnEval;
 const checkmate_score = eval.checkmate_score;
 
 const shouldStopSearching = engine.shouldStopSearching;
@@ -40,7 +43,7 @@ fn quiesce(
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
-    const static_eval = eval_state.forward(turn);
+    const static_eval = evaluate(board, eval_state);
     if (move_count == 0) {
         return static_eval;
     }
@@ -191,7 +194,7 @@ fn search(
         return result(score, move_buf[0]);
     }
 
-    const static_eval = if (is_in_check) 0 else eval_state.forward(turn);
+    const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
 
     // TODO: tuning
     const us = board.getSide(turn);
