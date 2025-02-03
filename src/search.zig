@@ -8,15 +8,16 @@ const eval = @import("eval.zig");
 const move_ordering = @import("move_ordering.zig");
 const Square = @import("square.zig").Square;
 const SEE = @import("see.zig");
+const nnue = @import("nnue.zig");
 
 const testing = std.testing;
-const EvalState = eval.EvalState;
+const EvalState = nnue.EvalState;
 const assert = std.debug.assert;
 
 const writeLog = @import("main.zig").writeLog;
 const write = @import("main.zig").write;
 
-const evaluate = eval.evaluate;
+const evaluate = nnue.nnEval;
 const checkmate_score = eval.checkmate_score;
 
 const shouldStopSearching = engine.shouldStopSearching;
@@ -39,7 +40,7 @@ fn quiesce(
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
-    const static_eval = evaluate(board, eval_state);
+    const static_eval = eval_state.forward(turn);
     if (move_count == 0) {
         return static_eval;
     }
@@ -49,8 +50,6 @@ fn quiesce(
 
     move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = static_eval;
-    const us = board.getSide(turn);
-    _ = us; // autofix
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         assert(move.isCapture());
@@ -192,7 +191,7 @@ fn search(
         return result(score, move_buf[0]);
     }
 
-    const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
+    const static_eval = if (is_in_check) 0 else eval_state.forward(turn);
 
     // TODO: tuning
     const us = board.getSide(turn);
