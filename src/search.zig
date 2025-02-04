@@ -529,6 +529,9 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth), search_params.frc);
         }
+        if (nodes + qnodes >= search_params.maxNodes()) {
+            break;
+        }
         if (timer.read() >= search_params.softTime()) {
             break;
         }

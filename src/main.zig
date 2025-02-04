@@ -372,6 +372,7 @@ pub fn main() !void {
                 .{
                     .soft_time = soft_time,
                     .hard_time = hard_time,
+                    .nodes = max_nodes_opt,
                     .depth = max_depth_opt,
                     .frc = frc,
                 },

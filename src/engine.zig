@@ -16,6 +16,7 @@ pub const SearchParameters = struct {
     soft_time: ?u64 = null,
     hard_time: ?u64 = null,
     depth: ?u8 = null,
+    nodes: ?u64 = null,
     frc: bool = false,
 
     pub fn softTime(self: SearchParameters) u64 {
@@ -28,6 +29,10 @@ pub const SearchParameters = struct {
 
     pub fn maxDepth(self: SearchParameters) u8 {
         return self.depth orelse 255;
+    }
+
+    pub fn maxNodes(self: SearchParameters) u64 {
+        return self.nodes orelse std.math.maxInt(u64);
     }
 };
 
