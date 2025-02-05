@@ -383,8 +383,11 @@ pub fn main() !void {
             engine.stopAsyncSearch();
         } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
             return;
-        } else if (std.ascii.eqlIgnoreCase(command, "raweval")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "nneval")) {
             write("{}\n", .{nnue.nnEval(&board)});
+        } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
+            const eval = @import("eval.zig");
+            write("{}\n", .{eval.evaluate(&board, eval.EvalState.init(&board))});
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
             const sub_command = parts.next() orelse "";

@@ -1,4 +1,4 @@
-pub const Side = enum(u8) {
+pub const Side = enum(u1) {
     black,
     white,
 

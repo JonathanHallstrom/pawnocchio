@@ -65,6 +65,114 @@ const Self = @This();
 pub fn init() Board {
     return parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") catch unreachable;
 }
+// https://github.com/Ciekce/Stormphrax/blob/15e9d26a74198ee01a1205741213d79cbaac1912/src/position/position.cpp
+
+fn frcBackrank(n: anytype) [8]PieceType {
+    assert(n < 960);
+    const N5n: [10][2]u8 = .{
+        .{ 0, 0 },
+        .{ 0, 1 },
+        .{ 0, 2 },
+        .{ 0, 3 },
+        .{ 1, 1 },
+        .{ 1, 2 },
+        .{ 1, 3 },
+        .{ 2, 2 },
+        .{ 2, 3 },
+        .{ 3, 3 },
+    };
+
+    const n2 = n / 4;
+    const b1 = n % 4;
+
+    const n3 = n2 / 4;
+    const b2 = n2 % 4;
+
+    const n4 = n3 / 6;
+    const q = n3 % 6;
+
+    var out: [8]PieceType = .{.pawn} ** 8;
+    out[b1 * 2 + 1] = .bishop;
+    out[b2 * 2] = .bishop;
+
+    var queen_idx: usize = 0;
+    for (0..q) |_| queen_idx = std.mem.indexOfScalarPos(PieceType, &out, queen_idx + 1, .pawn) orelse unreachable;
+    out[queen_idx] = .queen;
+
+    const knight1, const knight2 = N5n[n4];
+    var knight1_idx: usize = 0;
+    for (0..knight1) |_| knight1_idx = std.mem.indexOfScalarPos(PieceType, &out, knight1_idx + 1, .pawn) orelse unreachable;
+    out[knight1_idx] = .knight;
+
+    var knight2_idx: usize = 0;
+    for (0..knight2) |_| knight2_idx = std.mem.indexOfScalarPos(PieceType, &out, knight2_idx + 1, .pawn) orelse unreachable;
+    out[knight2_idx] = .knight;
+
+    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .rook;
+    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .king;
+    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .rook;
+
+    return out;
+}
+
+test "frc" {
+    try std.testing.expectEqualDeep(init(), frcPosition(518));
+}
+
+pub fn dfrcPosition(n: u20) Board {
+    const white_rank = frcBackrank(n % 960);
+    const black_rank = frcBackrank(n / 960);
+
+    var res: Board = .{};
+    var white_rook = false;
+    var black_rook = false;
+    inline for (0..8) |c| {
+        res.mailbox[c] = white_rank[c];
+        res.mailbox[8 + c] = .pawn;
+        res.white.all |= Square.fromInt(c).toBitboard();
+        res.white.all |= Square.fromInt(8 + c).toBitboard();
+        res.white.getBoardPtr(white_rank[c]).* |= Square.fromInt(c).toBitboard();
+        res.white.getBoardPtr(.pawn).* |= Square.fromInt(8 + c).toBitboard();
+        if (white_rank[c] == .rook) {
+            if (white_rook) {
+                res.white_kingside_rook_file = File.fromInt(c);
+            } else {
+                res.white_queenside_rook_file = File.fromInt(c);
+            }
+            white_rook = true;
+        }
+        res.mailbox[56 + c] = black_rank[c];
+        res.mailbox[48 + c] = .pawn;
+        res.black.all |= Square.fromInt(56 + c).toBitboard();
+        res.black.all |= Square.fromInt(48 + c).toBitboard();
+        res.black.getBoardPtr(black_rank[c]).* |= Square.fromInt(56 + c).toBitboard();
+        res.black.getBoardPtr(.pawn).* |= Square.fromInt(48 + c).toBitboard();
+        if (black_rank[c] == .rook) {
+            if (black_rook) {
+                res.black_kingside_rook_file = File.fromInt(c);
+            } else {
+                res.black_queenside_rook_file = File.fromInt(c);
+            }
+            black_rook = true;
+        }
+    }
+
+    res.castling_rights = white_kingside_castle | white_queenside_castle | black_kingside_castle | black_queenside_castle;
+    res.halfmove_clock = 0;
+    res.fullmove_clock = 1;
+    res.turn = .white;
+    res.resetZobrist();
+    return res;
+}
+
+pub fn frcPosition(n: u10) Board {
+    assert(n < 960);
+    return dfrcPosition(@as(u20, n) * 960 + n);
+}
+
+pub fn frcPositionComptime(comptime n: u10) if (n < 960) Board else @compileError("there are only 960 positions in frc") {
+    return frcPosition(n);
+}
 
 fn parseFenImpl(fen: []const u8, permissive: bool) !Board {
     if (std.ascii.eqlIgnoreCase(fen, "startpos")) return init();

@@ -12,7 +12,7 @@ const nnue = @import("nnue.zig");
 
 const testing = std.testing;
 
-const use_hce = false;
+const use_hce = true;
 const EvalState = if (use_hce) eval.EvalState else nnue.EvalState;
 const evaluate = if (use_hce) eval.evaluate else nnue.evaluate;
 
@@ -156,6 +156,9 @@ fn search(
 
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
     const is_in_check = masks.is_in_check;
+    if (root and move_count == 0) {
+        return result(0, Move.null_move);
+    }
     if (!root and move_count == 0) {
         return if (is_in_check) eval.mateIn(cur_depth) else 0;
     }
