@@ -257,6 +257,7 @@ pub fn main() !void {
             for (board.toString()) |row| {
                 write("{s}\n", .{row});
             }
+            write("{s}\n", .{board.toFen().slice()});
         } else if (std.ascii.eqlIgnoreCase(command, "go")) {
             var max_depth_opt: ?u8 = null;
             var max_nodes_opt: ?u64 = null;

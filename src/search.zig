@@ -12,7 +12,7 @@ const nnue = @import("nnue.zig");
 
 const testing = std.testing;
 
-const use_hce = true;
+const use_hce = false;
 const EvalState = if (use_hce) eval.EvalState else nnue.EvalState;
 const evaluate = if (use_hce) eval.evaluate else nnue.evaluate;
 
@@ -162,14 +162,14 @@ fn search(
     if (!root and move_count == 0) {
         return if (is_in_check) eval.mateIn(cur_depth) else 0;
     }
-    if (!root and board.halfmove_clock >= 100) {
-        return 0;
+    if (board.halfmove_clock >= 100) {
+        return result(0, Move.null_move);
     }
 
     const repetition_idx = board.zobrist % repetition_table.len;
     repetition_table[repetition_idx] += 1;
     defer repetition_table[repetition_idx] -= 1;
-    if (!root and repetition_table[repetition_idx] >= 3) {
+    if (repetition_table[repetition_idx] >= 3) {
         var repetitions: u8 = 0;
         const start = hash_history.items.len - @min(hash_history.items.len, board.halfmove_clock);
         for (hash_history.items[start..hash_history.items.len]) |zobrist| {
@@ -178,7 +178,7 @@ fn search(
             }
         }
         if (repetitions >= 3) {
-            return 0;
+            return result(0, Move.null_move);
         }
     }
 

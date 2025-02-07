@@ -119,11 +119,11 @@ const ViriMove = struct {
 
     pub fn newWithPromo(from: Square, to: Square, promotion: PieceType) Self {
         const promotion_int = promotion.toInt() - 1;
-        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 | @as(u16, promotion_int) << 12 };
+        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 | @as(u16, promotion_int) << 12 | promo_flag_bits };
     }
 
     pub fn newWithFlags(from: Square, to: Square, flags: MoveFlags) Self {
-        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 | @intFromEnum(flags) << 12 };
+        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 | @intFromEnum(flags) };
     }
 
     pub fn new(from: Square, to: Square) Self {
@@ -196,6 +196,24 @@ comptime {
     std.debug.assert(@bitSizeOf(MarlinPackedBoard) == 32 * 8);
 }
 
+fn viriformatTest(fen: []const u8, move: Move, expected: u32) !void {
+    var game = Game.from(try Board.parseFen(fen), std.testing.allocator);
+    defer game.deinit();
+    try game.addMove(move, 0);
+    var buf: [40]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    try game.serializeInto(fbs.writer());
+    try std.testing.expectEqual(expected, std.mem.readInt(u32, fbs.getWritten()[32..][0..4], .little));
+}
+
+test "viriformat moves" {
+    try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Move.initQuiet(.e2, .e4), 0x070c);
+    try std.testing.expect(Move.initCastling(.e1, .h1).isCastlingMove());
+    try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1", Move.initCastling(.e1, .h1), 0x81c4);
+    try viriformatTest("8/6P1/8/8/1k6/4K3/8/8 w - - 0 1", Move.initPromotion(.g7, .g8, .queen), 0xffb6);
+    try viriformatTest("rnbqkbnr/2pppppp/p7/Pp6/8/8/1PPPPPPP/RNBQKBNR w KQkq b6 0 1", Move.initEnPassant(.a5, .b6), 0x4a60);
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -238,21 +256,45 @@ pub fn main() !void {
     defer hash_history.deinit();
     const move_buf = try allocator.alloc(Move, 16384);
     defer allocator.free(move_buf);
-    // var rng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
-    var rng = std.Random.DefaultPrng.init(0);
+    var rng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
+    // var rng = std.Random.DefaultPrng.init(0);
     engine.reset();
-    try engine.setTTSize(256);
-    const output_file = std.fs.cwd().openFile(output_file_name, .{ .mode = .write_only }) catch |e| if (e == error.FileNotFound) try std.fs.cwd().createFile(output_file_name, .{}) else return e;
+    try engine.setTTSize(1);
+    std.fs.cwd().deleteFile(output_file_name) catch {};
+    const output_file = std.fs.cwd().openFile(output_file_name, .{
+        .mode = .write_only,
+    }) catch |e| if (e == error.FileNotFound) try std.fs.cwd().createFile(output_file_name, .{}) else return e;
     defer output_file.close();
 
     var bw = std.io.bufferedWriter(output_file.writer());
     defer bw.flush() catch @panic("oh no flush failed");
     const output = bw.writer();
 
+    var timer = try std.time.Timer.start();
+    const remainder = rng.random().int(u7);
+    var num_games: u64 = 0;
+    var num_positions: u64 = 0;
+    var num_nodes_searched: u256 = 0;
     game_loop: while (remaining_games > 0) : (remaining_games -= 1) {
+        if (num_games % 128 == remainder) {
+            const time = timer.read();
+            const games_per_sec = @as(u256, num_games) * std.time.ns_per_s / time;
+            const time_remaining = @as(u256, remaining_games) * time / num_games;
+            const positions_per_sec = @as(u256, num_positions) * std.time.ns_per_s / time;
+            const nodes_per_sec = num_nodes_searched * std.time.ns_per_s / time;
+            std.debug.print("games {} positions {} time {} games/s {} positions/s {} nps {} remaining {}\n", .{
+                num_games,
+                num_positions,
+                std.fmt.fmtDuration(time),
+                games_per_sec,
+                positions_per_sec,
+                nodes_per_sec,
+                std.fmt.fmtDuration(@intCast(time_remaining)),
+            });
+        }
         defer hash_history.clearRetainingCapacity();
         var board = Board.dfrcPosition(rng.random().uintLessThan(u20, 960 * 960));
-        var game = Game.from(board, allocator);
+        hash_history.appendAssumeCapacity(board.zobrist);
         for (0..random_moves) |_| {
             switch (board.turn) {
                 inline else => |t| {
@@ -262,43 +304,73 @@ pub fn main() !void {
                     const move = move_buf[rng.random().uintLessThan(usize, num_moves)];
                     _ = board.playMove(t, move);
                     hash_history.appendAssumeCapacity(board.zobrist);
-                    try game.addMove(move, 0);
                     if (movegen.countMoves(t.flipped(), board) == 0)
                         continue :game_loop;
                 },
             }
         }
+        var game = Game.from(board, allocator);
         defer game.deinit();
-        for (0..100) |_| {
+        for (0..1000) |_| {
+            switch (board.turn) {
+                inline else => |t| {
+                    if (movegen.countMoves(t, board) == 0) {
+                        break;
+                    }
+                },
+            }
+
+            num_positions += 1;
             const search_result = engine.searchSync(
                 board,
-                .{ .nodes = max_nodes },
+                .{ .nodes = max_nodes, .depth = 15 },
                 move_buf,
                 &hash_history,
                 true,
             );
-            const score = search_result.score;
-            if (eval.isMateScore(score)) {
-                var wdl: u8 = if (score > 0) 0 else 2;
-                if (board.turn == .black) wdl = 2 - wdl;
-                game.setOutCome(wdl);
-                break;
-            }
+            num_nodes_searched += search_result.stats.nodes + search_result.stats.qnodes;
             if (search_result.move == Move.null_move) {
-                game.setOutCome(1);
                 break;
             }
+            const score_to_add = if (board.turn == .black) -search_result.score else search_result.score;
             switch (board.turn) {
                 inline else => |t| {
                     _ = board.playMove(t, search_result.move);
                     hash_history.appendAssumeCapacity(board.zobrist);
                 },
             }
-            // try game.addMove(search_result.move, search_result.score);
-            try game.addMove(search_result.move, rng.random().int(i16) >> 6);
+            if (board.white.getBoard(.king) == 0 or board.black.getBoard(.king) == 0)
+                continue :game_loop;
+            try game.addMove(
+                search_result.move,
+                score_to_add,
+            );
         }
         if (game.moves.items.len == 0)
             continue :game_loop;
+
+        switch (board.turn) {
+            inline else => |t| {
+                const num_moves, const masks = movegen.getMovesWithInfo(t, false, board, move_buf);
+
+                game.setOutCome(1);
+                if (num_moves == 0) {
+                    if (masks.is_in_check) {
+                        game.setOutCome(if (t == .white) 0 else 2);
+
+                        // if (t == .white) {
+                        //     std.debug.print("white lost\n", .{});
+                        // } else {
+                        //     std.debug.print("black lost\n", .{});
+                        // }
+                        // for (board.toString()) |r| {
+                        //     std.debug.print("{s}\n", .{r});
+                        // }
+                    }
+                }
+            },
+        }
         try game.serializeInto(output);
+        num_games += 1;
     }
 }
