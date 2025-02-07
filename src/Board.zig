@@ -95,23 +95,49 @@ fn frcBackrank(n: anytype) [8]PieceType {
     out[b1 * 2 + 1] = .bishop;
     out[b2 * 2] = .bishop;
 
-    var queen_idx: usize = 0;
-    for (0..q) |_| queen_idx = std.mem.indexOfScalarPos(PieceType, &out, queen_idx + 1, .pawn) orelse unreachable;
-    out[queen_idx] = .queen;
+    {
+        var empty: u8 = 0;
+        for (0..8) |i| {
+            if (out[i] == .pawn) {
+                if (empty == q) {
+                    out[i] = .queen;
+                }
+                empty += 1;
+            }
+        }
+    }
 
     const knight1, const knight2 = N5n[n4];
-    var knight1_idx: usize = 0;
-    for (0..knight1) |_| knight1_idx = std.mem.indexOfScalarPos(PieceType, &out, knight1_idx + 1, .pawn) orelse unreachable;
-    out[knight1_idx] = .knight;
+    {
+        var empty: u8 = 0;
+        for (0..8) |i| {
+            if (out[i] == .pawn) {
+                if (empty == knight1) {
+                    out[i] = .knight;
+                }
+                empty += 1;
+            }
+        }
+    }
 
-    var knight2_idx: usize = 0;
-    for (0..knight2) |_| knight2_idx = std.mem.indexOfScalarPos(PieceType, &out, knight2_idx + 1, .pawn) orelse unreachable;
-    out[knight2_idx] = .knight;
+    {
+        var empty: u8 = 0;
+        for (0..8) |i| {
+            if (out[i] == .pawn) {
+                if (empty == knight2) {
+                    out[i] = .knight;
+                }
+                empty += 1;
+            }
+        }
+    }
 
     out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .rook;
     out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .king;
     out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .rook;
-
+    for (out) |pt| {
+        assert(pt != .pawn);
+    }
     return out;
 }
 
