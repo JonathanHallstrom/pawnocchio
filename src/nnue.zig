@@ -124,8 +124,8 @@ pub const Accumulator = struct {
         const them_acc = if (turn == .white) &self.black else &self.white;
 
         const vec_size = @min(HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
-        std.debug.assert(HIDDEN_SIZE % 32 == 0);
-        const Vec16 = @Vector(vec_size, i16);
+        //                  vvvvvvvv annotation to help zls
+        const Vec16 = @as(type, @Vector(vec_size, i16));
         var acc: @Vector(vec_size / 2, i32) = @splat(0);
         const vz: Vec16 = @splat(0);
         const vqa: Vec16 = @splat(QA);
@@ -200,7 +200,7 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("networks/net8.nnue"));
+    var fbs = std.io.fixedBufferStream(@embedFile("networks/net7.nnue"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
     for (0..weights.hidden_layer_weights.len) |i| {
@@ -228,7 +228,7 @@ pub fn nnEval(board: *const Board) i16 {
 }
 
 pub const INPUT_SIZE = 768;
-pub const HIDDEN_SIZE = 32;
+pub const HIDDEN_SIZE = 128;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;

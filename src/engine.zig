@@ -18,6 +18,7 @@ pub const SearchParameters = struct {
     depth: ?u8 = null,
     nodes: ?u64 = null,
     frc: bool = false,
+    comptime datagen: bool = false,
 
     pub fn softTime(self: SearchParameters) u64 {
         return self.soft_time orelse std.math.maxInt(u64);

@@ -577,6 +577,33 @@ pub fn moveGivesCheck(self: Self, comptime turn: Side, move: Move) bool {
     };
 }
 
+pub fn isInsufficientMaterial(self: Self) bool {
+    const pawns = self.white.getBoard(.pawn) | self.black.getBoard(.pawn);
+    if (pawns != 0)
+        return false;
+
+    const rooks = self.white.getBoard(.rook) | self.black.getBoard(.rook);
+    const queens = self.white.getBoard(.queen) | self.black.getBoard(.queen);
+    if (rooks | queens != 0)
+        return false;
+
+    const white_minor_pieces = self.white.getBoard(.knight) | self.white.getBoard(.bishop);
+    const black_minor_pieces = self.black.getBoard(.knight) | self.black.getBoard(.bishop);
+    // same asm as white_minor_pieces & white_minor_pieces -% 1 != 0
+    if (@popCount(white_minor_pieces) >= 2)
+        return false;
+    if (@popCount(black_minor_pieces) >= 2)
+        return false;
+    return true;
+}
+
+pub fn isKvKNN(self: Self) bool {
+    const occ = self.white.all | self.black.all;
+    const kings = self.white.getBoard(.king) | self.black.getBoard(.king);
+    const knights = @max(self.white.getBoard(.knight), self.black.getBoard(.knight));
+    return occ & (kings | knights) == occ and @popCount(knights) == 2;
+}
+
 pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
     var inverse = MoveInverse{
         .move = move,

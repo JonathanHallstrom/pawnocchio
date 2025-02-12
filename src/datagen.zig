@@ -10,7 +10,7 @@ const Side = @import("side.zig").Side;
 const Allocator = std.mem.Allocator;
 const engine = @import("engine.zig");
 const movegen = @import("movegen.zig");
-const eval = @import("eval.zig");
+const nnue = @import("nnue.zig");
 
 // very much based on https://github.com/cosmobobak/viriformat/tree/ef1c383f7ecfce02477eec1dd378c4242e022bfd
 
@@ -224,7 +224,6 @@ pub fn main() !void {
     var game_count_opt: ?u64 = null;
     var random_moves_opt: ?u8 = null;
     var nodes_opt: ?u64 = null;
-
     while (args.next()) |arg| {
         if (std.ascii.eqlIgnoreCase(arg, "-o")) {
             output_file_name_opt = args.next();
@@ -251,7 +250,6 @@ pub fn main() !void {
     const output_file_name = output_file_name_opt.?;
     const random_moves = random_moves_opt.?;
     const max_nodes = nodes_opt.?;
-    var remaining_games = game_count_opt.?;
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, 16384);
     defer hash_history.deinit();
     const move_buf = try allocator.alloc(Move, 16384);
@@ -259,7 +257,8 @@ pub fn main() !void {
     var rng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
     // var rng = std.Random.DefaultPrng.init(0);
     engine.reset();
-    try engine.setTTSize(1);
+    nnue.init();
+    try engine.setTTSize(16);
     std.fs.cwd().deleteFile(output_file_name) catch {};
     const output_file = std.fs.cwd().openFile(output_file_name, .{
         .mode = .write_only,
@@ -275,9 +274,13 @@ pub fn main() !void {
     var num_games: u64 = 0;
     var num_positions: u64 = 0;
     var num_nodes_searched: u256 = 0;
-    game_loop: while (remaining_games > 0) : (remaining_games -= 1) {
+    var adjudicate_counter: u8 = 0;
+    const win_adjudicate_score = 3000;
+    const win_adjudicate_count = 5;
+    game_loop: while (num_games < game_count_opt.?) {
         if (num_games % 128 == remainder) {
             const time = timer.read();
+            const remaining_games = game_count_opt.? - num_games;
             const games_per_sec = @as(u256, num_games) * std.time.ns_per_s / time;
             const time_remaining = @as(u256, remaining_games) * time / num_games;
             const positions_per_sec = @as(u256, num_positions) * std.time.ns_per_s / time;
@@ -311,7 +314,7 @@ pub fn main() !void {
         }
         var game = Game.from(board, allocator);
         defer game.deinit();
-        for (0..1000) |_| {
+        for (0..1000) |i| {
             switch (board.turn) {
                 inline else => |t| {
                     if (movegen.countMoves(t, board) == 0) {
@@ -323,11 +326,14 @@ pub fn main() !void {
             num_positions += 1;
             const search_result = engine.searchSync(
                 board,
-                .{ .nodes = max_nodes, .depth = 15 },
+                .{
+                    .nodes = max_nodes,
+                },
                 move_buf,
                 &hash_history,
                 true,
             );
+            if (i == 0 and @abs(search_result.score) >= 2000) continue :game_loop;
             num_nodes_searched += search_result.stats.nodes + search_result.stats.qnodes;
             if (search_result.move == Move.null_move) {
                 break;
@@ -345,6 +351,20 @@ pub fn main() !void {
                 search_result.move,
                 score_to_add,
             );
+            if (@abs(score_to_add) > win_adjudicate_score) {
+                adjudicate_counter += 1;
+                if (adjudicate_counter >= win_adjudicate_count) {
+                    if (score_to_add > 0) {
+                        game.setOutCome(2);
+                        break;
+                    } else {
+                        game.setOutCome(0);
+                        break;
+                    }
+                }
+            } else {
+                adjudicate_counter = 0;
+            }
         }
         if (game.moves.items.len == 0)
             continue :game_loop;
@@ -359,12 +379,9 @@ pub fn main() !void {
                         game.setOutCome(if (t == .white) 0 else 2);
 
                         // if (t == .white) {
-                        //     std.debug.print("white lost\n", .{});
+                        //     std.debug.print("white lost: {s}\n", .{board.toFen().slice()});
                         // } else {
-                        //     std.debug.print("black lost\n", .{});
-                        // }
-                        // for (board.toString()) |r| {
-                        //     std.debug.print("{s}\n", .{r});
+                        //     std.debug.print("black lost: {s}\n", .{board.toFen().slice()});
                         // }
                     }
                 }

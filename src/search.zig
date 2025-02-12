@@ -14,7 +14,7 @@ const testing = std.testing;
 
 const use_hce = false;
 const EvalState = if (use_hce) eval.EvalState else nnue.EvalState;
-const evaluate = if (use_hce) eval.evaluate else nnue.evaluate;
+const evaluate: fn (*const Board, EvalState) i16 = if (use_hce) eval.evaluate else nnue.evaluate;
 
 const assert = std.debug.assert;
 
@@ -196,6 +196,11 @@ fn search(
         }
         return result(score, move_buf[0]);
     }
+
+    // if its king vs king and two knights its either a draw or M1, depth 4 just to be safe
+    // if (board.isInsufficientMaterial() or (board.isKvKNN() and depth >= 4)) {
+    //     return result(0, move_buf[0]);
+    // }
 
     const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
 
