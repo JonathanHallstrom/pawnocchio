@@ -43,6 +43,9 @@ fn quiesce(
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
+    if (board.isInsufficientMaterial() or board.isKvKNN()) {
+        return 0;
+    }
     const static_eval = evaluate(board, eval_state);
     if (move_count == 0) {
         return static_eval;
@@ -198,9 +201,9 @@ fn search(
     }
 
     // if its king vs king and two knights its either a draw or M1, depth 4 just to be safe
-    // if (board.isInsufficientMaterial() or (board.isKvKNN() and depth >= 4)) {
-    //     return result(0, move_buf[0]);
-    // }
+    if (board.isInsufficientMaterial() or (board.isKvKNN() and depth >= 4)) {
+        return result(0, move_buf[0]);
+    }
 
     const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
 
