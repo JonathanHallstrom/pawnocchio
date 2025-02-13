@@ -8,15 +8,19 @@ const eval = @import("eval.zig");
 const move_ordering = @import("move_ordering.zig");
 const Square = @import("square.zig").Square;
 const SEE = @import("see.zig");
+const nnue = @import("nnue.zig");
 
 const testing = std.testing;
-const EvalState = eval.EvalState;
+
+const use_hce = false;
+const EvalState = if (use_hce) eval.EvalState else nnue.EvalState;
+const evaluate: fn (*const Board, EvalState) i16 = if (use_hce) eval.evaluate else nnue.evaluate;
+
 const assert = std.debug.assert;
 
 const writeLog = @import("main.zig").writeLog;
 const write = @import("main.zig").write;
 
-const evaluate = eval.evaluate;
 const checkmate_score = eval.checkmate_score;
 
 const shouldStopSearching = engine.shouldStopSearching;
@@ -39,6 +43,9 @@ fn quiesce(
         return 0;
     }
     const move_count = movegen.getCaptures(turn, board.*, move_buf);
+    if (board.isInsufficientMaterial() or board.isKvKNN()) {
+        return 0;
+    }
     const static_eval = evaluate(board, eval_state);
     if (move_count == 0) {
         return static_eval;
@@ -49,8 +56,6 @@ fn quiesce(
 
     move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = static_eval;
-    const us = board.getSide(turn);
-    _ = us; // autofix
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         assert(move.isCapture());
@@ -154,17 +159,20 @@ fn search(
 
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
     const is_in_check = masks.is_in_check;
+    if (root and move_count == 0) {
+        return result(0, Move.null_move);
+    }
     if (!root and move_count == 0) {
         return if (is_in_check) eval.mateIn(cur_depth) else 0;
     }
-    if (!root and board.halfmove_clock >= 100) {
-        return 0;
+    if (board.halfmove_clock >= 100) {
+        return result(0, Move.null_move);
     }
 
     const repetition_idx = board.zobrist % repetition_table.len;
     repetition_table[repetition_idx] += 1;
     defer repetition_table[repetition_idx] -= 1;
-    if (!root and repetition_table[repetition_idx] >= 3) {
+    if (repetition_table[repetition_idx] >= 3) {
         var repetitions: u8 = 0;
         const start = hash_history.items.len - @min(hash_history.items.len, board.halfmove_clock);
         for (hash_history.items[start..hash_history.items.len]) |zobrist| {
@@ -173,7 +181,7 @@ fn search(
             }
         }
         if (repetitions >= 3) {
-            return 0;
+            return result(0, Move.null_move);
         }
     }
 
@@ -190,6 +198,11 @@ fn search(
             return null;
         }
         return result(score, move_buf[0]);
+    }
+
+    // if its king vs king and two knights its either a draw or M1, depth 4 just to be safe
+    if (board.isInsufficientMaterial() or (board.isKvKNN() and depth >= 4)) {
+        return result(0, move_buf[0]);
     }
 
     const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
@@ -526,6 +539,9 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         collectPv(&board_copy, 0);
         if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth), search_params.frc);
+        }
+        if (nodes + qnodes >= search_params.maxNodes()) {
+            break;
         }
         if (timer.read() >= search_params.softTime()) {
             break;

@@ -14,7 +14,7 @@ const Piece = @import("Piece.zig");
 const movegen = @import("movegen.zig");
 const Zobrist = @import("Zobrist.zig");
 const eval = @import("eval.zig");
-const EvalState = eval.EvalState;
+const EvalState = eval.PSQTEvalState;
 const magics = @import("magics.zig");
 
 // starting pos
@@ -64,6 +64,140 @@ const Self = @This();
 
 pub fn init() Board {
     return parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") catch unreachable;
+}
+// https://github.com/Ciekce/Stormphrax/blob/15e9d26a74198ee01a1205741213d79cbaac1912/src/position/position.cpp
+
+fn frcBackrank(n: anytype) [8]PieceType {
+    assert(n < 960);
+    const N5n: [10][2]u8 = .{
+        .{ 0, 0 },
+        .{ 0, 1 },
+        .{ 0, 2 },
+        .{ 0, 3 },
+        .{ 1, 1 },
+        .{ 1, 2 },
+        .{ 1, 3 },
+        .{ 2, 2 },
+        .{ 2, 3 },
+        .{ 3, 3 },
+    };
+
+    const n2 = n / 4;
+    const b1 = n % 4;
+
+    const n3 = n2 / 4;
+    const b2 = n2 % 4;
+
+    const n4 = n3 / 6;
+    const q = n3 % 6;
+
+    var out: [8]PieceType = .{.pawn} ** 8;
+    out[b1 * 2 + 1] = .bishop;
+    out[b2 * 2] = .bishop;
+
+    {
+        var empty: u8 = 0;
+        for (0..8) |i| {
+            if (out[i] == .pawn) {
+                if (empty == q) {
+                    out[i] = .queen;
+                }
+                empty += 1;
+            }
+        }
+    }
+
+    const knight1, const knight2 = N5n[n4];
+    {
+        var empty: u8 = 0;
+        for (0..8) |i| {
+            if (out[i] == .pawn) {
+                if (empty == knight1) {
+                    out[i] = .knight;
+                }
+                empty += 1;
+            }
+        }
+    }
+
+    {
+        var empty: u8 = 0;
+        for (0..8) |i| {
+            if (out[i] == .pawn) {
+                if (empty == knight2) {
+                    out[i] = .knight;
+                }
+                empty += 1;
+            }
+        }
+    }
+
+    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .rook;
+    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .king;
+    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .rook;
+    for (out) |pt| {
+        assert(pt != .pawn);
+    }
+    return out;
+}
+
+test "frc" {
+    try std.testing.expectEqualDeep(init(), frcPosition(518));
+}
+
+pub fn dfrcPosition(n: u20) Board {
+    const white_rank = frcBackrank(n % 960);
+    const black_rank = frcBackrank(n / 960);
+
+    var res: Board = .{};
+    var white_rook = false;
+    var black_rook = false;
+    inline for (0..8) |c| {
+        res.mailbox[c] = white_rank[c];
+        res.mailbox[8 + c] = .pawn;
+        res.white.all |= Square.fromInt(c).toBitboard();
+        res.white.all |= Square.fromInt(8 + c).toBitboard();
+        res.white.getBoardPtr(white_rank[c]).* |= Square.fromInt(c).toBitboard();
+        res.white.getBoardPtr(.pawn).* |= Square.fromInt(8 + c).toBitboard();
+        if (white_rank[c] == .rook) {
+            if (white_rook) {
+                res.white_kingside_rook_file = File.fromInt(c);
+            } else {
+                res.white_queenside_rook_file = File.fromInt(c);
+            }
+            white_rook = true;
+        }
+        res.mailbox[56 + c] = black_rank[c];
+        res.mailbox[48 + c] = .pawn;
+        res.black.all |= Square.fromInt(56 + c).toBitboard();
+        res.black.all |= Square.fromInt(48 + c).toBitboard();
+        res.black.getBoardPtr(black_rank[c]).* |= Square.fromInt(56 + c).toBitboard();
+        res.black.getBoardPtr(.pawn).* |= Square.fromInt(48 + c).toBitboard();
+        if (black_rank[c] == .rook) {
+            if (black_rook) {
+                res.black_kingside_rook_file = File.fromInt(c);
+            } else {
+                res.black_queenside_rook_file = File.fromInt(c);
+            }
+            black_rook = true;
+        }
+    }
+
+    res.castling_rights = white_kingside_castle | white_queenside_castle | black_kingside_castle | black_queenside_castle;
+    res.halfmove_clock = 0;
+    res.fullmove_clock = 1;
+    res.turn = .white;
+    res.resetZobrist();
+    return res;
+}
+
+pub fn frcPosition(n: u10) Board {
+    assert(n < 960);
+    return dfrcPosition(@as(u20, n) * 960 + n);
+}
+
+pub fn frcPositionComptime(comptime n: u10) if (n < 960) Board else @compileError("there are only 960 positions in frc") {
+    return frcPosition(n);
 }
 
 fn parseFenImpl(fen: []const u8, permissive: bool) !Board {
@@ -277,6 +411,88 @@ fn parseFenImpl(fen: []const u8, permissive: bool) !Board {
     return res;
 }
 
+pub fn toFen(self: Board) std.BoundedArray(u8, 128) {
+    var out = std.BoundedArray(u8, 128).init(0) catch unreachable;
+    inline for (0..8) |rr| {
+        const r = 7 - rr;
+        var num_unoccupied: u8 = 0;
+        inline for (0..8) |c| {
+            const idx = r * 8 + c;
+            const sq = Square.fromInt(idx);
+            if (self.mailbox[idx]) |pt| {
+                var char = pt.toLetter();
+                if (self.white.all & sq.toBitboard() != 0) {
+                    char = std.ascii.toUpper(char);
+                } else {
+                    char = std.ascii.toLower(char);
+                }
+                if (num_unoccupied > 0) out.appendAssumeCapacity('0' + num_unoccupied);
+                out.appendAssumeCapacity(char);
+                num_unoccupied = 0;
+            } else {
+                num_unoccupied += 1;
+            }
+        }
+        if (num_unoccupied > 0) out.appendAssumeCapacity('0' + num_unoccupied);
+        if (r > 0)
+            out.appendAssumeCapacity('/');
+    }
+    out.appendAssumeCapacity(' ');
+    out.appendAssumeCapacity(if (self.turn == .white) 'w' else 'b');
+    out.appendAssumeCapacity(' ');
+    if (self.castling_rights == 0) {
+        out.appendAssumeCapacity('-');
+    } else {
+        if (self.castling_rights & white_kingside_castle != 0) out.appendAssumeCapacity('K');
+        if (self.castling_rights & white_queenside_castle != 0) out.appendAssumeCapacity('Q');
+        if (self.castling_rights & black_kingside_castle != 0) out.appendAssumeCapacity('k');
+        if (self.castling_rights & black_queenside_castle != 0) out.appendAssumeCapacity('q');
+    }
+    out.appendAssumeCapacity(' ');
+    if (self.en_passant_target) |ep_target| {
+        var buf: [256]Move = undefined;
+        var valid = false;
+        switch (self.turn) {
+            inline else => |t| {
+                const masks = movegen.getMasks(t, self);
+                const num_moves = movegen.getPawnMoves(
+                    t,
+                    true,
+                    self,
+                    &buf,
+                    masks.checks,
+                    masks.bishop_pins,
+                    masks.rook_pins,
+                );
+                for (buf[0..num_moves]) |move| {
+                    if (move.isEnPassant()) {
+                        valid = true;
+                        break;
+                    }
+                }
+            },
+        }
+        if (valid) {
+            out.appendSliceAssumeCapacity(@tagName(ep_target));
+        } else {
+            out.appendAssumeCapacity('-');
+        }
+    } else {
+        out.appendAssumeCapacity('-');
+    }
+    var print_buf: [8]u8 = undefined;
+    out.appendAssumeCapacity(' ');
+    out.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{self.halfmove_clock}) catch unreachable);
+    out.appendAssumeCapacity(' ');
+    out.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{self.fullmove_clock}) catch unreachable);
+
+    return out;
+}
+
+test "toFen" {
+    _ = Board.init().toFen();
+}
+
 pub fn parseFen(fen: []const u8) !Board {
     return parseFenImpl(fen, false);
 }
@@ -289,16 +505,17 @@ pub fn computePhase(self: Board) u8 {
     return eval.computePhase(&self);
 }
 
-pub fn toString(self: Board) [17][33]u8 {
-    const row: [33]u8 = ("+" ++ "---+" ** 8).*;
-    var res: [17][33]u8 = .{row} ++ (.{("|" ++ "   |" ** 8).*} ++ .{row}) ** 8;
-    for (0..8) |r| {
+pub fn toString(self: Board) [18][35]u8 {
+    const row: [35]u8 = ("  +" ++ "---+" ** 8).*;
+    var res: [18][35]u8 = .{row} ++ (.{("  |" ++ "   |" ** 8).*} ++ .{row}) ** 8 ++ .{"    a   b   c   d   e   f   g   h  ".*};
+    inline for (0..8) |r| {
+        res[2 * (7 - r) + 1][0] = r + '1';
         for (0..8) |c| {
             if (self.mailbox[8 * r + c]) |s| {
                 if (Bitboard.contains(self.white.all, Square.fromRankFile(r, c))) {
-                    res[2 * (7 - r) + 1][4 * c + 2] = std.ascii.toUpper(s.toLetter());
+                    res[2 * (7 - r) + 1][2 + 4 * c + 2] = std.ascii.toUpper(s.toLetter());
                 } else {
-                    res[2 * (7 - r) + 1][4 * c + 2] = std.ascii.toLower(s.toLetter());
+                    res[2 * (7 - r) + 1][2 + 4 * c + 2] = std.ascii.toLower(s.toLetter());
                 }
             }
         }
@@ -358,6 +575,33 @@ pub fn moveGivesCheck(self: Self, comptime turn: Side, move: Move) bool {
         .queen => magics.getBishopAttacks(move.getTo(), occ) | magics.getRookAttacks(move.getTo(), occ),
         .king => 0,
     };
+}
+
+pub fn isInsufficientMaterial(self: Self) bool {
+    const pawns = self.white.getBoard(.pawn) | self.black.getBoard(.pawn);
+    if (pawns != 0)
+        return false;
+
+    const rooks = self.white.getBoard(.rook) | self.black.getBoard(.rook);
+    const queens = self.white.getBoard(.queen) | self.black.getBoard(.queen);
+    if (rooks | queens != 0)
+        return false;
+
+    const white_minor_pieces = self.white.getBoard(.knight) | self.white.getBoard(.bishop);
+    const black_minor_pieces = self.black.getBoard(.knight) | self.black.getBoard(.bishop);
+    // same asm as white_minor_pieces & white_minor_pieces -% 1 != 0
+    if (@popCount(white_minor_pieces) >= 2)
+        return false;
+    if (@popCount(black_minor_pieces) >= 2)
+        return false;
+    return true;
+}
+
+pub fn isKvKNN(self: Self) bool {
+    const occ = self.white.all | self.black.all;
+    const kings = self.white.getBoard(.king) | self.black.getBoard(.king);
+    const knights = @max(self.white.getBoard(.knight), self.black.getBoard(.knight));
+    return occ & (kings | knights) == occ and @popCount(knights) == 2;
 }
 
 pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {

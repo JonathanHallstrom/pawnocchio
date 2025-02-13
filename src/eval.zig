@@ -307,11 +307,11 @@ pub const Packed = enum(i32) {
     }
 };
 
-pub const EvalState = packed struct {
+const PSQTEvalState = packed struct {
     state: Packed,
     phase: u8,
 
-    pub fn init(board: *const Board) EvalState {
+    pub fn init(board: *const Board) PSQTEvalState {
         var state = Packed.from(0, 0);
 
         for (PieceType.all) |pt| {
@@ -329,7 +329,7 @@ pub const EvalState = packed struct {
         };
     }
 
-    pub fn updateWith(self: EvalState, comptime turn: Side, board: *const Board, move: Move) EvalState {
+    pub fn updateWith(self: PSQTEvalState, comptime turn: Side, board: *const Board, move: Move) PSQTEvalState {
         assert(board.turn == turn);
         const from = move.getFrom();
         const to = move.getTo();
@@ -371,14 +371,14 @@ pub const EvalState = packed struct {
         };
     }
 
-    pub fn negate(self: EvalState) EvalState {
+    pub fn negate(self: PSQTEvalState) PSQTEvalState {
         return .{
             .phase = self.phase,
             .state = self.state.negate(),
         };
     }
 
-    pub fn eval(self: EvalState) i16 {
+    pub fn eval(self: PSQTEvalState) i16 {
         const mg_phase: i32 = @min(self.phase, max_phase);
         const eg_phase = 24 - mg_phase;
 
@@ -437,7 +437,7 @@ pub fn computePhase(board: *const Board) u8 {
 }
 
 fn evaluatePesto(board: *const Board) i16 {
-    return EvalState.init(board).eval(board);
+    return PSQTEvalState.init(board).eval(board);
 }
 
 fn evaluateMaterialOnly(board: *const Board) i16 {
@@ -528,7 +528,7 @@ fn movegenScore(board: *const Board) Packed {
     return Packed.from(mobility - 4 * (white_king_moves_as_queen - black_king_moves_as_queen), mobility + (white_king_moves_as_queen - black_king_moves_as_queen));
 }
 
-pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
+pub fn evaluatePSQT(board: *const Board, eval_state: PSQTEvalState) i16 {
     var res = eval_state.state;
 
     const side_mult: i16 = if (board.turn == .white) 1 else -1;
@@ -544,6 +544,8 @@ pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
 
     return @intCast(@divTrunc(mg_phase * res.midgame() + eg_phase * res.endgame(), max_phase));
 }
+pub const EvalState = PSQTEvalState;
+pub const evaluate = evaluatePSQT;
 
 // TODO: TUNING
 pub var mg_passed_pawn_mult: i16 = 0;
