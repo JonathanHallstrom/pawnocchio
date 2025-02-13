@@ -200,7 +200,7 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("networks/net8_05_192_80.nnue"));
+    var fbs = std.io.fixedBufferStream(@embedFile("networks/net9_00_256_200.nnue"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
     for (0..weights.hidden_layer_weights.len) |i| {
@@ -228,7 +228,7 @@ pub fn nnEval(board: *const Board) i16 {
 }
 
 pub const INPUT_SIZE = 768;
-pub const HIDDEN_SIZE = 192;
+pub const HIDDEN_SIZE = 256;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
