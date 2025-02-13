@@ -42,11 +42,11 @@ fn quiesce(
         shutdown = true;
         return 0;
     }
-    const move_count = movegen.getCaptures(turn, board.*, move_buf);
     if (board.isInsufficientMaterial() or board.isKvKNN()) {
         return 0;
     }
-    const static_eval = evaluate(board, eval_state);
+    const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
+    const static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
     if (move_count == 0) {
         return static_eval;
     }
@@ -58,7 +58,6 @@ fn quiesce(
     var best_score = static_eval;
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
-        assert(move.isCapture());
         if (std.debug.runtime_safety) {
             if (board.mailbox[move.getTo().toInt()]) |cap| {
                 if (cap == .king) {
@@ -186,7 +185,7 @@ fn search(
     }
 
     if (depth == 0) {
-        const score = quiesce(
+        var score = quiesce(
             turn,
             board,
             eval_state,
@@ -197,6 +196,9 @@ fn search(
         if (shutdown or errored()) {
             return null;
         }
+
+        // don't return unproven mate scores
+        if (eval.isMateScore(score)) score = std.math.clamp(score, alpha, beta);
         return result(score, move_buf[0]);
     }
 
