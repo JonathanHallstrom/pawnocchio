@@ -57,50 +57,53 @@ fn quiesce(
     move_ordering.mvvLva(board, move_buf[0..move_count]);
     var best_score = static_eval;
     for (move_buf[0..move_count]) |move| {
-        const updated_eval_state = eval_state.updateWith(turn, board, move);
-        if (std.debug.runtime_safety) {
-            if (board.mailbox[move.getTo().toInt()]) |cap| {
-                if (cap == .king) {
-                    writeLog("{} captures king\nboard:{}\n", .{ move, board.* });
-                    err = true;
-                    shutdown = true;
-                    return 0;
+        const is_mated = best_score < -eval.win_score;
+        if (move.isCapture() or is_mated) {
+            const updated_eval_state = eval_state.updateWith(turn, board, move);
+            if (std.debug.runtime_safety) {
+                if (board.mailbox[move.getTo().toInt()]) |cap| {
+                    if (cap == .king) {
+                        writeLog("{} captures king\nboard:{}\n", .{ move, board.* });
+                        err = true;
+                        shutdown = true;
+                        return 0;
+                    }
                 }
             }
-        }
 
-        // if we're not in a pawn and king endgame and the capture is really bad, just skip it
-        // no longer checking for pawn and king endgames, ty toanth
-        if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
-            continue;
-        const inv = board.playMove(turn, move);
-        defer board.undoMove(turn, inv);
-        qnodes += 1;
+            // if we're not in a pawn and king endgame and the capture is really bad, just skip it
+            // no longer checking for pawn and king endgames, ty toanth
+            if (!is_mated and !SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
+                continue;
+            const inv = board.playMove(turn, move);
+            defer board.undoMove(turn, inv);
+            qnodes += 1;
 
-        const score = -quiesce(
-            turn.flipped(),
-            board,
-            updated_eval_state,
-            -beta,
-            -alpha,
-            move_buf[move_count..],
-        );
-        if (errored()) {
-            writeLog("{}\n", .{move});
-            break;
-        }
-
-        if (shutdown)
-            break;
-
-        if (score > best_score) {
-            best_score = score;
-        }
-        if (score > alpha) {
-            if (score >= beta) {
+            const score = -quiesce(
+                turn.flipped(),
+                board,
+                updated_eval_state,
+                -beta,
+                -alpha,
+                move_buf[move_count..],
+            );
+            if (errored()) {
+                writeLog("{}\n", .{move});
                 break;
             }
-            alpha = score;
+
+            if (shutdown)
+                break;
+
+            if (score > best_score) {
+                best_score = score;
+            }
+            if (score > alpha) {
+                if (score >= beta) {
+                    break;
+                }
+                alpha = score;
+            }
         }
     }
     return best_score;
