@@ -1007,6 +1007,67 @@ pub fn perftSingleThreadedNonBulkWriteHashes(self: *Self, move_buf: []Move, dept
     };
 }
 
+pub const pawn_material_idx: usize = (20 + 1) * (20 + 1) * (20 + 1) * (18 + 1);
+pub const knight_material_idx: usize = (20 + 1) * (20 + 1) * (18 + 1);
+pub const bishop_material_idx: usize = (20 + 1) * (18 + 1);
+pub const rook_material_idx: usize = (18 + 1);
+pub const queen_material_idx: usize = 1;
+
+pub const max_material_index = (16 + 1) * (20 + 1) * (20 + 1) * (20 + 1) * (18 + 1);
+
+pub fn perftSingleThreadedNonBulkWriteHashesByMaterial(self: *Self, move_buf: []Move, depth: usize, hash_lists: []std.ArrayList(u64)) !void {
+    const impl = struct {
+        fn impl(board: *Board, comptime turn: Side, cur_depth: u8, moves: []Move, hashes: []std.ArrayList(u64), d: usize, material_idx: usize) anyerror!void {
+            if (d == 0) {
+                board.filterEP();
+                try hashes[material_idx].append(board.zobrist);
+                return;
+            }
+            const num_moves = movegen.getMoves(turn, board.*, moves);
+            for (moves[0..num_moves]) |move| {
+                var new_material_idx = material_idx;
+                if (move.getPromotedPieceType()) |pt| {
+                    new_material_idx -= pawn_material_idx;
+                    new_material_idx += switch (pt) {
+                        .knight => knight_material_idx,
+                        .bishop => bishop_material_idx,
+                        .rook => rook_material_idx,
+                        .queen => rook_material_idx,
+                        else => unreachable,
+                    };
+                }
+                if (move.isCapture()) {
+                    if (move.isEnPassant()) {
+                        new_material_idx -= pawn_material_idx;
+                    } else {
+                        new_material_idx -= switch (board.mailbox[move.getTo().toInt()].?) {
+                            .pawn => pawn_material_idx,
+                            .knight => knight_material_idx,
+                            .bishop => bishop_material_idx,
+                            .rook => rook_material_idx,
+                            .queen => rook_material_idx,
+                            else => unreachable,
+                        };
+                    }
+                }
+                const inv = board.playMove(turn, move);
+                try impl(board, turn.flipped(), cur_depth + 1, moves[num_moves..], hashes, d - 1, new_material_idx);
+                board.undoMove(turn, inv);
+            }
+        }
+    }.impl;
+    var material_idx: usize = 0;
+    material_idx += pawn_material_idx * @popCount(self.white.getBoard(.pawn) | self.black.getBoard(.pawn));
+    material_idx += knight_material_idx * @popCount(self.white.getBoard(.knight) | self.black.getBoard(.knight));
+    material_idx += bishop_material_idx * @popCount(self.white.getBoard(.bishop) | self.black.getBoard(.bishop));
+    material_idx += rook_material_idx * @popCount(self.white.getBoard(.rook) | self.black.getBoard(.rook));
+    material_idx += queen_material_idx * @popCount(self.white.getBoard(.queen) | self.black.getBoard(.queen));
+
+    return switch (self.turn) {
+        inline else => |turn| try impl(self, turn, 0, move_buf, hash_lists, depth, material_idx),
+    };
+}
+
 pub const PerftTTEntry = struct {
     hash: u64,
     count: u56,
