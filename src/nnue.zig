@@ -27,13 +27,18 @@ fn mullo(
     return a *% b;
 }
 
-// dummy weights
 const Weights = struct {
     hidden_layer_weights: [HIDDEN_SIZE * INPUT_SIZE]i16 align(64) = .{0} ** (HIDDEN_SIZE * INPUT_SIZE),
     hidden_layer_biases: [HIDDEN_SIZE]i16 align(64) = .{0} ** HIDDEN_SIZE,
-    output_weights: [HIDDEN_SIZE * 2]i16 align(64) = .{0} ** (HIDDEN_SIZE * 2),
-    output_bias: i16 align(64) = 0,
+    output_weights: [HIDDEN_SIZE * 2 * BUCKET_COUNT]i16 align(64) = .{0} ** (HIDDEN_SIZE * 2 * BUCKET_COUNT),
+    output_biases: [BUCKET_COUNT]i16 align(64) = .{0} ** BUCKET_COUNT,
 };
+
+fn whichOutputBucket(board: *const Board) usize {
+    const max_piece_count = 32;
+    const divisor = (max_piece_count + BUCKET_COUNT - 1) / BUCKET_COUNT;
+    return @min(BUCKET_COUNT - 1, (@popCount(board.white.all | board.black.all) - 2) / divisor);
+}
 
 var weights: Weights = undefined;
 
@@ -119,9 +124,9 @@ pub const Accumulator = struct {
         }
     }
 
-    pub fn forward(self: Accumulator, turn: Side) i16 {
-        const us_acc = if (turn == .white) &self.white else &self.black;
-        const them_acc = if (turn == .white) &self.black else &self.white;
+    pub fn forward(self: Accumulator, board: *const Board) i16 {
+        const us_acc = if (board.turn == .white) &self.white else &self.black;
+        const them_acc = if (board.turn == .white) &self.black else &self.white;
 
         const vec_size = @min(HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
         //                  vvvvvvvv annotation to help zls
@@ -130,14 +135,16 @@ pub const Accumulator = struct {
         const vz: Vec16 = @splat(0);
         const vqa: Vec16 = @splat(QA);
         var i: usize = 0;
+        const which_bucket = whichOutputBucket(board);
+        const bucket_offset = which_bucket * HIDDEN_SIZE * 2;
         while (i < HIDDEN_SIZE) : (i += vec_size) {
             const us: Vec16 = us_acc[i..][0..vec_size].*;
             const us_clamped: Vec16 = @max(@min(us, vqa), vz);
             const them: Vec16 = them_acc[i..][0..vec_size].*;
             const them_clamped: Vec16 = @max(@min(them, vqa), vz);
 
-            const us_weights: Vec16 = weights.output_weights[i..][0..vec_size].*;
-            const them_weights: Vec16 = weights.output_weights[i + HIDDEN_SIZE ..][0..vec_size].*;
+            const us_weights: Vec16 = weights.output_weights[bucket_offset..][i..][0..vec_size].*;
+            const them_weights: Vec16 = weights.output_weights[bucket_offset..][i + HIDDEN_SIZE ..][0..vec_size].*;
 
             acc += madd(vec_size, mullo(vec_size, us_weights, us_clamped), us_clamped);
             acc += madd(vec_size, mullo(vec_size, them_weights, them_clamped), them_clamped);
@@ -154,7 +161,7 @@ pub const Accumulator = struct {
         }
         res = @divTrunc(res, QA); // res /= QA
 
-        res += weights.output_bias;
+        res += weights.output_biases[which_bucket];
 
         return @intCast(std.math.clamp(@divTrunc(res * SCALE, QA * QB), -(eval.win_score - 1), eval.win_score - 1)); // res * SCALE / (QA * QB)
     }
@@ -191,7 +198,7 @@ pub const Accumulator = struct {
 pub const EvalState = Accumulator;
 
 pub fn evaluate(board: *const Board, eval_state: EvalState) i16 {
-    return eval_state.forward(board.turn);
+    return eval_state.forward(board);
 }
 
 fn screlu(x: i32) i32 {
@@ -200,7 +207,7 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("networks/net10_00_512_200.nnue"));
+    var fbs = std.io.fixedBufferStream(@embedFile("networks/net12_00_512_200.nnue"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
     for (0..weights.hidden_layer_weights.len) |i| {
@@ -217,16 +224,19 @@ pub fn init() void {
         weights.output_weights[i] = fbs.reader().readInt(i16, .little) catch unreachable;
     }
 
-    // then finally the bias
-    weights.output_bias = fbs.reader().readInt(i16, .little) catch unreachable;
+    // then finally the bias(es)
+    for (0..weights.output_biases.len) |i| {
+        weights.output_biases[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    }
 }
 
 pub fn nnEval(board: *const Board) i16 {
     var acc = Accumulator.init(board);
 
-    return acc.forward(board.turn);
+    return acc.forward(board);
 }
 
+pub const BUCKET_COUNT = 1;
 pub const INPUT_SIZE = 768;
 pub const HIDDEN_SIZE = 512;
 pub const SCALE = 400;
