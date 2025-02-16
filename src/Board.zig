@@ -952,6 +952,13 @@ pub fn playMoveFromStr(self: *Self, str: []const u8) !MoveInverse {
     return error.MoveNotFound;
 }
 
+pub fn filterEP(self: *Self) void {
+    if (self.en_passant_target != null and !@import("pawn_moves.zig").hasEP(self.*)) {
+        self.updateEnPassantZobrist();
+        self.en_passant_target = null;
+    }
+}
+
 pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth: usize, comptime debug: bool) u64 {
     const impl = struct {
         fn impl(board: *Board, comptime turn: Side, cur_depth: u8, moves: []Move, d: usize) u64 {
@@ -976,6 +983,84 @@ pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth: usize, c
     }.impl;
     return switch (self.turn) {
         inline else => |turn| impl(self, turn, 0, move_buf, depth),
+    };
+}
+
+pub fn perftSingleThreadedNonBulkWriteHashes(self: *Self, move_buf: []Move, depth: usize, hash_list: *std.ArrayList(u64)) !void {
+    const impl = struct {
+        fn impl(board: *Board, comptime turn: Side, cur_depth: u8, moves: []Move, hashes: *std.ArrayList(u64), d: usize) anyerror!void {
+            if (d == 0) {
+                board.filterEP();
+                try hashes.append(board.zobrist);
+                return;
+            }
+            const num_moves = movegen.getMoves(turn, board.*, moves);
+            for (moves[0..num_moves]) |move| {
+                const inv = board.playMove(turn, move);
+                try impl(board, turn.flipped(), cur_depth + 1, moves[num_moves..], hashes, d - 1);
+                board.undoMove(turn, inv);
+            }
+        }
+    }.impl;
+    return switch (self.turn) {
+        inline else => |turn| try impl(self, turn, 0, move_buf, hash_list, depth),
+    };
+}
+
+pub const PerftTTEntry = struct {
+    hash: u64,
+    count: u56,
+    depth: u8,
+};
+pub fn perftSingleThreadedTT(self: *Self, move_buf: []Move, depth: usize, transposition_table: []PerftTTEntry, comptime debug: bool) u64 {
+    const impl = struct {
+        fn impl(board: *Board, comptime turn: Side, cur_depth: u8, moves: []Move, d: usize, tt: []PerftTTEntry) u64 {
+            if (d == 0) return 1;
+            if (d == 1) {
+                if (cur_depth == 0) {
+                    const num_moves = movegen.getMoves(turn, board.*, moves);
+                    for (moves[0..num_moves]) |move| {
+                        if (debug) {
+                            std.debug.print("{}: 1\n", .{move});
+                        }
+                    }
+                }
+                return movegen.countMoves(turn, board.*);
+            }
+            const tt_entry = tt[board.zobrist % tt.len];
+            if (tt_entry.depth == d and tt_entry.hash == board.zobrist) {
+                return tt_entry.count;
+            }
+            const num_moves = movegen.getMoves(turn, board.*, moves);
+            var res: u64 = 0;
+            for (moves[0..num_moves]) |move| {
+                if (@import("builtin").is_test) {
+                    var cp = board.*;
+                    const inv = cp.playMove(turn, move);
+                    cp.undoMove(turn, inv);
+                    assert(std.meta.eql(cp, board.*));
+                }
+                const inv = board.playMove(turn, move);
+                const count = impl(board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1, tt);
+                if (cur_depth == 0) {
+                    if (debug) {
+                        std.debug.print("{}: {}\n", .{ move, count });
+                    }
+                    // std.debug.print("{}\n", .{ new_board });
+                }
+                res += count;
+                board.undoMove(turn, inv);
+            }
+            tt[board.zobrist % tt.len] = PerftTTEntry{
+                .hash = board.zobrist,
+                .count = @intCast(res),
+                .depth = @intCast(d),
+            };
+            return res;
+        }
+    }.impl;
+    return switch (self.turn) {
+        inline else => |turn| impl(self, turn, 0, move_buf, depth, transposition_table),
     };
 }
 

@@ -289,7 +289,15 @@ pub fn main() !void {
                         continue;
                     };
                     var timer = std.time.Timer.start() catch unreachable;
-                    const nodes = board.perftSingleThreaded(move_buf, depth, true);
+                    const tt = try allocator.alloc(Board.PerftTTEntry, 1 << 15);
+                    defer allocator.free(tt);
+                    // const nodes = board.perftSingleThreaded(move_buf, depth, true);
+                    const nodes = board.perftSingleThreadedTT(
+                        move_buf,
+                        depth,
+                        tt,
+                        true,
+                    );
                     const elapsed_ns = timer.read();
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :main_loop;
