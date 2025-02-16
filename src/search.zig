@@ -208,6 +208,16 @@ fn search(
     }
 
     const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
+    var tt_corrected_eval = static_eval;
+    if (!is_in_check) {
+        if (tt_entry.zobrist == board.zobrist) {
+            tt_corrected_eval = switch (tt_entry.tp) {
+                .exact => tt_entry.score,
+                .lower => @max(tt_entry.score, static_eval),
+                .upper => @min(tt_entry.score, static_eval),
+            };
+        }
+    }
 
     // TODO: tuning
     const us = board.getSide(turn);
@@ -215,10 +225,10 @@ fn search(
     if (!pv and !is_in_check and beta >= eval.mateIn(max_search_depth)) {
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_multiplier * depth)
-            return result(static_eval, move_buf[0]);
+        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * depth)
+            return result(tt_corrected_eval, move_buf[0]);
 
-        if (depth >= 4 and static_eval >= beta and not_pawn_or_king != 0) {
+        if (depth >= 4 and tt_corrected_eval >= beta and not_pawn_or_king != 0) {
             const reduction = 4 + depth / 5;
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
