@@ -100,6 +100,7 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
                 if (Bitboard.move(ep_pawn_bb, 0, d_file) & pawns != 0) {
                     const from = ep_pawn_square.move(0, d_file);
 
+                    // for example if the white e pawn is capturing en passant to the f file, this bb will contain e5, f5, f6
                     const occ_change = ep_pawn_bb | to.toBitboard() | from.toBitboard();
 
                     const occ_after = occ ^ occ_change;
@@ -210,6 +211,46 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
     }
 
     return move_count;
+}
+
+pub fn hasEP(board: Board) bool {
+    const us = board.getSide(board.turn);
+    const them = board.getSide(board.turn.flipped());
+    const pawns = us.getBoard(.pawn);
+
+    const d_rank: i8 = if (board.turn == .white) 1 else -1;
+
+    if (board.en_passant_target) |to| {
+        // if this is false then we're counting moves for mobility calculation
+        if (to.getRank() == (if (board.turn == .white) Rank.sixth else Rank.third)) {
+            const ep_pawn_square = to.move(-d_rank, 0);
+            const ep_pawn_bb = ep_pawn_square.toBitboard();
+
+            assert(Bitboard.contains(them.getBoard(.pawn), ep_pawn_square));
+
+            const king = us.getBoard(.king);
+            const occ = us.all | them.all;
+            for ([2]i8{ -1, 1 }) |d_file| {
+                if (Bitboard.move(ep_pawn_bb, 0, d_file) & pawns != 0) {
+                    const from = ep_pawn_square.move(0, d_file);
+
+                    // for example if the white e pawn is capturing en passant to the f file, this bb will contain e5, f5, f6
+                    const occ_change = ep_pawn_bb | to.toBitboard() | from.toBitboard();
+
+                    const occ_after = occ ^ occ_change;
+
+                    const threatening_pieces: u64 =
+                        (magics.getBishopAttacks(Square.fromBitboard(king), occ_after) & (them.getBoard(.bishop) | them.getBoard(.queen))) | // pretend king is a bishop
+                        (magics.getRookAttacks(Square.fromBitboard(king), occ_after) & (them.getBoard(.rook) | them.getBoard(.queen))); // pretend king is a rook
+                    if (threatening_pieces == 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
