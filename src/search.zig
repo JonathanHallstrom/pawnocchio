@@ -118,6 +118,7 @@ fn search(
     depth: u8,
     move_buf: []Move,
     previous_move: Move,
+    excluded: Move,
     hash_history: *std.ArrayList(u64),
 ) ?if (root) struct { i16, Move } else i16 {
     const result = struct {
@@ -135,7 +136,7 @@ fn search(
     // assert that root implies pv
     comptime assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth) {
+    if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth and excluded == Move.null_move) {
         const tt_score = eval.scoreFromTt(tt_entry.score, cur_depth);
         switch (tt_entry.tp) {
             .exact => return result(tt_score, tt_entry.move),
@@ -212,7 +213,7 @@ fn search(
     // TODO: tuning
     const us = board.getSide(turn);
     const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
-    if (!pv and !is_in_check and beta >= eval.mateIn(max_search_depth)) {
+    if (!pv and !is_in_check and beta >= eval.mateIn(max_search_depth) and excluded == Move.null_move) {
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_multiplier * depth)
@@ -235,6 +236,7 @@ fn search(
                 depth - reduction,
                 move_buf[move_count..],
                 Move.null_move,
+                Move.null_move,
                 hash_history,
             ) orelse 0);
             _ = hash_history.pop();
@@ -253,6 +255,7 @@ fn search(
                     depth - reduction,
                     move_buf[move_count..],
                     previous_move,
+                    Move.null_move,
                     hash_history,
                 ) orelse 0;
 
@@ -269,6 +272,9 @@ fn search(
     var num_searched: u8 = 0;
     var prune_quiets = false;
     for (move_buf[0..move_count], 0..) |move, i| {
+        if (move == excluded) {
+            continue;
+        }
         const is_losing = best_score <= eval.mateIn(max_search_depth);
         if (prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
@@ -278,11 +284,29 @@ fn search(
         if (!pv and !is_in_check and !is_losing and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
             continue;
 
+        var extension: u8 = @intFromBool(is_in_check);
+
+        const singular_ttentry_depth_margin: u16 = 3;
+        if (!root and
+            depth >= 8 and
+            move == tt_entry.move and
+            excluded == Move.null_move and
+            tt_entry.depth + singular_ttentry_depth_margin >= depth and
+            tt_entry.tp != .upper)
+        {
+            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score - depth * 2);
+            const s_depth = (depth - 1) / 2;
+
+            const score: i16 = -(search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, cur_depth, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0);
+            if (score < s_beta)
+                extension += 1;
+        }
+
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
-        const extension: u8 = @intFromBool(is_in_check);
+
         var score: i16 = 0;
         const new_depth = depth - 1 + extension;
         if (depth >= 3 and !is_in_check and !pv and num_searched > 0 and extension == 0) {
@@ -305,6 +329,7 @@ fn search(
                 reduced_depth,
                 move_buf[move_count..],
                 move,
+                Move.null_move,
                 hash_history,
             ) orelse 0);
         } else if (!pv or num_searched > 0) {
@@ -320,6 +345,7 @@ fn search(
                 new_depth,
                 move_buf[move_count..],
                 move,
+                Move.null_move,
                 hash_history,
             ) orelse 0);
         }
@@ -336,6 +362,7 @@ fn search(
                 new_depth,
                 move_buf[move_count..],
                 move,
+                Move.null_move,
                 hash_history,
             ) orelse 0);
         }
@@ -381,13 +408,15 @@ fn search(
     if (best_score <= alpha_inp) score_type = .upper;
     if (best_score >= beta) score_type = .lower;
 
-    tt[getTTIndex(board.zobrist)] = TTEntry{
-        .zobrist = board.zobrist,
-        .move = best_move,
-        .depth = depth,
-        .tp = score_type,
-        .score = eval.scoreToTt(best_score, cur_depth),
-    };
+    if (excluded == Move.null_move) {
+        tt[getTTIndex(board.zobrist)] = TTEntry{
+            .zobrist = board.zobrist,
+            .move = best_move,
+            .depth = depth,
+            .tp = score_type,
+            .score = eval.scoreToTt(best_score, cur_depth),
+        };
+    }
 
     return result(best_score, best_move);
 }
@@ -495,6 +524,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                         @intCast(depth),
                         move_buf,
                         Move.null_move,
+                        Move.null_move,
                         hash_history,
                     ),
                 } orelse break;
@@ -532,6 +562,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     0,
                     @intCast(depth),
                     move_buf,
+                    Move.null_move,
                     Move.null_move,
                     hash_history,
                 ),
