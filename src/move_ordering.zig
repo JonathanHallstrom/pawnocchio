@@ -56,7 +56,8 @@ const ScoreMovePair = struct {
 
 pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_move: Move, moves: []Move) void {
     var quiets = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
-    var captures = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
+    var good_noisies = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
+    var bad_noisies = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var has_tt_move = false;
     for (moves) |move| {
         if (tt_move != Move.null_move and move == tt_move) {
@@ -64,21 +65,32 @@ pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_m
             continue;
         }
         if (move.isCapture()) {
-            const see_bonus: i16 = if (SEE.scoreMove(board, move, 0)) 1000 else 0;
-
-            captures.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) + see_bonus });
+            if (SEE.scoreMove(board, move, 0)) {
+                good_noisies.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
+            } else {
+                bad_noisies.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
+            }
         } else {
             quiets.appendAssumeCapacity(.{ .move = move, .score = getHistory(turn, board, move, previous_move) });
         }
     }
-    sort(ScoreMovePair, captures.slice(), void{}, ScoreMovePair.cmp);
+    sort(ScoreMovePair, good_noisies.slice(), void{}, ScoreMovePair.cmp);
+    sort(ScoreMovePair, bad_noisies.slice(), void{}, ScoreMovePair.cmp);
     sort(ScoreMovePair, quiets.slice(), void{}, ScoreMovePair.cmp);
     moves[0] = tt_move;
-    for (0..captures.len) |i| {
-        moves[@intFromBool(has_tt_move) + i] = captures.slice()[i].move;
+    var idx: usize = 0;
+    idx += @intFromBool(has_tt_move);
+    for (good_noisies.slice()) |score_move_pair| {
+        moves[idx] = score_move_pair.move;
+        idx += 1;
     }
-    for (0..quiets.len) |i| {
-        moves[captures.len + @intFromBool(has_tt_move) + i] = quiets.slice()[i].move;
+    for (quiets.slice()) |score_move_pair| {
+        moves[idx] = score_move_pair.move;
+        idx += 1;
+    }
+    for (bad_noisies.slice()) |score_move_pair| {
+        moves[idx] = score_move_pair.move;
+        idx += 1;
     }
 }
 

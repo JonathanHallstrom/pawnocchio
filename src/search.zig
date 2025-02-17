@@ -54,7 +54,7 @@ fn quiesce(
     if (static_eval >= beta) return beta;
     if (static_eval > alpha) alpha = static_eval;
 
-    move_ordering.mvvLva(board, move_buf[0..move_count]);
+    move_ordering.order(turn, board, Move.null_move, Move.null_move, move_buf[0..move_count]);
     var best_score = static_eval;
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
