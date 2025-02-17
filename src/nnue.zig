@@ -154,8 +154,8 @@ pub const Accumulator = struct {
         if (std.debug.runtime_safety) {
             var verify_res: i32 = 0;
             for (0..HIDDEN_SIZE) |j| {
-                verify_res += screlu(us_acc[j]) * weights.output_weights[j];
-                verify_res += screlu(them_acc[j]) * weights.output_weights[j + HIDDEN_SIZE];
+                verify_res += screlu(us_acc[j]) * weights.output_weights[bucket_offset..][j];
+                verify_res += screlu(them_acc[j]) * weights.output_weights[bucket_offset..][j + HIDDEN_SIZE];
             }
             std.debug.assert(res == verify_res);
         }
@@ -207,7 +207,7 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("networks/net12_00_512_200.nnue"));
+    var fbs = std.io.fixedBufferStream(@embedFile("networks/net12_00_512_200_8.nnue"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
     for (0..weights.hidden_layer_weights.len) |i| {
@@ -236,7 +236,7 @@ pub fn nnEval(board: *const Board) i16 {
     return acc.forward(board);
 }
 
-pub const BUCKET_COUNT = 1;
+pub const BUCKET_COUNT = 8;
 pub const INPUT_SIZE = 768;
 pub const HIDDEN_SIZE = 512;
 pub const SCALE = 400;
