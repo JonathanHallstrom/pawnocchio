@@ -64,8 +64,7 @@ pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_m
             continue;
         }
         if (move.isCapture()) {
-            // const see_bonus: i16 = if (SEE.scoreMove(board, move, 0)) 1000 else 0;
-            const see_bonus: i16 = 0;
+            const see_bonus: i16 = if (SEE.scoreMove(board, move, 0)) 1000 else 0;
 
             captures.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) + see_bonus });
         } else {
