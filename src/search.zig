@@ -297,7 +297,7 @@ fn search(
             const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score - depth * 2);
             const s_depth = (depth - 1) / 2;
 
-            const score: i16 = -(search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, cur_depth, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0);
+            const score: i16 = search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, cur_depth, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0;
             if (score < s_beta)
                 extension += 1;
         }
