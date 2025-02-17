@@ -54,7 +54,7 @@ fn quiesce(
     if (static_eval >= beta) return beta;
     if (static_eval > alpha) alpha = static_eval;
 
-    move_ordering.order(turn, board, Move.null_move, Move.null_move, move_buf[0..move_count]);
+    move_ordering.order(turn, board, Move.null_move, Move.null_move, 0, move_buf[0..move_count]);
     var best_score = static_eval;
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
@@ -114,7 +114,7 @@ fn search(
     eval_state: EvalState,
     alpha_inp: i16,
     beta: i16,
-    cur_depth: u8,
+    ply: u8,
     depth: u8,
     move_buf: []Move,
     previous_move: Move,
@@ -129,7 +129,7 @@ fn search(
     if (std.debug.runtime_safety and err) return result(0, Move.null_move);
     var alpha = alpha_inp;
     nodes += 1;
-    if (cur_depth > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
+    if (ply > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
         shutdown = true;
         return null;
     }
@@ -137,14 +137,14 @@ fn search(
     comptime assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
     if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth and excluded == Move.null_move) {
-        const tt_score = eval.scoreFromTt(tt_entry.score, cur_depth);
+        const tt_score = eval.scoreFromTt(tt_entry.score, ply);
         switch (tt_entry.tp) {
             .exact => return result(tt_score, tt_entry.move),
             .lower => if (tt_score >= beta) return result(tt_score, tt_entry.move),
             .upper => if (tt_score <= alpha) return result(tt_score, tt_entry.move),
         }
     }
-    const worst_possible = eval.mateIn(cur_depth);
+    const worst_possible = eval.mateIn(ply);
     const best_possible = -worst_possible;
     if (!root and best_possible < beta) {
         if (alpha >= best_possible) {
@@ -163,7 +163,7 @@ fn search(
         return result(0, Move.null_move);
     }
     if (!root and move_count == 0) {
-        return if (is_in_check) eval.mateIn(cur_depth) else 0;
+        return if (is_in_check) eval.mateIn(ply) else 0;
     }
     if (board.halfmove_clock >= 100) {
         return result(0, Move.null_move);
@@ -232,7 +232,7 @@ fn search(
                 updated_eval_state,
                 -beta,
                 -beta + 1,
-                cur_depth + 1,
+                ply + 1,
                 depth - reduction,
                 move_buf[move_count..],
                 Move.null_move,
@@ -251,7 +251,7 @@ fn search(
                     eval_state,
                     beta - 1,
                     beta,
-                    cur_depth + 1,
+                    ply + 1,
                     depth - reduction,
                     move_buf[move_count..],
                     previous_move,
@@ -266,7 +266,7 @@ fn search(
         }
     }
 
-    move_ordering.order(turn, board, tt_entry.move, previous_move, move_buf[0..move_count]);
+    move_ordering.order(turn, board, tt_entry.move, previous_move, ply, move_buf[0..move_count]);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     var num_searched: u8 = 0;
@@ -297,7 +297,7 @@ fn search(
             const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score - depth * 2);
             const s_depth = (depth - 1) / 2;
 
-            const score: i16 = search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, cur_depth, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0;
+            const score: i16 = search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, ply, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0;
             if (score < s_beta)
                 extension += 1;
         }
@@ -325,7 +325,7 @@ fn search(
                 updated_eval_state,
                 -(alpha + 1),
                 -alpha,
-                cur_depth + 1,
+                ply + 1,
                 reduced_depth,
                 move_buf[move_count..],
                 move,
@@ -341,7 +341,7 @@ fn search(
                 updated_eval_state,
                 -(alpha + 1),
                 -alpha,
-                cur_depth + 1,
+                ply + 1,
                 new_depth,
                 move_buf[move_count..],
                 move,
@@ -358,7 +358,7 @@ fn search(
                 updated_eval_state,
                 -beta,
                 -alpha,
-                cur_depth + 1,
+                ply + 1,
                 new_depth,
                 move_buf[move_count..],
                 move,
@@ -382,6 +382,7 @@ fn search(
             alpha = score;
             if (score >= beta) {
                 if (move.isQuiet()) {
+                    move_ordering.recordKiller(move, ply);
                     move_ordering.updateHistory(turn, board, move, previous_move, move_ordering.getBonus(depth));
                     for (0..i) |j| {
                         if (move_buf[j].isQuiet()) {
@@ -414,7 +415,7 @@ fn search(
             .move = best_move,
             .depth = depth,
             .tp = score_type,
-            .score = eval.scoreToTt(best_score, cur_depth),
+            .score = eval.scoreToTt(best_score, ply),
         };
     }
 

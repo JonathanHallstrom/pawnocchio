@@ -54,14 +54,19 @@ const ScoreMovePair = struct {
     }
 };
 
-pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_move: Move, moves: []Move) void {
+pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_move: Move, ply: u8, moves: []Move) void {
     var quiets = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var good_noisies = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var bad_noisies = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
     var has_tt_move = false;
+    var has_killer_move = false;
     for (moves) |move| {
-        if (tt_move != Move.null_move and move == tt_move) {
+        if (move == tt_move) {
             has_tt_move = true;
+            continue;
+        }
+        if (move == killers[ply]) {
+            has_killer_move = true;
             continue;
         }
         if (move.isCapture()) {
@@ -77,11 +82,17 @@ pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_m
     sort(ScoreMovePair, good_noisies.slice(), void{}, ScoreMovePair.cmp);
     sort(ScoreMovePair, bad_noisies.slice(), void{}, ScoreMovePair.cmp);
     sort(ScoreMovePair, quiets.slice(), void{}, ScoreMovePair.cmp);
-    moves[0] = tt_move;
     var idx: usize = 0;
-    idx += @intFromBool(has_tt_move);
+    if (has_tt_move) {
+        moves[idx] = tt_move;
+        idx += 1;
+    }
     for (good_noisies.slice()) |score_move_pair| {
         moves[idx] = score_move_pair.move;
+        idx += 1;
+    }
+    if (has_killer_move) {
+        moves[idx] = killers[ply];
         idx += 1;
     }
     for (quiets.slice()) |score_move_pair| {
@@ -97,6 +108,7 @@ pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_m
 pub fn reset() void {
     @memset(std.mem.asBytes(&history), 0);
     @memset(std.mem.asBytes(&cont_hist), 0);
+    @memset(std.mem.asBytes(&killers), 0);
 }
 
 fn historyEntry(board: *const Board, move: Move) *i16 {
@@ -141,6 +153,11 @@ pub fn updateHistory(comptime turn: Side, board: *const Board, move: Move, previ
     }
 }
 
+pub fn recordKiller(move: Move, ply: u8) void {
+    killers[ply] = move;
+}
+
 const max_history = 1 << 14;
+var killers = std.mem.zeroes([256]Move);
 var history = std.mem.zeroes([2][6][64][64]i16);
 var cont_hist = std.mem.zeroes([2][6][64][6][64]i16);
