@@ -266,6 +266,7 @@ fn search(
         }
     }
 
+    move_ordering.clearIrrelevantKillers(ply);
     move_ordering.order(turn, board, tt_entry.move, previous_move, ply, move_buf[0..move_count]);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];

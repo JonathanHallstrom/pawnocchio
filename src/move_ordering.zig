@@ -157,6 +157,11 @@ pub fn recordKiller(move: Move, ply: u8) void {
     killers[ply] = move;
 }
 
+pub fn clearIrrelevantKillers(ply: u8) void {
+    if (ply < 255)
+        killers[ply + 1] = Move.null_move;
+}
+
 const max_history = 1 << 14;
 var killers = std.mem.zeroes([256]Move);
 var history = std.mem.zeroes([2][6][64][64]i16);
