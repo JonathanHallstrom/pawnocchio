@@ -301,6 +301,8 @@ fn search(
             const score: i16 = search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, ply, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0;
             if (score < s_beta)
                 extension += 1;
+            if (score < s_beta - 20 and !pv)
+                extension += 1;
         }
 
         const updated_eval_state = eval_state.updateWith(turn, board, move);
