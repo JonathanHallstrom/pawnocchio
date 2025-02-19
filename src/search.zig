@@ -312,11 +312,11 @@ fn search(
 
         var score: i16 = 0;
         const new_depth = depth - 1 + extension;
-        if (depth >= 3 and !is_in_check and !pv and num_searched > 0 and extension == 0) {
+        if (depth >= 3 and !is_in_check and num_searched > 0 and extension == 0) {
             // TODO: tuning
 
             // late move reduction
-            const reduction = (tunable_constants.lmr_base + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
+            const reduction = (tunable_constants.lmr_base - @intFromBool(pv) + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
             const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
             const reduced_depth: u8 = @intCast(depth - clamped_reduction);
 
