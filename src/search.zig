@@ -232,13 +232,32 @@ fn search(
     // TODO: tuning
     const us = board.getSide(turn);
     const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
-    if (!pv and !is_in_check and beta >= eval.mateIn(max_search_depth) and excluded == Move.null_move) {
+    if (!pv and
+        !is_in_check and
+        beta >= eval.mateIn(max_search_depth) and
+        excluded == Move.null_move)
+    {
+
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * depth)
+        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * depth) {
             return result(tt_corrected_eval, move_buf[0]);
+        }
 
-        if (depth >= 4 and tt_corrected_eval >= beta and not_pawn_or_king != 0) {
+        // razoring
+        const razoring_margin: i32 = 200;
+        if (depth <= 3 and tt_corrected_eval + razoring_margin * depth <= alpha) {
+            const razor_score = quiesce(turn, board, eval_state, alpha, beta, move_buf[move_count..]);
+            if (razor_score <= alpha) {
+                return razor_score;
+            }
+        }
+
+        // null move pruning
+        if (depth >= 4 and
+            tt_corrected_eval >= beta and
+            not_pawn_or_king != 0)
+        {
             const reduction = 4 + depth / 5;
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
