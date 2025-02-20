@@ -57,7 +57,6 @@ fn quiesce(
     move_ordering.order(turn, board, Move.null_move, Move.null_move, 0, move_buf[0..move_count]);
     var best_score = static_eval;
     for (move_buf[0..move_count]) |move| {
-        const updated_eval_state = eval_state.updateWith(turn, board, move);
         if (std.debug.runtime_safety) {
             if (board.mailbox[move.getTo().toInt()]) |cap| {
                 if (cap == .king) {
@@ -69,10 +68,20 @@ fn quiesce(
             }
         }
 
-        // if we're not in a pawn and king endgame and the capture is really bad, just skip it
-        // no longer checking for pawn and king endgames, ty toanth
-        if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
-            continue;
+        const is_losing = best_score <= eval.mateIn(max_search_depth);
+
+        if (!masks.is_in_check and
+            !is_losing)
+        {
+            if (static_eval + 100 < alpha and
+                !SEE.scoreMove(board, move, 1))
+                continue;
+            // if we're not in a pawn and king endgame and the capture is really bad, just skip it
+            // no longer checking for pawn and king endgames, ty toanth
+            if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
+                continue;
+        }
+        const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
         qnodes += 1;
