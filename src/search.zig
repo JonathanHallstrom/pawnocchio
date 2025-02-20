@@ -30,6 +30,7 @@ const max_search_depth = 255;
 const tunable_constants = @import("tuning.zig").tunable_constants;
 
 fn quiesce(
+    comptime pv: bool,
     comptime turn: Side,
     board: *Board,
     eval_state: EvalState,
@@ -46,7 +47,23 @@ fn quiesce(
         return 0;
     }
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
-    const static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
+    const tt_entry = tt[getTTIndex(board.zobrist)];
+    var static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
+    if (!pv and tt_entry.zobrist == board.zobrist) {
+        const tt_score = eval.scoreFromTt(tt_entry.score, 0);
+        switch (tt_entry.tp) {
+            .exact => if (!pv) return tt_score,
+            .lower => {
+                if (tt_score >= beta) return tt_score;
+                if (tt_score >= static_eval) static_eval = tt_score;
+            },
+            .upper => {
+                if (tt_score <= alpha) return tt_score;
+                if (tt_score <= static_eval) static_eval = tt_score;
+            },
+        }
+    }
+
     if (move_count == 0) {
         return static_eval;
     }
@@ -54,8 +71,9 @@ fn quiesce(
     if (static_eval >= beta) return beta;
     if (static_eval > alpha) alpha = static_eval;
 
-    move_ordering.order(turn, board, Move.null_move, Move.null_move, 0, move_buf[0..move_count]);
+    move_ordering.order(turn, board, tt_entry.move, Move.null_move, 0, move_buf[0..move_count]);
     var best_score = static_eval;
+    var best_move = Move.null_move;
     for (move_buf[0..move_count]) |move| {
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         if (std.debug.runtime_safety) {
@@ -78,6 +96,7 @@ fn quiesce(
         qnodes += 1;
 
         const score = -quiesce(
+            pv,
             turn.flipped(),
             board,
             updated_eval_state,
@@ -95,6 +114,7 @@ fn quiesce(
 
         if (score > best_score) {
             best_score = score;
+            best_move = move;
         }
         if (score > alpha) {
             if (score >= beta) {
@@ -103,6 +123,20 @@ fn quiesce(
             alpha = score;
         }
     }
+    var score_type: ScoreType = .exact;
+    if (best_score <= alpha_inp) score_type = .upper;
+    if (best_score >= beta) score_type = .lower;
+
+    if (tt_entry.depth == 0) {
+        tt[getTTIndex(board.zobrist)] = TTEntry{
+            .zobrist = board.zobrist,
+            .move = best_move,
+            .depth = 0,
+            .tp = score_type,
+            .score = eval.scoreToTt(best_score, 0),
+        };
+    }
+
     return best_score;
 }
 
@@ -187,6 +221,7 @@ fn search(
 
     if (depth == 0) {
         var score = quiesce(
+            pv,
             turn,
             board,
             eval_state,
