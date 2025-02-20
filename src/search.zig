@@ -282,7 +282,7 @@ fn search(
         // razoring
         const razoring_margin: i32 = 200;
         if (depth <= 3 and tt_corrected_eval + razoring_margin * depth <= alpha) {
-            const razor_score = quiesce(turn, board, eval_state, alpha, beta, move_buf[move_count..]);
+            const razor_score = quiesce(pv, turn, board, eval_state, alpha, beta, move_buf[move_count..]);
             if (razor_score <= alpha) {
                 return razor_score;
             }
