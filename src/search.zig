@@ -659,10 +659,9 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             break;
         }
         const node_fraction = @as(f64, @floatFromInt(root_node_counts[move.getFrom().toInt()][move.getTo().toInt()])) / @as(f64, @floatFromInt(nodes + qnodes));
-        const non_bestmove_node_fraction = 1 - node_fraction;
-        const node_count_factor = @max(0.5, non_bestmove_node_fraction * 2 + 0.5);
-        const adjusted_elapsed_time = @as(f64, @floatFromInt(timer.read())) * node_count_factor;
-        if (adjusted_elapsed_time >= @as(f64, @floatFromInt(search_params.softTime()))) {
+        const node_count_factor = 1.35 * (1.5 - node_fraction);
+        const adjusted_limit: u64 = @intFromFloat(@as(f64, @floatFromInt(search_params.softTime())) * node_count_factor);
+        if (timer.read() >= adjusted_limit) {
             break;
         }
         if (eval.isMateScore(score)) break;
