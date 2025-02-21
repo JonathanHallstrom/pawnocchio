@@ -346,6 +346,7 @@ fn search(
     var num_searched: u8 = 0;
     var prune_quiets = false;
     for (move_buf[0..move_count], 0..) |move, i| {
+        const node_count_before_search: u64 = if (root) nodes + qnodes else 0;
         if (move == excluded) {
             continue;
         }
@@ -472,6 +473,10 @@ fn search(
         if (!is_losing and move.isQuiet() and num_searched > @as(u16, depth) * depth and !pv) {
             prune_quiets = true;
         }
+        const node_count_after_search: u64 = if (root) nodes + qnodes else 0;
+        if (root) {
+            root_node_counts[move.getFrom().toInt()][move.getTo().toInt()] += node_count_after_search - node_count_before_search;
+        }
     }
 
     if (shutdown) {
@@ -584,8 +589,8 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             var fail_lows: usize = 0;
             var fail_highs: usize = 0;
             var window: i16 = @intCast(std.math.clamp(@abs(@as(i32, score) - last_score), 15, 100));
-            var alpha: i16 = score - window;
-            var beta: i16 = score + window;
+            var alpha: i16 = score -| window;
+            var beta: i16 = score +| window;
             var aspiration_score, var aspiration_move = .{ score, move };
             while (true) {
                 aspiration_score, aspiration_move = switch (board.turn) {
@@ -653,7 +658,11 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (nodes + qnodes >= search_params.maxNodes()) {
             break;
         }
-        if (timer.read() >= search_params.softTime()) {
+        const node_fraction = @as(f64, @floatFromInt(root_node_counts[move.getFrom().toInt()][move.getTo().toInt()])) / @as(f64, @floatFromInt(nodes + qnodes));
+        const non_bestmove_node_fraction = 1 - node_fraction;
+        const node_count_factor = @max(0.5, non_bestmove_node_fraction * 2 + 0.5);
+        const adjusted_elapsed_time = @as(f64, @floatFromInt(timer.read())) * node_count_factor;
+        if (adjusted_elapsed_time >= @as(f64, @floatFromInt(search_params.softTime()))) {
             break;
         }
         if (eval.isMateScore(score)) break;
@@ -709,6 +718,7 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
+    @memset(std.mem.asBytes(&root_node_counts), 0);
     @memset(&repetition_table, 0);
 }
 
@@ -718,6 +728,7 @@ pub fn resetHard() void {
     @memset(std.mem.sliceAsBytes(tt), 0);
 }
 
+var root_node_counts: [64][64]u64 = undefined;
 var repetition_check_fast: u64 = 0;
 var repetition_table: [8192]u8 = undefined;
 var pv_moves: [256]Move = undefined;
