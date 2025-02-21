@@ -212,7 +212,7 @@ fn search(
         return result(0, Move.null_move);
     }
 
-    const repetition_idx = board.zobrist % repetition_table.len;
+    const repetition_idx: usize = @intCast(board.zobrist % repetition_table.len);
     repetition_table[repetition_idx] += 1;
     defer repetition_table[repetition_idx] -= 1;
     if (repetition_table[repetition_idx] >= 3) {
@@ -571,7 +571,7 @@ fn writeInfo(score: i16, move: Move, depth: u8, frc: bool) void {
 pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) engine.SearchResult {
     resetSoft();
     assert(hash_history.items[hash_history.items.len - 1] == board.zobrist);
-    for (hash_history.items) |zobrist| repetition_table[zobrist % repetition_table.len] += 1;
+    for (hash_history.items) |zobrist| repetition_table[@intCast(zobrist % repetition_table.len)] += 1;
     timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
     var board_copy = board;
@@ -656,6 +656,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (timer.read() >= search_params.softTime()) {
             break;
         }
+        if (eval.isMateScore(score)) break;
     }
     if (errored()) {
         std.debug.panic("error encountered, writing logs!\n", .{});

@@ -1088,7 +1088,7 @@ pub fn perftSingleThreadedTT(self: *Self, move_buf: []Move, depth: usize, transp
                 }
                 return movegen.countMoves(turn, board.*);
             }
-            const tt_entry = tt[board.zobrist % tt.len];
+            const tt_entry = tt[@intCast(board.zobrist % tt.len)];
             if (tt_entry.depth == d and tt_entry.hash == board.zobrist) {
                 return tt_entry.count;
             }
@@ -1112,7 +1112,7 @@ pub fn perftSingleThreadedTT(self: *Self, move_buf: []Move, depth: usize, transp
                 res += count;
                 board.undoMove(turn, inv);
             }
-            tt[board.zobrist % tt.len] = PerftTTEntry{
+            tt[@intCast(board.zobrist % tt.len)] = PerftTTEntry{
                 .hash = board.zobrist,
                 .count = @intCast(res),
                 .depth = @intCast(d),
