@@ -30,6 +30,7 @@ const max_search_depth = 255;
 const tunable_constants = @import("tuning.zig").tunable_constants;
 
 fn quiesce(
+    comptime pv: bool,
     comptime turn: Side,
     board: *Board,
     eval_state: EvalState,
@@ -46,7 +47,23 @@ fn quiesce(
         return 0;
     }
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
-    const static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
+    const tt_entry = tt[getTTIndex(board.zobrist)];
+    var static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
+    if (!pv and tt_entry.zobrist == board.zobrist) {
+        const tt_score = eval.scoreFromTt(tt_entry.score, 0);
+        switch (tt_entry.tp) {
+            .exact => if (!pv) return tt_score,
+            .lower => {
+                if (tt_score >= beta) return tt_score;
+                if (tt_score >= static_eval) static_eval = tt_score;
+            },
+            .upper => {
+                if (tt_score <= alpha) return tt_score;
+                if (tt_score <= static_eval) static_eval = tt_score;
+            },
+        }
+    }
+
     if (move_count == 0) {
         return static_eval;
     }
@@ -54,10 +71,10 @@ fn quiesce(
     if (static_eval >= beta) return beta;
     if (static_eval > alpha) alpha = static_eval;
 
-    move_ordering.order(turn, board, Move.null_move, Move.null_move, 0, move_buf[0..move_count]);
+    move_ordering.order(turn, board, tt_entry.move, Move.null_move, 0, move_buf[0..move_count]);
     var best_score = static_eval;
+    var best_move = Move.null_move;
     for (move_buf[0..move_count]) |move| {
-        const updated_eval_state = eval_state.updateWith(turn, board, move);
         if (std.debug.runtime_safety) {
             if (board.mailbox[move.getTo().toInt()]) |cap| {
                 if (cap == .king) {
@@ -69,15 +86,26 @@ fn quiesce(
             }
         }
 
-        // if we're not in a pawn and king endgame and the capture is really bad, just skip it
-        // no longer checking for pawn and king endgames, ty toanth
-        if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
-            continue;
+        const is_losing = best_score <= eval.mateIn(max_search_depth);
+
+        if (!masks.is_in_check and
+            !is_losing)
+        {
+            if (static_eval + 100 < alpha and
+                !SEE.scoreMove(board, move, 1))
+                continue;
+            // if we're not in a pawn and king endgame and the capture is really bad, just skip it
+            // no longer checking for pawn and king endgames, ty toanth
+            if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
+                continue;
+        }
+        const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
         defer board.undoMove(turn, inv);
         qnodes += 1;
 
         const score = -quiesce(
+            pv,
             turn.flipped(),
             board,
             updated_eval_state,
@@ -95,6 +123,7 @@ fn quiesce(
 
         if (score > best_score) {
             best_score = score;
+            best_move = move;
         }
         if (score > alpha) {
             if (score >= beta) {
@@ -103,6 +132,20 @@ fn quiesce(
             alpha = score;
         }
     }
+    var score_type: ScoreType = .exact;
+    if (best_score <= alpha_inp) score_type = .upper;
+    if (best_score >= beta) score_type = .lower;
+
+    if (tt_entry.depth == 0) {
+        tt[getTTIndex(board.zobrist)] = TTEntry{
+            .zobrist = board.zobrist,
+            .move = best_move,
+            .depth = 0,
+            .tp = score_type,
+            .score = eval.scoreToTt(best_score, 0),
+        };
+    }
+
     return best_score;
 }
 
@@ -187,6 +230,7 @@ fn search(
 
     if (depth == 0) {
         var score = quiesce(
+            pv,
             turn,
             board,
             eval_state,
@@ -223,13 +267,32 @@ fn search(
     // TODO: tuning
     const us = board.getSide(turn);
     const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
-    if (!pv and !is_in_check and beta >= eval.mateIn(max_search_depth) and excluded == Move.null_move) {
+    if (!pv and
+        !is_in_check and
+        beta >= eval.mateIn(max_search_depth) and
+        excluded == Move.null_move)
+    {
+
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * depth)
+        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * depth) {
             return result(tt_corrected_eval, move_buf[0]);
+        }
 
-        if (depth >= 4 and tt_corrected_eval >= beta and not_pawn_or_king != 0) {
+        // razoring
+        const razoring_margin: i32 = 200;
+        if (depth <= 3 and tt_corrected_eval + razoring_margin * depth <= alpha) {
+            const razor_score = quiesce(pv, turn, board, eval_state, alpha, beta, move_buf[move_count..]);
+            if (razor_score <= alpha) {
+                return razor_score;
+            }
+        }
+
+        // null move pruning
+        if (depth >= 4 and
+            tt_corrected_eval >= beta and
+            not_pawn_or_king != 0)
+        {
             const reduction = 4 + depth / 5;
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
