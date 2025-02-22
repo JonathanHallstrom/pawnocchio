@@ -5,6 +5,7 @@ const Bitboard = @import("Bitboard.zig");
 
 pub const MagicEntry = struct {
     mask: u64,
+    mask_full: u64,
     offs: u32,
 
     pub fn isMaskInverted() bool {
@@ -26,8 +27,10 @@ const bishop_magics = blk: {
     var offs: u32 = 0;
     for (0..64) |sq| {
         const relevant = Bitboard.bishopRelevantSquares(1 << sq);
+        const full = Bitboard.bishopAttackSquares(1 << sq);
         res[sq] = .{
             .mask = relevant,
+            .mask_full = full,
             .offs = offs,
         };
         offs += @as(u32, 1) << @intCast(@popCount(relevant));
@@ -43,8 +46,10 @@ const rook_magics = blk: {
     var offs: u32 = 0;
     for (0..64) |sq| {
         const relevant = Bitboard.rookRelevantSquares(1 << sq);
+        const full = Bitboard.rookAttackSquares(1 << sq);
         res[sq] = .{
             .mask = relevant,
+            .mask_full = full,
             .offs = offs,
         };
         offs += @as(u32, 1) << @intCast(@popCount(relevant));
@@ -57,21 +62,28 @@ const rook_magics = blk: {
 const rook_array_size = 102400;
 const bishop_array_size = 5248;
 
+const compressed_rook_attacks = false;
+
 var bishop_attacks: [bishop_array_size]u64 = undefined;
-var rook_attacks: [rook_array_size]u64 = undefined;
-// var rook_attacks: [rook_array_size]u16 = undefined;
+var rook_attacks: [rook_array_size]if (compressed_rook_attacks) u16 else u64 = undefined;
 
 pub fn init() void {
     magics_generation.generateBishopAttackArrayInPlace(bishop_magics, &bishop_attacks);
-    magics_generation.generateRookAttackArrayInPlace(rook_magics, &rook_attacks);
-    // magics_generation.generateRookAttackArrayInPlaceCompressed(rook_magics, &rook_attacks);
+    if (compressed_rook_attacks) {
+        magics_generation.generateRookAttackArrayInPlaceCompressed(rook_magics, &rook_attacks);
+    } else {
+        magics_generation.generateRookAttackArrayInPlace(rook_magics, &rook_attacks);
+    }
 }
 
 pub fn getBishopAttacks(square: Square, blockers: u64) u64 {
     return (&bishop_attacks)[@intCast(bishop_magics[square.toInt()].getBishopIndex(blockers))];
 }
 pub fn getRookAttacks(square: Square, blockers: u64) u64 {
-    return (&rook_attacks)[@intCast(rook_magics[square.toInt()].getRookIndex(blockers))];
-    // const magic = rook_magics[square.toInt()];
-    // return Bitboard.pdep((&rook_attacks)[@intCast(magic.getRookIndex(blockers))], magic.mask);
+    if (compressed_rook_attacks) {
+        const magic = rook_magics[square.toInt()];
+        return Bitboard.pdep((&rook_attacks)[@intCast(magic.getRookIndex(blockers))], magic.mask_full);
+    } else {
+        return (&rook_attacks)[@intCast(rook_magics[square.toInt()].getRookIndex(blockers))];
+    }
 }

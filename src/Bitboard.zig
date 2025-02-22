@@ -61,14 +61,11 @@ pub fn pdep(src: u64, mask: u64) u64 {
             bit += 1;
         }
         return res;
-    } else {
-        return asm (
-            \\pdepq %[ret], %[src], %[mask]
-            : [ret] "={rax}" (-> u64),
-            : [src] "r" (src),
-              [mask] "r" (mask),
-        );
-    }
+    } else return asm ("pdepq %[mask], %[src], %[res]"
+        : [res] "=r" (-> u64),
+        : [src] "r" (src),
+          [mask] "r" (mask),
+    );
 }
 
 pub fn contains(bitboard: u64, square: Square) bool {
@@ -122,17 +119,30 @@ pub fn relevantSquares(bitboard: u64, d_ranks: anytype, d_files: anytype) u64 {
     }
     return res & ~bitboard;
 }
+pub fn attackSquares(bitboard: u64, d_ranks: anytype, d_files: anytype) u64 {
+    var res: u64 = 0;
+    inline for (d_ranks, d_files) |d_rank, d_file| {
+        res |= ray(bitboard, d_rank, d_file);
+    }
+    return res & ~bitboard;
+}
 
 pub const rook_d_ranks = [_]comptime_int{ 1, -1, 0, 0 };
 pub const rook_d_files = [_]comptime_int{ 0, 0, 1, -1 };
 pub fn rookRelevantSquares(bitboard: u64) u64 {
     return relevantSquares(bitboard, rook_d_ranks, rook_d_files);
 }
+pub fn rookAttackSquares(bitboard: u64) u64 {
+    return attackSquares(bitboard, rook_d_ranks, rook_d_files);
+}
 
 pub const bishop_d_ranks = [_]comptime_int{ -1, -1, 1, 1 };
 pub const bishop_d_files = [_]comptime_int{ 1, -1, 1, -1 };
 pub fn bishopRelevantSquares(bitboard: u64) u64 {
     return relevantSquares(bitboard, bishop_d_ranks, bishop_d_files);
+}
+pub fn bishopAttackSquares(bitboard: u64) u64 {
+    return attackSquares(bitboard, bishop_d_ranks, bishop_d_files);
 }
 
 pub const knight_d_ranks = [_]comptime_int{ 1, 1, -1, -1, 2, 2, -2, -2 };

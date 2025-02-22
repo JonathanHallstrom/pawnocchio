@@ -59,29 +59,28 @@ pub fn generateRookAttackArrayInPlace(ms: [64]MagicEntry, arr: []u64) void {
     }
 }
 
-// pub fn generateBishopAttackArrayInPlaceCompressed(ms: [64]MagicEntry, arr: []u16) void {
-//     for (ms, 0..) |m, i| {
-//         var blockers: u64 = 0;
-//         while (true) {
-//             const mask = if (MagicEntry.isMaskInverted()) ~m.mask else m.mask;
-//             arr[@intCast(m.getBishopIndex(blockers))] = @intCast(Bitboard.pext(computeBishopAttacks(Square.fromInt(@intCast(i)), blockers), mask));
-//             blockers = blockers -% mask & mask;
-//             if (blockers == 0) break;
-//         }
-//     }
-// }
+pub fn generateBishopAttackArrayInPlaceCompressed(ms: [64]MagicEntry, arr: []u16) void {
+    for (ms, 0..) |m, i| {
+        var blockers: u64 = 0;
+        while (true) {
+            arr[@intCast(m.getBishopIndex(blockers))] = @intCast(Bitboard.pext(computeBishopAttacks(Square.fromInt(@intCast(i)), blockers), m.mask_full));
+            blockers = blockers -% m.mask & m.mask;
 
-// pub fn generateRookAttackArrayInPlaceCompressed(ms: [64]MagicEntry, arr: []u16) void {
-//     for (ms, 0..) |m, i| {
-//         var blockers: u64 = 0;
-//         while (true) {
-//             const mask = if (MagicEntry.isMaskInverted()) ~m.mask else m.mask;
-//             arr[@intCast(m.getRookIndex(blockers))] = @intCast(Bitboard.pext(computeRookAttacks(Square.fromInt(@intCast(i)), blockers), mask));
-//             blockers = blockers -% mask & mask;
-//             if (blockers == 0) break;
-//         }
-//     }
-// }
+            if (blockers == 0) break;
+        }
+    }
+}
+
+pub fn generateRookAttackArrayInPlaceCompressed(ms: [64]MagicEntry, arr: []u16) void {
+    for (ms, 0..) |m, i| {
+        var blockers: u64 = 0;
+        while (true) {
+            arr[@intCast(m.getRookIndex(blockers))] = @intCast(Bitboard.pext(computeRookAttacks(Square.fromInt(@intCast(i)), blockers), m.mask_full));
+            blockers = blockers -% m.mask & m.mask;
+            if (blockers == 0) break;
+        }
+    }
+}
 
 pub fn generateBishopAttackArray(comptime ms: [64]MagicEntry, comptime len: comptime_int) [len]u64 {
     comptime { // enforce this only being run at compile time
