@@ -39,8 +39,9 @@ pub fn generateBishopAttackArrayInPlace(ms: [64]MagicEntry, arr: []u64) void {
     for (ms, 0..) |m, i| {
         var blockers: u64 = 0;
         while (true) {
-            arr[m.getIndex(blockers)] = computeBishopAttacks(Square.fromInt(@intCast(i)), blockers);
-            blockers = blockers -% m.mask & m.mask;
+            arr[m.getBishopIndex(blockers)] = computeBishopAttacks(Square.fromInt(@intCast(i)), blockers);
+            const mask = if (MagicEntry.isMaskInverted()) ~m.mask else m.mask;
+            blockers = blockers -% mask & mask;
             if (blockers == 0) break;
         }
     }
@@ -50,8 +51,9 @@ pub fn generateRookAttackArrayInPlace(ms: [64]MagicEntry, arr: []u64) void {
     for (ms, 0..) |m, i| {
         var blockers: u64 = 0;
         while (true) {
-            arr[m.getIndex(blockers)] = computeRookAttacks(Square.fromInt(@intCast(i)), blockers);
-            blockers = blockers -% m.mask & m.mask;
+            arr[m.getRookIndex(blockers)] = computeRookAttacks(Square.fromInt(@intCast(i)), blockers);
+            const mask = if (MagicEntry.isMaskInverted()) ~m.mask else m.mask;
+            blockers = blockers -% mask & mask;
             if (blockers == 0) break;
         }
     }
@@ -64,7 +66,7 @@ pub fn generateBishopAttackArray(comptime ms: [64]MagicEntry, comptime len: comp
         for (ms, 0..) |m, i| {
             var blockers: u64 = 0;
             while (true) {
-                arr[m.getIndex(blockers)] = computeBishopAttacks(Square.fromInt(i), blockers);
+                arr[m.getBishopIndex(blockers)] = computeBishopAttacks(Square.fromInt(i), blockers);
                 blockers = blockers -% m.mask & m.mask;
                 if (blockers == 0) break;
             }
@@ -80,7 +82,7 @@ pub fn generateRookAttackArray(comptime ms: [64]MagicEntry, comptime len: compti
         for (ms, 0..) |m, i| {
             var blockers: u64 = 0;
             while (true) {
-                arr[m.getIndex(blockers)] = computeRookAttacks(Square.fromInt(i), blockers);
+                arr[m.getRookIndex(blockers)] = computeRookAttacks(Square.fromInt(i), blockers);
                 blockers = blockers -% m.mask & m.mask;
                 if (blockers == 0) break;
             }
