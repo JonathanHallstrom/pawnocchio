@@ -3,8 +3,10 @@ const Square = @import("square.zig").Square;
 const Bitboard = @import("Bitboard.zig");
 const magics_generation = @import("magics_generation.zig");
 
-pub const magic_impl = @import("classical_magic_attacks_impl.zig");
-// pub const magic_impl = @import("black_magic_attacks_impl.zig");
+pub const magic_impl = if (std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2))
+    @import("pext_attacks_impl.zig")
+else
+    @import("black_magic_attacks_impl.zig");
 pub const MagicEntry = magic_impl.MagicEntry;
 
 fn getAttacks(square: Square, blockers: u64, d_ranks: anytype, d_files: anytype) u64 {
@@ -51,8 +53,4 @@ pub fn getRookAttacks(square: Square, blockers: u64) u64 {
 
 pub fn init() void {
     magic_impl.init();
-}
-
-export fn getRookAttacksExp(square: u8, blockers: u64) u64 {
-    return getRookAttacks(Square.fromInt(@intCast(square)), blockers);
 }

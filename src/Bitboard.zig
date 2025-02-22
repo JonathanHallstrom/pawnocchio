@@ -31,6 +31,46 @@ pub inline fn move(bitboard: u64, d_rank: anytype, d_file: anytype) u64 {
     return res;
 }
 
+pub fn pext(src: u64, mask: u64) u64 {
+    if (@inComptime() or !std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2)) {
+        var res: u64 = 0;
+        var i: u6, var m: u64 = .{ 0, mask };
+        while (m != 0) {
+            res |= ((src >> @intCast(@ctz(m))) & 1) << i;
+            i += 1;
+            m &= m - 1;
+        }
+        return res;
+    } else return asm ("pextq %[mask], %[src], %[res]"
+        : [res] "=r" (-> u64),
+        : [src] "r" (src),
+          [mask] "r" (mask),
+    );
+}
+
+pub fn pdep(src: u64, mask: u64) u64 {
+    if (@inComptime() or !std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2)) {
+        var res: u64 = 0;
+        var bit: u6 = 0;
+        var m: u64 = mask;
+        while (m != 0) {
+            if (((src >> bit) & 1) != 0) {
+                res |= m & -%m;
+            }
+            m &= m - 1;
+            bit += 1;
+        }
+        return res;
+    } else {
+        return asm (
+            \\pdepq %[ret], %[src], %[mask]
+            : [ret] "={rax}" (-> u64),
+            : [src] "r" (src),
+              [mask] "r" (mask),
+        );
+    }
+}
+
 pub fn contains(bitboard: u64, square: Square) bool {
     return bitboard >> square.toInt() & 1 != 0;
 }
