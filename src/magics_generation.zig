@@ -35,6 +35,28 @@ pub fn computeRookAttacks(square: Square, blockers: u64) u64 {
     return computeAttacks(square, blockers, Bitboard.rook_d_ranks, Bitboard.rook_d_files);
 }
 
+pub fn generateBishopAttackArrayInPlace(ms: [64]MagicEntry, arr: []u64) void {
+    for (ms, 0..) |m, i| {
+        var blockers: u64 = 0;
+        while (true) {
+            arr[m.getIndex(blockers)] = computeBishopAttacks(Square.fromInt(@intCast(i)), blockers);
+            blockers = blockers -% m.mask & m.mask;
+            if (blockers == 0) break;
+        }
+    }
+}
+
+pub fn generateRookAttackArrayInPlace(ms: [64]MagicEntry, arr: []u64) void {
+    for (ms, 0..) |m, i| {
+        var blockers: u64 = 0;
+        while (true) {
+            arr[m.getIndex(blockers)] = computeRookAttacks(Square.fromInt(@intCast(i)), blockers);
+            blockers = blockers -% m.mask & m.mask;
+            if (blockers == 0) break;
+        }
+    }
+}
+
 pub fn generateBishopAttackArray(comptime ms: [64]MagicEntry, comptime len: comptime_int) [len]u64 {
     comptime { // enforce this only being run at compile time
         @setEvalBranchQuota(1 << 30);

@@ -1,6 +1,7 @@
 const std = @import("std");
 const engine = @import("engine.zig");
 const nnue = @import("nnue.zig");
+const magics = @import("magics.zig");
 
 const Board = @import("Board.zig");
 const Move = @import("Move.zig").Move;
@@ -60,6 +61,7 @@ pub fn main() !void {
     const move_buf = try allocator.alloc(Move, 16384);
     defer allocator.free(move_buf);
 
+    magics.init();
     nnue.init();
     engine.reset();
     try engine.setTTSize(256);

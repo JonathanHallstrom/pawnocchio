@@ -11,6 +11,7 @@ const Allocator = std.mem.Allocator;
 const engine = @import("engine.zig");
 const movegen = @import("movegen.zig");
 const nnue = @import("nnue.zig");
+const magics = @import("magics.zig");
 
 // very much based on https://github.com/cosmobobak/viriformat/tree/ef1c383f7ecfce02477eec1dd378c4242e022bfd
 
@@ -258,6 +259,8 @@ pub fn main() !void {
     // var rng = std.Random.DefaultPrng.init(0);
     engine.reset();
     nnue.init();
+    magics.init();
+
     try engine.setTTSize(16);
     std.fs.cwd().deleteFile(output_file_name) catch {};
     const output_file = std.fs.cwd().openFile(output_file_name, .{
