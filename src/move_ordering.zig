@@ -163,6 +163,6 @@ pub fn clearIrrelevantKillers(ply: u8) void {
 }
 
 const max_history = 1 << 14;
-var killers = std.mem.zeroes([256]Move);
+pub var killers = std.mem.zeroes([256]Move);
 var history = std.mem.zeroes([2][6][64][64]i16);
 var cont_hist = std.mem.zeroes([2][6][64][6][64]i16);

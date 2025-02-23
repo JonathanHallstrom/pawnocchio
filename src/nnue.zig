@@ -207,7 +207,7 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("networks/net13_00_512_200_8.nnue"));
+    var fbs = std.io.fixedBufferStream(@embedFile("networks/net13_01_512_200_8.nnue"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
     for (0..weights.hidden_layer_weights.len) |i| {
