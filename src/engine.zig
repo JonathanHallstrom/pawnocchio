@@ -151,5 +151,10 @@ test "50 move rule" {
 }
 
 test "repetitions" {
-    try std.testing.expect(!std.meta.eql(try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 5, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator), Move.initQuiet(.c6, .d5)));
+    try std.testing.expect(Move.initQuiet(.c6, .d5) != try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 5, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator));
+}
+
+test "random position where king has to cross middle, should test that accumulator refreshes are working" {
+    try std.testing.expectEqual(Move.initQuiet(.d5, .e5), bestMove("2rr4/8/8/n1nK2k1/8/8/8/8 w - - 0 1", 10, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.d5, .e5), bestMove("2RR4/8/8/N1Nk2K1/8/8/8/8 b - - 0 1", 10, "", std.testing.allocator));
 }

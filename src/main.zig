@@ -293,12 +293,30 @@ pub fn main() !void {
                     var timer = std.time.Timer.start() catch unreachable;
                     const tt = try allocator.alloc(Board.PerftTTEntry, 1 << 15);
                     defer allocator.free(tt);
+                    const nodes = board.perftSingleThreaded(move_buf, depth, true);
+                    // const nodes = board.perftSingleThreadedTT(
+                    //     move_buf,
+                    //     depth,
+                    //     tt,
+                    //     true,
+                    // );
+                    const elapsed_ns = timer.read();
+                    write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
+                    continue :main_loop;
+                }
+                if (std.ascii.eqlIgnoreCase(command_part, "perft_nnue")) {
+                    const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
+                    const depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
+                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
+                        continue;
+                    };
+                    var timer = std.time.Timer.start() catch unreachable;
+                    const tt = try allocator.alloc(Board.PerftTTEntry, 1 << 15);
+                    defer allocator.free(tt);
                     // const nodes = board.perftSingleThreaded(move_buf, depth, true);
-                    const nodes = board.perftSingleThreadedTT(
+                    const nodes = board.perftNNUE(
                         move_buf,
                         depth,
-                        tt,
-                        true,
                     );
                     const elapsed_ns = timer.read();
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
@@ -396,6 +414,23 @@ pub fn main() !void {
             return;
         } else if (std.ascii.eqlIgnoreCase(command, "nneval")) {
             write("{}\n", .{nnue.nnEval(&board)});
+        } else if (std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
+            for ([_][]const u8{
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+                "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+                "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/P2P2PP/q2Q1R1K w kq - 0 2",
+                "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+                "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 1",
+                "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "rn1qkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "r1bqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "1nbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk - 0 1",
+            }) |fen| {
+                write("FEN: {s}\n", .{fen});
+                write("EVAL: {}\n", .{nnue.nnEval(&try Board.parseFen(fen))});
+            }
         } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
             const eval = @import("eval.zig");
             write("{}\n", .{eval.evaluate(&board, eval.EvalState.init(&board))});
