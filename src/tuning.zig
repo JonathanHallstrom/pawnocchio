@@ -8,7 +8,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_noisy_pruning_multiplier: i16 = -40;
 
     pub var lmr_mult: u8 = 8;
-    pub var lmr_base: u8 = 96;
+    pub var lmr_base: u8 = 128;
 } else struct {
     pub const rfp_multiplier: i16 = 150;
 
@@ -17,5 +17,5 @@ pub const tunable_constants = if (do_tuning) struct {
     pub const see_noisy_pruning_multiplier: i16 = -40;
 
     pub const lmr_mult: u8 = 8;
-    pub const lmr_base: u8 = 96;
+    pub const lmr_base: u8 = 128;
 };
