@@ -293,12 +293,30 @@ pub fn main() !void {
                     var timer = std.time.Timer.start() catch unreachable;
                     const tt = try allocator.alloc(Board.PerftTTEntry, 1 << 15);
                     defer allocator.free(tt);
+                    const nodes = board.perftSingleThreaded(move_buf, depth, true);
+                    // const nodes = board.perftSingleThreadedTT(
+                    //     move_buf,
+                    //     depth,
+                    //     tt,
+                    //     true,
+                    // );
+                    const elapsed_ns = timer.read();
+                    write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
+                    continue :main_loop;
+                }
+                if (std.ascii.eqlIgnoreCase(command_part, "perft_nnue")) {
+                    const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
+                    const depth = std.fmt.parseInt(usize, depth_to_parse, 10) catch {
+                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
+                        continue;
+                    };
+                    var timer = std.time.Timer.start() catch unreachable;
+                    const tt = try allocator.alloc(Board.PerftTTEntry, 1 << 15);
+                    defer allocator.free(tt);
                     // const nodes = board.perftSingleThreaded(move_buf, depth, true);
-                    const nodes = board.perftSingleThreadedTT(
+                    const nodes = board.perftNNUE(
                         move_buf,
                         depth,
-                        tt,
-                        true,
                     );
                     const elapsed_ns = timer.read();
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });

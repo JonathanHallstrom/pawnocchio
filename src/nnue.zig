@@ -94,6 +94,9 @@ pub const Accumulator = struct {
         acc.white_mirrored.write(Square.fromBitboard(board.white.getBoard(.king)).getFile().toInt() >= 4);
         acc.black_mirrored.write(Square.fromBitboard(board.black.getBoard(.king)).getFile().toInt() >= 4);
 
+        // std.debug.print("init {}\n", .{acc.white_mirrored.read()});
+        // std.debug.print("init {}\n", .{acc.black_mirrored.read()});
+
         for (PieceType.all) |tp| {
             {
                 var iter = Bitboard.iterator(board.white.getBoard(tp));
@@ -112,9 +115,14 @@ pub const Accumulator = struct {
     }
 
     pub fn add(self: *Accumulator, comptime side: Side, tp: PieceType, sq: Square) void {
-        const mirror = if (side == .white) self.white_mirrored else self.black_mirrored;
-        const white_idx = idx(.white, side, tp, sq, mirror);
-        const black_idx = idx(.black, side, tp, sq, mirror);
+        // std.debug.print("{s} {}\n", .{ @tagName(side), sq });
+        const white_idx = idx(.white, side, tp, sq, self.white_mirrored);
+        // std.debug.print("from add {}\n", .{white_idx});
+        const black_idx = idx(.black, side, tp, sq, self.black_mirrored);
+        // if (tp == .pawn) {
+        //     std.debug.print("add {} {}\n", .{black_idx, self.black_mirrored.read()});
+        // }
+        // std.debug.print("from add {}\n", .{black_idx});
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] += weights.hidden_layer_weights[white_idx * HIDDEN_SIZE + i];
         }
@@ -142,11 +150,10 @@ pub const Accumulator = struct {
     }
 
     pub fn addSub(noalias self: *Accumulator, comptime side: Side, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
-        const mirror = if (side == .white) self.white_mirrored else self.black_mirrored;
-        const add_white_idx = idx(.white, side, add_tp, add_sq, mirror);
-        const add_black_idx = idx(.black, side, add_tp, add_sq, mirror);
-        const sub_white_idx = idx(.white, side, sub_tp, sub_sq, mirror);
-        const sub_black_idx = idx(.black, side, sub_tp, sub_sq, mirror);
+        const add_white_idx = idx(.white, side, add_tp, add_sq, self.white_mirrored);
+        const add_black_idx = idx(.black, side, add_tp, add_sq, self.black_mirrored);
+        const sub_white_idx = idx(.white, side, sub_tp, sub_sq, self.white_mirrored);
+        const sub_black_idx = idx(.black, side, sub_tp, sub_sq, self.black_mirrored);
 
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] += weights.hidden_layer_weights[add_white_idx * HIDDEN_SIZE + i] - weights.hidden_layer_weights[sub_white_idx * HIDDEN_SIZE + i];
@@ -177,13 +184,12 @@ pub const Accumulator = struct {
     }
 
     pub fn addSubSub(noalias self: *Accumulator, comptime side: Side, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
-        const mirror = if (side == .white) self.white_mirrored else self.black_mirrored;
-        const add_white_idx = idx(.white, side, add_tp, add_sq, mirror);
-        const add_black_idx = idx(.black, side, add_tp, add_sq, mirror);
-        const sub_white_idx = idx(.white, side, sub_tp, sub_sq, mirror);
-        const sub_black_idx = idx(.black, side, sub_tp, sub_sq, mirror);
-        const opp_sub_white_idx = idx(.white, side.flipped(), opp_sub_tp, opp_sub_sq, mirror);
-        const opp_sub_black_idx = idx(.black, side.flipped(), opp_sub_tp, opp_sub_sq, mirror);
+        const add_white_idx = idx(.white, side, add_tp, add_sq, self.white_mirrored);
+        const add_black_idx = idx(.black, side, add_tp, add_sq, self.black_mirrored);
+        const sub_white_idx = idx(.white, side, sub_tp, sub_sq, self.white_mirrored);
+        const sub_black_idx = idx(.black, side, sub_tp, sub_sq, self.black_mirrored);
+        const opp_sub_white_idx = idx(.white, side.flipped(), opp_sub_tp, opp_sub_sq, self.white_mirrored);
+        const opp_sub_black_idx = idx(.black, side.flipped(), opp_sub_tp, opp_sub_sq, self.black_mirrored);
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] +=
                 weights.hidden_layer_weights[add_white_idx * HIDDEN_SIZE + i] -
@@ -252,37 +258,78 @@ pub const Accumulator = struct {
         const d_and_e_file = (std.math.maxInt(u64) / std.math.maxInt(u8)) * 0b00011000;
         const from_bb = move.getFrom().toBitboard();
         const to_bb = move.getTo().toBitboard();
-        const is_moving_across_middle = (from_bb | to_bb) & d_and_e_file == from_bb | to_bb;
+        const is_moving_across_middle = (from_bb | to_bb) & d_and_e_file == from_bb | to_bb and move.getFrom().getFile() != move.getTo().getFile();
         const is_king = board.mailbox[move.getFrom().toInt()] == .king;
         const is_king_moving_across_middle = is_king and is_moving_across_middle;
         return is_king_moving_across_middle;
     }
 
-    pub fn refresh(self: *Accumulator, comptime side: Side, board: *const Board, move: Move) void {
+    pub fn refresh(noalias self: *Accumulator, comptime side: Side, board: *const Board, move: Move) void {
         if (side == .white) {
             self.white_mirrored.flip();
         } else {
             self.black_mirrored.flip();
         }
-        const mirror = if (side == .white)
+        const us_mirror = if (side == .white)
             self.white_mirrored
         else
             self.black_mirrored;
 
-        const us = board.getSide(side);
-        _ = us; // autofix
+        const them_mirror = if (side == .white)
+            self.black_mirrored
+        else
+            self.white_mirrored;
 
         const us_arr = if (side == .white) &self.white else &self.black;
-        const them_arr = if (side == .white) &self.white else &self.black;
+        const them_arr = if (side == .white) &self.black else &self.white;
 
-        const king_sq = move.getTo();
-        const add_king_idx = idx(side, side, .king, king_sq, mirror);
-        const sub_king_idx = idx(side.flipped(), side, .king, king_sq, mirror);
+        const king_from_sq = move.getFrom();
+        const king_to_sq = move.getTo();
+        // std.debug.print("{} {} {} {}\n", .{ king_from_sq, king_to_sq, us_mirror.read(), them_mirror.read() });
+        const us_add_king_idx = idx(side, side, .king, king_to_sq, us_mirror);
+        // std.debug.print("from refresh {}\n", .{us_add_king_idx});
+        const them_add_king_idx = idx(side.flipped(), side, .king, king_to_sq, them_mirror);
+        // std.debug.print("from refresh {}\n", .{them_add_king_idx});
+        const them_sub_king_idx = idx(side.flipped(), side, .king, king_from_sq, them_mirror);
         for (0..HIDDEN_SIZE) |i| {
-            us_arr[i] = weights.hidden_layer_weights[add_king_idx * HIDDEN_SIZE + i];
+            us_arr[i] =
+                weights.hidden_layer_biases[i] +
+                weights.hidden_layer_weights[us_add_king_idx * HIDDEN_SIZE + i];
             them_arr[i] +=
-                weights.hidden_layer_weights[add_king_idx * HIDDEN_SIZE + i] -
-                weights.hidden_layer_weights[sub_king_idx * HIDDEN_SIZE + i];
+                weights.hidden_layer_weights[them_add_king_idx * HIDDEN_SIZE + i] -
+                weights.hidden_layer_weights[them_sub_king_idx * HIDDEN_SIZE + i];
+        }
+        if (move.isCapture()) {
+            const captured_tp = board.mailbox[king_to_sq.toInt()].?;
+            const sub_idx = idx(side.flipped(), side.flipped(), captured_tp, king_to_sq, them_mirror);
+            for (0..HIDDEN_SIZE) |i| {
+                them_arr[i] -= weights.hidden_layer_weights[sub_idx * HIDDEN_SIZE + i];
+            }
+        }
+        const us = board.getSide(side);
+        const them = board.getSide(side.flipped());
+        for (PieceType.all) |tp| {
+            {
+                var iter = Bitboard.iterator(them.getBoard(tp) & ~king_to_sq.toBitboard());
+                while (iter.next()) |sq| {
+                    const add_idx = idx(side, side.flipped(), tp, sq, us_mirror);
+                    // std.debug.print("from refresh {}\n", .{add_idx});
+                    for (0..HIDDEN_SIZE) |i| {
+                        us_arr[i] += weights.hidden_layer_weights[add_idx * HIDDEN_SIZE + i];
+                    }
+                }
+            }
+            if (tp == .king) continue;
+            {
+                var iter = Bitboard.iterator(us.getBoard(tp));
+                while (iter.next()) |sq| {
+                    const add_idx = idx(side, side, tp, sq, us_mirror);
+
+                    for (0..HIDDEN_SIZE) |i| {
+                        us_arr[i] += weights.hidden_layer_weights[add_idx * HIDDEN_SIZE + i];
+                    }
+                }
+            }
         }
     }
 

@@ -1238,6 +1238,41 @@ pub fn perftZobrist(self: *Self, move_buf: []Move, hashes: []struct { u64, u64 }
     };
 }
 
+pub fn perftNNUE(self: *Self, move_buf: []Move, depth: usize) u64 {
+    const nnue = @import("nnue.zig");
+    const impl = struct {
+        fn impl(board: *Board, comptime turn: Side, eval_state: nnue.EvalState, cur_depth: u8, moves: []Move, d: usize) u64 {
+            if (d == 0) return 1;
+
+            const num_moves = movegen.getMoves(turn, board.*, moves);
+            var res: u64 = 0;
+            for (moves[0..num_moves]) |move| {
+                // std.debug.print("--------------\n", .{});
+                const updated_eval_state = eval_state.updateWith(turn, board, move);
+                const inv = board.playMove(turn, move);
+                const from_scratch = nnue.EvalState.init(board);
+                const white_correct = std.meta.eql(from_scratch.white, updated_eval_state.white);
+                const black_correct = std.meta.eql(from_scratch.black, updated_eval_state.black);
+                std.testing.expectEqualDeep(from_scratch, updated_eval_state) catch |e| std.debug.panic("{} {} {}\n", .{ white_correct, black_correct, e });
+                const count = impl(
+                    board,
+                    turn.flipped(),
+                    updated_eval_state,
+                    cur_depth + 1,
+                    moves[num_moves..],
+                    d - 1,
+                );
+                res += count;
+                board.undoMove(turn, inv);
+            }
+            return res;
+        }
+    }.impl;
+    return switch (self.turn) {
+        inline else => |turn| impl(self, turn, nnue.EvalState.init(self), 0, move_buf, depth),
+    };
+}
+
 test "debugging" {
     var board = Board.init();
     _ = try board.playMoveFromStr("e2e4");
