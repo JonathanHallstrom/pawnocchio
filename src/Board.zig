@@ -966,9 +966,8 @@ pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth: usize, c
             const num_moves = movegen.getMoves(turn, board.*, moves);
             var res: u64 = 0;
             for (moves[0..num_moves]) |move| {
-                var new_board = board.*;
-                const inv = new_board.playMove(turn, move);
-                const count = impl(&new_board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
+                const inv = board.playMove(turn, move);
+                const count = impl(board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
                 if (cur_depth == 0) {
                     if (debug) {
                         std.debug.print("{}: {}\n", .{ move, count });
@@ -976,13 +975,39 @@ pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth: usize, c
                     // std.debug.print("{}\n", .{ new_board });
                 }
                 res += count;
-                new_board.undoMove(turn, inv);
+                board.undoMove(turn, inv);
             }
             return res;
         }
     }.impl;
     return switch (self.turn) {
         inline else => |turn| impl(self, turn, 0, move_buf, depth),
+    };
+}
+
+pub fn perftSingleThreadedNonBulkCopyMake(self: *Self, move_buf: []Move, depth: usize, comptime debug: bool) u64 {
+    const impl = struct {
+        fn impl(board: Board, comptime turn: Side, cur_depth: u8, moves: []Move, d: usize) u64 {
+            if (d == 0) return 1;
+            const num_moves = movegen.getMoves(turn, board, moves);
+            var res: u64 = 0;
+            for (moves[0..num_moves]) |move| {
+                var new_board = board;
+                _ = new_board.playMove(turn, move);
+                const count = impl(new_board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
+                if (cur_depth == 0) {
+                    if (debug) {
+                        std.debug.print("{}: {}\n", .{ move, count });
+                    }
+                    // std.debug.print("{}\n", .{ new_board });
+                }
+                res += count;
+            }
+            return res;
+        }
+    }.impl;
+    return switch (self.turn) {
+        inline else => |turn| impl(self.*, turn, 0, move_buf, depth),
     };
 }
 
@@ -1088,7 +1113,7 @@ pub fn perftSingleThreadedTT(self: *Self, move_buf: []Move, depth: usize, transp
                 }
                 return movegen.countMoves(turn, board.*);
             }
-            const tt_entry = tt[@intCast(board.zobrist % tt.len)];
+            const tt_entry = tt[@intCast(board.zobrist & tt.len - 1)];
             if (tt_entry.depth == d and tt_entry.hash == board.zobrist) {
                 return tt_entry.count;
             }
@@ -1112,7 +1137,7 @@ pub fn perftSingleThreadedTT(self: *Self, move_buf: []Move, depth: usize, transp
                 res += count;
                 board.undoMove(turn, inv);
             }
-            tt[@intCast(board.zobrist % tt.len)] = PerftTTEntry{
+            tt[@intCast(board.zobrist & tt.len - 1)] = PerftTTEntry{
                 .hash = board.zobrist,
                 .count = @intCast(res),
                 .depth = @intCast(d),
@@ -1210,6 +1235,41 @@ pub fn perftZobrist(self: *Self, move_buf: []Move, hashes: []struct { u64, u64 }
             hashes,
             depth,
         ),
+    };
+}
+
+pub fn perftNNUE(self: *Self, move_buf: []Move, depth: usize) u64 {
+    const nnue = @import("nnue.zig");
+    const impl = struct {
+        fn impl(board: *Board, comptime turn: Side, eval_state: nnue.EvalState, cur_depth: u8, moves: []Move, d: usize) u64 {
+            if (d == 0) return 1;
+
+            const num_moves = movegen.getMoves(turn, board.*, moves);
+            var res: u64 = 0;
+            for (moves[0..num_moves]) |move| {
+                // std.debug.print("--------------\n", .{});
+                const updated_eval_state = eval_state.updateWith(turn, board, move);
+                const inv = board.playMove(turn, move);
+                const from_scratch = nnue.EvalState.init(board);
+                const white_correct = std.meta.eql(from_scratch.white, updated_eval_state.white);
+                const black_correct = std.meta.eql(from_scratch.black, updated_eval_state.black);
+                std.testing.expectEqualDeep(from_scratch, updated_eval_state) catch |e| std.debug.panic("{} {} {}\n", .{ white_correct, black_correct, e });
+                const count = impl(
+                    board,
+                    turn.flipped(),
+                    updated_eval_state,
+                    cur_depth + 1,
+                    moves[num_moves..],
+                    d - 1,
+                );
+                res += count;
+                board.undoMove(turn, inv);
+            }
+            return res;
+        }
+    }.impl;
+    return switch (self.turn) {
+        inline else => |turn| impl(self, turn, nnue.EvalState.init(self), 0, move_buf, depth),
     };
 }
 

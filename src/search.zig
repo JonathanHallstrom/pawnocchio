@@ -369,7 +369,7 @@ fn search(
             tt_entry.depth + singular_ttentry_depth_margin >= depth and
             tt_entry.tp != .upper)
         {
-            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score - depth * 2);
+            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score -| depth * 2);
             const s_depth = (depth - 1) / 2;
 
             const score: i16 = search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, ply, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0;
@@ -664,7 +664,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (timer.read() >= adjusted_limit) {
             break;
         }
-        if (eval.isMateScore(score)) break;
+        // if (eval.isMateScore(score)) break;
     }
     if (errored()) {
         std.debug.panic("error encountered, writing logs!\n", .{});

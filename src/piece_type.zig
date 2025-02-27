@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const PieceType = enum(u3) {
+pub const PieceType = enum(u8) {
     pawn = 0,
     knight = 1,
     bishop = 2,
@@ -37,7 +37,7 @@ pub const PieceType = enum(u3) {
     }
 
     pub fn toInt(self: PieceType) u3 {
-        return @intFromEnum(self);
+        return @intCast(@intFromEnum(self));
     }
 
     pub const all = [_]PieceType{

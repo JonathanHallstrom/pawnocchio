@@ -2,7 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 const Bitboard = @import("Bitboard.zig");
 
-pub const Square = enum(u6) {
+pub const Square = enum(u8) {
     // zig fmt: off
     a1, b1, c1, d1, e1, f1, g1, h1,
     a2, b2, c2, d2, e2, f2, g2, h2,
@@ -19,7 +19,7 @@ pub const Square = enum(u6) {
     }
 
     pub fn toInt(self: Square) u6 {
-        return @intFromEnum(self);
+        return @intCast(@intFromEnum(self));
     }
 
     pub fn getFile(self: Square) File {
