@@ -670,7 +670,6 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         const node_count_factor = 0.8 * (1.5 - node_fraction);
         const adjusted_limit: u64 = @intFromFloat(@as(f64, @floatFromInt(search_params.softTime())) * node_count_factor);
         // const adjusted_time: u64 = @intFromFloat(@as(f64, @floatFromInt(timer.read())) * node_count_factor);
-        std.debug.print("{d:.2} {d:.2}\n", .{ node_fraction, node_count_factor });
         if (timer.read() >= @min(search_params.hardTime(), adjusted_limit)) {
             break;
         }
