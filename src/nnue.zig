@@ -207,8 +207,15 @@ pub const Accumulator = struct {
     pub fn forward(self: Accumulator, board: *const Board) i16 {
         if (std.debug.runtime_safety) {
             const from_scratch = Accumulator.init(board);
-            std.debug.assert(std.meta.eql(self.white, from_scratch.white));
-            std.debug.assert(std.meta.eql(self.black, from_scratch.black));
+            std.testing.expectEqualDeep(from_scratch, self) catch |e| {
+                @import("main.zig").writeLog("{} {s}\n", .{ board.fullmove_clock * 2 + @intFromBool(board.turn == .black), board.toFen().slice() });
+                std.debug.panic("{} {s}\n", .{ e, board.toFen().slice() });
+            };
+            if (board.turn == .white) {
+                std.debug.assert(std.meta.eql(self.white, from_scratch.white));
+            } else {
+                std.debug.assert(std.meta.eql(self.black, from_scratch.black));
+            }
         }
         const us_acc = if (board.turn == .white) &self.white else &self.black;
         const them_acc = if (board.turn == .white) &self.black else &self.white;
@@ -252,10 +259,7 @@ pub const Accumulator = struct {
 
     pub fn needsRefresh(board: *const Board, move: Move) bool {
         if (!HORIZONTAL_MIRRORING) return false;
-        const d_and_e_file = (std.math.maxInt(u64) / std.math.maxInt(u8)) * 0b00011000;
-        const from_bb = move.getFrom().toBitboard();
-        const to_bb = move.getTo().toBitboard();
-        const is_moving_across_middle = (from_bb | to_bb) & d_and_e_file == from_bb | to_bb and move.getFrom().getFile() != move.getTo().getFile();
+        const is_moving_across_middle = (move.getFrom().getFile().toInt() <= 3) != (move.getTo().getFile().toInt() <= 3);
         const is_king = board.mailbox[move.getFrom().toInt()] == .king;
         const is_king_moving_across_middle = is_king and is_moving_across_middle;
         return is_king_moving_across_middle;
@@ -279,46 +283,74 @@ pub const Accumulator = struct {
 
         const us_arr = if (side == .white) &self.white else &self.black;
         const them_arr = if (side == .white) &self.black else &self.white;
+        var dont_add_mask: u64 = move.getTo().toBitboard();
+        if (move.isCastlingMove()) {
+            const king_from_sq = move.getFrom();
+            std.debug.assert(board.mailbox[king_from_sq.toInt()] == .king);
+            const king_to_sq = move.getCastlingKingDest(side);
+            std.debug.assert(board.mailbox[king_to_sq.toInt()] == null);
+            const rook_from_sq = move.getTo();
+            std.debug.assert(board.mailbox[rook_from_sq.toInt()] == .rook);
+            const rook_to_sq = move.getCastlingRookDest(side);
+            dont_add_mask |= rook_from_sq.toBitboard();
 
-        const king_from_sq = move.getFrom();
-        const king_to_sq = move.getTo();
-        // std.debug.print("{} {} {} {}\n", .{ king_from_sq, king_to_sq, us_mirror.read(), them_mirror.read() });
-        const us_add_king_idx = idx(side, side, .king, king_to_sq, us_mirror);
-        // std.debug.print("from refresh {}\n", .{us_add_king_idx});
-        const them_add_king_idx = idx(side.flipped(), side, .king, king_to_sq, them_mirror);
-        // std.debug.print("from refresh {}\n", .{them_add_king_idx});
-        const them_sub_king_idx = idx(side.flipped(), side, .king, king_from_sq, them_mirror);
-        for (0..HIDDEN_SIZE) |i| {
-            us_arr[i] =
-                weights.hidden_layer_biases[i] +
-                weights.hidden_layer_weights[us_add_king_idx * HIDDEN_SIZE + i];
-            them_arr[i] +=
-                weights.hidden_layer_weights[them_add_king_idx * HIDDEN_SIZE + i] -
-                weights.hidden_layer_weights[them_sub_king_idx * HIDDEN_SIZE + i];
-        }
-        if (move.isCapture()) {
-            const captured_tp = board.mailbox[king_to_sq.toInt()].?;
-            const sub_idx = idx(side.flipped(), side.flipped(), captured_tp, king_to_sq, them_mirror);
+            const us_add_king_idx = idx(side, side, .king, king_to_sq, us_mirror);
+            const them_add_king_idx = idx(side.flipped(), side, .king, king_to_sq, them_mirror);
+            const them_sub_king_idx = idx(side.flipped(), side, .king, king_from_sq, them_mirror);
+
+            const us_add_rook_idx = idx(side, side, .rook, rook_to_sq, us_mirror);
+            const them_add_rook_idx = idx(side.flipped(), side, .rook, rook_to_sq, them_mirror);
+            const them_sub_rook_idx = idx(side.flipped(), side, .rook, rook_from_sq, them_mirror);
             for (0..HIDDEN_SIZE) |i| {
-                them_arr[i] -= weights.hidden_layer_weights[sub_idx * HIDDEN_SIZE + i];
+                us_arr[i] =
+                    weights.hidden_layer_biases[i] +
+                    weights.hidden_layer_weights[us_add_king_idx * HIDDEN_SIZE + i] +
+                    weights.hidden_layer_weights[us_add_rook_idx * HIDDEN_SIZE + i];
+                them_arr[i] +=
+                    weights.hidden_layer_weights[them_add_king_idx * HIDDEN_SIZE + i] -
+                    weights.hidden_layer_weights[them_sub_king_idx * HIDDEN_SIZE + i] +
+                    weights.hidden_layer_weights[them_add_rook_idx * HIDDEN_SIZE + i] -
+                    weights.hidden_layer_weights[them_sub_rook_idx * HIDDEN_SIZE + i];
+            }
+        } else {
+            const king_from_sq = move.getFrom();
+            const king_to_sq = move.getTo();
+            // std.debug.print("{} {} {} {}\n", .{ king_from_sq, king_to_sq, us_mirror.read(), them_mirror.read() });
+            const us_add_king_idx = idx(side, side, .king, king_to_sq, us_mirror);
+            // std.debug.print("from refresh {}\n", .{us_add_king_idx});
+            const them_add_king_idx = idx(side.flipped(), side, .king, king_to_sq, them_mirror);
+            // std.debug.print("from refresh {}\n", .{them_add_king_idx});
+            const them_sub_king_idx = idx(side.flipped(), side, .king, king_from_sq, them_mirror);
+            for (0..HIDDEN_SIZE) |i| {
+                us_arr[i] =
+                    weights.hidden_layer_biases[i] +
+                    weights.hidden_layer_weights[us_add_king_idx * HIDDEN_SIZE + i];
+                them_arr[i] +=
+                    weights.hidden_layer_weights[them_add_king_idx * HIDDEN_SIZE + i] -
+                    weights.hidden_layer_weights[them_sub_king_idx * HIDDEN_SIZE + i];
+            }
+            if (move.isCapture()) {
+                const captured_tp = board.mailbox[king_to_sq.toInt()].?;
+                const sub_idx = idx(side.flipped(), side.flipped(), captured_tp, king_to_sq, them_mirror);
+                for (0..HIDDEN_SIZE) |i| {
+                    them_arr[i] -= weights.hidden_layer_weights[sub_idx * HIDDEN_SIZE + i];
+                }
             }
         }
         const us = board.getSide(side);
         const them = board.getSide(side.flipped());
         for (PieceType.all) |tp| {
             {
-                var iter = Bitboard.iterator(them.getBoard(tp) & ~king_to_sq.toBitboard());
+                var iter = Bitboard.iterator(them.getBoard(tp) & ~dont_add_mask);
                 while (iter.next()) |sq| {
                     const add_idx = idx(side, side.flipped(), tp, sq, us_mirror);
-                    // std.debug.print("from refresh {}\n", .{add_idx});
                     for (0..HIDDEN_SIZE) |i| {
                         us_arr[i] += weights.hidden_layer_weights[add_idx * HIDDEN_SIZE + i];
                     }
                 }
             }
-            if (tp == .king) continue;
             {
-                var iter = Bitboard.iterator(us.getBoard(tp));
+                var iter = Bitboard.iterator(us.getBoard(tp) & ~dont_add_mask);
                 while (iter.next()) |sq| {
                     const add_idx = idx(side, side, tp, sq, us_mirror);
 
@@ -331,6 +363,12 @@ pub const Accumulator = struct {
     }
 
     pub fn updateWith(self: Accumulator, comptime turn: Side, board: *const Board, move: Move) Accumulator {
+        // @import("main.zig").writeLog("update: {s} ply: {} move: {s} needs refresh: {}\n", .{
+        //     board.toFen().slice(),
+        //     board.fullmove_clock * 2 + @intFromBool(board.turn == .black),
+        //     move.toString(false).slice(),
+        //     needsRefresh(board, move),
+        // });
         const from = move.getFrom();
         const to = move.getTo();
         const from_type = board.mailbox[from.toInt()].?;
