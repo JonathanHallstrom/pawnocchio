@@ -658,10 +658,23 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (nodes + qnodes >= search_params.maxNodes()) {
             break;
         }
-        const node_fraction = @as(f64, @floatFromInt(root_node_counts[move.getFrom().toInt()][move.getTo().toInt()])) / @as(f64, @floatFromInt(nodes + qnodes));
-        const node_count_factor = 1.35 * (1.5 - node_fraction);
+        var total_nodes: u64 = 0;
+        for (root_node_counts) |counts| {
+            for (counts) |count| {
+                total_nodes += count;
+            }
+        }
+        total_nodes = @max(1, total_nodes);
+        const best_move_count = @max(1, root_node_counts[move.getFrom().toInt()][move.getTo().toInt()]);
+        const node_fraction = @as(f64, @floatFromInt(best_move_count)) / @as(f64, @floatFromInt(total_nodes));
+        const node_count_factor = 0.8 * (1.5 - node_fraction);
         const adjusted_limit: u64 = @intFromFloat(@as(f64, @floatFromInt(search_params.softTime())) * node_count_factor);
-        if (timer.read() >= adjusted_limit) {
+        // const adjusted_time: u64 = @intFromFloat(@as(f64, @floatFromInt(timer.read())) * node_count_factor);
+        std.debug.print("{d:.2} {d:.2}\n", .{ node_fraction, node_count_factor });
+        if (timer.read() >= @min(search_params.hardTime(), adjusted_limit)) {
+            break;
+        }
+        if (shouldStopSearching()) {
             break;
         }
         // if (eval.isMateScore(score)) break;

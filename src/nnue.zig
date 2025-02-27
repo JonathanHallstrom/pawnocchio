@@ -207,11 +207,8 @@ pub const Accumulator = struct {
     pub fn forward(self: Accumulator, board: *const Board) i16 {
         if (std.debug.runtime_safety) {
             const from_scratch = Accumulator.init(board);
-            if (board.turn == .white) {
-                std.debug.assert(std.meta.eql(self.white, from_scratch.white));
-            } else {
-                std.debug.assert(std.meta.eql(self.black, from_scratch.black));
-            }
+            std.debug.assert(std.meta.eql(self.white, from_scratch.white));
+            std.debug.assert(std.meta.eql(self.black, from_scratch.black));
         }
         const us_acc = if (board.turn == .white) &self.white else &self.black;
         const them_acc = if (board.turn == .white) &self.black else &self.white;
