@@ -254,7 +254,7 @@ fn search(
         return result(0, move_buf[0]);
     }
 
-    const static_eval = if (tt_hit) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
+    const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
     var tt_corrected_eval = static_eval;
     if (!is_in_check) {
         if (tt_entry.zobrist == board.zobrist) {
