@@ -706,7 +706,7 @@ const ScoreType = enum(u2) {
     exact,
 };
 
-pub const TTEntry = packed struct {
+pub const TTEntry = struct {
     zobrist: u64,
     move: Move,
     depth: u8,
