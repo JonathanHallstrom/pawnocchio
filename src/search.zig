@@ -254,7 +254,7 @@ fn search(
         return result(0, move_buf[0]);
     }
 
-    const static_eval = if (tt_hit) tt_entry.score else (if (is_in_check) 0 else evaluate(board, eval_state));
+    const static_eval = if (tt_hit) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
     var tt_corrected_eval = static_eval;
     if (!is_in_check) {
         if (tt_entry.zobrist == board.zobrist) {
@@ -671,7 +671,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         const best_move_count = @max(1, root_node_counts[move.getFrom().toInt()][move.getTo().toInt()]);
         const node_fraction = @as(f64, @floatFromInt(best_move_count)) / @as(f64, @floatFromInt(total_nodes));
         const node_count_factor = 0.8 * (1.5 - node_fraction);
-        const adjusted_limit: u64 = @intFromFloat(@as(f64, @floatFromInt(search_params.softTime())) * node_count_factor);
+        const adjusted_limit: u128 = @intFromFloat(@as(f64, @floatFromInt(search_params.softTime())) * node_count_factor);
         // const adjusted_time: u64 = @intFromFloat(@as(f64, @floatFromInt(timer.read())) * node_count_factor);
         if (timer.read() >= @min(search_params.hardTime(), adjusted_limit)) {
             break;
@@ -707,12 +707,12 @@ const ScoreType = enum(u2) {
 };
 
 pub const TTEntry = packed struct {
-    move: Move,
-    score: i16,
-    depth: u8,
-    static_eval: i16,
     zobrist: u64,
+    move: Move,
+    depth: u8,
     tp: ScoreType,
+    score: i16,
+    static_eval: i16,
 
     pub fn init(zobrist_: u64, move_: Move, depth_: anytype, tp_: ScoreType, score_: i16, static_eval_: i16) TTEntry {
         return .{
@@ -730,6 +730,9 @@ pub const TTEntry = packed struct {
     }
 };
 
+comptime {
+    assert(@sizeOf(TTEntry) == 16);
+}
 pub fn setTTSize(mb: usize) !void {
     if (@as(u128, mb) << 20 > std.math.maxInt(usize)) return error.TableTooBig;
     tt = try std.heap.page_allocator.realloc(tt, (mb << 20) / @sizeOf(TTEntry));
