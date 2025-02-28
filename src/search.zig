@@ -101,6 +101,7 @@ fn quiesce(
         }
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
+        @prefetch(&tt[getTTIndex(board.zobrist)], .{});
         defer board.undoMove(turn, inv);
         qnodes += 1;
 
@@ -383,6 +384,7 @@ fn search(
 
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
+        @prefetch(&tt[getTTIndex(board.zobrist)], .{});
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
 
