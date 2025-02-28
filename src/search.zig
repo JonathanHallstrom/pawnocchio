@@ -460,7 +460,7 @@ fn search(
                 !is_losing and
                 depth <= 5 and
                 @abs(alpha) < 2000 and
-                static_eval + 250 + depth * 50 <= alpha)
+                static_eval + 250 + depth * @as(i32, 100) <= alpha)
             {
                 prune_quiets = true;
             }
