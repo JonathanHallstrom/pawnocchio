@@ -46,4 +46,4 @@ The architecture of the network is (768->512)x2->1x8
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1
 [v1.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.2
 
-[ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/
+[ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
