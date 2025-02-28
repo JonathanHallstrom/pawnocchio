@@ -1,6 +1,6 @@
 # pawnocchio
 
-3120 ELO CCRL 40/15
+UCI Chess engine
 
 ## Strength
 
