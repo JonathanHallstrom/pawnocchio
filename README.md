@@ -1,12 +1,12 @@
 # pawnocchio
 
-~3100 ELO CCRL based on play against [stash-bot](https://gitlab.com/mhouppin/stash-bot)
+3120 ELO CCRL 40/15
 
 ## Strength
 
 |    Version    | [CCRL 40/15][ccrl 40/15] |
 |:-------------:|:------------------------:|
-| [1.2][v1.2]   |           3100*          |
+| [1.2][v1.2]   |           3120           |
 | [1.1][v1.1]   |           2428           |
 | [1.0][v1.0]   |           2100*          |
 
