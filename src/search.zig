@@ -137,13 +137,14 @@ fn quiesce(
     if (best_score >= beta) score_type = .lower;
 
     if (tt_entry.depth == 0) {
-        tt[getTTIndex(board.zobrist)] = TTEntry{
-            .zobrist = board.zobrist,
-            .move = best_move,
-            .depth = 0,
-            .tp = score_type,
-            .score = eval.scoreToTt(best_score, 0),
-        };
+        tt[getTTIndex(board.zobrist)] = TTEntry.init(
+            board.zobrist,
+            best_move,
+            0,
+            score_type,
+            eval.scoreToTt(best_score, 0),
+            static_eval,
+        );
     }
 
     return best_score;
@@ -179,7 +180,8 @@ fn search(
     // assert that root implies pv
     comptime assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth and excluded == Move.null_move) {
+    const tt_hit = tt_entry.sameZobrist(board.zobrist);
+    if (!pv and tt_hit and tt_entry.depth >= depth and excluded == Move.null_move) {
         const tt_score = eval.scoreFromTt(tt_entry.score, ply);
         switch (tt_entry.tp) {
             .exact => return result(tt_score, tt_entry.move),
@@ -252,7 +254,7 @@ fn search(
         return result(0, move_buf[0]);
     }
 
-    const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
+    const static_eval = if (tt_hit) tt_entry.score else (if (is_in_check) 0 else evaluate(board, eval_state));
     var tt_corrected_eval = static_eval;
     if (!is_in_check) {
         if (tt_entry.zobrist == board.zobrist) {
@@ -491,13 +493,14 @@ fn search(
     if (best_score >= beta) score_type = .lower;
 
     if (excluded == Move.null_move) {
-        tt[getTTIndex(board.zobrist)] = TTEntry{
-            .zobrist = board.zobrist,
-            .move = best_move,
-            .depth = depth,
-            .tp = score_type,
-            .score = eval.scoreToTt(best_score, ply),
-        };
+        tt[getTTIndex(board.zobrist)] = TTEntry.init(
+            board.zobrist,
+            best_move,
+            depth,
+            score_type,
+            eval.scoreToTt(best_score, ply),
+            static_eval,
+        );
     }
 
     return result(best_score, best_move);
@@ -697,18 +700,34 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     };
 }
 
-const ScoreType = enum {
+const ScoreType = enum(u2) {
     lower,
     upper,
     exact,
 };
 
-pub const TTEntry = struct {
-    zobrist: u64,
+pub const TTEntry = packed struct {
     move: Move,
-    depth: u8,
-    tp: ScoreType,
     score: i16,
+    depth: u8,
+    static_eval: i16,
+    zobrist: u64,
+    tp: ScoreType,
+
+    pub fn init(zobrist_: u64, move_: Move, depth_: anytype, tp_: ScoreType, score_: i16, static_eval_: i16) TTEntry {
+        return .{
+            .zobrist = @intCast(zobrist_),
+            .move = move_,
+            .depth = depth_,
+            .tp = tp_,
+            .score = score_,
+            .static_eval = static_eval_,
+        };
+    }
+
+    pub fn sameZobrist(self: TTEntry, other: u64) bool {
+        return self.zobrist == other;
+    }
 };
 
 pub fn setTTSize(mb: usize) !void {
