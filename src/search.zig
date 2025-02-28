@@ -352,7 +352,7 @@ fn search(
             continue;
         }
         const is_losing = best_score <= eval.mateIn(max_search_depth);
-        if (prune_quiets and move.isQuiet() and !move.isPromotion())
+        if (!is_losing and prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
         const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
 
@@ -455,7 +455,9 @@ fn search(
         if (score > best_score) {
             best_score = score;
             best_move = move;
-            if (move.isQuiet() and
+            if (!pv and
+                move.isQuiet() and
+                !is_losing and
                 depth <= 5 and
                 @abs(alpha) < 2000 and
                 static_eval + 250 + depth * 50 <= alpha)
