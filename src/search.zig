@@ -347,7 +347,7 @@ fn search(
     move_ordering.clearIrrelevantKillers(ply);
     move_ordering.order(turn, board, tt_entry.move, previous_move, ply, move_buf[0..move_count]);
     var best_score = -checkmate_score;
-    var best_move = Move.null_move;
+    var best_move = move_buf[0];
     var num_searched: u8 = 0;
     var prune_quiets = false;
     for (move_buf[0..move_count], 0..) |move, i| {
@@ -459,9 +459,9 @@ fn search(
 
         if (score > best_score) {
             best_score = score;
+            best_move = move;
         }
         if (score > alpha) {
-            best_move = move;
             alpha = score;
             if (score >= beta) {
                 if (move.isQuiet()) {
@@ -496,8 +496,9 @@ fn search(
     if (best_score <= alpha_inp) score_type = .upper;
     if (best_score >= beta) score_type = .lower;
 
-    if (score_type != .upper and excluded == Move.null_move) {
+    if (excluded == Move.null_move) {
         if (!is_in_check and
+            best_move.isQuiet() and
             (score_type == .exact or
             (score_type == .lower and best_score > static_eval) or
             (score_type == .upper and best_score < static_eval)))
@@ -654,8 +655,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 write("info string fail_lows {} fail_highs {}\n", .{ fail_lows, fail_highs });
             }
             score = aspiration_score;
-            if (aspiration_move != Move.null_move)
-                move = aspiration_move;
+            move = aspiration_move;
         } else {
             score, move = switch (board.turn) {
                 inline else => |turn| search(
