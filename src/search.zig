@@ -362,7 +362,7 @@ fn search(
         if (!pv and !is_in_check and !is_losing and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
             continue;
 
-        var extension: u8 = @intFromBool(is_in_check);
+        var extension: i16 = @intFromBool(is_in_check);
 
         const singular_ttentry_depth_margin: u16 = 3;
         if (!root and
@@ -376,10 +376,13 @@ fn search(
             const s_depth = (depth - 1) / 2;
 
             const score: i16 = search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, ply, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0;
-            if (score < s_beta)
+            if (score < s_beta) {
                 extension += 1;
-            if (score < s_beta - 20 and !pv)
-                extension += 1;
+                if (score < s_beta - 20 and !pv)
+                    extension += 1;
+            } else if (tt_entry.score >= beta) {
+                extension -= 1;
+            }
         }
 
         const updated_eval_state = eval_state.updateWith(turn, board, move);
@@ -389,7 +392,7 @@ fn search(
         defer _ = hash_history.pop();
 
         var score: i16 = 0;
-        const new_depth = depth - 1 + extension;
+        const new_depth: u8 = @intCast(depth - 1 + extension);
         if (depth >= 3 and !is_in_check and num_searched > 0 and extension == 0) {
             // TODO: tuning
 
