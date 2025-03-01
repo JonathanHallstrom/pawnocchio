@@ -254,7 +254,10 @@ pub const Accumulator = struct {
 
         res += weights.output_biases[which_bucket];
 
-        return @intCast(std.math.clamp(@divTrunc(res * SCALE, QA * QB), -(eval.win_score - 1), eval.win_score - 1)); // res * SCALE / (QA * QB)
+        const scaled = @divTrunc(res * SCALE, QA * QB);
+        const fifty_move_rule_scaled = @divTrunc(scaled * (200 - board.halfmove_clock), 200);
+        const clamped = std.math.clamp(fifty_move_rule_scaled, -(eval.win_score - 1), eval.win_score - 1);
+        return @intCast(clamped);
     }
 
     pub fn needsRefresh(board: *const Board, move: Move) bool {
