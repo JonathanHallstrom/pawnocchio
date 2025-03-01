@@ -508,7 +508,7 @@ fn search(
     return result(best_score, best_move);
 }
 
-fn collectPv(board: *Board, cur_depth: u8) void {
+fn collectPv(board: *Board, ply: u8, hash_history: *std.ArrayList(u64)) void {
     const entry = tt[getTTIndex(board.zobrist)];
     if (entry.tp != .exact or entry.zobrist != board.zobrist) {
         return;
@@ -517,9 +517,15 @@ fn collectPv(board: *Board, cur_depth: u8) void {
         var move_buf: [256]Move = undefined;
         var already_seen = std.StaticBitSet(8192).initEmpty();
     };
-    if (cur_depth == 0) globals.already_seen = std.StaticBitSet(8192).initEmpty();
+    if (ply == 0) globals.already_seen = std.StaticBitSet(8192).initEmpty();
     if (globals.already_seen.isSet(@intCast(board.zobrist % 8192))) return;
+    if (ply == 0) {
+        for (hash_history.items) |item| {
+            globals.already_seen.set(@intCast(item % 8192));
+        }
+    }
     globals.already_seen.set(@intCast(board.zobrist % 8192));
+
     var buf: []Move = &globals.move_buf;
 
     switch (board.turn) {
@@ -530,10 +536,11 @@ fn collectPv(board: *Board, cur_depth: u8) void {
                 tt_move_valid = tt_move_valid or move == entry.move;
             }
             if (!tt_move_valid) return;
-            pv_moves[cur_depth] = entry.move;
-            num_pv_moves = cur_depth;
+            if (board.halfmove_clock >= 100) return;
+            pv_moves[ply] = entry.move;
+            num_pv_moves = ply;
             const inv = board.playMove(t, entry.move);
-            collectPv(board, cur_depth + 1);
+            collectPv(board, ply + 1, hash_history);
             board.undoMove(t, inv);
         },
     }
@@ -635,7 +642,8 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                 write("info string fail_lows {} fail_highs {}\n", .{ fail_lows, fail_highs });
             }
             score = aspiration_score;
-            move = aspiration_move;
+            if (aspiration_move != Move.null_move)
+                move = aspiration_move;
         } else {
             score, move = switch (board.turn) {
                 inline else => |turn| search(
@@ -656,7 +664,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
             } orelse break;
         }
         last_score = score;
-        collectPv(&board_copy, 0);
+        collectPv(&board_copy, 0, hash_history);
         if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth), search_params.frc);
         }
