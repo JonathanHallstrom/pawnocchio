@@ -268,8 +268,6 @@ fn search(
     }
 
     // TODO: tuning
-    const us = board.getSide(turn);
-    const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
     if (!pv and
         !is_in_check and
         beta >= eval.mateIn(max_search_depth) and
@@ -290,6 +288,9 @@ fn search(
                 return razor_score;
             }
         }
+
+        const us = board.getSide(turn);
+        const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
 
         // null move pruning
         if (depth >= 4 and
@@ -354,7 +355,7 @@ fn search(
             continue;
         }
         const is_losing = best_score <= eval.mateIn(max_search_depth);
-        if (prune_quiets and move.isQuiet() and !move.isPromotion())
+        if (!is_losing and prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
         const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
 
@@ -458,6 +459,15 @@ fn search(
         if (score > best_score) {
             best_score = score;
             best_move = move;
+            if (!pv and
+                move.isQuiet() and
+                !is_losing and
+                depth <= 10 and
+                @abs(alpha) < 2000 and
+                static_eval + 250 + depth * @as(i32, 80) <= alpha)
+            {
+                prune_quiets = true;
+            }
         }
         if (score > alpha) {
             alpha = score;
@@ -474,7 +484,9 @@ fn search(
                 break;
             }
         }
-        if (!is_losing and move.isQuiet() and num_searched > @as(u16, depth) * depth and !pv) {
+
+        // late move pruning
+        if (!pv and !is_losing and move.isQuiet() and num_searched > @as(u16, depth) * depth) {
             prune_quiets = true;
         }
         const node_count_after_search: u64 = if (root) nodes + qnodes else 0;
