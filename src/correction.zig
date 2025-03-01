@@ -9,6 +9,18 @@ pub fn update(board: *const Board, corrected_static_eval: i16, score: i16, depth
     const weight: i32 = @min(depth, 15) + 1;
 
     updatePawnCorrhist(board, err, weight);
+    updateMajorCorrhist(board, err, weight);
+}
+
+pub fn correct(board: *const Board, static_eval: i16) i16 {
+    const pawn_correction: i32 = pawn_corrhist[board.pawn_zobrist % pawn_corrhist.len] >> 8;
+    const major_correction: i32 = pawn_corrhist[board.major_zobrist % pawn_corrhist.len] >> 8;
+    return eval.clampScore(static_eval + pawn_correction + major_correction);
+}
+
+pub fn reset() void {
+    @memset(&pawn_corrhist, 0);
+    @memset(&major_corrhist, 0);
 }
 
 fn updatePawnCorrhist(board: *const Board, err: i32, weight: i32) void {
@@ -18,14 +30,13 @@ fn updatePawnCorrhist(board: *const Board, err: i32, weight: i32) void {
     entry.* = @intCast(clamped);
 }
 
-pub fn correct(board: *const Board, static_eval: i16) i16 {
-    const correction: i32 = pawn_corrhist[board.pawn_zobrist % pawn_corrhist.len] >> 8;
-    return eval.clampScore(static_eval + correction);
-}
-
-pub fn reset() void {
-    @memset(&pawn_corrhist, 0);
+fn updateMajorCorrhist(board: *const Board, err: i32, weight: i32) void {
+    const entry = &major_corrhist[board.major_zobrist % pawn_corrhist.len];
+    const lerped = (entry.* * (256 - weight) + err * weight) >> 8;
+    const clamped = std.math.clamp(lerped, -max_history, max_history);
+    entry.* = @intCast(clamped);
 }
 
 var pawn_corrhist = std.mem.zeroes([16384]i16);
+var major_corrhist = std.mem.zeroes([16384]i16);
 const max_history = 256 * 32;

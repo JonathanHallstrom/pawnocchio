@@ -51,6 +51,7 @@ halfmove_clock: u8 = 0,
 fullmove_clock: u64 = 1,
 zobrist: u64 = 0,
 pawn_zobrist: u64 = 0,
+major_zobrist: u64 = 0,
 
 white: PieceSet = .{},
 black: PieceSet = .{},
@@ -614,6 +615,7 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
         .captured = null,
         .zobrist = self.zobrist,
         .pawn_zobrist = self.pawn_zobrist,
+        .major_zobrist = self.major_zobrist,
     };
     const us = self.getSidePtr(turn);
     const them = self.getSidePtr(turn.flipped());
@@ -899,8 +901,10 @@ pub fn undoMove(self: *Self, comptime turn: Side, inverse: MoveInverse) void {
 
 pub fn updatePieceZobrist(self: *Self, comptime side: Side, piece: Piece) void {
     self.zobrist ^= Zobrist.get(piece, side);
-    const mask: u64 = @intFromBool(piece.tp == .pawn);
-    self.pawn_zobrist ^= -%mask & Zobrist.get(piece, side);
+    if (piece.tp == .pawn)
+        self.pawn_zobrist ^= Zobrist.get(piece, side);
+    if (piece.tp == .rook or piece.tp == .queen)
+        self.major_zobrist ^= Zobrist.get(piece, side);
 }
 
 pub fn updateCastlingZobrist(self: *Self) void {
