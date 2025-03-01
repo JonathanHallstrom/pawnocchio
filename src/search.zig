@@ -9,6 +9,7 @@ const move_ordering = @import("move_ordering.zig");
 const Square = @import("square.zig").Square;
 const SEE = @import("see.zig");
 const nnue = @import("nnue.zig");
+const correction = @import("correction.zig");
 
 const testing = std.testing;
 
@@ -256,13 +257,14 @@ fn search(
     }
 
     const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
-    var tt_corrected_eval = static_eval;
+    const corrected_static_eval = correction.correct(board, static_eval);
+    var tt_corrected_eval = corrected_static_eval;
     if (!is_in_check) {
         if (tt_entry.zobrist == board.zobrist) {
             tt_corrected_eval = switch (tt_entry.tp) {
                 .exact => tt_entry.score,
-                .lower => @max(tt_entry.score, static_eval),
-                .upper => @min(tt_entry.score, static_eval),
+                .lower => @max(tt_entry.score, corrected_static_eval),
+                .upper => @min(tt_entry.score, corrected_static_eval),
             };
         }
     }
@@ -493,6 +495,8 @@ fn search(
     var score_type: ScoreType = .exact;
     if (best_score <= alpha_inp) score_type = .upper;
     if (best_score >= beta) score_type = .lower;
+
+    correction.update(board, corrected_static_eval, best_score);
 
     if (excluded == Move.null_move) {
         tt[getTTIndex(board.zobrist)] = TTEntry.init(
@@ -766,6 +770,7 @@ pub fn resetSoft() void {
 }
 
 pub fn resetHard() void {
+    correction.reset();
     move_ordering.reset();
     resetSoft();
     @memset(std.mem.sliceAsBytes(tt), 0);

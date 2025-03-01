@@ -50,6 +50,7 @@ en_passant_target: ?Square = null,
 halfmove_clock: u8 = 0,
 fullmove_clock: u64 = 1,
 zobrist: u64 = 0,
+pawn_zobrist: u64 = 0,
 
 white: PieceSet = .{},
 black: PieceSet = .{},
@@ -612,6 +613,7 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
         .halfmove = self.halfmove_clock,
         .captured = null,
         .zobrist = self.zobrist,
+        .pawn_zobrist = self.pawn_zobrist,
     };
     const us = self.getSidePtr(turn);
     const them = self.getSidePtr(turn.flipped());
@@ -892,10 +894,13 @@ pub fn undoMove(self: *Self, comptime turn: Side, inverse: MoveInverse) void {
     self.en_passant_target = inverse.en_passant;
     self.halfmove_clock = inverse.halfmove;
     self.zobrist = inverse.zobrist;
+    self.pawn_zobrist = inverse.pawn_zobrist;
 }
 
 pub fn updatePieceZobrist(self: *Self, comptime side: Side, piece: Piece) void {
     self.zobrist ^= Zobrist.get(piece, side);
+    const mask: u64 = @intFromBool(piece.tp == .pawn);
+    self.pawn_zobrist ^= -%mask & Zobrist.get(piece, side);
 }
 
 pub fn updateCastlingZobrist(self: *Self) void {

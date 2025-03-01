@@ -254,7 +254,7 @@ pub const Accumulator = struct {
 
         res += weights.output_biases[which_bucket];
 
-        return @intCast(std.math.clamp(@divTrunc(res * SCALE, QA * QB), -(eval.win_score - 1), eval.win_score - 1)); // res * SCALE / (QA * QB)
+        return eval.clampScore(@divTrunc(res * SCALE, QA * QB)); // res * SCALE / (QA * QB)
     }
 
     pub fn needsRefresh(board: *const Board, move: Move) bool {
