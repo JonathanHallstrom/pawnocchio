@@ -284,7 +284,7 @@ fn search(
     const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
     const corrected_static_eval = correction.correct(board, static_eval);
     var tt_corrected_eval = corrected_static_eval;
-    const improving = previous_evals.isImprovement(turn, corrected_static_eval);
+    const improving = if (is_in_check) false else previous_evals.isImprovement(turn, corrected_static_eval);
     const updated_evals = if (is_in_check) previous_evals else previous_evals.updateWith(turn, corrected_static_eval);
     if (!is_in_check) {
         if (tt_entry.zobrist == board.zobrist) {
