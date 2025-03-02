@@ -253,8 +253,10 @@ pub const Accumulator = struct {
         res = @divTrunc(res, QA); // res /= QA
 
         res += weights.output_biases[which_bucket];
+        const scaled = @divTrunc(res * SCALE, QA * QB);
 
-        return eval.clampScore(@divTrunc(res * SCALE, QA * QB)); // res * SCALE / (QA * QB)
+        const fifty_move_rule_scaled = @divTrunc(scaled * (200 - board.halfmove_clock), 200);
+        return eval.clampScore(fifty_move_rule_scaled);
     }
 
     pub fn needsRefresh(board: *const Board, move: Move) bool {
