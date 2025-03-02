@@ -73,10 +73,11 @@ fn quiesce(
     }
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
     const tt_entry = tt[getTTIndex(board.zobrist)];
+    const tt_hit = tt_entry.zobrist == board.zobrist;
     const static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
     const corrected_static_eval = if (masks.is_in_check) static_eval else correction.correct(board, static_eval);
     var tt_corrected_static_eval = static_eval;
-    if (!pv and tt_entry.zobrist == board.zobrist) {
+    if (!pv and tt_hit) {
         const tt_score = eval.scoreFromTt(tt_entry.score, 0);
         switch (tt_entry.tp) {
             .exact => if (!pv) return tt_score,
@@ -118,7 +119,7 @@ fn quiesce(
         if (!masks.is_in_check and
             !is_losing)
         {
-            if (static_eval + 100 < alpha and
+            if (tt_corrected_static_eval + 100 < alpha and
                 !SEE.scoreMove(board, move, 1))
                 continue;
             // if we're not in a pawn and king endgame and the capture is really bad, just skip it
@@ -171,7 +172,7 @@ fn quiesce(
             0,
             score_type,
             eval.scoreToTt(best_score, 0),
-            static_eval,
+            corrected_static_eval,
         );
     }
 
