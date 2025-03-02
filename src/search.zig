@@ -30,6 +30,30 @@ const max_search_depth = 255;
 
 const tunable_constants = @import("tuning.zig").tunable_constants;
 
+const EvalPair = struct {
+    white: ?i16 = null,
+    black: ?i16 = null,
+
+    pub fn updateWith(self: EvalPair, comptime turn: Side, val: i16) EvalPair {
+        if (turn == .white) {
+            return .{
+                .white = val,
+                .black = self.black,
+            };
+        } else {
+            return .{
+                .white = self.white,
+                .black = val,
+            };
+        }
+    }
+
+    pub fn isImprovement(self: EvalPair, comptime turn: Side, val: i16) bool {
+        const prev_opt = if (turn == .white) self.white else self.black;
+        return if (prev_opt) |prev| val > prev else false;
+    }
+};
+
 fn quiesce(
     comptime pv: bool,
     comptime turn: Side,
@@ -165,6 +189,7 @@ fn search(
     move_buf: []Move,
     previous_move: Move,
     excluded: Move,
+    previous_evals: EvalPair,
     hash_history: *std.ArrayList(u64),
 ) ?if (root) struct { i16, Move } else i16 {
     const result = struct {
@@ -259,6 +284,8 @@ fn search(
     const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
     const corrected_static_eval = correction.correct(board, static_eval);
     var tt_corrected_eval = corrected_static_eval;
+    const improving = previous_evals.isImprovement(turn, corrected_static_eval);
+    const updated_evals = previous_evals.updateWith(turn, corrected_static_eval);
     if (!is_in_check) {
         if (tt_entry.zobrist == board.zobrist) {
             tt_corrected_eval = switch (tt_entry.tp) {
@@ -287,7 +314,15 @@ fn search(
         // razoring
         const razoring_margin: i32 = 200;
         if (depth <= 3 and tt_corrected_eval + razoring_margin * depth <= alpha) {
-            const razor_score = quiesce(pv, turn, board, eval_state, alpha, beta, move_buf[move_count..]);
+            const razor_score = quiesce(
+                pv,
+                turn,
+                board,
+                eval_state,
+                alpha,
+                beta,
+                move_buf[move_count..],
+            );
             if (razor_score <= alpha) {
                 return razor_score;
             }
@@ -315,6 +350,7 @@ fn search(
                 move_buf[move_count..],
                 Move.null_move,
                 Move.null_move,
+                previous_evals,
                 hash_history,
             ) orelse 0);
             _ = hash_history.pop();
@@ -334,6 +370,7 @@ fn search(
                     move_buf[move_count..],
                     previous_move,
                     Move.null_move,
+                    previous_evals,
                     hash_history,
                 ) orelse 0;
 
@@ -377,7 +414,22 @@ fn search(
             const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score -| depth * 2);
             const s_depth = (depth - 1) / 2;
 
-            const score: i16 = search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, ply, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0;
+            const score: i16 = search(
+                false,
+                turn,
+                pv,
+                board,
+                eval_state,
+                s_beta - 1,
+                s_beta,
+                ply,
+                s_depth,
+                move_buf[move_count..],
+                previous_move,
+                move,
+                previous_evals,
+                hash_history,
+            ) orelse 0;
             if (score < s_beta)
                 extension += 1;
             if (score < s_beta - 20 and !pv)
@@ -413,6 +465,7 @@ fn search(
                 move_buf[move_count..],
                 move,
                 Move.null_move,
+                updated_evals,
                 hash_history,
             ) orelse 0);
         } else if (!pv or num_searched > 0) {
@@ -429,6 +482,7 @@ fn search(
                 move_buf[move_count..],
                 move,
                 Move.null_move,
+                updated_evals,
                 hash_history,
             ) orelse 0);
         }
@@ -446,6 +500,7 @@ fn search(
                 move_buf[move_count..],
                 move,
                 Move.null_move,
+                updated_evals,
                 hash_history,
             ) orelse 0);
         }
@@ -476,7 +531,9 @@ fn search(
                 break;
             }
         }
-        if (!is_losing and move.isQuiet() and num_searched > @as(u16, depth) * depth and !pv) {
+
+        // lmp
+        if (!is_losing and move.isQuiet() and num_searched > (@as(u16, depth) * depth >> @intFromBool(!improving)) and !pv) {
             prune_quiets = true;
         }
         const node_count_after_search: u64 = if (root) nodes + qnodes else 0;
@@ -632,6 +689,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                         move_buf,
                         Move.null_move,
                         Move.null_move,
+                        .{},
                         hash_history,
                     ),
                 } orelse break;
@@ -671,6 +729,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     move_buf,
                     Move.null_move,
                     Move.null_move,
+                    .{},
                     hash_history,
                 ),
             } orelse break;
