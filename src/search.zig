@@ -76,7 +76,7 @@ fn quiesce(
     const tt_hit = tt_entry.zobrist == board.zobrist;
     const static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
     const corrected_static_eval = if (masks.is_in_check) static_eval else correction.correct(board, static_eval);
-    var tt_corrected_static_eval = static_eval;
+    var tt_corrected_static_eval = corrected_static_eval;
     if (!pv and tt_hit) {
         const tt_score = eval.scoreFromTt(tt_entry.score, 0);
         switch (tt_entry.tp) {
