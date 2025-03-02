@@ -333,7 +333,9 @@ fn search(
             tt_corrected_eval >= beta and
             not_pawn_or_king != 0)
         {
-            const reduction = 4 + depth / 5;
+            var reduction = 4 + depth / 5;
+            reduction += @intFromBool(improving);
+            reduction = @min(reduction, depth);
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
             hash_history.appendAssumeCapacity(board.zobrist);
