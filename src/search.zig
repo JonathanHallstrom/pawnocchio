@@ -72,32 +72,35 @@ fn quiesce(
         return 0;
     }
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
+    const is_in_check = masks.is_in_check;
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    var static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
+    const tt_hit = tt_entry.sameZobrist(board.zobrist);
+    const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
+    var tt_corrected_eval = static_eval;
     if (!pv and tt_entry.zobrist == board.zobrist) {
         const tt_score = eval.scoreFromTt(tt_entry.score, 0);
         switch (tt_entry.tp) {
             .exact => if (!pv) return tt_score,
             .lower => {
                 if (tt_score >= beta) return tt_score;
-                if (tt_score >= static_eval) static_eval = tt_score;
+                if (tt_score >= static_eval) tt_corrected_eval = tt_score;
             },
             .upper => {
                 if (tt_score <= alpha) return tt_score;
-                if (tt_score <= static_eval) static_eval = tt_score;
+                if (tt_score <= static_eval) tt_corrected_eval = tt_score;
             },
         }
     }
 
     if (move_count == 0) {
-        return static_eval;
+        return tt_corrected_eval;
     }
 
-    if (static_eval >= beta) return beta;
-    if (static_eval > alpha) alpha = static_eval;
+    if (tt_corrected_eval >= beta) return beta;
+    if (tt_corrected_eval > alpha) alpha = tt_corrected_eval;
 
     move_ordering.order(turn, board, tt_entry.move, Move.null_move, 0, move_buf[0..move_count]);
-    var best_score = static_eval;
+    var best_score = tt_corrected_eval;
     var best_move = Move.null_move;
     for (move_buf[0..move_count]) |move| {
         if (std.debug.runtime_safety) {
@@ -113,7 +116,7 @@ fn quiesce(
 
         const is_losing = best_score <= eval.mateIn(max_search_depth);
 
-        if (!masks.is_in_check and
+        if (!is_in_check and
             !is_losing)
         {
             if (static_eval + 100 < alpha and
