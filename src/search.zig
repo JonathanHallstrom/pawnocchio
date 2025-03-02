@@ -93,7 +93,7 @@ fn quiesce(
         return static_eval;
     }
 
-    if (static_eval >= beta) return beta;
+    if (static_eval >= beta) return static_eval;
     if (static_eval > alpha) alpha = static_eval;
 
     move_ordering.order(turn, board, tt_entry.move, Move.null_move, 0, move_buf[0..move_count]);
