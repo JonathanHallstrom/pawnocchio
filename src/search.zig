@@ -26,8 +26,6 @@ const checkmate_score = eval.checkmate_score;
 
 const shouldStopSearching = engine.shouldStopSearching;
 
-const max_search_depth = 255;
-
 const tunable_constants = @import("tuning.zig").tunable_constants;
 
 const EvalPair = struct {
@@ -111,7 +109,7 @@ fn quiesce(
             }
         }
 
-        const is_losing = best_score <= eval.mateIn(max_search_depth);
+        const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
 
         if (!masks.is_in_check and
             !is_losing)
@@ -146,7 +144,6 @@ fn quiesce(
 
         if (shutdown)
             break;
-
         if (score > best_score) {
             best_score = score;
             best_move = move;
@@ -257,7 +254,7 @@ fn search(
         }
     }
 
-    if (depth == 0) {
+    if (depth == 0 or depth == max_depth) {
         var score = quiesce(
             pv,
             turn,
@@ -301,7 +298,7 @@ fn search(
     const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
     if (!pv and
         !is_in_check and
-        beta >= eval.mateIn(max_search_depth) and
+        beta >= eval.mateIn(MAX_SEARCH_DEPTH) and
         excluded == Move.null_move)
     {
 
@@ -392,7 +389,7 @@ fn search(
         if (move == excluded) {
             continue;
         }
-        const is_losing = best_score <= eval.mateIn(max_search_depth);
+        const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
         if (prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
         const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
@@ -667,6 +664,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     const eval_state = EvalState.init(&board);
     var last_score: i16 = 0;
     for (0..search_params.maxDepth()) |depth| {
+        max_depth = @intCast(@min(MAX_SEARCH_DEPTH, 2 * depth));
         if (depth != 0) {
             var fail_lows: usize = 0;
             var fail_highs: usize = 0;
@@ -832,6 +830,7 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
+    max_depth = MAX_SEARCH_DEPTH;
     @memset(std.mem.asBytes(&root_node_counts), 0);
     @memset(&repetition_table, 0);
 }
@@ -843,8 +842,8 @@ pub fn resetHard() void {
     @memset(std.mem.sliceAsBytes(tt), 0);
 }
 
+const MAX_SEARCH_DEPTH = 255;
 var root_node_counts: [64][64]u64 = undefined;
-var repetition_check_fast: u64 = 0;
 var repetition_table: [8192]u8 = undefined;
 var pv_moves: [256]Move = undefined;
 var num_pv_moves: usize = 0;
@@ -854,6 +853,7 @@ var qnodes: u64 = 0;
 var timer: std.time.Timer = undefined;
 var shutdown = false;
 var hard_time: u64 = 0;
+var max_depth: u8 = MAX_SEARCH_DEPTH;
 var tt_hits: usize = 0;
 var tt_collisions: usize = 0;
 fn errored() bool {
