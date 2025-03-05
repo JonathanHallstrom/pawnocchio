@@ -154,17 +154,17 @@ pub const Move = enum(u16) {
         return options[@intFromEnum(self.getFlag())];
     }
 
-    pub fn getEnPassantPawn(self: Self, comptime turn: Side) Square {
+    pub fn getEnPassantPawn(self: Self, turn: Side) Square {
         assert(self.isEnPassant());
-        return self.getTo().move(if (turn == .white) -1 else 1, 0);
+        return self.getTo().move(@as(i8, if (turn == .white) -1 else 1), 0);
     }
 
-    pub fn getCastlingKingDest(self: Self, comptime turn: Side) Square {
+    pub fn getCastlingKingDest(self: Self, turn: Side) Square {
         assert(self.isCastlingMove());
         return if (self.getFlag() == .castle_kingside) (if (turn == .white) Square.g1 else Square.g8) else (if (turn == .white) Square.c1 else Square.c8);
     }
 
-    pub fn getCastlingRookDest(self: Self, comptime turn: Side) Square {
+    pub fn getCastlingRookDest(self: Self, turn: Side) Square {
         assert(self.isCastlingMove());
         return if (self.getFlag() == .castle_kingside) (if (turn == .white) Square.f1 else Square.f8) else (if (turn == .white) Square.d1 else Square.d8);
     }

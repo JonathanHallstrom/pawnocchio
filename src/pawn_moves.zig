@@ -158,6 +158,8 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
             }
         }
     }
+
+    // TODO: THIS IS A BUG BUT IT DOESNT PASS NON-REGR
     if (pinned_pawns != 0 and !captures_only) {
         if (!quiets_only) {
             const non_promoting_pawns_that_can_capture_left = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, 1);
@@ -269,7 +271,7 @@ pub fn countPawnMoves(comptime turn: Side, comptime captures_only: bool, comptim
     return getPawnMovesImpl(turn, captures_only, quiets_only, true, board, &.{}, check_mask, pinned_by_bishop_mask, pinned_by_rook_mask);
 }
 
-test "failing" {}   
+test "failing" {}
 
 // manually giving the pin and check masks, as thats not whats being tested here
 test "pawn moves" {
