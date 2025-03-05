@@ -19,11 +19,7 @@ pub const knight_moves_arr: [64]u64 = blk: {
 };
 
 fn getKnightMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, comptime count_only: bool, board: Board, move_buf: anytype, check_mask: u64, pin_mask: u64) usize {
-    const MoveBufT = @TypeOf(move_buf);
-    const MoveT: type = switch (@typeInfo(MoveBufT)) {
-        .Pointer => std.meta.Elem(@TypeOf(move_buf)),
-        else => undefined,
-    };
+    const MoveT: type = std.meta.Elem(@TypeOf(move_buf));
 
     const us = board.getSide(turn);
     const them = board.getSide(turn.flipped());
@@ -73,7 +69,7 @@ pub fn countKnightMoves(comptime turn: Side, comptime captures_only: bool, compt
         quiets_only,
         true,
         board,
-        &.{},
+        @as([]Move, &.{}),
         check_mask,
         pin_mask,
     );

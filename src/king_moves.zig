@@ -24,11 +24,7 @@ pub const king_moves_arr = blk: {
 };
 
 fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, comptime count_only: bool, board: Board, move_buf: anytype, pinned_by_rook_mask: u64) usize {
-    const MoveBufT = @TypeOf(move_buf);
-    const MoveT: type = switch (@typeInfo(MoveBufT)) {
-        .Pointer => std.meta.Elem(@TypeOf(move_buf)),
-        else => undefined,
-    };
+    const MoveT: type = std.meta.Elem(@TypeOf(move_buf));
     const us = board.getSide(turn);
     const them = board.getSide(turn.flipped());
     const king = us.getBoard(.king);
@@ -129,12 +125,28 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
     return move_count;
 }
 
-pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: []Move, pinned_by_rook_mask: u64) usize {
-    return getKingMovesImpl(turn, captures_only, quiets_only, false, board, move_buf, pinned_by_rook_mask);
+pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: anytype, pinned_by_rook_mask: u64) usize {
+    return getKingMovesImpl(
+        turn,
+        captures_only,
+        quiets_only,
+        false,
+        board,
+        move_buf,
+        pinned_by_rook_mask,
+    );
 }
 
 pub fn countKingMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, pinned_by_rook_mask: u64) usize {
-    return getKingMovesImpl(turn, captures_only, quiets_only, true, board, &.{}, pinned_by_rook_mask);
+    return getKingMovesImpl(
+        turn,
+        captures_only,
+        quiets_only,
+        true,
+        board,
+        @as([]Move, &.{}),
+        pinned_by_rook_mask,
+    );
 }
 
 test "king moves" {

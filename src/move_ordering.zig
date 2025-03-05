@@ -7,7 +7,7 @@ const Side = @import("side.zig").Side;
 const PieceType = @import("piece_type.zig").PieceType;
 const SEE = @import("see.zig");
 
-fn mvvLvaValue(board: *const Board, move: Move) u8 {
+pub fn mvvLvaValue(board: *const Board, move: Move) u8 {
     if (!move.isCapture()) return 0;
     const captured_type: PieceType = if (move.isEnPassant()) .pawn else board.mailbox[move.getTo().toInt()].?;
     const moved_type = board.mailbox[move.getFrom().toInt()].?;

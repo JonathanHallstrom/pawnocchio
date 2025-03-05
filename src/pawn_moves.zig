@@ -11,11 +11,7 @@ const assert = std.debug.assert;
 const magics = @import("magics.zig");
 
 pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, comptime count_only: bool, board: Board, move_buf: anytype, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
-    const MoveBufT = @TypeOf(move_buf);
-    const MoveT: type = switch (@typeInfo(MoveBufT)) {
-        .Pointer => std.meta.Elem(@TypeOf(move_buf)),
-        else => undefined,
-    };
+    const MoveT: type = std.meta.Elem(@TypeOf(move_buf));
 
     const us = board.getSide(turn);
     const them = board.getSide(turn.flipped());
@@ -264,11 +260,31 @@ pub fn hasEP(board: Board) bool {
 }
 
 pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: anytype, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
-    return getPawnMovesImpl(turn, captures_only, quiets_only, false, board, move_buf, check_mask, pinned_by_bishop_mask, pinned_by_rook_mask);
+    return getPawnMovesImpl(
+        turn,
+        captures_only,
+        quiets_only,
+        false,
+        board,
+        move_buf,
+        check_mask,
+        pinned_by_bishop_mask,
+        pinned_by_rook_mask,
+    );
 }
 
 pub fn countPawnMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
-    return getPawnMovesImpl(turn, captures_only, quiets_only, true, board, &.{}, check_mask, pinned_by_bishop_mask, pinned_by_rook_mask);
+    return getPawnMovesImpl(
+        turn,
+        captures_only,
+        quiets_only,
+        true,
+        board,
+        @as([]Move, &.{}),
+        check_mask,
+        pinned_by_bishop_mask,
+        pinned_by_rook_mask,
+    );
 }
 
 test "failing" {}

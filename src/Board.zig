@@ -787,6 +787,38 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
     return inverse;
 }
 
+pub fn isPseudoLegal(self: Self, move: Move) bool {
+    const us_bb = self.getSide(self.turn).all;
+    if (us_bb & move.getFrom().toBitboard() == 0 or // not moving one of our pieces
+        ((us_bb & move.getTo().toBitboard() != 0) != move.isCastlingMove())) // capturing our own piece is expected when castling, otherwise not
+    {
+        return false;
+    }
+
+    const piece_on_from_square = self.mailbox[move.getFrom().toInt()].?;
+    const piece_on_to_square = self.mailbox[move.getTo().toInt()];
+
+    // make sure the target square is empty for non capture
+    if ((move.isCapture() and !move.isEnPassant()) == (piece_on_to_square != null)) {
+        return false;
+    }
+
+    if (move.isCastlingMove()) {
+        return piece_on_from_square == .king and piece_on_to_square == .rook;
+    }
+    const d_rank = @abs(@as(i8, move.getFrom().getRank().toInt()) - move.getTo().getRank().toInt());
+    const d_file = @abs(@as(i8, move.getFrom().getFile().toInt()) - move.getTo().getFile().toInt());
+
+    switch (piece_on_from_square) {
+        .pawn => return d_rank <= 2 and d_file == @intFromBool(move.isCapture()),
+        .knight => return @min(d_rank, d_file) == 1 and @max(d_rank, d_file) == 2,
+        .bishop => return d_rank == d_file,
+        .rook => return @min(d_rank, d_file) == 0,
+        .queen => return @min(d_rank, d_file) == 0 or (@min(d_rank, d_file) == 1 and @max(d_rank, d_file) == 2),
+        .king => return @max(d_rank, d_file) == 1,
+    }
+}
+
 pub fn playNullMove(self: *Self) ?Square {
     self.fullmove_clock += @intFromBool(self.turn == .black);
     self.turn = self.turn.flipped();
