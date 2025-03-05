@@ -9,6 +9,7 @@ const move_ordering = @import("move_ordering.zig");
 const Square = @import("square.zig").Square;
 const SEE = @import("see.zig");
 const nnue = @import("nnue.zig");
+const correction = @import("correction.zig");
 
 const testing = std.testing;
 
@@ -25,9 +26,31 @@ const checkmate_score = eval.checkmate_score;
 
 const shouldStopSearching = engine.shouldStopSearching;
 
-const max_search_depth = 255;
-
 const tunable_constants = @import("tuning.zig").tunable_constants;
+
+const EvalPair = struct {
+    white: ?i16 = null,
+    black: ?i16 = null,
+
+    pub fn updateWith(self: EvalPair, comptime turn: Side, val: i16) EvalPair {
+        if (turn == .white) {
+            return .{
+                .white = val,
+                .black = self.black,
+            };
+        } else {
+            return .{
+                .white = self.white,
+                .black = val,
+            };
+        }
+    }
+
+    pub fn isImprovement(self: EvalPair, comptime turn: Side, val: i16) bool {
+        const prev_opt = if (turn == .white) self.white else self.black;
+        return if (prev_opt) |prev| val > prev else false;
+    }
+};
 
 fn quiesce(
     comptime pv: bool,
@@ -86,7 +109,7 @@ fn quiesce(
             }
         }
 
-        const is_losing = best_score <= eval.mateIn(max_search_depth);
+        const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
 
         if (!masks.is_in_check and
             !is_losing)
@@ -101,6 +124,7 @@ fn quiesce(
         }
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
+        @prefetch(&tt[getTTIndex(board.zobrist)], .{});
         defer board.undoMove(turn, inv);
         qnodes += 1;
 
@@ -120,7 +144,6 @@ fn quiesce(
 
         if (shutdown)
             break;
-
         if (score > best_score) {
             best_score = score;
             best_move = move;
@@ -137,13 +160,14 @@ fn quiesce(
     if (best_score >= beta) score_type = .lower;
 
     if (tt_entry.depth == 0) {
-        tt[getTTIndex(board.zobrist)] = TTEntry{
-            .zobrist = board.zobrist,
-            .move = best_move,
-            .depth = 0,
-            .tp = score_type,
-            .score = eval.scoreToTt(best_score, 0),
-        };
+        tt[getTTIndex(board.zobrist)] = TTEntry.init(
+            board.zobrist,
+            best_move,
+            0,
+            score_type,
+            eval.scoreToTt(best_score, 0),
+            static_eval,
+        );
     }
 
     return best_score;
@@ -162,6 +186,7 @@ fn search(
     move_buf: []Move,
     previous_move: Move,
     excluded: Move,
+    previous_evals: EvalPair,
     hash_history: *std.ArrayList(u64),
 ) ?if (root) struct { i16, Move } else i16 {
     const result = struct {
@@ -179,7 +204,8 @@ fn search(
     // assert that root implies pv
     comptime assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    if (!pv and tt_entry.zobrist == board.zobrist and tt_entry.depth >= depth and excluded == Move.null_move) {
+    const tt_hit = tt_entry.sameZobrist(board.zobrist);
+    if (!pv and tt_hit and tt_entry.depth >= depth and excluded == Move.null_move) {
         const tt_score = eval.scoreFromTt(tt_entry.score, ply);
         switch (tt_entry.tp) {
             .exact => return result(tt_score, tt_entry.move),
@@ -228,7 +254,7 @@ fn search(
         }
     }
 
-    if (depth == 0) {
+    if (depth == 0 or depth == max_depth) {
         var score = quiesce(
             pv,
             turn,
@@ -252,14 +278,17 @@ fn search(
         return result(0, move_buf[0]);
     }
 
-    const static_eval = if (is_in_check) 0 else evaluate(board, eval_state);
-    var tt_corrected_eval = static_eval;
+    const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
+    const corrected_static_eval = correction.correct(board, static_eval);
+    var tt_corrected_eval = corrected_static_eval;
+    const improving = if (is_in_check) false else previous_evals.isImprovement(turn, corrected_static_eval);
+    const updated_evals = if (is_in_check) previous_evals else previous_evals.updateWith(turn, corrected_static_eval);
     if (!is_in_check) {
         if (tt_entry.zobrist == board.zobrist) {
             tt_corrected_eval = switch (tt_entry.tp) {
                 .exact => tt_entry.score,
-                .lower => @max(tt_entry.score, static_eval),
-                .upper => @min(tt_entry.score, static_eval),
+                .lower => @max(tt_entry.score, corrected_static_eval),
+                .upper => @min(tt_entry.score, corrected_static_eval),
             };
         }
     }
@@ -269,7 +298,7 @@ fn search(
     const not_pawn_or_king = us.all & ~(us.getBoard(.pawn) | us.getBoard(.king));
     if (!pv and
         !is_in_check and
-        beta >= eval.mateIn(max_search_depth) and
+        beta >= eval.mateIn(MAX_SEARCH_DEPTH) and
         excluded == Move.null_move)
     {
 
@@ -282,7 +311,15 @@ fn search(
         // razoring
         const razoring_margin: i32 = 200;
         if (depth <= 3 and tt_corrected_eval + razoring_margin * depth <= alpha) {
-            const razor_score = quiesce(pv, turn, board, eval_state, alpha, beta, move_buf[move_count..]);
+            const razor_score = quiesce(
+                pv,
+                turn,
+                board,
+                eval_state,
+                alpha,
+                beta,
+                move_buf[move_count..],
+            );
             if (razor_score <= alpha) {
                 return razor_score;
             }
@@ -310,6 +347,7 @@ fn search(
                 move_buf[move_count..],
                 Move.null_move,
                 Move.null_move,
+                previous_evals,
                 hash_history,
             ) orelse 0);
             _ = hash_history.pop();
@@ -329,6 +367,7 @@ fn search(
                     move_buf[move_count..],
                     previous_move,
                     Move.null_move,
+                    previous_evals,
                     hash_history,
                 ) orelse 0;
 
@@ -346,10 +385,11 @@ fn search(
     var num_searched: u8 = 0;
     var prune_quiets = false;
     for (move_buf[0..move_count], 0..) |move, i| {
+        const node_count_before_search: u64 = if (root) nodes + qnodes else 0;
         if (move == excluded) {
             continue;
         }
-        const is_losing = best_score <= eval.mateIn(max_search_depth);
+        const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
         if (prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
         const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
@@ -368,10 +408,25 @@ fn search(
             tt_entry.depth + singular_ttentry_depth_margin >= depth and
             tt_entry.tp != .upper)
         {
-            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score - depth * 2);
+            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score -| depth * 2);
             const s_depth = (depth - 1) / 2;
 
-            const score: i16 = search(false, turn, pv, board, eval_state, s_beta - 1, s_beta, ply, s_depth, move_buf[move_count..], previous_move, move, hash_history) orelse 0;
+            const score: i16 = search(
+                false,
+                turn,
+                pv,
+                board,
+                eval_state,
+                s_beta - 1,
+                s_beta,
+                ply,
+                s_depth,
+                move_buf[move_count..],
+                previous_move,
+                move,
+                previous_evals,
+                hash_history,
+            ) orelse 0;
             if (score < s_beta)
                 extension += 1;
             if (score < s_beta - 20 and !pv)
@@ -380,6 +435,7 @@ fn search(
 
         const updated_eval_state = eval_state.updateWith(turn, board, move);
         const inv = board.playMove(turn, move);
+        @prefetch(&tt[getTTIndex(board.zobrist)], .{});
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
 
@@ -406,6 +462,7 @@ fn search(
                 move_buf[move_count..],
                 move,
                 Move.null_move,
+                updated_evals,
                 hash_history,
             ) orelse 0);
         } else if (!pv or num_searched > 0) {
@@ -422,6 +479,7 @@ fn search(
                 move_buf[move_count..],
                 move,
                 Move.null_move,
+                updated_evals,
                 hash_history,
             ) orelse 0);
         }
@@ -439,6 +497,7 @@ fn search(
                 move_buf[move_count..],
                 move,
                 Move.null_move,
+                updated_evals,
                 hash_history,
             ) orelse 0);
         }
@@ -469,8 +528,14 @@ fn search(
                 break;
             }
         }
-        if (!is_losing and move.isQuiet() and num_searched > @as(u16, depth) * depth and !pv) {
+
+        // lmp
+        if (!is_losing and move.isQuiet() and num_searched > (@as(u16, depth) * depth >> @intFromBool(!improving)) and !pv) {
             prune_quiets = true;
+        }
+        const node_count_after_search: u64 = if (root) nodes + qnodes else 0;
+        if (root) {
+            root_node_counts[move.getFrom().toInt()][move.getTo().toInt()] += node_count_after_search - node_count_before_search;
         }
     }
 
@@ -486,19 +551,31 @@ fn search(
     if (best_score >= beta) score_type = .lower;
 
     if (excluded == Move.null_move) {
-        tt[getTTIndex(board.zobrist)] = TTEntry{
-            .zobrist = board.zobrist,
-            .move = best_move,
-            .depth = depth,
-            .tp = score_type,
-            .score = eval.scoreToTt(best_score, ply),
-        };
+        if (!is_in_check and
+            best_move.isQuiet() and
+            (score_type == .exact or
+                (score_type == .lower and best_score > static_eval) or
+                (score_type == .upper and best_score < static_eval)))
+        {
+            correction.update(board, corrected_static_eval, best_score, depth);
+        }
+    }
+
+    if (excluded == Move.null_move) {
+        tt[getTTIndex(board.zobrist)] = TTEntry.init(
+            board.zobrist,
+            best_move,
+            depth,
+            score_type,
+            eval.scoreToTt(best_score, ply),
+            static_eval,
+        );
     }
 
     return result(best_score, best_move);
 }
 
-fn collectPv(board: *Board, cur_depth: u8) void {
+fn collectPv(board: *Board, ply: u8, hash_history: *std.ArrayList(u64)) void {
     const entry = tt[getTTIndex(board.zobrist)];
     if (entry.tp != .exact or entry.zobrist != board.zobrist) {
         return;
@@ -507,9 +584,15 @@ fn collectPv(board: *Board, cur_depth: u8) void {
         var move_buf: [256]Move = undefined;
         var already_seen = std.StaticBitSet(8192).initEmpty();
     };
-    if (cur_depth == 0) globals.already_seen = std.StaticBitSet(8192).initEmpty();
+    if (ply == 0) globals.already_seen = std.StaticBitSet(8192).initEmpty();
     if (globals.already_seen.isSet(@intCast(board.zobrist % 8192))) return;
+    if (ply == 0) {
+        for (hash_history.items) |item| {
+            globals.already_seen.set(@intCast(item % 8192));
+        }
+    }
     globals.already_seen.set(@intCast(board.zobrist % 8192));
+
     var buf: []Move = &globals.move_buf;
 
     switch (board.turn) {
@@ -520,10 +603,11 @@ fn collectPv(board: *Board, cur_depth: u8) void {
                 tt_move_valid = tt_move_valid or move == entry.move;
             }
             if (!tt_move_valid) return;
-            pv_moves[cur_depth] = entry.move;
-            num_pv_moves = cur_depth;
+            if (board.halfmove_clock >= 100) return;
+            pv_moves[ply] = entry.move;
+            num_pv_moves = ply;
             const inv = board.playMove(t, entry.move);
-            collectPv(board, cur_depth + 1);
+            collectPv(board, ply + 1, hash_history);
             board.undoMove(t, inv);
         },
     }
@@ -580,12 +664,13 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     const eval_state = EvalState.init(&board);
     var last_score: i16 = 0;
     for (0..search_params.maxDepth()) |depth| {
+        max_depth = @intCast(@min(MAX_SEARCH_DEPTH, 2 * depth));
         if (depth != 0) {
             var fail_lows: usize = 0;
             var fail_highs: usize = 0;
             var window: i16 = @intCast(std.math.clamp(@abs(@as(i32, score) - last_score), 15, 100));
-            var alpha: i16 = score - window;
-            var beta: i16 = score + window;
+            var alpha: i16 = score -| window;
+            var beta: i16 = score +| window;
             var aspiration_score, var aspiration_move = .{ score, move };
             while (true) {
                 aspiration_score, aspiration_move = switch (board.turn) {
@@ -602,6 +687,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                         move_buf,
                         Move.null_move,
                         Move.null_move,
+                        .{},
                         hash_history,
                     ),
                 } orelse break;
@@ -641,22 +727,38 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     move_buf,
                     Move.null_move,
                     Move.null_move,
+                    .{},
                     hash_history,
                 ),
             } orelse break;
         }
         last_score = score;
-        collectPv(&board_copy, 0);
+        collectPv(&board_copy, 0, hash_history);
         if (!silence_output and !shouldStopSearching()) {
             writeInfo(score, move, @intCast(depth), search_params.frc);
         }
         if (nodes + qnodes >= search_params.maxNodes()) {
             break;
         }
-        if (timer.read() >= search_params.softTime()) {
+        var total_nodes: u64 = 0;
+        for (root_node_counts) |counts| {
+            for (counts) |count| {
+                total_nodes += count;
+            }
+        }
+        total_nodes = @max(1, total_nodes);
+        const best_move_count = @max(1, root_node_counts[move.getFrom().toInt()][move.getTo().toInt()]);
+        const node_fraction = @as(f64, @floatFromInt(best_move_count)) / @as(f64, @floatFromInt(total_nodes));
+        const node_count_factor = 0.8 * (1.5 - node_fraction);
+        const adjusted_limit: u128 = @intFromFloat(@as(f64, @floatFromInt(search_params.softTime())) * node_count_factor);
+        // const adjusted_time: u64 = @intFromFloat(@as(f64, @floatFromInt(timer.read())) * node_count_factor);
+        if (timer.read() >= @min(search_params.hardTime(), adjusted_limit)) {
             break;
         }
-        if (eval.isMateScore(score)) break;
+        if (shouldStopSearching()) {
+            break;
+        }
+        // if (eval.isMateScore(score)) break;
     }
     if (errored()) {
         std.debug.panic("error encountered, writing logs!\n", .{});
@@ -677,7 +779,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     };
 }
 
-const ScoreType = enum {
+const ScoreType = enum(u2) {
     lower,
     upper,
     exact,
@@ -689,8 +791,27 @@ pub const TTEntry = struct {
     depth: u8,
     tp: ScoreType,
     score: i16,
+    static_eval: i16,
+
+    pub fn init(zobrist_: u64, move_: Move, depth_: anytype, tp_: ScoreType, score_: i16, static_eval_: i16) TTEntry {
+        return .{
+            .zobrist = @intCast(zobrist_),
+            .move = move_,
+            .depth = depth_,
+            .tp = tp_,
+            .score = score_,
+            .static_eval = static_eval_,
+        };
+    }
+
+    pub fn sameZobrist(self: TTEntry, other: u64) bool {
+        return self.zobrist == other;
+    }
 };
 
+comptime {
+    assert(@sizeOf(TTEntry) == 16);
+}
 pub fn setTTSize(mb: usize) !void {
     if (@as(u128, mb) << 20 > std.math.maxInt(usize)) return error.TableTooBig;
     tt = try std.heap.page_allocator.realloc(tt, (mb << 20) / @sizeOf(TTEntry));
@@ -709,16 +830,20 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
+    max_depth = MAX_SEARCH_DEPTH;
+    @memset(std.mem.asBytes(&root_node_counts), 0);
     @memset(&repetition_table, 0);
 }
 
 pub fn resetHard() void {
+    correction.reset();
     move_ordering.reset();
     resetSoft();
     @memset(std.mem.sliceAsBytes(tt), 0);
 }
 
-var repetition_check_fast: u64 = 0;
+const MAX_SEARCH_DEPTH = 255;
+var root_node_counts: [64][64]u64 = undefined;
 var repetition_table: [8192]u8 = undefined;
 var pv_moves: [256]Move = undefined;
 var num_pv_moves: usize = 0;
@@ -728,6 +853,7 @@ var qnodes: u64 = 0;
 var timer: std.time.Timer = undefined;
 var shutdown = false;
 var hard_time: u64 = 0;
+var max_depth: u8 = MAX_SEARCH_DEPTH;
 var tt_hits: usize = 0;
 var tt_collisions: usize = 0;
 fn errored() bool {
