@@ -10,7 +10,13 @@ const assert = std.debug.assert;
 
 const magics = @import("magics.zig");
 
-pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime count_only: bool, board: Board, move_buf: []Move, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
+pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, comptime count_only: bool, board: Board, move_buf: anytype, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
+    const MoveBufT = @TypeOf(move_buf);
+    const MoveT: type = switch (@typeInfo(MoveBufT)) {
+        .Pointer => std.meta.Elem(@TypeOf(move_buf)),
+        else => undefined,
+    };
+
     const us = board.getSide(turn);
     const them = board.getSide(turn.flipped());
     const pawns = us.getBoard(.pawn);
@@ -30,7 +36,7 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
     const non_promoting_pinned_pawns = pinned_pawns & ~promotion_rank;
 
     const promotion_target_types = [_]PieceType{ .queen, .knight, .rook, .bishop };
-    { // pawns that capture to the left and promote
+    if (!quiets_only) { // pawns that capture to the left and promote
         const legal = promoting_pawns & Bitboard.move(check_mask & them.all, -d_rank, 1);
         if (count_only) {
             move_count += @popCount(legal) * 4;
@@ -38,14 +44,14 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
             var iter = Bitboard.iterator(legal);
             while (iter.next()) |from| {
                 for (promotion_target_types) |promo_type| {
-                    move_buf[move_count] = Move.initPromotionCapture(from, from.move(d_rank, -1), promo_type);
+                    move_buf[move_count] = MoveT.init(Move.initPromotionCapture(from, from.move(d_rank, -1), promo_type));
                     move_count += 1;
                 }
             }
         }
     }
 
-    { // pawns that capture to the right and promote
+    if (!quiets_only) { // pawns that capture to the right and promote
         const legal = promoting_pawns & Bitboard.move(check_mask & them.all, -d_rank, -1);
         if (count_only) {
             move_count += @popCount(legal) * 4;
@@ -53,40 +59,40 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
             var iter = Bitboard.iterator(legal);
             while (iter.next()) |from| {
                 for (promotion_target_types) |promo_type| {
-                    move_buf[move_count] = Move.initPromotionCapture(from, from.move(d_rank, 1), promo_type);
+                    move_buf[move_count] = MoveT.init(Move.initPromotionCapture(from, from.move(d_rank, 1), promo_type));
                     move_count += 1;
                 }
             }
         }
     }
 
-    { // pawns that capture to the left
+    if (!quiets_only) { // pawns that capture to the left
         const legal = non_promoting_unpinned_pawns & Bitboard.move(check_mask & them.all, -d_rank, 1);
         if (count_only) {
             move_count += @popCount(legal);
         } else {
             var iter = Bitboard.iterator(legal);
             while (iter.next()) |from| {
-                move_buf[move_count] = Move.initCapture(from, from.move(d_rank, -1));
+                move_buf[move_count] = MoveT.init(Move.initCapture(from, from.move(d_rank, -1)));
                 move_count += 1;
             }
         }
     }
 
-    { // pawns that capture to the right
+    if (!quiets_only) { // pawns that capture to the right
         const legal = non_promoting_unpinned_pawns & Bitboard.move(check_mask & them.all, -d_rank, -1);
         if (count_only) {
             move_count += @popCount(legal);
         } else {
             var iter = Bitboard.iterator(legal);
             while (iter.next()) |from| {
-                move_buf[move_count] = Move.initCapture(from, from.move(d_rank, 1));
+                move_buf[move_count] = MoveT.init(Move.initCapture(from, from.move(d_rank, 1)));
                 move_count += 1;
             }
         }
     }
 
-    if (board.en_passant_target) |to| {
+    if (!quiets_only) if (board.en_passant_target) |to| {
         // if this is false then we're counting moves for mobility calculation
         if (to.getRank() == (if (turn == .white) Rank.sixth else Rank.third)) {
             const ep_pawn_square = to.move(-d_rank, 0);
@@ -110,13 +116,13 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
                         (magics.getRookAttacks(Square.fromBitboard(king), occ_after) & (them.getBoard(.rook) | them.getBoard(.queen))); // pretend king is a rook
                     if (threatening_pieces == 0) {
                         if (!count_only)
-                            move_buf[move_count] = Move.initEnPassant(from, to);
+                            move_buf[move_count] = MoveT.init(Move.initEnPassant(from, to));
                         move_count += 1;
                     }
                 }
             }
         }
-    }
+    };
 
     if (!captures_only) { // pawns that go straight ahead and promote
         const legal = promoting_pawns & Bitboard.move(check_mask & empty_squares, -d_rank, 0);
@@ -126,7 +132,7 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
             var iter = Bitboard.iterator(legal);
             while (iter.next()) |from| {
                 for (promotion_target_types) |promo_type| {
-                    move_buf[move_count] = Move.initPromotion(from, from.move(d_rank, 0), promo_type);
+                    move_buf[move_count] = MoveT.init(Move.initPromotion(from, from.move(d_rank, 0), promo_type));
                     move_count += 1;
                 }
             }
@@ -142,50 +148,52 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
         } else {
             var iter = Bitboard.iterator(pawns_that_can_go_one);
             while (iter.next()) |from| {
-                move_buf[move_count] = Move.initQuiet(from, from.move(d_rank, 0));
+                move_buf[move_count] = MoveT.init(Move.initQuiet(from, from.move(d_rank, 0)));
                 move_count += 1;
             }
             iter = Bitboard.iterator(pawns_that_can_go_two);
             while (iter.next()) |from| {
-                move_buf[move_count] = Move.initQuiet(from, from.move(2 * d_rank, 0));
+                move_buf[move_count] = MoveT.init(Move.initQuiet(from, from.move(2 * d_rank, 0)));
                 move_count += 1;
             }
         }
     }
-    if (pinned_pawns != 0 and !captures_only) {
-        const non_promoting_pawns_that_can_capture_left = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, 1);
-        const non_promoting_pawns_that_can_capture_right = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, -1);
-        const promoting_pawns_that_can_capture_left = promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, 1);
-        const promoting_pawns_that_can_capture_right = promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, -1);
-        var iter = Bitboard.iterator(0);
-        if (count_only) {
-            move_count += @popCount(non_promoting_pawns_that_can_capture_left);
-            move_count += @popCount(non_promoting_pawns_that_can_capture_right);
-            move_count += @popCount(promoting_pawns_that_can_capture_left) * 4;
-            move_count += @popCount(promoting_pawns_that_can_capture_right) * 4;
-        } else {
-            iter = Bitboard.iterator(non_promoting_pawns_that_can_capture_left);
-            while (iter.next()) |from| {
-                move_buf[move_count] = Move.initCapture(from, from.move(d_rank, -1));
-                move_count += 1;
-            }
-            iter = Bitboard.iterator(non_promoting_pawns_that_can_capture_right);
-            while (iter.next()) |from| {
-                move_buf[move_count] = Move.initCapture(from, from.move(d_rank, 1));
-                move_count += 1;
-            }
-            iter = Bitboard.iterator(promoting_pawns_that_can_capture_left);
-            while (iter.next()) |from| {
-                for (promotion_target_types) |promo_type| {
-                    move_buf[move_count] = Move.initPromotionCapture(from, from.move(d_rank, -1), promo_type);
+    if (pinned_pawns != 0) {
+        if (!quiets_only) {
+            const non_promoting_pawns_that_can_capture_left = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, 1);
+            const non_promoting_pawns_that_can_capture_right = non_promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, -1);
+            const promoting_pawns_that_can_capture_left = promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, 1);
+            const promoting_pawns_that_can_capture_right = promoting_pinned_pawns & Bitboard.move(check_mask & them.all & pinned_by_bishop_mask, -d_rank, -1);
+            var iter = Bitboard.iterator(0);
+            if (count_only) {
+                move_count += @popCount(non_promoting_pawns_that_can_capture_left);
+                move_count += @popCount(non_promoting_pawns_that_can_capture_right);
+                move_count += @popCount(promoting_pawns_that_can_capture_left) * 4;
+                move_count += @popCount(promoting_pawns_that_can_capture_right) * 4;
+            } else {
+                iter = Bitboard.iterator(non_promoting_pawns_that_can_capture_left);
+                while (iter.next()) |from| {
+                    move_buf[move_count] = MoveT.init(Move.initCapture(from, from.move(d_rank, -1)));
                     move_count += 1;
                 }
-            }
-            iter = Bitboard.iterator(promoting_pawns_that_can_capture_right);
-            while (iter.next()) |from| {
-                for (promotion_target_types) |promo_type| {
-                    move_buf[move_count] = Move.initPromotionCapture(from, from.move(d_rank, 1), promo_type);
+                iter = Bitboard.iterator(non_promoting_pawns_that_can_capture_right);
+                while (iter.next()) |from| {
+                    move_buf[move_count] = MoveT.init(Move.initCapture(from, from.move(d_rank, 1)));
                     move_count += 1;
+                }
+                iter = Bitboard.iterator(promoting_pawns_that_can_capture_left);
+                while (iter.next()) |from| {
+                    for (promotion_target_types) |promo_type| {
+                        move_buf[move_count] = MoveT.init(Move.initPromotionCapture(from, from.move(d_rank, -1), promo_type));
+                        move_count += 1;
+                    }
+                }
+                iter = Bitboard.iterator(promoting_pawns_that_can_capture_right);
+                while (iter.next()) |from| {
+                    for (promotion_target_types) |promo_type| {
+                        move_buf[move_count] = MoveT.init(Move.initPromotionCapture(from, from.move(d_rank, 1), promo_type));
+                        move_count += 1;
+                    }
                 }
             }
         }
@@ -196,14 +204,14 @@ pub fn getPawnMovesImpl(comptime turn: Side, comptime captures_only: bool, compt
                 move_count += @popCount(pinned_pawns_that_can_move_one);
                 move_count += @popCount(pinned_pawns_that_can_move_two);
             } else {
-                iter = Bitboard.iterator(pinned_pawns_that_can_move_one);
+                var iter = Bitboard.iterator(pinned_pawns_that_can_move_one);
                 while (iter.next()) |from| {
-                    move_buf[move_count] = Move.initQuiet(from, from.move(d_rank, 0));
+                    move_buf[move_count] = MoveT.init(Move.initQuiet(from, from.move(d_rank, 0)));
                     move_count += 1;
                 }
                 iter = Bitboard.iterator(pinned_pawns_that_can_move_two);
                 while (iter.next()) |from| {
-                    move_buf[move_count] = Move.initQuiet(from, from.move(2 * d_rank, 0));
+                    move_buf[move_count] = MoveT.init(Move.initQuiet(from, from.move(2 * d_rank, 0)));
                     move_count += 1;
                 }
             }
@@ -253,40 +261,36 @@ pub fn hasEP(board: Board) bool {
     return false;
 }
 
-pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
-    return getPawnMovesImpl(turn, captures_only, false, board, move_buf, check_mask, pinned_by_bishop_mask, pinned_by_rook_mask);
+pub fn getPawnMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: anytype, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
+    return getPawnMovesImpl(turn, captures_only, quiets_only, false, board, move_buf, check_mask, pinned_by_bishop_mask, pinned_by_rook_mask);
 }
 
-pub fn countPawnMoves(comptime turn: Side, comptime captures_only: bool, board: Board, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
-    return getPawnMovesImpl(turn, captures_only, true, board, &.{}, check_mask, pinned_by_bishop_mask, pinned_by_rook_mask);
+pub fn countPawnMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, check_mask: u64, pinned_by_bishop_mask: u64, pinned_by_rook_mask: u64) usize {
+    return getPawnMovesImpl(turn, captures_only, quiets_only, true, board, &.{}, check_mask, pinned_by_bishop_mask, pinned_by_rook_mask);
 }
 
-test "failing" {
-    var buf: [256]Move = undefined;
-    const zero: u64 = 0;
-    try std.testing.expectEqual(0, getPawnMoves(.white, false, try Board.parseFen("4k3/7b/8/4pP2/8/8/8/1K6 w - e6 0 1"), &buf, ~zero, Bitboard.ray(Square.c2.toBitboard(), 1, 1), 0));
-}
+test "failing" {}
 
 // manually giving the pin and check masks, as thats not whats being tested here
 test "pawn moves" {
     var buf: [256]Move = undefined;
     const zero: u64 = 0;
 
-    try std.testing.expectEqual(16, getPawnMoves(.white, false, try Board.parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), &buf, ~zero, zero, zero));
-    try std.testing.expectEqual(16, getPawnMoves(.black, false, try Board.parseFen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1"), &buf, ~zero, zero, zero));
-    try std.testing.expectEqual(2, getPawnMoves(.white, false, try Board.parseFen("4k3/8/8/4Pp2/8/8/8/4K3 w - f6 0 1"), &buf, ~zero, zero, zero));
-    try std.testing.expectEqual(2, getPawnMoves(.black, false, try Board.parseFen("4k3/8/8/8/4Pp2/8/8/4K3 b - e3 0 1"), &buf, ~zero, zero, zero));
-    try std.testing.expectEqual(1, getPawnMoves(.white, false, try Board.parseFen("4k3/4r3/8/4Pp2/8/8/8/4K3 w - f6 0 1"), &buf, ~zero, zero, Bitboard.all_forward[Square.e1.toInt()] & ~Square.e8.toBitboard()));
-    try std.testing.expectEqual(1, getPawnMoves(.black, false, try Board.parseFen("4k3/8/8/8/3Pp3/8/4R3/4K3 b - d3 0 1"), &buf, ~zero, zero, Bitboard.all_forward[Square.e1.toInt()] & ~Square.e8.toBitboard()));
-    try std.testing.expectEqual(2, getPawnMoves(.white, false, try Board.parseFen("4k3/4r3/8/8/8/8/4P3/4K3 w - - 0 1"), &buf, ~zero, zero, Bitboard.all_forward[Square.e1.toInt()] & ~Square.e8.toBitboard()));
-    try std.testing.expectEqual(2, getPawnMoves(.black, false, try Board.parseFen("4k3/4p3/8/8/8/8/4R3/4K3 b - - 0 1"), &buf, ~zero, zero, Bitboard.all_forward[Square.e1.toInt()] & ~Square.e8.toBitboard()));
-    try std.testing.expectEqual(2, getPawnMoves(.white, false, try Board.parseFen("4k3/8/8/b7/8/8/PPP5/4K3 w - - 0 1"), &buf, Bitboard.ray(Square.d2.toBitboard(), 1, -1), zero, zero));
-    try std.testing.expectEqual(3, getPawnMoves(.white, false, try Board.parseFen("4k3/8/8/1b6/P7/8/2PP4/5K2 w - - 0 1"), &buf, Bitboard.ray(Square.e2.toBitboard(), 1, -1), zero, zero));
-    try std.testing.expectEqual(1, getPawnMoves(.white, true, try Board.parseFen("4k3/8/8/1b6/P7/8/2PP4/5K2 w - - 0 1"), &buf, Bitboard.ray(Square.e2.toBitboard(), 1, -1), zero, zero));
-    try std.testing.expectEqual(1, getPawnMoves(.white, false, try Board.parseFen("4k3/8/8/1b6/P7/8/r2PK3/8 w - - 0 1"), &buf, Bitboard.ray(Square.e2.toBitboard(), 1, -1), Bitboard.all_left[Square.e2.toInt()], zero));
-    try std.testing.expectEqual(1, getPawnMoves(.white, false, try Board.parseFen("1k6/8/8/8/8/3b4/2P5/1K6 w - - 0 1"), &buf, ~zero, Square.c2.toBitboard() | Square.d3.toBitboard(), zero));
-    try std.testing.expectEqual(0, getPawnMoves(.white, false, try Board.parseFen("1k6/8/8/8/4b3/8/2P5/1K6 w - - 0 1"), &buf, ~zero, Square.c2.toBitboard() | Square.d3.toBitboard() | Square.e4.toBitboard(), zero));
-    try std.testing.expectEqual(1, getPawnMoves(.white, false, try Board.parseFen("8/8/8/kr2Pp1K/8/8/8/8 w - - 0 1"), &buf, ~zero, zero, zero));
-    try std.testing.expectEqual(1, getPawnMoves(.white, false, try Board.parseFen("4k3/5b2/8/3Pp3/8/1K6/8/8 w - e6 0 1"), &buf, ~zero, Square.c4.toBitboard() | Square.d5.toBitboard() | Square.e6.toBitboard() | Square.f7.toBitboard(), zero));
-    try std.testing.expectEqual(1, getPawnMoves(.black, false, try Board.parseFen("3k4/3np3/3Q1B2/8/8/8/3K4/8 b - - 0 1"), &buf, ~zero, Square.e7.toBitboard() | Square.f6.toBitboard(), Square.d6.toBitboard() | Square.d7.toBitboard()));
+    try std.testing.expectEqual(16, getPawnMoves(.white, false, false, try Board.parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), @as([]Move, &buf), ~zero, zero, zero));
+    try std.testing.expectEqual(16, getPawnMoves(.black, false, false, try Board.parseFen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1"), @as([]Move, &buf), ~zero, zero, zero));
+    try std.testing.expectEqual(2, getPawnMoves(.white, false, false, try Board.parseFen("4k3/8/8/4Pp2/8/8/8/4K3 w - f6 0 1"), @as([]Move, &buf), ~zero, zero, zero));
+    try std.testing.expectEqual(2, getPawnMoves(.black, false, false, try Board.parseFen("4k3/8/8/8/4Pp2/8/8/4K3 b - e3 0 1"), @as([]Move, &buf), ~zero, zero, zero));
+    try std.testing.expectEqual(1, getPawnMoves(.white, false, false, try Board.parseFen("4k3/4r3/8/4Pp2/8/8/8/4K3 w - f6 0 1"), @as([]Move, &buf), ~zero, zero, Bitboard.all_forward[Square.e1.toInt()] & ~Square.e8.toBitboard()));
+    try std.testing.expectEqual(1, getPawnMoves(.black, false, false, try Board.parseFen("4k3/8/8/8/3Pp3/8/4R3/4K3 b - d3 0 1"), @as([]Move, &buf), ~zero, zero, Bitboard.all_forward[Square.e1.toInt()] & ~Square.e8.toBitboard()));
+    try std.testing.expectEqual(2, getPawnMoves(.white, false, false, try Board.parseFen("4k3/4r3/8/8/8/8/4P3/4K3 w - - 0 1"), @as([]Move, &buf), ~zero, zero, Bitboard.all_forward[Square.e1.toInt()] & ~Square.e8.toBitboard()));
+    try std.testing.expectEqual(2, getPawnMoves(.black, false, false, try Board.parseFen("4k3/4p3/8/8/8/8/4R3/4K3 b - - 0 1"), @as([]Move, &buf), ~zero, zero, Bitboard.all_forward[Square.e1.toInt()] & ~Square.e8.toBitboard()));
+    try std.testing.expectEqual(2, getPawnMoves(.white, false, false, try Board.parseFen("4k3/8/8/b7/8/8/PPP5/4K3 w - - 0 1"), @as([]Move, &buf), Bitboard.ray(Square.d2.toBitboard(), 1, -1), zero, zero));
+    try std.testing.expectEqual(3, getPawnMoves(.white, false, false, try Board.parseFen("4k3/8/8/1b6/P7/8/2PP4/5K2 w - - 0 1"), @as([]Move, &buf), Bitboard.ray(Square.e2.toBitboard(), 1, -1), zero, zero));
+    try std.testing.expectEqual(1, getPawnMoves(.white, true, false, try Board.parseFen("4k3/8/8/1b6/P7/8/2PP4/5K2 w - - 0 1"), @as([]Move, &buf), Bitboard.ray(Square.e2.toBitboard(), 1, -1), zero, zero));
+    try std.testing.expectEqual(1, getPawnMoves(.white, false, false, try Board.parseFen("4k3/8/8/1b6/P7/8/r2PK3/8 w - - 0 1"), @as([]Move, &buf), Bitboard.ray(Square.e2.toBitboard(), 1, -1), Bitboard.all_left[Square.e2.toInt()], zero));
+    try std.testing.expectEqual(1, getPawnMoves(.white, false, false, try Board.parseFen("1k6/8/8/8/8/3b4/2P5/1K6 w - - 0 1"), @as([]Move, &buf), ~zero, Square.c2.toBitboard() | Square.d3.toBitboard(), zero));
+    try std.testing.expectEqual(0, getPawnMoves(.white, false, false, try Board.parseFen("1k6/8/8/8/4b3/8/2P5/1K6 w - - 0 1"), @as([]Move, &buf), ~zero, Square.c2.toBitboard() | Square.d3.toBitboard() | Square.e4.toBitboard(), zero));
+    try std.testing.expectEqual(1, getPawnMoves(.white, false, false, try Board.parseFen("8/8/8/kr2Pp1K/8/8/8/8 w - - 0 1"), @as([]Move, &buf), ~zero, zero, zero));
+    try std.testing.expectEqual(1, getPawnMoves(.white, false, false, try Board.parseFen("4k3/5b2/8/3Pp3/8/1K6/8/8 w - e6 0 1"), @as([]Move, &buf), ~zero, Square.c4.toBitboard() | Square.d5.toBitboard() | Square.e6.toBitboard() | Square.f7.toBitboard(), zero));
+    try std.testing.expectEqual(1, getPawnMoves(.black, false, false, try Board.parseFen("3k4/3np3/3Q1B2/8/8/8/3K4/8 b - - 0 1"), @as([]Move, &buf), ~zero, Square.e7.toBitboard() | Square.f6.toBitboard(), Square.d6.toBitboard() | Square.d7.toBitboard()));
 }

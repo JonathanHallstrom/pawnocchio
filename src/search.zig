@@ -226,7 +226,14 @@ fn search(
         }
     }
 
-    const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
+    const move_count, const masks = movegen.getMovesWithInfo(
+        turn,
+        false,
+        false,
+        board.*,
+        move_buf,
+        movegen.getMasks(turn, board.*),
+    );
     const is_in_check = masks.is_in_check;
     if (root and move_count == 0) {
         return result(0, Move.null_move);
@@ -554,8 +561,8 @@ fn search(
         if (!is_in_check and
             best_move.isQuiet() and
             (score_type == .exact or
-                (score_type == .lower and best_score > static_eval) or
-                (score_type == .upper and best_score < static_eval)))
+            (score_type == .lower and best_score > static_eval) or
+            (score_type == .upper and best_score < static_eval)))
         {
             correction.update(board, corrected_static_eval, best_score, depth);
         }

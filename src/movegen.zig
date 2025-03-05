@@ -20,68 +20,67 @@ pub const countSlidingMoves = sliding_moves.countSlidingMoves;
 pub const getKingMoves = king_moves.getKingMoves;
 pub const countKingMoves = king_moves.countKingMoves;
 
-fn getMovesImpl(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move) usize {
+fn getMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: anytype) usize {
     const masks = mask_generation.getMasks(turn, board);
     var res: usize = 0;
-    res += getPawnMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-    res += getKnightMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
-    res += getSlidingMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-    res += getKingMoves(turn, captures_only, board, move_buf[res..], masks.rook_pins);
+    res += getPawnMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += getKnightMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
+    res += getSlidingMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += getKingMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.rook_pins);
     return res;
 }
 
-fn countMovesImpl(comptime turn: Side, comptime captures_only: bool, board: Board) usize {
+fn countMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board) usize {
     const masks = mask_generation.getMasks(turn, board);
     var res: usize = 0;
-    res += countPawnMoves(turn, captures_only, board, masks.checks, masks.bishop_pins, masks.rook_pins);
-    res += countKnightMoves(turn, captures_only, board, masks.checks, masks.bishop_pins | masks.rook_pins);
-    res += countSlidingMoves(turn, captures_only, board, masks.checks, masks.bishop_pins, masks.rook_pins);
-    res += countKingMoves(turn, captures_only, board, masks.rook_pins);
+    res += countPawnMoves(turn, captures_only, quiets_only, board, masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += countKnightMoves(turn, captures_only, quiets_only, board, masks.checks, masks.bishop_pins | masks.rook_pins);
+    res += countSlidingMoves(turn, captures_only, quiets_only, board, masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += countKingMoves(turn, captures_only, quiets_only, board, masks.rook_pins);
     return res;
 }
 
-pub fn getMoves(comptime turn: Side, board: Board, move_buf: []Move) usize {
-    return getMovesImpl(turn, false, board, move_buf);
+pub fn getMoves(comptime turn: Side, board: Board, move_buf: anytype) usize {
+    return getMovesImpl(turn, false, false, board, move_buf);
 }
 
 pub fn countMoves(comptime turn: Side, board: Board) usize {
-    return countMovesImpl(turn, false, board);
+    return countMovesImpl(turn, false, false, board);
 }
 
-pub fn getMovesWithInfo(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move) struct { usize, mask_generation.Masks } {
-    const masks = mask_generation.getMasks(turn, board);
+pub fn getMovesWithInfo(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: anytype, masks: mask_generation.Masks) struct { usize, mask_generation.Masks } {
     var res: usize = 0;
-    res += getPawnMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-    res += getKnightMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
-    res += getSlidingMoves(turn, captures_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-    res += getKingMoves(turn, captures_only, board, move_buf[res..], masks.rook_pins);
+    res += getPawnMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += getKnightMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
+    res += getSlidingMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+    res += getKingMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.rook_pins);
     return .{ res, masks };
 }
 
-pub fn getCapturesOrEvasionsWithInfo(comptime turn: Side, board: Board, move_buf: []Move) struct { usize, mask_generation.Masks } {
+pub fn getCapturesOrEvasionsWithInfo(comptime turn: Side, board: Board, move_buf: anytype) struct { usize, mask_generation.Masks } {
     const masks = mask_generation.getMasks(turn, board);
     var res: usize = 0;
     if (masks.is_in_check) {
-        res += getPawnMoves(turn, false, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-        res += getKnightMoves(turn, false, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
-        res += getSlidingMoves(turn, false, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-        res += getKingMoves(turn, false, board, move_buf[res..], masks.rook_pins);
+        res += getPawnMoves(turn, false, false, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+        res += getKnightMoves(turn, false, false, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
+        res += getSlidingMoves(turn, false, false, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+        res += getKingMoves(turn, false, false, board, move_buf[res..], masks.rook_pins);
     } else {
-        res += getPawnMoves(turn, true, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-        res += getKnightMoves(turn, true, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
-        res += getSlidingMoves(turn, true, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
-        res += getKingMoves(turn, true, board, move_buf[res..], masks.rook_pins);
+        res += getPawnMoves(turn, true, false, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+        res += getKnightMoves(turn, true, false, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
+        res += getSlidingMoves(turn, true, false, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
+        res += getKingMoves(turn, true, false, board, move_buf[res..], masks.rook_pins);
     }
     return .{ res, masks };
 }
 
-pub fn getMovesWithoutTurn(board: Board, move_buf: []Move) usize {
+pub fn getMovesWithoutTurn(board: Board, move_buf: anytype) usize {
     return switch (board.turn) {
-        inline else => |turn| getMovesImpl(turn, false, board, move_buf),
+        inline else => |turn| getMovesImpl(turn, false, false, board, move_buf),
     };
 }
 
-pub fn getCaptures(comptime turn: Side, board: Board, move_buf: []Move) usize {
+pub fn getCaptures(comptime turn: Side, board: Board, move_buf: anytype) usize {
     return getMovesImpl(turn, true, board, move_buf);
 }
 

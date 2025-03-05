@@ -56,6 +56,11 @@ pub const Move = enum(u16) {
         return std.ascii.eqlIgnoreCase(self.toString(frc).slice(), str);
     }
 
+    // for movegen
+    pub fn init(move: Move) Move {
+        return move;
+    }
+
     pub fn initWithFlag(from: Square, to: Square, flag: MoveFlag) Self {
         return @enumFromInt(@as(u16, from.toInt()) << 6 | to.toInt() | @as(u16, @intFromEnum(flag)) << 12);
     }

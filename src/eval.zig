@@ -518,11 +518,11 @@ fn movegenScore(board: *const Board) Packed {
     const black_masks = movegen.getMasks(.black, board.*);
 
     var mobility: i16 = 0;
-    mobility += @intCast(movegen.countKnightMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins | white_masks.rook_pins));
-    mobility -= @intCast(movegen.countKnightMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins | black_masks.rook_pins));
+    mobility += @intCast(movegen.countKnightMoves(.white, false, false, board.*, white_masks.checks, white_masks.bishop_pins | white_masks.rook_pins));
+    mobility -= @intCast(movegen.countKnightMoves(.black, false, false, board.*, black_masks.checks, black_masks.bishop_pins | black_masks.rook_pins));
 
-    mobility += @intCast(movegen.countSlidingMoves(.white, false, board.*, white_masks.checks, white_masks.bishop_pins, white_masks.rook_pins));
-    mobility -= @intCast(movegen.countSlidingMoves(.black, false, board.*, black_masks.checks, black_masks.bishop_pins, black_masks.rook_pins));
+    mobility += @intCast(movegen.countSlidingMoves(.white, false, false, board.*, white_masks.checks, white_masks.bishop_pins, white_masks.rook_pins));
+    mobility -= @intCast(movegen.countSlidingMoves(.black, false, false, board.*, black_masks.checks, black_masks.bishop_pins, black_masks.rook_pins));
 
     const occ = board.white.all | board.black.all;
     const white_king_attacks = (magics.getBishopAttacks(Square.fromBitboard(board.white.getBoard(.king)), occ) | magics.getRookAttacks(Square.fromBitboard(board.white.getBoard(.king)), occ)) & ~occ;

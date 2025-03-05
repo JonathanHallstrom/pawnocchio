@@ -23,7 +23,12 @@ pub const king_moves_arr = blk: {
     break :blk res;
 };
 
-fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime count_only: bool, board: Board, move_buf: []Move, pinned_by_rook_mask: u64) usize {
+fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, comptime count_only: bool, board: Board, move_buf: anytype, pinned_by_rook_mask: u64) usize {
+    const MoveBufT = @TypeOf(move_buf);
+    const MoveT: type = switch (@typeInfo(MoveBufT)) {
+        .Pointer => std.meta.Elem(@TypeOf(move_buf)),
+        else => undefined,
+    };
     const us = board.getSide(turn);
     const them = board.getSide(turn.flipped());
     const king = us.getBoard(.king);
@@ -32,7 +37,11 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
 
     var move_count: usize = 0;
 
-    const allowed = if (captures_only) them.all else ~us.all;
+    comptime assert(!captures_only or !quiets_only);
+    var allowed = ~us.all;
+    if (captures_only) allowed &= them.all;
+    if (quiets_only) allowed &= ~them.all;
+
     var attacked: u64 = 0;
 
     { // knight threats
@@ -71,7 +80,7 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
         } else {
             var iter = Bitboard.iterator(legal);
             while (iter.next()) |to| {
-                move_buf[move_count] = Move.initWithFlag(king_square, to, if (captures_only or Bitboard.contains(them.all, to)) .capture else .quiet);
+                move_buf[move_count] = MoveT.init(Move.initWithFlag(king_square, to, if (captures_only or Bitboard.contains(them.all, to)) .capture else .quiet));
                 move_count += 1;
             }
         }
@@ -87,12 +96,12 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
             const need_to_be_unattacked = Bitboard.rook_ray_between_inclusive[king_square.toInt()][destination.toInt()];
             const need_to_be_empty =
                 ((Bitboard.rook_ray_between_inclusive[rook_square.toInt()][destination.move(0, -1).toInt()]) |
-                    (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
+                (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
             if (need_to_be_unattacked & (allowed | king | rook_square.toBitboard()) & ~attacked == need_to_be_unattacked) {
                 if (need_to_be_empty & occ == 0) {
                     if (!Bitboard.contains(pinned_by_rook_mask, rook_square)) {
                         if (!count_only)
-                            move_buf[move_count] = Move.initCastlingKingside(king_square, rook_square);
+                            move_buf[move_count] = MoveT.init(Move.initCastlingKingside(king_square, rook_square));
                         move_count += 1;
                     }
                 }
@@ -104,12 +113,12 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
             const need_to_be_unattacked = Bitboard.rook_ray_between_inclusive[king_square.toInt()][destination.toInt()];
             const need_to_be_empty =
                 ((Bitboard.rook_ray_between_inclusive[rook_square.toInt()][destination.move(0, 1).toInt()]) |
-                    (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
+                (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
             if (need_to_be_unattacked & (allowed | king | rook_square.toBitboard()) & ~attacked == need_to_be_unattacked) {
                 if (need_to_be_empty & occ == 0) {
                     if (!Bitboard.contains(pinned_by_rook_mask, rook_square)) {
                         if (!count_only)
-                            move_buf[move_count] = Move.initCastlingQueenside(king_square, rook_square);
+                            move_buf[move_count] = MoveT.init(Move.initCastlingQueenside(king_square, rook_square));
                         move_count += 1;
                     }
                 }
@@ -120,27 +129,27 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
     return move_count;
 }
 
-pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, board: Board, move_buf: []Move, pinned_by_rook_mask: u64) usize {
-    return getKingMovesImpl(turn, captures_only, false, board, move_buf, pinned_by_rook_mask);
+pub fn getKingMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: []Move, pinned_by_rook_mask: u64) usize {
+    return getKingMovesImpl(turn, captures_only, quiets_only, false, board, move_buf, pinned_by_rook_mask);
 }
 
-pub fn countKingMoves(comptime turn: Side, comptime captures_only: bool, board: Board, pinned_by_rook_mask: u64) usize {
-    return getKingMovesImpl(turn, captures_only, true, board, &.{}, pinned_by_rook_mask);
+pub fn countKingMoves(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, pinned_by_rook_mask: u64) usize {
+    return getKingMovesImpl(turn, captures_only, quiets_only, true, board, &.{}, pinned_by_rook_mask);
 }
 
 test "king moves" {
     var buf: [256]Move = undefined;
-    try std.testing.expectEqual(5, getKingMoves(.white, false, try Board.parseFen("4k3/8/8/4pP2/8/8/8/4K3 w - e6 0 1"), &buf, 0));
-    try std.testing.expectEqual(5, getKingMoves(.white, false, try Board.parseFen("4k3/8/8/4pP2/8/8/8/4K3 w - e6 0 1"), &buf, 0));
-    try std.testing.expectEqual(3, getKingMoves(.white, false, try Board.parseFen("k7/8/8/3nnn2/4K3/8/8/8 w - - 0 1"), &buf, 0));
-    try std.testing.expectEqual(6, getKingMoves(.white, false, try Board.parseFen("k7/8/8/8/8/8/8/1R1K4 w Q - 0 1"), &buf, 0));
-    try std.testing.expectEqual(6, getKingMoves(.white, false, try Board.parseFen("1r1k4/8/8/8/8/8/8/1R1K4 w Qq - 0 1"), &buf, 0));
-    try std.testing.expectEqual(3, getKingMoves(.white, false, try Board.parseFen("2rk4/8/8/8/8/8/8/1R1K4 w Q - 0 1"), &buf, 0));
-    try std.testing.expectEqual(5, getKingMoves(.white, false, try Board.parseFen("2rk4/8/8/8/8/8/2P5/1R1K4 w Q - 0 1"), &buf, 0));
-    try std.testing.expectEqual(6, getKingMoves(.white, false, try Board.parseFen("r2k4/8/8/8/8/8/8/R2K4 w Qq - 0 1"), &buf, 0));
-    try std.testing.expectEqual(6, getKingMoves(.black, false, try Board.parseFen("r2k4/8/8/8/8/8/8/R2K4 b Qq - 0 1"), &buf, 0));
-    try std.testing.expectEqual(5, getKingMoves(.white, false, try Board.parseFen("r2k4/7b/8/8/8/8/8/R2K4 w Qq - 0 1"), &buf, 0));
-    try std.testing.expectEqual(2, getKingMoves(.black, false, try Board.parseFen("Qr2kqbr/2bpp1pp/pn3p2/2p5/6P1/P1PP4/1P2PP1P/NRNBK1BR b KQkq - 0 11"), &buf, Bitboard.rook_ray_between[Square.e8.toInt()][Square.a8.toInt()]));
+    try std.testing.expectEqual(5, getKingMoves(.white, false, false, try Board.parseFen("4k3/8/8/4pP2/8/8/8/4K3 w - e6 0 1"), &buf, 0));
+    try std.testing.expectEqual(5, getKingMoves(.white, false, false, try Board.parseFen("4k3/8/8/4pP2/8/8/8/4K3 w - e6 0 1"), &buf, 0));
+    try std.testing.expectEqual(3, getKingMoves(.white, false, false, try Board.parseFen("k7/8/8/3nnn2/4K3/8/8/8 w - - 0 1"), &buf, 0));
+    try std.testing.expectEqual(6, getKingMoves(.white, false, false, try Board.parseFen("k7/8/8/8/8/8/8/1R1K4 w Q - 0 1"), &buf, 0));
+    try std.testing.expectEqual(6, getKingMoves(.white, false, false, try Board.parseFen("1r1k4/8/8/8/8/8/8/1R1K4 w Qq - 0 1"), &buf, 0));
+    try std.testing.expectEqual(3, getKingMoves(.white, false, false, try Board.parseFen("2rk4/8/8/8/8/8/8/1R1K4 w Q - 0 1"), &buf, 0));
+    try std.testing.expectEqual(5, getKingMoves(.white, false, false, try Board.parseFen("2rk4/8/8/8/8/8/2P5/1R1K4 w Q - 0 1"), &buf, 0));
+    try std.testing.expectEqual(6, getKingMoves(.white, false, false, try Board.parseFen("r2k4/8/8/8/8/8/8/R2K4 w Qq - 0 1"), &buf, 0));
+    try std.testing.expectEqual(6, getKingMoves(.black, false, false, try Board.parseFen("r2k4/8/8/8/8/8/8/R2K4 b Qq - 0 1"), &buf, 0));
+    try std.testing.expectEqual(5, getKingMoves(.white, false, false, try Board.parseFen("r2k4/7b/8/8/8/8/8/R2K4 w Qq - 0 1"), &buf, 0));
+    try std.testing.expectEqual(2, getKingMoves(.black, false, false, try Board.parseFen("Qr2kqbr/2bpp1pp/pn3p2/2p5/6P1/P1PP4/1P2PP1P/NRNBK1BR b KQkq - 0 11"), &buf, Bitboard.rook_ray_between[Square.e8.toInt()][Square.a8.toInt()]));
     @memset(std.mem.asBytes(&buf), 0);
     for (buf) |m| {
         if (m.getFrom() == m.getTo()) break;

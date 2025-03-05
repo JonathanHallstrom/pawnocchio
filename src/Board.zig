@@ -459,6 +459,7 @@ pub fn toFen(self: Board) std.BoundedArray(u8, 128) {
                 const num_moves = movegen.getPawnMoves(
                     t,
                     true,
+                    false,
                     self,
                     &buf,
                     masks.checks,
