@@ -6,7 +6,7 @@ const magics = @import("magics.zig");
 const Board = @import("Board.zig");
 const Move = @import("Move.zig").Move;
 
-pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+fn panic_0_13_0(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
 
     std.debug.print("{s}\n", .{fbs.getWritten()});
@@ -16,9 +16,23 @@ pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_
         lf.writer().writeAll(msg) catch {};
         lf.close();
     } else |_| {}
-    const defaultPanic = if (@hasDecl(std.builtin, "default_panic")) std.builtin.default_panic else std.debug.defaultPanic;
-    defaultPanic(msg, error_return_trace, ret_addr);
+    std.builtin.default_panic(msg, error_return_trace, ret_addr);
 }
+
+fn panic_0_14_0(msg: []const u8, first_trace_addr: ?usize) noreturn {
+    const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
+
+    std.debug.print("{s}\n", .{fbs.getWritten()});
+    std.debug.print("{s}\n", .{msg});
+    if (std.fs.openFileAbsolute(log_file_path, .{ .mode = .write_only })) |lf| {
+        lf.writer().writeAll(fbs.getWritten()) catch {};
+        lf.writer().writeAll(msg) catch {};
+        lf.close();
+    } else |_| {}
+    std.debug.defaultPanic(msg, first_trace_addr);
+}
+
+pub const panic = if (@hasDecl(std.builtin, "default_panic")) panic_0_13_0 else std.debug.FullPanic(panic_0_14_0);
 
 var log_mutex = std.Thread.Mutex{};
 pub fn writeLog(comptime fmt: []const u8, args: anytype) void {
