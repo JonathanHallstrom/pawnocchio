@@ -6,6 +6,7 @@ const movegen = @import("movegen.zig");
 const Side = @import("side.zig").Side;
 const eval = @import("eval.zig");
 const move_ordering = @import("move_ordering.zig");
+const MovePicker = @import("MovePicker.zig");
 const Square = @import("square.zig").Square;
 const SEE = @import("see.zig");
 const nnue = @import("nnue.zig");
@@ -99,6 +100,12 @@ fn quiesce(
     var best_move = Move.null_move;
     for (move_buf[0..move_count]) |move| {
         if (std.debug.runtime_safety) {
+            std.testing.expect(board.isLegal(move)) catch {
+                std.debug.panic("{s} {}\n", .{
+                    board.toFen().slice(),
+                    move,
+                });
+            };
             if (board.mailbox[move.getTo().toInt()]) |cap| {
                 if (cap == .king) {
                     writeLog("{} captures king\nboard:{}\n", .{ move, board.* });
@@ -386,12 +393,24 @@ fn search(
     }
 
     move_ordering.clearIrrelevantKillers(ply);
-    move_ordering.order(turn, board, tt_entry.move, previous_move, ply, move_buf[0..move_count]);
+    // move_ordering.order(turn, board, tt_entry.move, previous_move, ply, move_buf[0..move_count]);
+    var mp = MovePicker.init(board, tt_entry.move, previous_move, ply);
     var best_score = -checkmate_score;
     var best_move = move_buf[0];
     var num_searched: u8 = 0;
     var prune_quiets = false;
-    for (move_buf[0..move_count], 0..) |move, i| {
+    var i: u8 = 0;
+    while (mp.next()) |scored_move| : (i += 1) {
+        const move = scored_move.move;
+        // for (move_buf[0..move_count], 0..) |move, i| {
+        if (std.debug.runtime_safety) {
+            std.testing.expect(board.isLegal(move)) catch {
+                std.debug.panic("{s} {}\n", .{
+                    board.toFen().slice(),
+                    move,
+                });
+            };
+        }
         const node_count_before_search: u64 = if (root) nodes + qnodes else 0;
         if (move == excluded) {
             continue;
@@ -561,8 +580,8 @@ fn search(
         if (!is_in_check and
             best_move.isQuiet() and
             (score_type == .exact or
-                (score_type == .lower and best_score > static_eval) or
-                (score_type == .upper and best_score < static_eval)))
+            (score_type == .lower and best_score > static_eval) or
+            (score_type == .upper and best_score < static_eval)))
         {
             correction.update(board, corrected_static_eval, best_score, depth);
         }

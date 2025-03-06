@@ -788,6 +788,8 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
 }
 
 pub fn isPseudoLegal(self: Self, move: Move) bool {
+    if (move == Move.null_move)
+        return false;
     const us_bb = self.getSide(self.turn).all;
     if (us_bb & move.getFrom().toBitboard() == 0 or // not moving one of our pieces
         ((us_bb & move.getTo().toBitboard() != 0) != move.isCastlingMove())) // capturing our own piece is expected when castling, otherwise not
@@ -799,7 +801,7 @@ pub fn isPseudoLegal(self: Self, move: Move) bool {
     const piece_on_to_square = self.mailbox[move.getTo().toInt()];
 
     // make sure the target square is empty for non capture
-    if ((move.isCapture() and !move.isEnPassant()) != (piece_on_to_square != null)) {
+    if (((move.isCapture() and !move.isEnPassant()) or move.isCastlingMove()) != (piece_on_to_square != null)) {
         return false;
     }
 
@@ -814,11 +816,89 @@ pub fn isPseudoLegal(self: Self, move: Move) bool {
         .knight => return @min(d_rank, d_file) == 1 and @max(d_rank, d_file) == 2,
         .bishop => return d_rank == d_file,
         .rook => return @min(d_rank, d_file) == 0,
-        .queen => return @min(d_rank, d_file) == 0 or (@min(d_rank, d_file) == 1 and @max(d_rank, d_file) == 2),
+        .queen => return @min(d_rank, d_file) == 0 or d_rank == d_file,
         .king => return @max(d_rank, d_file) == 1,
     }
 }
 
+fn isKingAttackedImpl(self: Self, comptime turn: Side, us_occ: u64, them_occ: u64, comptime after_move: bool, move: Move) bool {
+    const us = self.getSide(turn);
+    const them = self.getSide(turn.flipped());
+    var king = us.getBoard(.king);
+    if (after_move and move.getFrom().toBitboard() & king != 0) {
+        king ^= move.getFrom().toBitboard() ^ move.getTo().toBitboard();
+    }
+    const occ = us_occ | them_occ;
+
+    // std.debug.print("{} {} {}\n", .{ us_occ, them_occ, them.getBoard(.bishop) | them.getBoard(.queen) & them_occ });
+
+    const pawn_d_rank: i8 = if (turn == .white) 1 else -1;
+    // std.debug.print("1\n", .{});
+    if ((Bitboard.move(king, pawn_d_rank, 1) | Bitboard.move(king, pawn_d_rank, -1)) & them.getBoard(.pawn) & them_occ != 0)
+        return true;
+    // std.debug.print("2\n", .{});
+    if (@import("knight_moves.zig").knight_moves_arr[@ctz(king)] & them.getBoard(.knight) & them_occ != 0)
+        return true;
+    if (@import("king_moves.zig").king_moves_arr[@ctz(king)] & them.getBoard(.king) != 0)
+        return true;
+    // std.debug.print("2\n", .{});
+    if (magics.getBishopAttacks(Square.fromBitboard(king), occ) & (them.getBoard(.bishop) | them.getBoard(.queen)) & them_occ != 0)
+        return true;
+    // std.debug.print("3\n", .{});
+    if (magics.getRookAttacks(Square.fromBitboard(king), occ) & (them.getBoard(.rook) | them.getBoard(.queen)) & them_occ != 0)
+        return true;
+    return false;
+}
+
+fn isKingAttacked(self: Self, comptime turn: Side) bool {
+    if (turn == .white) {
+        return self.isKingAttackedImpl(turn, self.white.all, self.black.all, false, undefined);
+    } else {
+        return self.isKingAttackedImpl(turn, self.black.all, self.white.all, false, undefined);
+    }
+}
+
+pub fn isLegal(self: Self, move: Move) bool {
+    if (!self.isPseudoLegal(move)) return false;
+    // std.debug.print("got here 1\n", .{});
+    switch (self.turn) {
+        inline else => |turn| {
+            if (move.isCastlingMove()) {
+                return !self.isKingAttacked(turn);
+            }
+            var us_occ = self.getSide(turn).all;
+            var them_occ = self.getSide(turn.flipped()).all;
+            us_occ ^= move.getFrom().toBitboard() ^ move.getTo().toBitboard();
+
+            if (move.isCastlingMove())
+                us_occ ^= move.getCastlingKingDest(turn).toBitboard() | move.getCastlingRookDest(turn).toBitboard();
+            if (move.isCapture()) {
+                if (move.isEnPassant()) {
+                    them_occ ^= move.getEnPassantPawn(turn).toBitboard();
+                } else {
+                    them_occ ^= move.getTo().toBitboard();
+                }
+            }
+            // std.debug.print("got here 2\n", .{});
+            return !self.isKingAttackedImpl(turn, us_occ, them_occ, true, move);
+        },
+    }
+}
+
+test isLegal {
+    // {
+    //     var board = try Board.parseFen("rnbqkbnr/ppp1pQpp/8/8/4p3/8/PPPP1PPP/RNB1KBNR b KQkq - 0 3");
+    //     try std.testing.expect(board.isLegal(Move.initCapture(.e8, .f7)));
+    // }
+    // {
+    //     var board = try Board.parseFen("rn1qkbnr/pppB1ppp/4p3/3P4/8/8/PPPP1PPP/RNBQK1NR b KQkq - 0 4");
+    //     try std.testing.expect(board.isLegal(Move.initCapture(.b8, .d7)));
+    // }
+    {
+        var board = try Board.parseFen("r1bqkb1r/pppp1ppp/2n2n2/4p3/4P3/5N2/PPPPBPPP/RNBQK2R w KQkq - 4 4");
+        try std.testing.expect(board.isLegal(Move.initCastlingKingside(.e1, .h1)));
+    }
+}
 pub fn playNullMove(self: *Self) ?Square {
     self.fullmove_clock += @intFromBool(self.turn == .black);
     self.turn = self.turn.flipped();
@@ -1004,6 +1084,8 @@ pub fn perftSingleThreadedNonBulk(self: *Self, move_buf: []Move, depth: usize, c
             const num_moves = movegen.getMoves(turn, board.*, moves);
             var res: u64 = 0;
             for (moves[0..num_moves]) |move| {
+                if (std.debug.runtime_safety)
+                    std.debug.assert(board.isLegal(move));
                 const inv = board.playMove(turn, move);
                 const count = impl(board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);
                 if (cur_depth == 0) {
@@ -1211,6 +1293,14 @@ pub fn perftSingleThreaded(self: *Self, move_buf: []Move, depth: usize, comptime
                     const inv = cp.playMove(turn, move);
                     cp.undoMove(turn, inv);
                     assert(std.meta.eql(cp, board.*));
+                }
+                if (std.debug.runtime_safety) {
+                    std.testing.expect(board.isLegal(move)) catch {
+                        std.debug.panic("{s} {}\n", .{
+                            board.toFen().slice(),
+                            move,
+                        });
+                    };
                 }
                 const inv = board.playMove(turn, move);
                 const count = impl(board, turn.flipped(), cur_depth + 1, moves[num_moves..], d - 1);

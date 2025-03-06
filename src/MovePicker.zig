@@ -94,14 +94,15 @@ fn completedStage(self: *Self) ?ScoredMove {
     return self.next();
 }
 
-pub fn next(self: *Self) ?ScoredMove {
+fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
     switch (self.board.turn) { // gotta work around that horrible design decision....  (requiring `comptime turn: Side` all over the damn place....)
         inline else => |turn| switch (self.stage) {
             .tt => {
-                if (!self.board.isPseudoLegal(self.tt_move)) {
+                if (!self.board.isLegal(self.tt_move)) {
                     return self.completedStage();
                 }
-                self.stage = self.stage.increment();
+                if (!do_peek)
+                    self.stage = self.stage.increment();
                 return ScoredMove{
                     .move = self.tt_move,
                     .flag = .tt,
@@ -109,7 +110,6 @@ pub fn next(self: *Self) ?ScoredMove {
             },
             .generate_noisy => {
                 var noisies: [256]Move = undefined;
-                self.masks = movegen.getMasks(turn, self.board.*);
                 const num_moves = movegen.getMovesWithOutInfo(turn, true, false, self.board.*, &noisies, self.masks);
                 for (noisies[0..num_moves]) |move| {
                     if (move == self.tt_move) continue;
@@ -132,24 +132,26 @@ pub fn next(self: *Self) ?ScoredMove {
                 if (self.num_good_noisies == 0) {
                     return self.completedStage();
                 }
-                self.num_good_noisies -= 1;
-                var best = self.good_noisies[self.num_good_noisies];
-                for (self.good_noisies[0..self.num_good_noisies], 0..) |cur, i| {
+                var best = self.good_noisies[self.num_good_noisies - 1];
+                for (self.good_noisies[0 .. self.num_good_noisies - 1], 0..) |cur, i| {
                     if (cur.score > best.score) {
                         self.good_noisies[i] = best;
-                        self.good_noisies[self.num_good_noisies] = cur;
+                        self.good_noisies[self.num_good_noisies - 1] = cur;
                         best = cur;
                     }
                 }
+                if (!do_peek)
+                    self.num_good_noisies -= 1;
 
                 return best;
             },
             .killer => {
                 const killer_move = move_ordering.killers[self.ply];
-                if (!self.board.isPseudoLegal(killer_move)) {
+                if (killer_move == self.tt_move or !self.board.isLegal(killer_move)) {
                     return self.completedStage();
                 }
-                self.stage = self.stage.increment();
+                if (!do_peek)
+                    self.stage = self.stage.increment();
                 self.sent_killer = killer_move;
                 return ScoredMove{
                     .move = killer_move,
@@ -160,15 +162,17 @@ pub fn next(self: *Self) ?ScoredMove {
                 if (self.num_bad_noisies == 0) {
                     return self.completedStage();
                 }
-                self.num_bad_noisies -= 1;
-                var best = self.bad_noisies[self.num_bad_noisies];
-                for (self.bad_noisies[0..self.num_bad_noisies], 0..) |cur, i| {
+
+                var best = self.bad_noisies[self.num_bad_noisies - 1];
+                for (self.bad_noisies[0 .. self.num_bad_noisies - 1], 0..) |cur, i| {
                     if (cur.score > best.score) {
                         self.bad_noisies[i] = best;
-                        self.bad_noisies[self.num_bad_noisies] = cur;
+                        self.bad_noisies[self.num_bad_noisies - 1] = cur;
                         best = cur;
                     }
                 }
+                if (!do_peek)
+                    self.num_bad_noisies -= 1;
 
                 return best;
             },
@@ -190,15 +194,16 @@ pub fn next(self: *Self) ?ScoredMove {
                 if (self.num_quiets == 0) {
                     return self.completedStage();
                 }
-                self.num_quiets -= 1;
-                var best = self.quiets[self.num_quiets];
-                for (self.quiets[0..self.num_quiets], 0..) |cur, i| {
+                var best = self.quiets[self.num_quiets - 1];
+                for (self.quiets[0 .. self.num_quiets - 1], 0..) |cur, i| {
                     if (cur.score > best.score) {
                         self.quiets[i] = best;
-                        self.quiets[self.num_quiets] = cur;
+                        self.quiets[self.num_quiets - 1] = cur;
                         best = cur;
                     }
                 }
+                if (!do_peek)
+                    self.num_quiets -= 1;
                 return best;
             },
             .done => return null,
@@ -206,15 +211,28 @@ pub fn next(self: *Self) ?ScoredMove {
     }
 }
 
+pub fn next(self: *Self) ?ScoredMove {
+    return self.iterImpl(false);
+}
+
+pub fn peek(self: *Self) ?ScoredMove {
+    return self.iterImpl(true);
+}
+
 const Self = @This();
 
 pub fn init(board: *const Board, tt_move: Move, previous_move: Move, ply: u8) Self {
-    return .{
-        .board = board,
-        .tt_move = tt_move,
-        .previous_move = previous_move,
-        .ply = ply,
-    };
+    switch (board.turn) {
+        inline else => |turn| {
+            return .{
+                .board = board,
+                .tt_move = tt_move,
+                .previous_move = previous_move,
+                .ply = ply,
+                .masks = movegen.getMasks(turn, board.*),
+            };
+        },
+    }
 }
 
 test "basic mp functionality" {

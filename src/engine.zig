@@ -126,7 +126,7 @@ pub fn searchSync(board: Board, search_parameters: SearchParameters, move_buf: [
     return search.iterativeDeepening(board, search_parameters, move_buf, hash_history, silence_output);
 }
 
-fn bestMove(fen: []const u8, depth: u8, moves: []const u8, allocator: std.mem.Allocator) !Move {
+fn bestMove(fen: []const u8, nodes: u64, moves: []const u8, allocator: std.mem.Allocator) !Move {
     var board = try Board.parseFen(fen);
 
     const bignum = 32768;
@@ -140,21 +140,22 @@ fn bestMove(fen: []const u8, depth: u8, moves: []const u8, allocator: std.mem.Al
         _ = try board.playMoveFromStr(move);
         hash_history.appendAssumeCapacity(board.zobrist);
     }
+    @import("move_ordering.zig").reset();
     try search.setTTSize(256);
-    return searchSync(board, .{ .depth = depth }, move_buf, &hash_history, true).move;
+    return searchSync(board, .{ .nodes = nodes }, move_buf, &hash_history, true).move;
 }
 
 test "50 move rule" {
-    try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67", 5, "", std.testing.allocator));
-    try std.testing.expectEqual(Move.initQuiet(.c7, .a7), bestMove("1R6/2R5/7P/8/8/k7/8/2K5 w - - 99 67", 5, "", std.testing.allocator));
-    try std.testing.expectEqual(Move.initCapture(.f4, .g6), bestMove("1R6/8/6p1/8/5N2/k7/8/2KR4 w - - 99 67", 5, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67", 20 << 10, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.c7, .a7), bestMove("1R6/2R5/7P/8/8/k7/8/2K5 w - - 99 67", 20 << 10, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initCapture(.f4, .g6), bestMove("1R6/8/6p1/8/5N2/k7/8/2KR4 w - - 99 67", 20 << 10, "", std.testing.allocator));
 }
 
 test "repetitions" {
-    try std.testing.expect(Move.initQuiet(.c6, .d5) != try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 5, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator));
+    try std.testing.expect(Move.initQuiet(.c6, .d5) != try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 20 << 10, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator));
 }
 
 test "random position where king has to cross middle, should test that accumulator refreshes are working" {
-    try std.testing.expectEqual(Move.initQuiet(.d5, .e5), bestMove("2rr4/8/8/n1nK2k1/8/8/8/8 w - - 0 1", 10, "", std.testing.allocator));
-    try std.testing.expectEqual(Move.initQuiet(.d5, .e5), bestMove("2RR4/8/8/N1Nk2K1/8/8/8/8 b - - 0 1", 10, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.d5, .e5), bestMove("2rr4/8/8/n1nK2k1/8/8/8/8 w - - 0 1", 20 << 10, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.d5, .e5), bestMove("2RR4/8/8/N1Nk2K1/8/8/8/8 b - - 0 1", 20 << 10, "", std.testing.allocator));
 }
