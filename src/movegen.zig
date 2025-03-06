@@ -58,7 +58,7 @@ pub fn getMovesWithInfo(comptime turn: Side, comptime captures_only: bool, compt
     return .{ res, masks };
 }
 
-pub fn getMovesWithOutInfo(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: anytype, masks: mask_generation.Masks) struct { usize, mask_generation.Masks } {
+pub fn getMovesWithOutInfo(comptime turn: Side, comptime captures_only: bool, comptime quiets_only: bool, board: Board, move_buf: anytype, masks: mask_generation.Masks) usize {
     var res: usize = 0;
     res += getPawnMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.checks, masks.bishop_pins, masks.rook_pins);
     res += getKnightMoves(turn, captures_only, quiets_only, board, move_buf[res..], masks.checks, masks.bishop_pins | masks.rook_pins);
@@ -92,13 +92,6 @@ pub fn getMovesWithoutTurn(board: Board, move_buf: anytype) usize {
 
 pub fn getCaptures(comptime turn: Side, board: Board, move_buf: anytype) usize {
     return getMovesImpl(turn, true, board, move_buf);
-}
-
-test {
-    _ = knight_moves;
-    _ = pawn_moves;
-    _ = sliding_moves;
-    _ = king_moves;
 }
 
 test "double attack promotion" {

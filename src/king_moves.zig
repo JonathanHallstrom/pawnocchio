@@ -92,7 +92,7 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
             const need_to_be_unattacked = Bitboard.rook_ray_between_inclusive[king_square.toInt()][destination.toInt()];
             const need_to_be_empty =
                 ((Bitboard.rook_ray_between_inclusive[rook_square.toInt()][destination.move(0, -1).toInt()]) |
-                (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
+                    (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
             if (need_to_be_unattacked & (allowed | king | rook_square.toBitboard()) & ~attacked == need_to_be_unattacked) {
                 if (need_to_be_empty & occ == 0) {
                     if (!Bitboard.contains(pinned_by_rook_mask, rook_square)) {
@@ -109,7 +109,7 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
             const need_to_be_unattacked = Bitboard.rook_ray_between_inclusive[king_square.toInt()][destination.toInt()];
             const need_to_be_empty =
                 ((Bitboard.rook_ray_between_inclusive[rook_square.toInt()][destination.move(0, 1).toInt()]) |
-                (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
+                    (Bitboard.rook_ray_between_inclusive[rook_square.toInt()][king_square.toInt()] | destination.toBitboard())) & ~rook_square.toBitboard();
             if (need_to_be_unattacked & (allowed | king | rook_square.toBitboard()) & ~attacked == need_to_be_unattacked) {
                 if (need_to_be_empty & occ == 0) {
                     if (!Bitboard.contains(pinned_by_rook_mask, rook_square)) {

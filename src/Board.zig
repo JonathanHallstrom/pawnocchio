@@ -799,7 +799,7 @@ pub fn isPseudoLegal(self: Self, move: Move) bool {
     const piece_on_to_square = self.mailbox[move.getTo().toInt()];
 
     // make sure the target square is empty for non capture
-    if ((move.isCapture() and !move.isEnPassant()) == (piece_on_to_square != null)) {
+    if ((move.isCapture() and !move.isEnPassant()) != (piece_on_to_square != null)) {
         return false;
     }
 

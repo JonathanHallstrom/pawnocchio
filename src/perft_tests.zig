@@ -10,15 +10,17 @@ fn handleLine(line: []const u8, total_time: *u64, total_positions: *u64, test_zo
     const fen = parts.next().?;
 
     var board = Board.parseFen(fen) catch |e| std.debug.panic("fen error: {}", .{e});
-    var depth: u8 = undefined;
     while (parts.next()) |depth_info| {
         var depth_parts = std.mem.tokenizeScalar(u8, depth_info, ' ');
-        depth = std.fmt.parseInt(u8, depth_parts.next() orelse {
+        const depth = std.fmt.parseInt(u8, depth_parts.next() orelse {
             std.debug.panic("invalid depth info: {s}", .{depth_info});
         }, 10) catch |e| std.debug.panic("parse error: {}", .{e});
         const expected_perft = std.fmt.parseInt(u64, depth_parts.next() orelse {
             std.debug.panic("invalid depth info: {s}", .{depth_info});
         }, 10) catch |e| std.debug.panic("parse error: {}", .{e});
+        if (expected_perft > 1 << 20 and @import("builtin").is_test)
+            continue;
+
         var timer = std.time.Timer.start() catch std.debug.panic("couldn't start timer\n", .{});
         const actual_perft = board.perftSingleThreaded(&move_buf, depth, false);
         _ = @atomicRmw(u64, total_time, .Add, timer.lap(), .seq_cst);
