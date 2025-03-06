@@ -24,6 +24,9 @@ num_bad_noisies: u8 = 0,
 stage: Stage = .tt,
 generate_quiets: bool = true,
 masks: movegen.Masks = undefined,
+previous_moves: [256]Move = .{Move.initQuiet(.h8, .h8)} ** 256,
+num_previous_moves: u8 = 0,
+board_state_when_created: if (@import("builtin").is_test) Board else void = undefined,
 
 const Stage = enum {
     tt,
@@ -89,26 +92,25 @@ const ScoredMove = struct {
     }
 };
 
-fn completedStage(self: *Self) ?ScoredMove {
-    self.stage = self.stage.increment();
-    return self.next();
-}
-
 fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
     switch (self.board.turn) { // gotta work around that horrible design decision....  (requiring `comptime turn: Side` all over the damn place....)
         inline else => |turn| switch (self.stage) {
             .tt => {
+                if (@import("builtin").is_test) std.debug.assert(std.meta.eql(self.board_state_when_created, self.board.*));
                 if (!self.board.isLegal(self.tt_move)) {
-                    return self.completedStage();
-                }
-                if (!do_peek)
                     self.stage = self.stage.increment();
+                    return self.iterImpl(do_peek);
+                }
+                if (!do_peek) {
+                    self.stage = self.stage.increment();
+                }
                 return ScoredMove{
                     .move = self.tt_move,
                     .flag = .tt,
                 };
             },
             .generate_noisy => {
+                if (@import("builtin").is_test) std.debug.assert(std.meta.eql(self.board_state_when_created, self.board.*));
                 var noisies: [256]Move = undefined;
                 const num_moves = movegen.getMovesWithOutInfo(turn, true, false, self.board.*, &noisies, self.masks);
                 for (noisies[0..num_moves]) |move| {
@@ -126,11 +128,13 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                         self.num_bad_noisies += 1;
                     }
                 }
-                return self.completedStage();
+                self.stage = self.stage.increment();
+                return self.iterImpl(do_peek);
             },
             .good_noisy => {
                 if (self.num_good_noisies == 0) {
-                    return self.completedStage();
+                    self.stage = self.stage.increment();
+                    return self.iterImpl(do_peek);
                 }
                 var best = self.good_noisies[self.num_good_noisies - 1];
                 for (self.good_noisies[0 .. self.num_good_noisies - 1], 0..) |cur, i| {
@@ -140,18 +144,20 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                         best = cur;
                     }
                 }
-                if (!do_peek)
+                if (!do_peek) {
                     self.num_good_noisies -= 1;
-
+                }
                 return best;
             },
             .killer => {
                 const killer_move = move_ordering.killers[self.ply];
                 if (killer_move == self.tt_move or !self.board.isLegal(killer_move)) {
-                    return self.completedStage();
-                }
-                if (!do_peek)
                     self.stage = self.stage.increment();
+                    return self.iterImpl(do_peek);
+                }
+                if (!do_peek) {
+                    self.stage = self.stage.increment();
+                }
                 self.sent_killer = killer_move;
                 return ScoredMove{
                     .move = killer_move,
@@ -160,9 +166,9 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
             },
             .bad_noisy => {
                 if (self.num_bad_noisies == 0) {
-                    return self.completedStage();
+                    self.stage = self.stage.increment();
+                    return self.iterImpl(do_peek);
                 }
-
                 var best = self.bad_noisies[self.num_bad_noisies - 1];
                 for (self.bad_noisies[0 .. self.num_bad_noisies - 1], 0..) |cur, i| {
                     if (cur.score > best.score) {
@@ -171,14 +177,15 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                         best = cur;
                     }
                 }
-                if (!do_peek)
+                if (!do_peek) {
                     self.num_bad_noisies -= 1;
-
+                }
                 return best;
             },
             .generate_quiet => {
                 const num_generated = movegen.getMovesWithOutInfo(turn, false, true, self.board.*, &self.quiets, self.masks);
 
+                if (@import("builtin").is_test) std.debug.assert(std.meta.eql(self.board_state_when_created, self.board.*));
                 for (self.quiets[0..num_generated]) |uninitialized_scored_quiet| {
                     if (uninitialized_scored_quiet.move == self.tt_move) continue;
                     if (uninitialized_scored_quiet.move == self.sent_killer) continue;
@@ -188,11 +195,13 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                     self.quiets[self.num_quiets].flag = .none;
                     self.num_quiets += 1;
                 }
-                return self.completedStage();
+                self.stage = self.stage.increment();
+                return self.iterImpl(do_peek);
             },
             .quiet => {
                 if (self.num_quiets == 0) {
-                    return self.completedStage();
+                    self.stage = self.stage.increment();
+                    return self.iterImpl(do_peek);
                 }
                 var best = self.quiets[self.num_quiets - 1];
                 for (self.quiets[0 .. self.num_quiets - 1], 0..) |cur, i| {
@@ -202,8 +211,9 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                         best = cur;
                     }
                 }
-                if (!do_peek)
+                if (!do_peek) {
                     self.num_quiets -= 1;
+                }
                 return best;
             },
             .done => return null,
@@ -212,11 +222,27 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
 }
 
 pub fn next(self: *Self) ?ScoredMove {
-    return self.iterImpl(false);
+    const res = self.iterImpl(false);
+    if (res) |sm| {
+        self.previous_moves[self.num_previous_moves] = sm.move;
+        self.num_previous_moves += 1;
+        if (std.debug.runtime_safety) {
+            std.debug.assert(self.board.isLegal(sm.move));
+        }
+    }
+    return res;
 }
 
 pub fn peek(self: *Self) ?ScoredMove {
     return self.iterImpl(true);
+}
+
+pub fn hasMoves(self: *Self) bool {
+    return self.peek() != null;
+}
+
+pub fn triedMoves(self: *const Self) []const Move {
+    return self.previous_moves[0..self.num_previous_moves];
 }
 
 const Self = @This();
@@ -230,6 +256,7 @@ pub fn init(board: *const Board, tt_move: Move, previous_move: Move, ply: u8) Se
                 .previous_move = previous_move,
                 .ply = ply,
                 .masks = movegen.getMasks(turn, board.*),
+                .board_state_when_created = if (@import("builtin").is_test) board.* else void{},
             };
         },
     }

@@ -233,19 +233,21 @@ fn search(
         }
     }
 
-    const move_count, const masks = movegen.getMovesWithInfo(
-        turn,
-        false,
-        false,
-        board.*,
-        move_buf,
-        movegen.getMasks(turn, board.*),
-    );
-    const is_in_check = masks.is_in_check;
-    if (root and move_count == 0) {
+    move_ordering.clearIrrelevantKillers(ply);
+    var mp = MovePicker.init(board, tt_entry.move, previous_move, ply);
+
+    const has_moves = mp.hasMoves();
+    const is_in_check = mp.masks.is_in_check;
+    var legal_move = Move.null_move;
+    if (root) {
+        if (mp.peek()) |sm| {
+            legal_move = sm.move;
+        }
+    }
+    if (root and !has_moves) {
         return result(0, Move.null_move);
     }
-    if (!root and move_count == 0) {
+    if (!root and !has_moves) {
         return if (is_in_check) eval.mateIn(ply) else 0;
     }
     if (board.halfmove_clock >= 100) {
@@ -264,7 +266,7 @@ fn search(
             }
         }
         if (repetitions >= 3) {
-            return result(0, Move.null_move);
+            return result(0, legal_move);
         }
     }
 
@@ -284,12 +286,12 @@ fn search(
 
         // don't return unproven mate scores
         if (eval.isMateScore(score)) score = std.math.clamp(score, alpha, beta);
-        return result(score, move_buf[0]);
+        return result(score, legal_move);
     }
 
     // if its king vs king and two knights its either a draw or M1, depth 4 just to be safe
     if (board.isInsufficientMaterial() or (board.isKvKNN() and depth >= 4)) {
-        return result(0, move_buf[0]);
+        return result(0, legal_move);
     }
 
     const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
@@ -319,7 +321,7 @@ fn search(
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
         if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * depth) {
-            return result(tt_corrected_eval, move_buf[0]);
+            return result(tt_corrected_eval, legal_move);
         }
 
         // razoring
@@ -332,7 +334,7 @@ fn search(
                 eval_state,
                 alpha,
                 beta,
-                move_buf[move_count..],
+                move_buf,
             );
             if (razor_score <= alpha) {
                 return razor_score;
@@ -358,7 +360,7 @@ fn search(
                 -beta + 1,
                 ply + 1,
                 depth - reduction,
-                move_buf[move_count..],
+                move_buf,
                 Move.null_move,
                 Move.null_move,
                 previous_evals,
@@ -378,7 +380,7 @@ fn search(
                     beta,
                     ply + 1,
                     depth - reduction,
-                    move_buf[move_count..],
+                    move_buf,
                     previous_move,
                     Move.null_move,
                     previous_evals,
@@ -392,15 +394,14 @@ fn search(
         }
     }
 
-    move_ordering.clearIrrelevantKillers(ply);
-    // move_ordering.order(turn, board, tt_entry.move, previous_move, ply, move_buf[0..move_count]);
-    var mp = MovePicker.init(board, tt_entry.move, previous_move, ply);
     var best_score = -checkmate_score;
-    var best_move = move_buf[0];
+    var best_move = if (mp.peek()) |sm| sm.move else Move.null_move;
     var num_searched: u8 = 0;
     var prune_quiets = false;
     var i: u8 = 0;
+    // std.debug.print("--------------------------------------------\n", .{});
     while (mp.next()) |scored_move| : (i += 1) {
+        // std.debug.print("----------------------\n", .{});
         const move = scored_move.move;
         // for (move_buf[0..move_count], 0..) |move, i| {
         if (std.debug.runtime_safety) {
@@ -434,7 +435,7 @@ fn search(
             tt_entry.depth + singular_ttentry_depth_margin >= depth and
             tt_entry.tp != .upper)
         {
-            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score -| depth * 2);
+            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score -| @as(i16, depth) * 2);
             const s_depth = (depth - 1) / 2;
 
             const score: i16 = search(
@@ -447,7 +448,7 @@ fn search(
                 s_beta,
                 ply,
                 s_depth,
-                move_buf[move_count..],
+                move_buf,
                 previous_move,
                 move,
                 previous_evals,
@@ -485,7 +486,7 @@ fn search(
                 -alpha,
                 ply + 1,
                 reduced_depth,
-                move_buf[move_count..],
+                move_buf,
                 move,
                 Move.null_move,
                 updated_evals,
@@ -502,7 +503,7 @@ fn search(
                 -alpha,
                 ply + 1,
                 new_depth,
-                move_buf[move_count..],
+                move_buf,
                 move,
                 Move.null_move,
                 updated_evals,
@@ -520,7 +521,7 @@ fn search(
                 -alpha,
                 ply + 1,
                 new_depth,
-                move_buf[move_count..],
+                move_buf,
                 move,
                 Move.null_move,
                 updated_evals,
@@ -545,9 +546,18 @@ fn search(
                 if (move.isQuiet()) {
                     move_ordering.recordKiller(move, ply);
                     move_ordering.updateHistory(turn, board, move, previous_move, move_ordering.getBonus(depth));
-                    for (0..i) |j| {
-                        if (move_buf[j].isQuiet()) {
-                            move_ordering.updateHistory(turn, board, move_buf[j], previous_move, -move_ordering.getBonus(depth));
+                    assert(mp.num_previous_moves == i + 1);
+                    for (mp.triedMoves()) |tried| {
+                        if (tried == move) continue;
+
+                        if (@import("builtin").is_test) {
+                            std.testing.expect(board.isLegal(tried)) catch {
+                                std.debug.panic("{s} {} {any}\n", .{ board.toFen().slice(), tried, mp.triedMoves() });
+                            };
+                        }
+                        // std.debug.print("{s} {} {} {}\n", .{ board.toFen().slice(), tried, i, mp.num_previous_moves });
+                        if (tried.isQuiet()) {
+                            move_ordering.updateHistory(turn, board, tried, previous_move, -move_ordering.getBonus(depth));
                         }
                     }
                 }

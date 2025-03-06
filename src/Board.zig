@@ -788,8 +788,9 @@ pub fn playMove(self: *Self, comptime turn: Side, move: Move) MoveInverse {
 }
 
 pub fn isPseudoLegal(self: Self, move: Move) bool {
-    if (move == Move.null_move)
+    if (move == Move.null_move) {
         return false;
+    }
     const us_bb = self.getSide(self.turn).all;
     if (us_bb & move.getFrom().toBitboard() == 0 or // not moving one of our pieces
         ((us_bb & move.getTo().toBitboard() != 0) != move.isCastlingMove())) // capturing our own piece is expected when castling, otherwise not
