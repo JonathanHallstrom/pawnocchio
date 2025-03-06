@@ -54,7 +54,7 @@ var stop_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.at
 pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
 var thread_pool: ?std.Thread.Pool = null;
 
-pub fn startAsyncSearch(board: Board, search_parameters: SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64)) void {
+pub fn startAsyncSearch(board: Board, search_parameters: SearchParameters,  hash_history: *std.ArrayList(u64)) void {
     if (thread_pool == null) {
         thread_pool = @as(std.Thread.Pool, undefined);
         thread_pool.?.init(.{
@@ -65,17 +65,16 @@ pub fn startAsyncSearch(board: Board, search_parameters: SearchParameters, move_
     stopAsyncSearch();
 
     const worker = struct {
-        fn impl(board_: Board, search_params_: SearchParameters, move_buf_: []Move, hash_history_: *std.ArrayList(u64)) void {
+        fn impl(board_: Board, search_params_: SearchParameters,  hash_history_: *std.ArrayList(u64)) void {
             is_searching.store(true, .release);
             stop_searching.store(false, .release);
-            _ = search.iterativeDeepening(board_, search_params_, move_buf_, hash_history_, false);
+            _ = search.iterativeDeepening(board_, search_params_, hash_history_, false);
         }
     }.impl;
 
     thread_pool.?.spawn(worker, .{
         board,
         search_parameters,
-        move_buf,
         hash_history,
     }) catch @panic("sadge");
 }
@@ -122,16 +121,14 @@ pub fn waitUntilWritingBestMoveAllowed() void {
     }
 }
 
-pub fn searchSync(board: Board, search_parameters: SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) SearchResult {
-    return search.iterativeDeepening(board, search_parameters, move_buf, hash_history, silence_output);
+pub fn searchSync(board: Board, search_parameters: SearchParameters, hash_history: *std.ArrayList(u64), silence_output: bool) SearchResult {
+    return search.iterativeDeepening(board, search_parameters, hash_history, silence_output);
 }
 
 fn bestMove(fen: []const u8, nodes: u64, moves: []const u8, allocator: std.mem.Allocator) !Move {
     var board = try Board.parseFen(fen);
 
     const bignum = 32768;
-    const move_buf: []Move = try allocator.alloc(Move, bignum);
-    defer allocator.free(move_buf);
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, bignum);
     defer hash_history.deinit();
     hash_history.appendAssumeCapacity(board.zobrist);
@@ -142,7 +139,7 @@ fn bestMove(fen: []const u8, nodes: u64, moves: []const u8, allocator: std.mem.A
     }
     @import("move_ordering.zig").reset();
     try search.setTTSize(256);
-    return searchSync(board, .{ .nodes = nodes }, move_buf, &hash_history, true).move;
+    return searchSync(board, .{ .nodes = nodes },  &hash_history, true).move;
 }
 
 test "50 move rule" {

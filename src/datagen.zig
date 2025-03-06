@@ -253,8 +253,6 @@ pub fn main() !void {
     const max_nodes = nodes_opt.?;
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, 16384);
     defer hash_history.deinit();
-    const move_buf = try allocator.alloc(Move, 16384);
-    defer allocator.free(move_buf);
     var rng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
     // var rng = std.Random.DefaultPrng.init(0);
     engine.reset();

@@ -66,6 +66,7 @@ fn getKingMovesImpl(comptime turn: Side, comptime captures_only: bool, comptime 
 
     { // king "threats"
         const opponent_king = them.getBoard(.king);
+        assert(opponent_king != 0);
         attacked |= king_moves_arr[@ctz(opponent_king)];
     }
 

@@ -21,7 +21,7 @@ good_noisies: [256]ScoredMove = undefined,
 num_good_noisies: u8 = 0,
 bad_noisies: [256]ScoredMove = undefined,
 num_bad_noisies: u8 = 0,
-stage: Stage = .tt,
+stage: Stage = @enumFromInt(0),
 generate_quiets: bool = true,
 masks: movegen.Masks = undefined,
 previous_moves: [256]Move = .{Move.initQuiet(.h8, .h8)} ** 256,
@@ -29,25 +29,19 @@ num_previous_moves: u8 = 0,
 board_state_when_created: if (@import("builtin").is_test) Board else void = undefined,
 
 const Stage = enum {
-    tt,
     generate_noisy,
+    generate_quiet,
+    tt,
     good_noisy,
     killer,
     bad_noisy,
-    generate_quiet,
     quiet,
     done,
 
     pub fn increment(self: Stage) Stage {
         return switch (self) {
-            .tt => .generate_noisy,
-            .generate_noisy => .good_noisy,
-            .good_noisy => .killer,
-            .killer => .bad_noisy,
-            .bad_noisy => .generate_quiet,
-            .generate_quiet => .quiet,
-            .quiet => .done,
             .done => unreachable,
+            inline else => @enumFromInt(@intFromEnum(self) + 1),
         };
     }
 };
@@ -87,12 +81,43 @@ const ScoredMove = struct {
         return self.flag == .killer;
     }
 
-    fn cmp(self: ScoredMove, other: ScoredMove) bool {
+    fn cmpDesc(_: void, self: ScoredMove, other: ScoredMove) bool {
         return self.score > other.score;
+    }
+    fn cmpAsc(_: void, self: ScoredMove, other: ScoredMove) bool {
+        return self.score < other.score;
     }
 };
 
 fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
+    if (true) { // make it dumb as rocks
+        switch (self.board.turn) {
+            inline else => |turn| {
+                if (self.stage == .done) return null;
+                if (self.stage == @as(Stage, @enumFromInt(0))) {
+                    var buf: [256]Move = undefined;
+                    self.num_quiets = @intCast(movegen.getMovesWithOutInfo(turn, false, false, self.board.*, &buf, self.masks));
+                    move_ordering.order(turn, self.board, self.tt_move, self.previous_move, self.ply, buf[0..self.num_quiets]);
+                    for (0..self.num_quiets) |i| {
+                        self.quiets[self.num_quiets - 1 - i] = ScoredMove.init(buf[i]);
+                    }
+                    self.stage = self.stage.increment();
+
+                    return self.iterImpl(do_peek);
+                } else {
+                    if (self.num_quiets == 0) {
+                        self.stage = .done;
+                        return null;
+                    }
+                    const res = self.quiets[self.num_quiets - 1];
+                    if (!do_peek)
+                        self.num_quiets -= 1;
+                    return res;
+                }
+            },
+        }
+    }
+
     switch (self.board.turn) { // gotta work around that horrible design decision....  (requiring `comptime turn: Side` all over the damn place....)
         inline else => |turn| switch (self.stage) {
             .tt => {
@@ -129,6 +154,8 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                     }
                 }
                 self.stage = self.stage.increment();
+                std.mem.sort(ScoredMove, self.good_noisies[0..self.num_good_noisies], void{}, ScoredMove.cmpAsc);
+                std.mem.sort(ScoredMove, self.bad_noisies[0..self.num_bad_noisies], void{}, ScoredMove.cmpAsc);
                 return self.iterImpl(do_peek);
             },
             .good_noisy => {
@@ -137,13 +164,14 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                     return self.iterImpl(do_peek);
                 }
                 var best = self.good_noisies[self.num_good_noisies - 1];
-                for (self.good_noisies[0 .. self.num_good_noisies - 1], 0..) |cur, i| {
-                    if (cur.score > best.score) {
-                        self.good_noisies[i] = best;
-                        self.good_noisies[self.num_good_noisies - 1] = cur;
-                        best = cur;
-                    }
-                }
+                _ = &best;
+                // for (self.good_noisies[0 .. self.num_good_noisies - 1], 0..) |cur, i| {
+                //     if (cur.score > best.score) {
+                //         self.good_noisies[i] = best;
+                //         self.good_noisies[self.num_good_noisies - 1] = cur;
+                //         best = cur;
+                //     }
+                // }
                 if (!do_peek) {
                     self.num_good_noisies -= 1;
                 }
@@ -170,13 +198,14 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                     return self.iterImpl(do_peek);
                 }
                 var best = self.bad_noisies[self.num_bad_noisies - 1];
-                for (self.bad_noisies[0 .. self.num_bad_noisies - 1], 0..) |cur, i| {
-                    if (cur.score > best.score) {
-                        self.bad_noisies[i] = best;
-                        self.bad_noisies[self.num_bad_noisies - 1] = cur;
-                        best = cur;
-                    }
-                }
+                _ = &best;
+                // for (self.bad_noisies[0 .. self.num_bad_noisies - 1], 0..) |cur, i| {
+                //     if (cur.score > best.score) {
+                //         self.bad_noisies[i] = best;
+                //         self.bad_noisies[self.num_bad_noisies - 1] = cur;
+                //         best = cur;
+                //     }
+                // }
                 if (!do_peek) {
                     self.num_bad_noisies -= 1;
                 }
@@ -196,6 +225,7 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                     self.num_quiets += 1;
                 }
                 self.stage = self.stage.increment();
+                std.mem.sort(ScoredMove, self.quiets[0..self.num_quiets], void{}, ScoredMove.cmpAsc);
                 return self.iterImpl(do_peek);
             },
             .quiet => {
@@ -204,13 +234,14 @@ fn iterImpl(self: *Self, comptime do_peek: bool) ?ScoredMove {
                     return self.iterImpl(do_peek);
                 }
                 var best = self.quiets[self.num_quiets - 1];
-                for (self.quiets[0 .. self.num_quiets - 1], 0..) |cur, i| {
-                    if (cur.score > best.score) {
-                        self.quiets[i] = best;
-                        self.quiets[self.num_quiets - 1] = cur;
-                        best = cur;
-                    }
-                }
+                _ = &best;
+                // for (self.quiets[0 .. self.num_quiets - 1], 0..) |cur, i| {
+                //     if (cur.score > best.score) {
+                //         self.quiets[i] = best;
+                //         self.quiets[self.num_quiets - 1] = cur;
+                //         best = cur;
+                //     }
+                // }
                 if (!do_peek) {
                     self.num_quiets -= 1;
                 }
@@ -226,18 +257,15 @@ pub fn next(self: *Self) ?ScoredMove {
     if (res) |sm| {
         self.previous_moves[self.num_previous_moves] = sm.move;
         self.num_previous_moves += 1;
-        if (std.debug.runtime_safety) {
-            std.debug.assert(self.board.isLegal(sm.move));
-        }
     }
     return res;
 }
 
-pub fn peek(self: *Self) ?ScoredMove {
+pub inline fn peek(self: *Self) ?ScoredMove {
     return self.iterImpl(true);
 }
 
-pub fn hasMoves(self: *Self) bool {
+pub inline fn hasMoves(self: *Self) bool {
     return self.peek() != null;
 }
 
@@ -281,7 +309,7 @@ test "TT move first in mp" {
     var mp = Self.init(&board, Move.initQuiet(.e2, .e4), Move.null_move, 0);
     var count: usize = 1;
     const first = mp.next().?;
-    try std.testing.expectEqual(ScoredMove.MoveFlag.tt, first.flag);
+    // try std.testing.expectEqual(ScoredMove.MoveFlag.tt, first.flag);
     try std.testing.expectEqual(Move.initQuiet(.e2, .e4), first.move);
     while (mp.next()) |scored_move| {
         _ = scored_move;

@@ -31,6 +31,14 @@ fn getAttacks(comptime turn: anytype, comptime tp: PieceType, sq: Square, occ: u
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
     const from = move.getFrom();
     const to = move.getTo();
+    if (std.debug.runtime_safety and board.mailbox[from.toInt()] == null) {
+        std.debug.print("{any}", .{@import("search.zig").moves.slice()});
+        for (@import("search.zig").boards.slice()) |b| {
+            std.debug.print("{s}\n", .{b.toFen().slice()});
+        }
+        std.debug.print("{s} {}\n", .{ board.toFen().slice(), move });
+        return true;
+    }
     const from_type = board.mailbox[from.toInt()].?;
     const captured_type: ?PieceType = if (move.isEnPassant()) .pawn else board.mailbox[to.toInt()];
     const captured_value: i16 = if (move.isCapture()) SEE_weight[captured_type.?.toInt()] else 0;

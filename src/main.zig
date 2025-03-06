@@ -72,8 +72,6 @@ pub fn main() !void {
 
     var hash_history = try std.ArrayList(u64).initCapacity(allocator, 16384);
     defer hash_history.deinit();
-    const move_buf = try allocator.alloc(Move, 16384);
-    defer allocator.free(move_buf);
 
     magics.init();
     nnue.init();
@@ -185,7 +183,7 @@ pub fn main() !void {
                 hash_history.appendAssumeCapacity(board.zobrist);
                 defer _ = hash_history.pop();
 
-                const info = engine.searchSync(board, .{ .depth = depth }, move_buf, &hash_history, true);
+                const info = engine.searchSync(board, .{ .depth = depth }, &hash_history, true);
 
                 num_nodes += info.stats.nodes + info.stats.qnodes;
                 time += info.stats.ns_used;
@@ -307,6 +305,8 @@ pub fn main() !void {
                     var timer = std.time.Timer.start() catch unreachable;
                     const tt = try allocator.alloc(Board.PerftTTEntry, 1 << 15);
                     defer allocator.free(tt);
+                    const move_buf = try allocator.alloc(Move, 16384);
+                    defer allocator.free(move_buf);
                     const nodes = board.perftSingleThreaded(move_buf, depth, true);
                     // const nodes = board.perftSingleThreadedTT(
                     //     move_buf,
@@ -328,6 +328,8 @@ pub fn main() !void {
                     const tt = try allocator.alloc(Board.PerftTTEntry, 1 << 15);
                     defer allocator.free(tt);
                     // const nodes = board.perftSingleThreaded(move_buf, depth, true);
+                    const move_buf = try allocator.alloc(Move, 16384);
+                    defer allocator.free(move_buf);
                     const nodes = board.perftNNUE(
                         move_buf,
                         depth,
@@ -419,7 +421,6 @@ pub fn main() !void {
                     .depth = max_depth_opt,
                     .frc = frc,
                 },
-                move_buf,
                 &hash_history,
             );
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {

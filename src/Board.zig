@@ -791,6 +791,7 @@ pub fn isPseudoLegal(self: Self, move: Move) bool {
     if (move == Move.null_move) {
         return false;
     }
+    const occ = self.white.all | self.black.all;
     const us_bb = self.getSide(self.turn).all;
     if (us_bb & move.getFrom().toBitboard() == 0 or // not moving one of our pieces
         ((us_bb & move.getTo().toBitboard() != 0) != move.isCastlingMove())) // capturing our own piece is expected when castling, otherwise not
@@ -815,9 +816,9 @@ pub fn isPseudoLegal(self: Self, move: Move) bool {
     switch (piece_on_from_square) {
         .pawn => return d_rank <= 2 and d_file == @intFromBool(move.isCapture()),
         .knight => return @min(d_rank, d_file) == 1 and @max(d_rank, d_file) == 2,
-        .bishop => return d_rank == d_file,
-        .rook => return @min(d_rank, d_file) == 0,
-        .queen => return @min(d_rank, d_file) == 0 or d_rank == d_file,
+        .bishop => return d_rank == d_file and Bitboard.queen_ray_between_exclusive[move.getFrom().toInt()][move.getTo().toInt()] & occ == 0,
+        .rook => return @min(d_rank, d_file) == 0 and Bitboard.queen_ray_between_exclusive[move.getFrom().toInt()][move.getTo().toInt()] & occ == 0,
+        .queen => return @min(d_rank, d_file) == 0 or d_rank == d_file and Bitboard.queen_ray_between_exclusive[move.getFrom().toInt()][move.getTo().toInt()] & occ == 0,
         .king => return @max(d_rank, d_file) == 1,
     }
 }
@@ -827,7 +828,11 @@ fn isKingAttackedImpl(self: Self, comptime turn: Side, us_occ: u64, them_occ: u6
     const them = self.getSide(turn.flipped());
     var king = us.getBoard(.king);
     if (after_move and move.getFrom().toBitboard() & king != 0) {
-        king ^= move.getFrom().toBitboard() ^ move.getTo().toBitboard();
+        if (move.isCastlingMove()) {
+            king ^= move.getFrom().toBitboard() ^ move.getCastlingKingDest(turn).toBitboard();
+        } else {
+            king ^= move.getFrom().toBitboard() ^ move.getTo().toBitboard();
+        }
     }
     const occ = us_occ | them_occ;
 
@@ -865,7 +870,14 @@ pub fn isLegal(self: Self, move: Move) bool {
     switch (self.turn) {
         inline else => |turn| {
             if (move.isCastlingMove()) {
-                return !self.isKingAttacked(turn);
+                var buf: [16]Move = undefined;
+                const count = movegen.getKingMoves(turn, false, true, self, &buf, movegen.getMasks(turn, self).rook_pins);
+                for (buf[0..count]) |generated_move| {
+                    if (move == generated_move) {
+                        return true;
+                    }
+                }
+                return false;
             }
             var us_occ = self.getSide(turn).all;
             var them_occ = self.getSide(turn.flipped()).all;
@@ -887,14 +899,14 @@ pub fn isLegal(self: Self, move: Move) bool {
 }
 
 test isLegal {
-    // {
-    //     var board = try Board.parseFen("rnbqkbnr/ppp1pQpp/8/8/4p3/8/PPPP1PPP/RNB1KBNR b KQkq - 0 3");
-    //     try std.testing.expect(board.isLegal(Move.initCapture(.e8, .f7)));
-    // }
-    // {
-    //     var board = try Board.parseFen("rn1qkbnr/pppB1ppp/4p3/3P4/8/8/PPPP1PPP/RNBQK1NR b KQkq - 0 4");
-    //     try std.testing.expect(board.isLegal(Move.initCapture(.b8, .d7)));
-    // }
+    {
+        var board = try Board.parseFen("rnbqkbnr/ppp1pQpp/8/8/4p3/8/PPPP1PPP/RNB1KBNR b KQkq - 0 3");
+        try std.testing.expect(board.isLegal(Move.initCapture(.e8, .f7)));
+    }
+    {
+        var board = try Board.parseFen("rn1qkbnr/pppB1ppp/4p3/3P4/8/8/PPPP1PPP/RNBQK1NR b KQkq - 0 4");
+        try std.testing.expect(board.isLegal(Move.initCapture(.b8, .d7)));
+    }
     {
         var board = try Board.parseFen("r1bqkb1r/pppp1ppp/2n2n2/4p3/4P3/5N2/PPPPBPPP/RNBQK2R w KQkq - 4 4");
         try std.testing.expect(board.isLegal(Move.initCastlingKingside(.e1, .h1)));

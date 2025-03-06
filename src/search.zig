@@ -60,7 +60,6 @@ fn quiesce(
     eval_state: EvalState,
     alpha_inp: i16,
     beta: i16,
-    move_buf: []Move,
 ) i16 {
     var alpha = alpha_inp;
     if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
@@ -70,7 +69,8 @@ fn quiesce(
     if (board.isInsufficientMaterial() or board.isKvKNN()) {
         return 0;
     }
-    const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
+    var move_buf: [256]Move = undefined;
+    const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, &move_buf);
     const tt_entry = tt[getTTIndex(board.zobrist)];
     var static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
     if (!pv and tt_entry.zobrist == board.zobrist) {
@@ -101,14 +101,17 @@ fn quiesce(
     for (move_buf[0..move_count]) |move| {
         if (std.debug.runtime_safety) {
             std.testing.expect(board.isLegal(move)) catch {
-                std.debug.panic("{s} {}\n", .{
+                std.debug.print("{s} {}\n", .{
                     board.toFen().slice(),
                     move,
                 });
+                err = true;
+                shutdown = true;
+                return 0;
             };
             if (board.mailbox[move.getTo().toInt()]) |cap| {
                 if (cap == .king) {
-                    writeLog("{} captures king\nboard:{}\n", .{ move, board.* });
+                    writeLog("{} captures king\nboard:{}\n{s}\n", .{ move, board.*, board.toFen().slice() });
                     err = true;
                     shutdown = true;
                     return 0;
@@ -142,7 +145,6 @@ fn quiesce(
             updated_eval_state,
             -beta,
             -alpha,
-            move_buf[move_count..],
         );
         if (errored()) {
             writeLog("{}\n", .{move});
@@ -180,6 +182,9 @@ fn quiesce(
     return best_score;
 }
 
+pub var boards = if (std.debug.runtime_safety) std.BoundedArray(Board, 256).init(0) catch unreachable else @compileError("ya shouldn't be dealing with this");
+pub var moves = if (std.debug.runtime_safety) std.BoundedArray(Move, 256).init(0) catch unreachable else @compileError("ya shouldn't be dealing with this");
+
 fn search(
     comptime root: bool,
     comptime turn: Side,
@@ -190,12 +195,19 @@ fn search(
     beta: i16,
     ply: u8,
     depth: u8,
-    move_buf: []Move,
     previous_move: Move,
     excluded: Move,
     previous_evals: EvalPair,
     hash_history: *std.ArrayList(u64),
 ) ?if (root) struct { i16, Move } else i16 {
+    if (std.debug.runtime_safety) {
+        boards.appendAssumeCapacity(board.*);
+        moves.appendAssumeCapacity(previous_move);
+    }
+    defer {
+        if (std.debug.runtime_safety) _ = boards.pop();
+        if (std.debug.runtime_safety) _ = moves.pop();
+    }
     const result = struct {
         inline fn impl(score: i16, move: Move) if (root) struct { i16, Move } else i16 {
             return if (root) .{ score, move } else score;
@@ -278,7 +290,6 @@ fn search(
             eval_state,
             alpha,
             beta,
-            move_buf,
         );
         if (shutdown or errored()) {
             return null;
@@ -334,7 +345,6 @@ fn search(
                 eval_state,
                 alpha,
                 beta,
-                move_buf,
             );
             if (razor_score <= alpha) {
                 return razor_score;
@@ -360,7 +370,7 @@ fn search(
                 -beta + 1,
                 ply + 1,
                 depth - reduction,
-                move_buf,
+                
                 Move.null_move,
                 Move.null_move,
                 previous_evals,
@@ -380,7 +390,7 @@ fn search(
                     beta,
                     ply + 1,
                     depth - reduction,
-                    move_buf,
+                    
                     previous_move,
                     Move.null_move,
                     previous_evals,
@@ -406,10 +416,9 @@ fn search(
         // for (move_buf[0..move_count], 0..) |move, i| {
         if (std.debug.runtime_safety) {
             std.testing.expect(board.isLegal(move)) catch {
-                std.debug.panic("{s} {}\n", .{
-                    board.toFen().slice(),
-                    move,
-                });
+                writeLog("illegal move: {}\nin position: {s}\n", .{ move, board.toFen().slice() });
+                err = true;
+                return result(0, move);
             };
         }
         const node_count_before_search: u64 = if (root) nodes + qnodes else 0;
@@ -448,7 +457,7 @@ fn search(
                 s_beta,
                 ply,
                 s_depth,
-                move_buf,
+                
                 previous_move,
                 move,
                 previous_evals,
@@ -461,7 +470,15 @@ fn search(
         }
 
         const updated_eval_state = eval_state.updateWith(turn, board, move);
+
         const inv = board.playMove(turn, move);
+        if (std.debug.runtime_safety) {
+            if (std.meta.eql(board.*, Board.parseFen("2kr3r/pb1pnp2/1p6/n3q2p/P2pP1pN/N2B1pPP/8/2R1QR1K w - - 3 18") catch unreachable)) {
+                err = true;
+                shutdown = true;
+                return result(0, move);
+            }
+        }
         @prefetch(&tt[getTTIndex(board.zobrist)], .{});
         hash_history.appendAssumeCapacity(board.zobrist);
         defer _ = hash_history.pop();
@@ -486,7 +503,7 @@ fn search(
                 -alpha,
                 ply + 1,
                 reduced_depth,
-                move_buf,
+                
                 move,
                 Move.null_move,
                 updated_evals,
@@ -503,7 +520,7 @@ fn search(
                 -alpha,
                 ply + 1,
                 new_depth,
-                move_buf,
+                
                 move,
                 Move.null_move,
                 updated_evals,
@@ -521,7 +538,7 @@ fn search(
                 -alpha,
                 ply + 1,
                 new_depth,
-                move_buf,
+                
                 move,
                 Move.null_move,
                 updated_evals,
@@ -688,7 +705,7 @@ fn writeInfo(score: i16, move: Move, depth: u8, frc: bool) void {
     }
 }
 
-pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, move_buf: []Move, hash_history: *std.ArrayList(u64), silence_output: bool) engine.SearchResult {
+pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, hash_history: *std.ArrayList(u64), silence_output: bool) engine.SearchResult {
     resetSoft();
     assert(hash_history.items[hash_history.items.len - 1] == board.zobrist);
     for (hash_history.items) |zobrist| repetition_table[@intCast(zobrist % repetition_table.len)] += 1;
@@ -720,7 +737,6 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                         beta,
                         0,
                         @intCast(depth),
-                        move_buf,
                         Move.null_move,
                         Move.null_move,
                         .{},
@@ -760,7 +776,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     checkmate_score,
                     0,
                     @intCast(depth),
-                    move_buf,
+                    
                     Move.null_move,
                     Move.null_move,
                     .{},
@@ -794,6 +810,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (shouldStopSearching()) {
             break;
         }
+        if (errored()) break;
         // if (eval.isMateScore(score)) break;
     }
     if (errored()) {

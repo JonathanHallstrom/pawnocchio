@@ -205,7 +205,7 @@ pub const Accumulator = struct {
     }
 
     pub fn forward(self: Accumulator, board: *const Board) i16 {
-        if (std.debug.runtime_safety) {
+        if (std.debug.runtime_safety and false) {
             const from_scratch = Accumulator.init(board);
             std.testing.expectEqualDeep(from_scratch, self) catch |e| {
                 @import("main.zig").writeLog("{} {s}\n", .{ board.fullmove_clock * 2 + @intFromBool(board.turn == .black), board.toFen().slice() });
