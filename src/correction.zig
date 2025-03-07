@@ -12,14 +12,14 @@ pub fn update(board: *const Board, corrected_static_eval: i16, score: i16, depth
 }
 
 fn updatePawnCorrhist(board: *const Board, err: i32, weight: i32) void {
-    const entry = &pawn_corrhist[board.pawn_zobrist % pawn_corrhist.len];
+    const entry = &pawn_corrhist[@intCast(board.pawn_zobrist % pawn_corrhist.len)];
     const lerped = (entry.* * (256 - weight) + err * weight) >> 8;
     const clamped = std.math.clamp(lerped, -max_history, max_history);
     entry.* = @intCast(clamped);
 }
 
 pub fn correct(board: *const Board, static_eval: i16) i16 {
-    const correction: i32 = pawn_corrhist[board.pawn_zobrist % pawn_corrhist.len] >> 8;
+    const correction: i32 = pawn_corrhist[@intCast(board.pawn_zobrist % pawn_corrhist.len)] >> 8;
     return eval.clampScore(static_eval + correction);
 }
 
