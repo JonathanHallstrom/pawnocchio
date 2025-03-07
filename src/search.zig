@@ -62,7 +62,7 @@ fn quiesce(
     beta: i16,
 ) i16 {
     var alpha = alpha_inp;
-    if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
+    if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time or nodes + qnodes >= hard_nodes)) {
         shutdown = true;
         return 0;
     }
@@ -216,7 +216,7 @@ fn search(
     if (std.debug.runtime_safety and err) return result(0, Move.null_move);
     var alpha = alpha_inp;
     nodes += 1;
-    if (ply > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
+    if (ply > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time or nodes + qnodes >= hard_nodes)) {
         shutdown = true;
         return null;
     }
@@ -711,6 +711,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     for (hash_history.items) |zobrist| repetition_table[@intCast(zobrist % repetition_table.len)] += 1;
     timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
+    hard_nodes = search_params.maxNodes() *| 2;
     var board_copy = board;
     var score: i16 = -checkmate_score;
     var move = Move.null_move;
@@ -884,6 +885,7 @@ pub fn resetSoft() void {
     tt_hits = 0;
     tt_collisions = 0;
     max_depth = MAX_SEARCH_DEPTH;
+    hard_nodes = std.math.maxInt(u64);
     @memset(std.mem.asBytes(&root_node_counts), 0);
     @memset(&repetition_table, 0);
 }
@@ -906,6 +908,7 @@ var qnodes: u64 = 0;
 var timer: std.time.Timer = undefined;
 var shutdown = false;
 var hard_time: u64 = 0;
+var hard_nodes: u64 = std.math.maxInt(u64);
 var max_depth: u8 = MAX_SEARCH_DEPTH;
 var tt_hits: usize = 0;
 var tt_collisions: usize = 0;
