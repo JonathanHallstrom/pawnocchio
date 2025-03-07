@@ -426,7 +426,7 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("networks/net15_02_640_400_8_mirrored.nnue"));
+    var fbs = std.io.fixedBufferStream(@embedFile("networks/net16_02_1024_800_8_mirrored.nnue"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
     for (0..weights.hidden_layer_weights.len) |i| {
@@ -459,7 +459,7 @@ const vec_size = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLe
 pub const HORIZONTAL_MIRRORING = true;
 pub const BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
-pub const HIDDEN_SIZE: usize = 640;
+pub const HIDDEN_SIZE: usize = 1024;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
