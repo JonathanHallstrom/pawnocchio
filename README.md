@@ -6,6 +6,7 @@ UCI Chess engine
 
 |    Version    | [CCRL 40/15][ccrl 40/15] |
 |:-------------:|:------------------------:|
+| [1.3][v1.3]   |           3200*          |
 | [1.2][v1.2]   |           3120           |
 | [1.1][v1.1]   |           2432           |
 | [1.0][v1.0]   |           2100*          |
@@ -33,17 +34,19 @@ The search is a standard alpha-beta search with the following enhancements:
 - Singular extensions
   - Double extension
 - Killer move
+- Correction history
 
 ### Evaluation
 The evaluation is done using a neural net trained entirely on self play games from zero knowledge using the excellent open source [bullet](https://github.com/jw1912/bullet) neural network trainer.
-The architecture of the network is (768->512)x2->1x8
+The architecture of the network is (768hm->640)x2->1x8
 
 ## Build instructions
-1. Install zig (0.13.0)
+1. Install zig (0.14.0)
 2. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
 
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1
 [v1.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.2
+[v1.3]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.3
 
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
