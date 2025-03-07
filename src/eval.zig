@@ -392,6 +392,11 @@ inline fn readPieceSquareTable(side: Side, pt: PieceType, square: Square) Packed
 
 pub const checkmate_score: i16 = 16000;
 pub const win_score: i16 = checkmate_score - 255;
+
+pub fn clampScore(score: anytype) i16 {
+    return @intCast(std.math.clamp(score, -(win_score - 1), win_score - 1));
+}
+
 const piece_values: [PieceType.all.len]i16 = .{
     100,
     300,

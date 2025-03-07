@@ -1,5 +1,6 @@
 const std = @import("std");
 const Board = @import("Board.zig");
+const magics = @import("magics.zig");
 const Move = @import("Move.zig").Move;
 
 threadlocal var move_buf: [32768]Move = undefined;
@@ -58,6 +59,7 @@ fn runTests(file: []const u8, allocator: std.mem.Allocator, result_writer: anyty
     });
     defer tp.deinit();
     var wg = std.Thread.WaitGroup{};
+    magics.init();
 
     var arena_wrapper = std.heap.ArenaAllocator.init(allocator);
     defer arena_wrapper.deinit();

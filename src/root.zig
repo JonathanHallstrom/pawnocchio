@@ -3,4 +3,5 @@ test {
     _ = @import("mask_generation.zig");
     _ = @import("see.zig");
     _ = @import("movegen.zig");
+    _ = @import("perft_tests.zig");
 }
