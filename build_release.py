@@ -2,9 +2,6 @@ import os
 
 VERSION = "1.3"
 
-def run_build(command):
-    print(f"Running: {command}")
-    os.system(command)
 
 builds = [
     ("x86", "windows", "i386", None),
@@ -35,10 +32,25 @@ builds = [
     ("aarch64", "macos", "aarch64", None),
 ]
 
+commands = []
 for arch, os_name, zig_arch, cpu in builds:
     cpu_flag = f"-Dcpu={cpu} " if cpu else ""
-    output_name_base = f"pawnocchio-{VERSION}-{os_name}-{arch}"
+    if cpu is not None:
+        if cpu.startswith(arch):
+            output_name_base = f"pawnocchio-{VERSION}-{os_name}-{cpu}"
+        else:
+            output_name_base = f"pawnocchio-{VERSION}-{os_name}-{arch}_{cpu}"
+    else:
+        output_name_base = f"pawnocchio-{VERSION}-{os_name}-{arch}"
     output_name = output_name_base + (".exe" if os_name == "windows" else "")
     build_cmd = f"zig build --release=fast {cpu_flag}-Dtarget={arch}-{os_name} -Dname={output_name_base}"
     move_cmd = f"mv zig-out/bin/{output_name} builds/{output_name}"
-    run_build(build_cmd + " && " + move_cmd)
+    commands.append(build_cmd + " && " + move_cmd)
+
+# for command in commands:
+#     os.system(command + "&")
+# os.system("wait")
+
+
+for command in commands:
+    os.system(command)
