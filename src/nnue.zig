@@ -290,7 +290,6 @@ pub const Accumulator = struct {
             const king_from_sq = move.getFrom();
             std.debug.assert(board.mailbox[king_from_sq.toInt()] == .king);
             const king_to_sq = move.getCastlingKingDest(side);
-            std.debug.assert(board.mailbox[king_to_sq.toInt()] == null);
             const rook_from_sq = move.getTo();
             std.debug.assert(board.mailbox[rook_from_sq.toInt()] == .rook);
             const rook_to_sq = move.getCastlingRookDest(side);
