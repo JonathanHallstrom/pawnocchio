@@ -260,11 +260,17 @@ pub const Accumulator = struct {
     }
 
     pub fn needsRefresh(board: *const Board, move: Move) bool {
-        if (!HORIZONTAL_MIRRORING) return false;
-        const is_moving_across_middle = (move.getFrom().getFile().toInt() <= 3) != (move.getTo().getFile().toInt() <= 3);
-        const is_king = board.mailbox[move.getFrom().toInt()] == .king;
-        const is_king_moving_across_middle = is_king and is_moving_across_middle;
-        return is_king_moving_across_middle;
+        switch (board.turn) {
+            inline else => |turn| {
+                if (!HORIZONTAL_MIRRORING) return false;
+                const from = move.getFrom();
+                const to = if (move.isCastlingMove()) move.getCastlingKingDest(turn) else move.getTo();
+                const is_moving_across_middle = (from.getFile().toInt() <= 3) != (to.getFile().toInt() <= 3);
+                const is_king = board.mailbox[from.toInt()] == .king;
+                const is_king_moving_across_middle = is_king and is_moving_across_middle;
+                return is_king_moving_across_middle;
+            },
+        }
     }
 
     pub fn refresh(noalias self: *Accumulator, comptime side: Side, board: *const Board, move: Move) void {
