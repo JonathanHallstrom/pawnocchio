@@ -376,7 +376,6 @@ pub fn main() !void {
             inline else => |t| {
                 const num_moves, const masks = movegen.getMovesWithInfo(t, false, board, move_buf);
 
-                game.setOutCome(1);
                 if (num_moves == 0) {
                     if (masks.is_in_check) {
                         game.setOutCome(if (t == .white) 0 else 2);
@@ -390,6 +389,7 @@ pub fn main() !void {
                 }
             },
         }
+
         try game.serializeInto(output);
         num_games += 1;
     }

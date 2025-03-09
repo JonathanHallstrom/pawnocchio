@@ -6,7 +6,7 @@ const eval = @import("eval.zig");
 
 pub fn update(board: *const Board, corrected_static_eval: i16, score: i16, depth: u8) void {
     const err: i32 = (@as(i32, score) - corrected_static_eval) * 256;
-    const weight: i32 = @min(depth, 15) + 1;
+    const weight: i32 = @min(@as(i32, depth), 15) + 1;
 
     updatePawnCorrhist(board, err, weight);
 }
