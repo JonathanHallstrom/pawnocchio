@@ -72,16 +72,16 @@ fn quiesce(
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
     const tt_entry = tt[getTTIndex(board.zobrist)];
     var static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
-    if (!pv and tt_entry.zobrist == board.zobrist) {
+    if (tt_entry.zobrist == board.zobrist) {
         const tt_score = eval.scoreFromTt(tt_entry.score, 0);
         switch (tt_entry.tp) {
             .exact => if (!pv) return tt_score,
             .lower => {
-                if (tt_score >= beta) return tt_score;
+                if (!pv and tt_score >= beta) return tt_score;
                 if (tt_score >= static_eval) static_eval = tt_score;
             },
             .upper => {
-                if (tt_score <= alpha) return tt_score;
+                if (!pv and tt_score <= alpha) return tt_score;
                 if (tt_score <= static_eval) static_eval = tt_score;
             },
         }
