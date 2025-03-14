@@ -304,7 +304,7 @@ fn search(
 
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * (depth -| @intFromBool(improving))) {
+        if (depth <= 6 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * (depth -| @intFromBool(improving))) {
             return result(tt_corrected_eval, move_buf[0]);
         }
 
