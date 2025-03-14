@@ -354,6 +354,10 @@ fn search(
             board.undoNullMove(inv);
 
             if (score >= beta) {
+                if (depth < 12 and !eval.isMateScore(score)) {
+                    return score;
+                }
+
                 const anti_zugzwang_score = search(
                     false,
                     turn,
