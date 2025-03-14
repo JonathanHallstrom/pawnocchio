@@ -354,26 +354,27 @@ fn search(
             board.undoNullMove(inv);
 
             if (score >= beta) {
-                const anti_zugzwang_score = search(
-                    false,
-                    turn,
-                    false,
-                    board,
-                    eval_state,
-                    beta - 1,
-                    beta,
-                    ply + 1,
-                    depth - reduction,
-                    move_buf[move_count..],
-                    previous_move,
-                    Move.null_move,
-                    previous_evals,
-                    hash_history,
-                ) orelse 0;
+                return score;
+                // const anti_zugzwang_score = search(
+                //     false,
+                //     turn,
+                //     false,
+                //     board,
+                //     eval_state,
+                //     beta - 1,
+                //     beta,
+                //     ply + 1,
+                //     depth - reduction,
+                //     move_buf[move_count..],
+                //     previous_move,
+                //     Move.null_move,
+                //     previous_evals,
+                //     hash_history,
+                // ) orelse 0;
 
-                if (anti_zugzwang_score >= beta) {
-                    return anti_zugzwang_score;
-                }
+                // if (anti_zugzwang_score >= beta) {
+                //     return anti_zugzwang_score;
+                // }
             }
         }
     }
