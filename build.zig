@@ -1,11 +1,11 @@
 const std = @import("std");
 
 fn copyNetwork(net: []const u8) !void {
-    var pawnocchio_nets_networks = std.fs.cwd().openDir("pawnocchio-nets/networks/", .{}) catch |e| switch (e) {
-        error.FileNotFound => {},
+    var nets_directory = std.fs.cwd().openDir("pawnocchio-nets/networks/", .{}) catch |e| switch (e) {
+        error.FileNotFound => std.fs.cwd(),
         else => return e,
     };
-    defer pawnocchio_nets_networks.close();
+    defer nets_directory.close();
 
     std.fs.cwd().makeDir("src/networks/") catch |e| switch (e) {
         error.PathAlreadyExists => {},
@@ -14,10 +14,7 @@ fn copyNetwork(net: []const u8) !void {
     var src_networks = try std.fs.cwd().openDir("src/networks/", .{});
     defer src_networks.close();
 
-    pawnocchio_nets_networks.copyFile(net, src_networks, "net.nnue", .{}) catch |e| switch (e) {
-        error.FileNotFound => std.fs.cwd().copyFile(net, src_networks, "net.nnue", .{}),
-        else => return e,
-    } catch |e| switch (e) {
+    nets_directory.copyFile(net, src_networks, "net.nnue", .{}) catch |e| switch (e) {
         error.FileNotFound => std.debug.panic("{s} was not found!\n", .{net}),
         else => return e,
     };
