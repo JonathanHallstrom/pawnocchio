@@ -11,7 +11,10 @@ fn copyNetwork(net: []const u8) !void {
     var src_networks = try std.fs.cwd().openDir("src/networks/", .{});
     defer src_networks.close();
 
-    try pawnocchio_nets_networks.copyFile(net, src_networks, "net.nnue", .{});
+    pawnocchio_nets_networks.copyFile(net, src_networks, "net.nnue", .{}) catch |e| switch (e) {
+        error.FileNotFound => try std.fs.cwd().copyFile(net, src_networks, "net.nnue", .{}),
+        else => return e,
+    };
 }
 
 // Although this function looks imperative, note that its job is to
@@ -25,7 +28,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
-    const net = b.option([]const u8, "net", "Change the net to be used") orelse "net17_04_768_400_8_mirrored_2.nnue";
+    const net = b.option([]const u8, "net", "Change the net to be used") orelse "net18_04_768_400_8_mirrored.nnue";
     copyNetwork(net) catch |e| std.debug.panic("copying neural net failed with error: {}\n", .{e});
 
     // Standard optimization options allow the person running `zig build` to select
