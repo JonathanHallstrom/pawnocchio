@@ -13,7 +13,7 @@ endif
 
 net:
 	@echo "Preparing neural network"
-	git submodule update --init --recursive
+	-git submodule update --init --recursive
 
 default: net
 	zig build --release=fast install
