@@ -2,6 +2,7 @@
 
 .DEFAULT_GOAL := default
 
+
 ifndef EXE
 EXE=pawnocchio
 endif
@@ -15,6 +16,12 @@ net:
 	@echo "Preparing neural network"
 	-git submodule update --init --recursive
 
+ifdef EVALFILE
+NET_SPECIFIER=-Dnet=$(EVALFILE)
+else
+NET_SPECIFIER=
+endif
+
 default: net
-	zig build --release=fast install
+	zig build --release=fast install $(NET_SPECIFIER)
 	@$(MV)
