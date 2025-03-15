@@ -52,6 +52,10 @@ const EvalPair = struct {
     }
 };
 
+fn drawScore() i16 {
+    return @as(i16, @intCast(nodes & 2)) - 1;
+}
+
 fn quiesce(
     comptime pv: bool,
     comptime turn: Side,
@@ -67,7 +71,7 @@ fn quiesce(
         return 0;
     }
     if (board.isInsufficientMaterial() or board.isKvKNN()) {
-        return 0;
+        return drawScore();
     }
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
     const tt_entry = tt[getTTIndex(board.zobrist)];
@@ -229,13 +233,13 @@ fn search(
     const move_count, const masks = movegen.getMovesWithInfo(turn, false, board.*, move_buf);
     const is_in_check = masks.is_in_check;
     if (root and move_count == 0) {
-        return result(0, Move.null_move);
+        return result(drawScore(), Move.null_move);
     }
     if (!root and move_count == 0) {
-        return if (is_in_check) eval.mateIn(ply) else 0;
+        return if (is_in_check) eval.mateIn(ply) else drawScore();
     }
     if (board.halfmove_clock >= 100) {
-        return result(0, Move.null_move);
+        return result(drawScore(), Move.null_move);
     }
 
     const repetition_idx: usize = @intCast(board.zobrist % repetition_table.len);
@@ -275,7 +279,7 @@ fn search(
 
     // if its king vs king and two knights its either a draw or M1, depth 4 just to be safe
     if (board.isInsufficientMaterial() or (board.isKvKNN() and depth >= 4)) {
-        return result(0, move_buf[0]);
+        return result(drawScore(), move_buf[0]);
     }
 
     const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));

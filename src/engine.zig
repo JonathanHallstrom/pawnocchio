@@ -145,13 +145,13 @@ fn bestMove(fen: []const u8, depth: u8, moves: []const u8, allocator: std.mem.Al
 }
 
 test "50 move rule" {
-    try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67", 5, "", std.testing.allocator));
-    try std.testing.expectEqual(Move.initQuiet(.c7, .a7), bestMove("1R6/2R5/7P/8/8/k7/8/2K5 w - - 99 67", 5, "", std.testing.allocator));
-    try std.testing.expectEqual(Move.initCapture(.f4, .g6), bestMove("1R6/8/6p1/8/5N2/k7/8/2KR4 w - - 99 67", 5, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.h6, .h7), bestMove("1R6/8/7P/8/3B4/k2B4/8/2K5 w - - 99 67", 10, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initQuiet(.c7, .a7), bestMove("1R6/2R5/7P/8/8/k7/8/2K5 w - - 99 67", 10, "", std.testing.allocator));
+    try std.testing.expectEqual(Move.initCapture(.f4, .g6), bestMove("1R6/8/6p1/8/5N2/k7/8/2KR4 w - - 99 67", 20, "", std.testing.allocator));
 }
 
 test "repetitions" {
-    try std.testing.expect(Move.initQuiet(.c6, .d5) != try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 5, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator));
+    try std.testing.expect(Move.initQuiet(.c6, .d5) != try bestMove("1R6/8/7P/2BB4/8/8/k7/2K5 b - - 8 62", 10, "a2a1 d5c6 a1a2 c6d5 a2a1 d5c6 a1a2", std.testing.allocator));
 }
 
 test "random position where king has to cross middle, should test that accumulator refreshes are working" {
