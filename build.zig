@@ -12,7 +12,10 @@ fn copyNetwork(net: []const u8) !void {
     defer src_networks.close();
 
     pawnocchio_nets_networks.copyFile(net, src_networks, "net.nnue", .{}) catch |e| switch (e) {
-        error.FileNotFound => try std.fs.cwd().copyFile(net, src_networks, "net.nnue", .{}),
+        error.FileNotFound => std.fs.cwd().copyFile(net, src_networks, "net.nnue", .{}),
+        else => return e,
+    } catch |e| switch (e) {
+        error.FileNotFound => std.debug.panic("{s} was not found!\n", .{net}),
         else => return e,
     };
 }
