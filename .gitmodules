@@ -1,0 +1,3 @@
+[submodule "networks"]
+	path = pawnocchio-nets
+	url = https://github.com/JonathanHallstrom/pawnocchio-nets

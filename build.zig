@@ -1,5 +1,19 @@
 const std = @import("std");
 
+fn copyNetwork(net: []const u8) !void {
+    var pawnocchio_nets_networks = try std.fs.cwd().openDir("pawnocchio-nets/networks/", .{});
+    defer pawnocchio_nets_networks.close();
+
+    std.fs.cwd().makeDir("src/networks/") catch |e| switch (e) {
+        error.PathAlreadyExists => {},
+        else => return e,
+    };
+    var src_networks = try std.fs.cwd().openDir("src/networks/", .{});
+    defer src_networks.close();
+
+    try pawnocchio_nets_networks.copyFile(net, src_networks, "net.nnue", .{});
+}
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -11,6 +25,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
+    const net = b.option([]const u8, "net", "Change the net to be used") orelse "net18_04_768_400_8_mirrored.nnue";
+    copyNetwork(net) catch |e| std.debug.panic("copying neural net failed with error: {}\n", .{e});
 
     // Standard optimization options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not

@@ -11,6 +11,10 @@ else
 MV=mv ./zig-out/bin/pawnocchio $(EXE)
 endif
 
-default:
+net:
+	@echo "Preparing neural network"
+	git submodule update --init --recursive
+
+default: net
 	zig build --release=fast install
 	@$(MV)
