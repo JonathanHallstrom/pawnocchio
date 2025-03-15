@@ -1,7 +1,10 @@
 const std = @import("std");
 
 fn copyNetwork(net: []const u8) !void {
-    var pawnocchio_nets_networks = try std.fs.cwd().openDir("pawnocchio-nets/networks/", .{});
+    var pawnocchio_nets_networks = std.fs.cwd().openDir("pawnocchio-nets/networks/", .{}) catch |e| switch (e) {
+        error.FileNotFound => {},
+        else => return e,
+    };
     defer pawnocchio_nets_networks.close();
 
     std.fs.cwd().makeDir("src/networks/") catch |e| switch (e) {
