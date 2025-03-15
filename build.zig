@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
-    const net = b.option([]const u8, "net", "Change the net to be used") orelse "net17_04_768_400_8_mirrored_2.nnue";
+    const net = b.option([]const u8, "net", "Change the net to be used") orelse "net18_04_768_400_8_mirrored_2.nnue";
     copyNetwork(net) catch |e| std.debug.panic("copying neural net failed with error: {}\n", .{e});
 
     // Standard optimization options allow the person running `zig build` to select
