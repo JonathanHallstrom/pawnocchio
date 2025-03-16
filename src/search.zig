@@ -123,15 +123,15 @@ fn quiesce(
             if (!SEE.scoreMove(board, move, tunable_constants.quiesce_see_pruning_threshold))
                 continue;
         }
+        var board_after_move = board.*;
+        _ = board_after_move.playMove(turn, move);
+        @prefetch(&tt[getTTIndex(board_after_move.zobrist)], .{});
         const updated_eval_state = eval_state.updateWith(turn, board, move);
-        const inv = board.playMove(turn, move);
-        @prefetch(&tt[getTTIndex(board.zobrist)], .{});
-        defer board.undoMove(turn, inv);
 
         const score = -quiesce(
             pv,
             turn.flipped(),
-            board,
+            &board_after_move,
             updated_eval_state,
             -beta,
             -alpha,
