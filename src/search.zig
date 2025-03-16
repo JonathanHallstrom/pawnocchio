@@ -62,6 +62,7 @@ fn quiesce(
     move_buf: []Move,
 ) i16 {
     var alpha = alpha_inp;
+    qnodes += 1;
     if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time or nodes + qnodes >= hard_nodes)) {
         shutdown = true;
         return 0;
@@ -126,7 +127,6 @@ fn quiesce(
         const inv = board.playMove(turn, move);
         @prefetch(&tt[getTTIndex(board.zobrist)], .{});
         defer board.undoMove(turn, inv);
-        qnodes += 1;
 
         const score = -quiesce(
             pv,
@@ -658,7 +658,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     for (hash_history.items) |zobrist| repetition_table[@intCast(zobrist % repetition_table.len)] += 1;
     timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
-    hard_nodes = search_params.maxNodes() *| 2;
+    hard_nodes = search_params.maxNodes() *| 4;
     var board_copy = board;
     var score: i16 = -checkmate_score;
     var move = Move.null_move;

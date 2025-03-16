@@ -11,8 +11,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_base: u8 = 96;
 } else struct {
     pub const rfp_multiplier: i16 = 100;
-
     pub const quiesce_see_pruning_threshold: i16 = -100;
+
     pub const see_quiet_pruning_multiplier: i16 = -80;
     pub const see_noisy_pruning_multiplier: i16 = -40;
 
