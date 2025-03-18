@@ -461,10 +461,10 @@ pub fn nnEval(board: *const Board) i16 {
 }
 const vec_size = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
 
-pub const HORIZONTAL_MIRRORING = true;
+pub const HORIZONTAL_MIRRORING = false;
 pub const BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
-pub const HIDDEN_SIZE: usize = 768;
+pub const HIDDEN_SIZE: usize = 1024;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
