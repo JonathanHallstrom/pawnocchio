@@ -72,31 +72,33 @@ fn quiesce(
     }
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    var static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
+    const raw_static_eval = if (masks.is_in_check) eval.mateIn(1) else if (!pv and tt_entry.sameZobrist(board.zobrist)) tt_entry.raw_static_eval else evaluate(board, eval_state);
+    const corrected_static_eval = if (masks.is_in_check) raw_static_eval else correction.correct(board, raw_static_eval);
+    var tt_corrected_eval = corrected_static_eval;
     if (tt_entry.zobrist == board.zobrist) {
         const tt_score = eval.scoreFromTt(tt_entry.score, 0);
         switch (tt_entry.tp) {
             .exact => if (!pv) return tt_score,
             .lower => {
                 if (!pv and tt_score >= beta) return tt_score;
-                if (tt_score >= static_eval) static_eval = tt_score;
+                if (tt_score >= corrected_static_eval) tt_corrected_eval = tt_score;
             },
             .upper => {
                 if (!pv and tt_score <= alpha) return tt_score;
-                if (tt_score <= static_eval) static_eval = tt_score;
+                if (tt_score <= corrected_static_eval) tt_corrected_eval = tt_score;
             },
         }
     }
 
     if (move_count == 0) {
-        return static_eval;
+        return tt_corrected_eval;
     }
 
-    if (static_eval >= beta) return beta;
-    if (static_eval > alpha) alpha = static_eval;
+    if (tt_corrected_eval >= beta) return beta;
+    if (tt_corrected_eval > alpha) alpha = tt_corrected_eval;
 
     move_ordering.order(turn, board, tt_entry.move, Move.null_move, 0, move_buf[0..move_count]);
-    var best_score = static_eval;
+    var best_score = tt_corrected_eval;
     var best_move = Move.null_move;
     for (move_buf[0..move_count]) |move| {
         if (std.debug.runtime_safety) {
@@ -115,7 +117,7 @@ fn quiesce(
         if (!masks.is_in_check and
             !is_losing)
         {
-            if (static_eval + 100 < alpha and
+            if (tt_corrected_eval + 100 < alpha and
                 !SEE.scoreMove(board, move, 1))
                 continue;
             // if we're not in a pawn and king endgame and the capture is really bad, just skip it
@@ -166,7 +168,7 @@ fn quiesce(
             0,
             score_type,
             eval.scoreToTt(best_score, 0),
-            static_eval,
+            raw_static_eval,
         );
     }
 
@@ -278,8 +280,8 @@ fn search(
         return result(0, move_buf[0]);
     }
 
-    const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
-    const corrected_static_eval = correction.correct(board, static_eval);
+    const raw_static_eval = if (tt_hit and !pv) tt_entry.raw_static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
+    const corrected_static_eval = correction.correct(board, raw_static_eval);
     var tt_corrected_eval = corrected_static_eval;
     const improving = if (is_in_check) false else previous_evals.isImprovement(turn, corrected_static_eval);
     const updated_evals = if (is_in_check) previous_evals else previous_evals.updateWith(turn, corrected_static_eval);
@@ -554,8 +556,8 @@ fn search(
         if (!is_in_check and
             best_move.isQuiet() and
             (score_type == .exact or
-                (score_type == .lower and best_score > static_eval) or
-                (score_type == .upper and best_score < static_eval)))
+                (score_type == .lower and best_score > raw_static_eval) or
+                (score_type == .upper and best_score < raw_static_eval)))
         {
             correction.update(board, corrected_static_eval, best_score, depth);
         }
@@ -568,7 +570,7 @@ fn search(
             depth,
             score_type,
             eval.scoreToTt(best_score, ply),
-            static_eval,
+            raw_static_eval,
         );
     }
 
@@ -792,7 +794,7 @@ pub const TTEntry = struct {
     depth: u8,
     tp: ScoreType,
     score: i16,
-    static_eval: i16,
+    raw_static_eval: i16,
 
     pub fn init(zobrist_: u64, move_: Move, depth_: anytype, tp_: ScoreType, score_: i16, static_eval_: i16) TTEntry {
         return .{
