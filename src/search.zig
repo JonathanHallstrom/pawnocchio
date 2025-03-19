@@ -449,6 +449,7 @@ fn search(
             // late move reduction
             var reduction: i32 = (tunable_constants.lmr_base + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
             reduction -= @intFromBool(pv);
+            reduction -= @intFromBool(improving);
             const clamped_reduction: i32 = std.math.clamp(reduction, 1, depth - 1);
             const reduced_depth: u8 = @intCast(depth - clamped_reduction);
 
