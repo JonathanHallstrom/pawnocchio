@@ -393,16 +393,13 @@ pub fn main() !void {
             const my_time = if (board.turn == .white) white_time else black_time;
             const my_increment = if (board.turn == .white) white_increment else black_increment;
 
-            // const my_time = @min(white_time, black_time);
-            // const my_increment = @min(white_increment, black_increment);
-
-            // 10ms  seems fine
             const overhead_use = @min(overhead, my_time / 2);
 
-            var soft_time = my_time / @max(board.computePhase() * 3 / 2, 8) + my_increment;
+            var soft_time = my_time / @max(board.computePhase(), 8) + my_increment;
+            std.debug.print("{}\n", .{board.computePhase()});
             var hard_time = my_time / 5 -| overhead_use;
-            // std.debug.print("{}\n", .{std.fmt.fmtDuration(hard_time)});
-            hard_time = @max(std.time.ns_per_ms / 4, hard_time);
+
+            hard_time = @max(std.time.ns_per_ms / 4, hard_time); // use at least 0.25ms
             soft_time = @min(soft_time, hard_time);
 
             if (move_time) |mt| {
