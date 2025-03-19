@@ -803,7 +803,7 @@ pub const TTEntry = struct {
             .depth = depth_,
             .tp = tp_,
             .score = score_,
-            .static_eval = static_eval_,
+            .raw_static_eval = static_eval_,
         };
     }
 
