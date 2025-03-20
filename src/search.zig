@@ -332,8 +332,8 @@ fn search(
             tt_corrected_eval >= beta and
             not_pawn_or_king != 0)
         {
-            var reduction: i32 = 4 + depth / 5;
-            reduction -= @intFromBool(!improving);
+            const improving_factor: u8 = 3;
+            const reduction: i32 = 4 + (depth + improving_factor * @intFromBool(improving)) / 5;
 
             const reduced_depth: u8 = @intCast(std.math.clamp(depth - reduction, 0, MAX_SEARCH_DEPTH));
             const updated_eval_state = eval_state.negate();
