@@ -216,6 +216,22 @@ test "viriformat moves" {
 }
 
 pub fn main() !void {
+    // var buf: [1024]Move = undefined;
+    // for (0..960 * 960) |i| {
+    //     var board = Board.dfrcPosition(@intCast(i));
+    //     std.mem.doNotOptimizeAway(board);
+    //     std.debug.assert(board.computePhase() == Board.init().computePhase());
+    //     const white_bish = board.white.getBoard(.bishop);
+    //     const white_first = @ctz(white_bish);
+    //     const white_second = @ctz(white_bish & white_bish - 1);
+    //     const black_bish = board.white.getBoard(.bishop);
+    //     const black_first = @ctz(black_bish);
+    //     const black_second = @ctz(black_bish & black_bish - 1);
+    //     std.debug.assert((white_first ^ white_second) & 1 != 0);
+    //     std.debug.assert((black_first ^ black_second) & 1 != 0);
+
+    //     std.debug.print("{}: {}\n", .{ i, board.perftSingleThreaded(&buf, 2, false) });
+    // }
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -279,6 +295,7 @@ pub fn main() !void {
     const win_adjudicate_score = 3000;
     const win_adjudicate_count = 5;
     game_loop: while (num_games < game_count_opt.?) {
+        // std.debug.print("started a position!\n", .{});
         if (num_games % 128 == remainder) {
             const time = timer.read();
             const remaining_games = game_count_opt.? - num_games;
@@ -297,7 +314,11 @@ pub fn main() !void {
             });
         }
         defer hash_history.clearRetainingCapacity();
-        var board = Board.dfrcPosition(rng.random().uintLessThan(u20, 960 * 960));
+        engine.reset();
+        var board = if (rng.random().boolean()) Board.init() else Board.dfrcPosition(rng.random().uintLessThan(u20, 960 * 960));
+        // var board = Board.dfrcPosition(rng.random().uintLessThan(u20, 960 * 960));
+        // var board = Board.init();
+        // std.debug.print("{s}\n", .{board.toFen().slice()});
         hash_history.appendAssumeCapacity(board.zobrist);
         for (0..random_moves) |_| {
             switch (board.turn) {
@@ -316,6 +337,8 @@ pub fn main() !void {
         var game = Game.from(board, allocator);
         defer game.deinit();
         for (0..1000) |i| {
+            // std.debug.print("{s} ", .{board.toFen().slice()});
+
             switch (board.turn) {
                 inline else => |t| {
                     if (movegen.countMoves(t, board) == 0) {
@@ -340,6 +363,7 @@ pub fn main() !void {
                 break;
             }
             const score_to_add = if (board.turn == .black) -search_result.score else search_result.score;
+            // std.debug.print("{}\n", .{score_to_add});
             switch (board.turn) {
                 inline else => |t| {
                     _ = board.playMove(t, search_result.move);
@@ -366,6 +390,7 @@ pub fn main() !void {
             } else {
                 adjudicate_counter = 0;
             }
+            // std.debug.print("{s} {}\n", .{ board.toFen().slice(), score_to_add });
         }
         if (game.moves.items.len == 0)
             continue :game_loop;
@@ -374,7 +399,6 @@ pub fn main() !void {
             inline else => |t| {
                 const num_moves, const masks = movegen.getMovesWithInfo(t, false, board, move_buf);
 
-                game.setOutCome(1);
                 if (num_moves == 0) {
                     if (masks.is_in_check) {
                         game.setOutCome(if (t == .white) 0 else 2);
@@ -388,7 +412,10 @@ pub fn main() !void {
                 }
             },
         }
+        // std.debug.print("{s} {}\n", .{ board.toFen().slice(), game.initial_position.wdl });
+
         try game.serializeInto(output);
         num_games += 1;
+        // std.debug.print("serialized one!\n", .{});
     }
 }
