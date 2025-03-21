@@ -1,12 +1,12 @@
 # pawnocchio
 
-UCI Chess engine
+Strongest UCI Chess engine written in zig
 
 ## Strength
 
 |    Version    | [CCRL 40/15][ccrl 40/15] |
 |:-------------:|:------------------------:|
-| [1.3.1415][v1.3.1415]   |           3300*          |
+| [1.3.1415][v1.3.1415]   |           3365          |
 | [1.3][v1.3]   |           3201           |
 | [1.2][v1.2]   |           3120           |
 | [1.1][v1.1]   |           2432           |
