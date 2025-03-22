@@ -220,35 +220,44 @@ pub const Accumulator = struct {
         const us_acc = if (board.turn == .white) &self.white else &self.black;
         const them_acc = if (board.turn == .white) &self.black else &self.white;
 
-        //                  vvvvvvvv annotation to help zls
-        const Vec16 = @as(type, @Vector(vec_size, i16));
-        var acc: @Vector(vec_size / 2, i32) = @splat(0);
-        const vz: Vec16 = @splat(0);
-        const vqa: Vec16 = @splat(QA);
-        var i: usize = 0;
+        var res: i32 = 0;
         const which_bucket = whichOutputBucket(board);
         const bucket_offset = which_bucket * HIDDEN_SIZE * 2;
-        while (i < HIDDEN_SIZE) : (i += vec_size) {
-            const us: Vec16 = us_acc[i..][0..vec_size].*;
-            const us_clamped: Vec16 = @max(@min(us, vqa), vz);
-            const them: Vec16 = them_acc[i..][0..vec_size].*;
-            const them_clamped: Vec16 = @max(@min(them, vqa), vz);
+        if (@import("builtin").cpu.arch == .x86) {
 
-            const us_weights: Vec16 = weights.output_weights[bucket_offset..][i..][0..vec_size].*;
-            const them_weights: Vec16 = weights.output_weights[bucket_offset..][i + HIDDEN_SIZE ..][0..vec_size].*;
+            //                  vvvvvvvv annotation to help zls
+            const Vec16 = @as(type, @Vector(vec_size, i16));
+            var acc: @Vector(vec_size / 2, i32) = @splat(0);
+            const vz: Vec16 = @splat(0);
+            const vqa: Vec16 = @splat(QA);
+            var i: usize = 0;
+            while (i < HIDDEN_SIZE) : (i += vec_size) {
+                const us: Vec16 = us_acc[i..][0..vec_size].*;
+                const us_clamped: Vec16 = @max(@min(us, vqa), vz);
+                const them: Vec16 = them_acc[i..][0..vec_size].*;
+                const them_clamped: Vec16 = @max(@min(them, vqa), vz);
 
-            acc += madd(vec_size, mullo(vec_size, us_weights, us_clamped), us_clamped);
-            acc += madd(vec_size, mullo(vec_size, them_weights, them_clamped), them_clamped);
-        }
+                const us_weights: Vec16 = weights.output_weights[bucket_offset..][i..][0..vec_size].*;
+                const them_weights: Vec16 = weights.output_weights[bucket_offset..][i + HIDDEN_SIZE ..][0..vec_size].*;
 
-        var res: i32 = @reduce(std.builtin.ReduceOp.Add, acc);
-        if (std.debug.runtime_safety) {
-            var verify_res: i32 = 0;
-            for (0..HIDDEN_SIZE) |j| {
-                verify_res += screlu(us_acc[j]) * weights.output_weights[bucket_offset..][j];
-                verify_res += screlu(them_acc[j]) * weights.output_weights[bucket_offset..][j + HIDDEN_SIZE];
+                acc += madd(vec_size, mullo(vec_size, us_weights, us_clamped), us_clamped);
+                acc += madd(vec_size, mullo(vec_size, them_weights, them_clamped), them_clamped);
             }
-            std.debug.assert(res == verify_res);
+
+            res = @reduce(std.builtin.ReduceOp.Add, acc);
+            if (std.debug.runtime_safety) {
+                var verify_res: i32 = 0;
+                for (0..HIDDEN_SIZE) |j| {
+                    verify_res += screlu(us_acc[j]) * weights.output_weights[bucket_offset..][j];
+                    verify_res += screlu(them_acc[j]) * weights.output_weights[bucket_offset..][j + HIDDEN_SIZE];
+                }
+                std.debug.assert(res == verify_res);
+            }
+        } else {
+            for (0..HIDDEN_SIZE) |i| {
+                res += screlu(us_acc[i]) * weights.output_weights[bucket_offset..][i];
+                res += screlu(them_acc[i]) * weights.output_weights[bucket_offset..][i + HIDDEN_SIZE];
+            }
         }
         res = @divTrunc(res, QA); // res /= QA
 
