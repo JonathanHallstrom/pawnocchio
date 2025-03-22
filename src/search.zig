@@ -62,7 +62,8 @@ fn quiesce(
     move_buf: []Move,
 ) i16 {
     var alpha = alpha_inp;
-    if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
+    qnodes += 1;
+    if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time or nodes + qnodes >= hard_nodes)) {
         shutdown = true;
         return 0;
     }
@@ -71,31 +72,33 @@ fn quiesce(
     }
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    var static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
-    if (!pv and tt_entry.zobrist == board.zobrist) {
+    const raw_static_eval = if (masks.is_in_check) eval.mateIn(1) else if (!pv and tt_entry.sameZobrist(board.zobrist)) tt_entry.raw_static_eval else evaluate(board, eval_state);
+    const corrected_static_eval = if (masks.is_in_check) raw_static_eval else correction.correct(board, raw_static_eval);
+    var tt_corrected_eval = corrected_static_eval;
+    if (tt_entry.zobrist == board.zobrist) {
         const tt_score = eval.scoreFromTt(tt_entry.score, 0);
         switch (tt_entry.tp) {
             .exact => if (!pv) return tt_score,
             .lower => {
-                if (tt_score >= beta) return tt_score;
-                if (tt_score >= static_eval) static_eval = tt_score;
+                if (!pv and tt_score >= beta) return tt_score;
+                if (tt_score >= corrected_static_eval) tt_corrected_eval = tt_score;
             },
             .upper => {
-                if (tt_score <= alpha) return tt_score;
-                if (tt_score <= static_eval) static_eval = tt_score;
+                if (!pv and tt_score <= alpha) return tt_score;
+                if (tt_score <= corrected_static_eval) tt_corrected_eval = tt_score;
             },
         }
     }
 
     if (move_count == 0) {
-        return static_eval;
+        return tt_corrected_eval;
     }
 
-    if (static_eval >= beta) return beta;
-    if (static_eval > alpha) alpha = static_eval;
+    if (tt_corrected_eval >= beta) return beta;
+    if (tt_corrected_eval > alpha) alpha = tt_corrected_eval;
 
     move_ordering.order(turn, board, tt_entry.move, Move.null_move, 0, move_buf[0..move_count]);
-    var best_score = static_eval;
+    var best_score = tt_corrected_eval;
     var best_move = Move.null_move;
     for (move_buf[0..move_count]) |move| {
         if (std.debug.runtime_safety) {
@@ -114,7 +117,7 @@ fn quiesce(
         if (!masks.is_in_check and
             !is_losing)
         {
-            if (static_eval + 100 < alpha and
+            if (tt_corrected_eval + 100 < alpha and
                 !SEE.scoreMove(board, move, 1))
                 continue;
             // if we're not in a pawn and king endgame and the capture is really bad, just skip it
@@ -126,7 +129,6 @@ fn quiesce(
         const inv = board.playMove(turn, move);
         @prefetch(&tt[getTTIndex(board.zobrist)], .{});
         defer board.undoMove(turn, inv);
-        qnodes += 1;
 
         const score = -quiesce(
             pv,
@@ -166,7 +168,7 @@ fn quiesce(
             0,
             score_type,
             eval.scoreToTt(best_score, 0),
-            static_eval,
+            raw_static_eval,
         );
     }
 
@@ -197,7 +199,7 @@ fn search(
     if (std.debug.runtime_safety and err) return result(0, Move.null_move);
     var alpha = alpha_inp;
     nodes += 1;
-    if (ply > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time)) {
+    if (ply > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time or nodes + qnodes >= hard_nodes)) {
         shutdown = true;
         return null;
     }
@@ -278,8 +280,8 @@ fn search(
         return result(0, move_buf[0]);
     }
 
-    const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
-    const corrected_static_eval = correction.correct(board, static_eval);
+    const raw_static_eval = if (tt_hit and !pv) tt_entry.raw_static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
+    const corrected_static_eval = correction.correct(board, raw_static_eval);
     var tt_corrected_eval = corrected_static_eval;
     const improving = if (is_in_check) false else previous_evals.isImprovement(turn, corrected_static_eval);
     const updated_evals = if (is_in_check) previous_evals else previous_evals.updateWith(turn, corrected_static_eval);
@@ -304,7 +306,7 @@ fn search(
 
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * depth) {
+        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * (depth -| @intFromBool(improving))) {
             return result(tt_corrected_eval, move_buf[0]);
         }
 
@@ -330,7 +332,10 @@ fn search(
             tt_corrected_eval >= beta and
             not_pawn_or_king != 0)
         {
-            const reduction = 4 + depth / 5;
+            const improving_factor: u8 = 3;
+            const reduction: i32 = 4 + (depth + improving_factor * @intFromBool(improving)) / 5;
+
+            const reduced_depth: u8 = @intCast(std.math.clamp(depth - reduction, 0, MAX_SEARCH_DEPTH));
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
             hash_history.appendAssumeCapacity(board.zobrist);
@@ -343,7 +348,7 @@ fn search(
                 -beta,
                 -beta + 1,
                 ply + 1,
-                depth - reduction,
+                reduced_depth,
                 move_buf[move_count..],
                 Move.null_move,
                 Move.null_move,
@@ -363,7 +368,7 @@ fn search(
                     beta - 1,
                     beta,
                     ply + 1,
-                    depth - reduction,
+                    reduced_depth,
                     move_buf[move_count..],
                     previous_move,
                     Move.null_move,
@@ -445,8 +450,10 @@ fn search(
             // TODO: tuning
 
             // late move reduction
-            const reduction = (tunable_constants.lmr_base - @intFromBool(pv) + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
-            const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
+            var reduction: i32 = (tunable_constants.lmr_base + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
+            reduction -= @intFromBool(pv);
+            reduction -= @intFromBool(improving);
+            const clamped_reduction: i32 = std.math.clamp(reduction, 1, depth - 1);
             const reduced_depth: u8 = @intCast(depth - clamped_reduction);
 
             score = -(search(
@@ -554,8 +561,8 @@ fn search(
         if (!is_in_check and
             best_move.isQuiet() and
             (score_type == .exact or
-            (score_type == .lower and best_score > static_eval) or
-            (score_type == .upper and best_score < static_eval)))
+                (score_type == .lower and best_score > raw_static_eval) or
+                (score_type == .upper and best_score < raw_static_eval)))
         {
             correction.update(board, corrected_static_eval, best_score, depth);
         }
@@ -568,7 +575,7 @@ fn search(
             depth,
             score_type,
             eval.scoreToTt(best_score, ply),
-            static_eval,
+            raw_static_eval,
         );
     }
 
@@ -658,6 +665,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     for (hash_history.items) |zobrist| repetition_table[@intCast(zobrist % repetition_table.len)] += 1;
     timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
+    hard_nodes = search_params.maxNodes() *| 4;
     var board_copy = board;
     var score: i16 = -checkmate_score;
     var move = Move.null_move;
@@ -791,7 +799,7 @@ pub const TTEntry = struct {
     depth: u8,
     tp: ScoreType,
     score: i16,
-    static_eval: i16,
+    raw_static_eval: i16,
 
     pub fn init(zobrist_: u64, move_: Move, depth_: anytype, tp_: ScoreType, score_: i16, static_eval_: i16) TTEntry {
         return .{
@@ -800,7 +808,7 @@ pub const TTEntry = struct {
             .depth = depth_,
             .tp = tp_,
             .score = score_,
-            .static_eval = static_eval_,
+            .raw_static_eval = static_eval_,
         };
     }
 
@@ -831,6 +839,7 @@ pub fn resetSoft() void {
     tt_hits = 0;
     tt_collisions = 0;
     max_depth = MAX_SEARCH_DEPTH;
+    hard_nodes = std.math.maxInt(u64);
     @memset(std.mem.asBytes(&root_node_counts), 0);
     @memset(&repetition_table, 0);
 }
@@ -853,6 +862,7 @@ var qnodes: u64 = 0;
 var timer: std.time.Timer = undefined;
 var shutdown = false;
 var hard_time: u64 = 0;
+var hard_nodes: u64 = std.math.maxInt(u64);
 var max_depth: u8 = MAX_SEARCH_DEPTH;
 var tt_hits: usize = 0;
 var tt_collisions: usize = 0;

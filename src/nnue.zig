@@ -260,11 +260,17 @@ pub const Accumulator = struct {
     }
 
     pub fn needsRefresh(board: *const Board, move: Move) bool {
-        if (!HORIZONTAL_MIRRORING) return false;
-        const is_moving_across_middle = (move.getFrom().getFile().toInt() <= 3) != (move.getTo().getFile().toInt() <= 3);
-        const is_king = board.mailbox[move.getFrom().toInt()] == .king;
-        const is_king_moving_across_middle = is_king and is_moving_across_middle;
-        return is_king_moving_across_middle;
+        switch (board.turn) {
+            inline else => |turn| {
+                if (!HORIZONTAL_MIRRORING) return false;
+                const from = move.getFrom();
+                const to = if (move.isCastlingMove()) move.getCastlingKingDest(turn) else move.getTo();
+                const is_moving_across_middle = (from.getFile().toInt() <= 3) != (to.getFile().toInt() <= 3);
+                const is_king = board.mailbox[from.toInt()] == .king;
+                const is_king_moving_across_middle = is_king and is_moving_across_middle;
+                return is_king_moving_across_middle;
+            },
+        }
     }
 
     pub fn refresh(noalias self: *Accumulator, comptime side: Side, board: *const Board, move: Move) void {
@@ -290,7 +296,6 @@ pub const Accumulator = struct {
             const king_from_sq = move.getFrom();
             std.debug.assert(board.mailbox[king_from_sq.toInt()] == .king);
             const king_to_sq = move.getCastlingKingDest(side);
-            std.debug.assert(board.mailbox[king_to_sq.toInt()] == null);
             const rook_from_sq = move.getTo();
             std.debug.assert(board.mailbox[rook_from_sq.toInt()] == .rook);
             const rook_to_sq = move.getCastlingRookDest(side);
@@ -426,7 +431,7 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("networks/net14_01_640_400_8_mirrored.nnue"));
+    var fbs = std.io.fixedBufferStream(@embedFile("networks/net.nnue"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
     for (0..weights.hidden_layer_weights.len) |i| {
@@ -459,7 +464,7 @@ const vec_size = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLe
 pub const HORIZONTAL_MIRRORING = true;
 pub const BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
-pub const HIDDEN_SIZE: usize = 640;
+pub const HIDDEN_SIZE: usize = 896;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
