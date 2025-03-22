@@ -897,6 +897,7 @@ pub fn undoMove(self: *Self, comptime turn: Side, inverse: MoveInverse) void {
     self.halfmove_clock = inverse.halfmove;
     self.zobrist = inverse.zobrist;
     self.pawn_zobrist = inverse.pawn_zobrist;
+    self.major_zobrist = inverse.major_zobrist;
 }
 
 pub fn updatePieceZobrist(self: *Self, comptime side: Side, piece: Piece) void {
