@@ -304,12 +304,6 @@ fn search(
         excluded == Move.null_move)
     {
 
-        // reverse futility pruning
-        // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * (depth -| @intFromBool(improving))) {
-            return result(tt_corrected_eval, move_buf[0]);
-        }
-
         // razoring
         const razoring_margin: i32 = 200;
         if (depth <= 3 and tt_corrected_eval + razoring_margin * depth <= alpha) {
@@ -322,9 +316,18 @@ fn search(
                 beta,
                 move_buf[move_count..],
             );
+
+            tt_corrected_eval = razor_score;
+
             if (razor_score <= alpha) {
                 return razor_score;
             }
+        }
+
+        // reverse futility pruning
+        // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
+        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * (depth -| @intFromBool(improving))) {
+            return result(tt_corrected_eval, move_buf[0]);
         }
 
         // null move pruning
