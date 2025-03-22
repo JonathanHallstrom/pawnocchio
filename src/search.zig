@@ -358,7 +358,10 @@ fn search(
             tt_corrected_eval >= beta and
             not_pawn_or_king != 0)
         {
-            const reduction = 4 + depth / 5;
+            const improving_factor: u8 = 3;
+            const reduction: i32 = 4 + (depth + improving_factor * @intFromBool(improving)) / 5;
+
+            const reduced_depth: u8 = @intCast(std.math.clamp(depth - reduction, 0, MAX_SEARCH_DEPTH));
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
             hash_history.appendAssumeCapacity(board.zobrist);
@@ -371,8 +374,7 @@ fn search(
                 -beta,
                 -beta + 1,
                 ply + 1,
-                depth - reduction,
-
+                reduced_depth,
                 Move.null_move,
                 Move.null_move,
                 previous_evals,
@@ -391,8 +393,7 @@ fn search(
                     beta - 1,
                     beta,
                     ply + 1,
-                    depth - reduction,
-
+                    reduced_depth,
                     previous_move,
                     Move.null_move,
                     previous_evals,
