@@ -673,7 +673,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     var last_score: i16 = 0;
     for (0..search_params.maxDepth()) |depth| {
         max_depth = @intCast(@min(MAX_SEARCH_DEPTH, 2 * depth));
-        if (depth != 0) {
+        if (depth > 4) {
             var fail_lows: usize = 0;
             var fail_highs: usize = 0;
             var window: i16 = @intCast(std.math.clamp(@abs(@as(i32, score) - last_score), 15, 100));
