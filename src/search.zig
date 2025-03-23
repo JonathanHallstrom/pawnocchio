@@ -403,7 +403,7 @@ fn search(
         if (!pv and !is_in_check and !is_losing and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
             continue;
 
-        var extension: u8 = @intFromBool(is_in_check);
+        var extension: i32 = @intFromBool(is_in_check);
 
         const singular_ttentry_depth_margin: u16 = 3;
         if (!root and
@@ -448,15 +448,15 @@ fn search(
         defer _ = hash_history.pop();
 
         var score: i16 = 0;
-        const new_depth = depth - 1 + extension;
-        if (depth >= 3 and !is_in_check and num_searched > 0 and extension == 0) {
+        const new_depth: u8 = @intCast(std.math.clamp(depth - 1 + extension, 0, 255));
+        if (depth >= 3 and !is_in_check and num_searched > 0 and extension <= 0) {
             // TODO: tuning
 
             // late move reduction
             var reduction: i32 = (tunable_constants.lmr_base + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
             reduction -= @intFromBool(pv);
             reduction -= @intFromBool(improving);
-            const clamped_reduction: i32 = std.math.clamp(reduction, 1, depth - 1);
+            const clamped_reduction: i32 = std.math.clamp(reduction - extension, 1, depth - 1);
             const reduced_depth: u8 = @intCast(depth - clamped_reduction);
 
             score = -(search(
