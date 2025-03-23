@@ -15,7 +15,7 @@ pub fn update(board: *const Board, corrected_static_eval: i16, score: i16, depth
 pub fn correct(board: *const Board, static_eval: i16) i16 {
     const pawn_correction: i32 = pawn_corrhist[board.pawn_zobrist % pawn_corrhist.len];
     const major_correction: i32 = pawn_corrhist[board.major_zobrist % pawn_corrhist.len];
-    const total_correction = pawn_correction + major_correction >> 9;
+    const total_correction = pawn_correction + major_correction >> 8;
     return eval.clampScore(static_eval + total_correction);
 }
 
