@@ -33,6 +33,15 @@ const tunable_defaults = struct {
     pub const history_bonus_mult: i32 = 300;
     pub const history_bonus_offs: i32 = 300;
     pub const history_bonus_max: i32 = 2300;
+
+    pub const history_malus_mult: i32 = 300;
+    pub const history_malus_offs: i32 = 300;
+    pub const history_malus_max: i32 = 2300;
+
+    pub const pawn_corrhist_weight: i32 = 16;
+    pub const nonpawn_corrhist_weight: i32 = 16;
+
+    pub const aspiration_window_mult: i32 = 64;
 };
 
 pub const tunables = [_]Tunable{
@@ -58,6 +67,15 @@ pub const tunables = [_]Tunable{
     .{ .name = "history_bonus_mult", .default = tunable_defaults.history_bonus_mult, .min = 100, .max = 600, .C_end = 10 },
     .{ .name = "history_bonus_offs", .default = tunable_defaults.history_bonus_offs, .min = 100, .max = 600, .C_end = 10 },
     .{ .name = "history_bonus_max", .default = tunable_defaults.history_bonus_max, .min = 1000, .max = 5000, .C_end = 50 },
+
+    .{ .name = "history_malus_mult", .default = tunable_defaults.history_malus_mult, .min = 100, .max = 600, .C_end = 10 },
+    .{ .name = "history_malus_offs", .default = tunable_defaults.history_malus_offs, .min = 100, .max = 600, .C_end = 10 },
+    .{ .name = "history_malus_max", .default = tunable_defaults.history_malus_max, .min = 1000, .max = 5000, .C_end = 50 },
+
+    .{ .name = "pawn_corrhist_weight", .default = tunable_defaults.pawn_corrhist_weight, .min = 1, .max = 64, .C_end = 0.5 },
+    .{ .name = "nonpawn_corrhist_weight", .default = tunable_defaults.nonpawn_corrhist_weight, .min = 1, .max = 64, .C_end = 0.5 },
+
+    .{ .name = "aspiration_window_mult", .default = tunable_defaults.aspiration_window_mult, .min = 1, .max = 64, .C_end = 0.5 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -81,9 +99,21 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var history_bonus_mult: i32 = tunable_defaults.history_bonus_mult;
     pub var history_bonus_offs: i32 = tunable_defaults.history_bonus_offs;
     pub var history_bonus_max: i32 = tunable_defaults.history_bonus_max;
+
+    pub var history_malus_mult: i32 = tunable_defaults.history_malus_mult;
+    pub var history_malus_offs: i32 = tunable_defaults.history_malus_offs;
+    pub var history_malus_max: i32 = tunable_defaults.history_malus_max;
+
+    pub var pawn_corrhist_weight: i32 = tunable_defaults.pawn_corrhist_weight;
+    pub var nonpawn_corrhist_weight: i32 = tunable_defaults.nonpawn_corrhist_weight;
+
+    pub var aspiration_window_mult: i32 = tunable_defaults.aspiration_window_mult;
 } else tunable_defaults;
 
 comptime {
-    std.debug.assert(@typeInfo(tunable_defaults).@"struct".decls.len == tunables.len);
-    std.debug.assert(@typeInfo(tunable_constants).@"struct".decls.len == tunables.len);
+    const zig_0_14_0_version = std.SemanticVersion.parse("0.14.0") catch unreachable;
+    if (@import("builtin").zig_version.order(zig_0_14_0_version) != .lt) {
+        std.debug.assert(@typeInfo(tunable_defaults).@"struct".decls.len == tunables.len);
+        std.debug.assert(@typeInfo(tunable_constants).@"struct".decls.len == tunables.len);
+    }
 }

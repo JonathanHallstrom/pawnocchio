@@ -137,8 +137,11 @@ pub fn getHistory(comptime turn: Side, board: *const Board, move: Move, previous
 }
 
 pub fn getBonus(depth: u8) i16 {
-    // TODO: tuning
     return @intCast(@min(@as(i32, depth) * tunable_constants.history_bonus_mult - tunable_constants.history_bonus_offs, tunable_constants.history_bonus_max));
+}
+
+pub fn getMalus(depth: u8) i16 {
+    return @intCast(-@min(@as(i32, depth) * tunable_constants.history_malus_mult - tunable_constants.history_malus_offs, tunable_constants.history_malus_max));
 }
 
 pub fn updateHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move, bonus: anytype) void {

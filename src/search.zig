@@ -533,7 +533,7 @@ fn search(
                     move_ordering.updateHistory(turn, board, move, previous_move, move_ordering.getBonus(depth));
                     for (0..i) |j| {
                         if (move_buf[j].isQuiet()) {
-                            move_ordering.updateHistory(turn, board, move_buf[j], previous_move, -move_ordering.getBonus(depth));
+                            move_ordering.updateHistory(turn, board, move_buf[j], previous_move, move_ordering.getMalus(depth));
                         }
                     }
                 }
@@ -717,7 +717,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     alpha = -checkmate_score;
                     beta = checkmate_score;
                 } else {
-                    window *|= 2;
+                    window = @intCast(std.math.clamp(window * tunable_constants.aspiration_window_mult >> 5, -eval.win_score + 1, eval.win_score - 1));
                 }
             }
             if (!silence_output and std.debug.runtime_safety) {
