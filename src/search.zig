@@ -432,10 +432,13 @@ fn search(
                 previous_evals,
                 hash_history,
             ) orelse 0;
-            if (score < s_beta)
+            if (score < s_beta) {
                 extension += 1;
-            if (score < s_beta - 20 and !pv)
-                extension += 1;
+                if (score < s_beta - 20 and !pv)
+                    extension += 1;
+            } else if (tt_entry.score >= beta) {
+                extension -= 1;
+            }
         }
 
         const updated_eval_state = eval_state.updateWith(turn, board, move);
