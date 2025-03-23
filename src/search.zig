@@ -412,7 +412,7 @@ fn search(
             tt_entry.depth + singular_ttentry_depth_margin >= depth and
             tt_entry.tp != .upper)
         {
-            const s_beta: i16 = @intCast(@max(eval.mateIn(0) + 1, tt_entry.score -| depth * tunable_constants.singular_beta_depth_mult >> 4));
+            const s_beta: i16 = @intCast(@max(eval.mateIn(0) + 1, tt_entry.score -| (depth * tunable_constants.singular_beta_depth_mult >> 4)));
             const s_depth = (depth - 1) / 2;
 
             const score: i16 = search(
