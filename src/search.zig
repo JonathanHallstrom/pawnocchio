@@ -117,7 +117,7 @@ fn quiesce(
         if (!masks.is_in_check and
             !is_losing)
         {
-            if (tt_corrected_eval + 100 < alpha and
+            if (tt_corrected_eval + tunable_constants.quiesce_futility_margin < alpha and
                 !SEE.scoreMove(board, move, 1))
                 continue;
             // if we're not in a pawn and king endgame and the capture is really bad, just skip it
@@ -306,13 +306,12 @@ fn search(
 
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * (depth -| @intFromBool(improving))) {
+        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_mult * (depth -| @intFromBool(improving))) {
             return result(tt_corrected_eval, move_buf[0]);
         }
 
         // razoring
-        const razoring_margin: i32 = 200;
-        if (depth <= 3 and tt_corrected_eval + razoring_margin * depth <= alpha) {
+        if (depth <= 3 and tt_corrected_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = quiesce(
                 pv,
                 turn,
@@ -397,7 +396,7 @@ fn search(
         const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
         if (prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
-        const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
+        const see_pruning_threshold = if (move.isQuiet()) @as(i32, depth) * tunable_constants.see_quiet_pruning_mult else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_mult;
 
         // no longer checking for pawn and king endgames, ty toanth
         if (!pv and !is_in_check and !is_losing and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
@@ -413,7 +412,7 @@ fn search(
             tt_entry.depth + singular_ttentry_depth_margin >= depth and
             tt_entry.tp != .upper)
         {
-            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score -| depth * 2);
+            const s_beta: i16 = @intCast(@max(eval.mateIn(0) + 1, tt_entry.score -| depth * tunable_constants.singular_beta_depth_mult >> 4));
             const s_depth = (depth - 1) / 2;
 
             const score: i16 = search(
@@ -453,9 +452,12 @@ fn search(
             // TODO: tuning
 
             // late move reduction
-            var reduction: i32 = (tunable_constants.lmr_base + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
-            reduction -= @intFromBool(pv);
-            reduction -= @intFromBool(improving);
+            var reduction: i32 = tunable_constants.lmr_base +
+                std.math.log2_int(u8, depth) * tunable_constants.lmr_depth_mult * std.math.log2_int(u8, num_searched);
+            reduction -= @intFromBool(pv) * tunable_constants.lmr_pv_mult;
+            reduction -= @intFromBool(improving) * tunable_constants.lmr_improving_mult;
+            reduction >>= 10;
+
             const clamped_reduction: i32 = std.math.clamp(reduction - extension, 1, depth - 1);
             const reduced_depth: u8 = @intCast(depth - clamped_reduction);
 

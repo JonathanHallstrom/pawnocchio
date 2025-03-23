@@ -6,6 +6,8 @@ const magics = @import("magics.zig");
 const Board = @import("Board.zig");
 const Move = @import("Move.zig").Move;
 
+const tuning = @import("tuning.zig");
+
 fn panic_0_13_0(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
 
@@ -227,7 +229,22 @@ pub fn main() !void {
             write("option name Threads type spin default 1 min 1 max 1\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
+            if (tuning.do_tuning) {
+                for (tuning.tunables) |tunable| {
+                    write(
+                        "option name {s} type spin default {} min {} max {}\n",
+                        .{ tunable.name, tunable.default, tunable.min, tunable.max },
+                    );
+                }
+            }
             write("uciok\n", .{});
+        } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
+            for (tuning.tunables) |tunable| {
+                write(
+                    "{s}, int, {}, {}, {}, 0.002\n",
+                    .{ tunable.name, tunable.default, tunable.min, tunable.max },
+                );
+            }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             engine.reset();
             board = Board.init();
@@ -266,6 +283,17 @@ pub fn main() !void {
                     writeLog("invalid overhead: '{s}'\n", .{value});
                     continue;
                 });
+            }
+
+            if (tuning.do_tuning) {
+                inline for (tuning.tunables) |tunable| {
+                    if (std.ascii.eqlIgnoreCase(tunable.name, name)) {
+                        @field(tuning.tunable_constants, tunable.name) = std.fmt.parseInt(i16, value, 10) catch {
+                            writeLog("invalid constant: '{s}'\n", .{value});
+                            continue :main_loop;
+                        };
+                    }
+                }
             }
         } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             write("readyok\n", .{});

@@ -6,6 +6,7 @@ const movegen = @import("movegen.zig");
 const Side = @import("side.zig").Side;
 const PieceType = @import("piece_type.zig").PieceType;
 const SEE = @import("see.zig");
+const tunable_constants = @import("tuning.zig").tunable_constants;
 
 fn mvvLvaValue(board: *const Board, move: Move) u8 {
     if (!move.isCapture()) return 0;
@@ -137,7 +138,7 @@ pub fn getHistory(comptime turn: Side, board: *const Board, move: Move, previous
 
 pub fn getBonus(depth: u8) i16 {
     // TODO: tuning
-    return @intCast(@min(@as(i32, depth) * 300 - 300, 2300));
+    return @intCast(@min(@as(i32, depth) * tunable_constants.history_bonus_mult - tunable_constants.history_bonus_offs, tunable_constants.history_bonus_max));
 }
 
 pub fn updateHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move, bonus: anytype) void {
