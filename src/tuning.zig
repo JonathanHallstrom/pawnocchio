@@ -1,7 +1,7 @@
 const std = @import("std");
 const write = @import("main.zig").write;
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -38,17 +38,23 @@ const tunable_defaults = struct {
     pub const history_malus_offs: i32 = 305;
     pub const history_malus_max: i32 = 2311;
 
-    pub const pawn_corrhist_weight: i32 = 16;
-    pub const nonpawn_corrhist_weight: i32 = 16;
+    pub const pawn_corrhist_weight: i32 = 1024;
+    pub const nonpawn_corrhist_weight: i32 = 1024;
 
-    pub const aspiration_window_mult: i32 = 64;
+    pub const aspiration_window_mult: i32 = 2048;
+    pub const aspiration_window_diff_mult: i32 = 1024;
+    pub const aspiration_window_lower_bound: i32 = 15360;
+    pub const aspiration_window_upper_bound: i32 = 102400;
+
+    pub const nodetm_base: i32 = 1536;
+    pub const nodetm_mult: i32 = 819;
 };
 
 pub const tunables = [_]Tunable{
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = 0, .max = 300, .C_end = 7 },
 
     .{ .name = "quiesce_see_pruning_threshold", .default = tunable_defaults.quiesce_see_pruning_threshold, .min = -200, .max = 0, .C_end = 10 },
-    .{ .name = "quiesce_futility_margin", .default = tunable_defaults.quiesce_futility_margin, .min = -200, .max = 200, .C_end = 10 },
+    .{ .name = "quiesce_futility_margin", .default = tunable_defaults.quiesce_futility_margin, .min = -200, .max = 200, .C_end = 7 },
 
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -200, .max = 0, .C_end = 3 },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -200, .max = 0, .C_end = 3 },
@@ -71,10 +77,16 @@ pub const tunables = [_]Tunable{
     .{ .name = "history_malus_offs", .default = tunable_defaults.history_malus_offs, .min = 100, .max = 600, .C_end = 10 },
     .{ .name = "history_malus_max", .default = tunable_defaults.history_malus_max, .min = 1000, .max = 5000, .C_end = 50 },
 
-    .{ .name = "pawn_corrhist_weight", .default = tunable_defaults.pawn_corrhist_weight, .min = 1, .max = 64, .C_end = 0.5 },
-    .{ .name = "nonpawn_corrhist_weight", .default = tunable_defaults.nonpawn_corrhist_weight, .min = 1, .max = 64, .C_end = 0.5 },
+    .{ .name = "pawn_corrhist_weight", .default = tunable_defaults.pawn_corrhist_weight, .min = 1, .max = 2048, .C_end = 0.5 },
+    .{ .name = "nonpawn_corrhist_weight", .default = tunable_defaults.nonpawn_corrhist_weight, .min = 1, .max = 2048, .C_end = 0.5 },
 
-    .{ .name = "aspiration_window_mult", .default = tunable_defaults.aspiration_window_mult, .min = 1, .max = 256, .C_end = 0.5 },
+    .{ .name = "aspiration_window_mult", .default = tunable_defaults.aspiration_window_mult, .min = 1, .max = 4096, .C_end = 5 },
+    .{ .name = "aspiration_window_diff_mult", .default = tunable_defaults.aspiration_window_diff_mult, .min = 1, .max = 4096, .C_end = 5 },
+    .{ .name = "aspiration_window_lower_bound", .default = tunable_defaults.aspiration_window_lower_bound, .min = 1, .max = 32768, .C_end = 10 },
+    .{ .name = "aspiration_window_upper_bound", .default = tunable_defaults.aspiration_window_upper_bound, .min = 1, .max = 204800, .C_end = 50 },
+
+    .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .min = 0, .max = 3072, .C_end = 10 },
+    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .min = 1, .max = 2048, .C_end = 50 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -107,6 +119,12 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nonpawn_corrhist_weight: i32 = tunable_defaults.nonpawn_corrhist_weight;
 
     pub var aspiration_window_mult: i32 = tunable_defaults.aspiration_window_mult;
+    pub var aspiration_window_diff_mult: i32 = tunable_defaults.aspiration_window_diff_mult;
+    pub var aspiration_window_lower_bound: i32 = tunable_defaults.aspiration_window_lower_bound;
+    pub var aspiration_window_upper_bound: i32 = tunable_defaults.aspiration_window_upper_bound;
+
+    pub var nodetm_base: i32 = tunable_defaults.nodetm_base;
+    pub var nodetm_mult: i32 = tunable_defaults.nodetm_mult;
 } else tunable_defaults;
 
 comptime {

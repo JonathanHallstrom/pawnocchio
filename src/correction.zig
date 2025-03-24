@@ -15,10 +15,11 @@ pub fn update(board: *const Board, corrected_static_eval: i16, score: i16, depth
 }
 
 pub fn correct(board: *const Board, static_eval: i16) i16 {
-    const pawn_correction: i32 = pawnCorrhistEntry(board).*;
-    const non_pawn_correction: i32 = whiteNonPawnCorrhistEntry(board).* + blackNonCorrhistEntry(board).*;
-    const total_correction = pawn_correction * tunable_constants.pawn_corrhist_weight + non_pawn_correction * tunable_constants.nonpawn_corrhist_weight >> 12;
-    // std.debug.print("{s} {} {} {}\n", .{ board.toFen().slice(), static_eval, non_pawn_correction >> 8, pawn_correction >> 8 });
+    const pawn_correction: i64 = pawnCorrhistEntry(board).*;
+    const non_pawn_correction: i64 = whiteNonPawnCorrhistEntry(board).* + blackNonCorrhistEntry(board).*;
+    const total_correction =
+        pawn_correction * tunable_constants.pawn_corrhist_weight +
+        non_pawn_correction * tunable_constants.nonpawn_corrhist_weight >> 18;
     return eval.clampScore(static_eval + total_correction);
 }
 

@@ -681,7 +681,11 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (depth != 0) {
             var fail_lows: usize = 0;
             var fail_highs: usize = 0;
-            var window: i16 = @intCast(std.math.clamp(@abs(@as(i32, score) - last_score), 15, 100));
+            var window: i16 = @intCast(std.math.clamp(
+                @as(i32, @intCast(@abs(@as(i32, score) - last_score))) * tunable_constants.aspiration_window_diff_mult,
+                tunable_constants.aspiration_window_lower_bound,
+                tunable_constants.aspiration_window_upper_bound,
+            ) >> 10);
             var alpha: i16 = score -| window;
             var beta: i16 = score +| window;
             var aspiration_score, var aspiration_move = .{ score, move };
@@ -717,7 +721,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     alpha = -checkmate_score;
                     beta = checkmate_score;
                 } else {
-                    window = @intCast(std.math.clamp(window * tunable_constants.aspiration_window_mult >> 5, -eval.win_score + 1, eval.win_score - 1));
+                    window = @intCast(std.math.clamp(window * tunable_constants.aspiration_window_mult >> 10, -eval.win_score + 1, eval.win_score - 1));
                 }
             }
             if (!silence_output and std.debug.runtime_safety) {
@@ -761,9 +765,9 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         }
         total_nodes = @max(1, total_nodes);
         const best_move_count = @max(1, root_node_counts[move.getFrom().toInt()][move.getTo().toInt()]);
-        const node_fraction = @as(f64, @floatFromInt(best_move_count)) / @as(f64, @floatFromInt(total_nodes));
-        const node_count_factor = 0.8 * (1.5 - node_fraction);
-        const adjusted_limit: u128 = @intFromFloat(@as(f64, @floatFromInt(search_params.softTime())) * node_count_factor);
+        const node_fraction = @as(u128, best_move_count) * 1024 / total_nodes;
+        const node_count_factor = @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
+        const adjusted_limit: u128 = search_params.softTime() * node_count_factor >> 20;
         // const adjusted_time: u64 = @intFromFloat(@as(f64, @floatFromInt(timer.read())) * node_count_factor);
         if (timer.read() >= @min(search_params.hardTime(), adjusted_limit)) {
             break;
