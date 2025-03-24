@@ -1,7 +1,7 @@
 const std = @import("std");
 const write = @import("main.zig").write;
 
-pub const do_tuning = true;
+pub const do_tuning = false;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -12,31 +12,31 @@ pub const Tunable = struct {
 };
 
 const tunable_defaults = struct {
-    pub const rfp_mult: i32 = 100;
+    pub const rfp_mult: i32 = 87;
 
     pub const quiesce_see_pruning_threshold: i32 = -100;
-    pub const quiesce_futility_margin: i32 = 100;
+    pub const quiesce_futility_margin: i32 = 93;
 
     pub const see_quiet_pruning_mult: i32 = -80;
-    pub const see_noisy_pruning_mult: i32 = -40;
+    pub const see_noisy_pruning_mult: i32 = -50;
 
-    pub const lmr_base: i32 = 3072;
-    pub const lmr_depth_mult: i32 = 256;
+    pub const lmr_base: i32 = 3063;
+    pub const lmr_depth_mult: i32 = 262;
     pub const lmr_improving_mult: i32 = 1024;
-    pub const lmr_pv_mult: i32 = 1024;
+    pub const lmr_pv_mult: i32 = 1025;
 
     pub const double_extension_margin: i32 = 20;
 
-    pub const razoring_margin: i32 = 200;
+    pub const razoring_margin: i32 = 208;
     pub const singular_beta_depth_mult: i32 = 32;
 
-    pub const history_bonus_mult: i32 = 300;
-    pub const history_bonus_offs: i32 = 300;
-    pub const history_bonus_max: i32 = 2300;
+    pub const history_bonus_mult: i32 = 296;
+    pub const history_bonus_offs: i32 = 298;
+    pub const history_bonus_max: i32 = 2323;
 
-    pub const history_malus_mult: i32 = 300;
-    pub const history_malus_offs: i32 = 300;
-    pub const history_malus_max: i32 = 2300;
+    pub const history_malus_mult: i32 = 294;
+    pub const history_malus_offs: i32 = 305;
+    pub const history_malus_max: i32 = 2311;
 
     pub const pawn_corrhist_weight: i32 = 16;
     pub const nonpawn_corrhist_weight: i32 = 16;
