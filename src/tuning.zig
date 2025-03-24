@@ -50,19 +50,18 @@ pub const tunables = [_]Tunable{
     .{ .name = "quiesce_see_pruning_threshold", .default = tunable_defaults.quiesce_see_pruning_threshold, .min = -200, .max = 0, .C_end = 10 },
     .{ .name = "quiesce_futility_margin", .default = tunable_defaults.quiesce_futility_margin, .min = -200, .max = 200, .C_end = 10 },
 
-    .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -200, .max = 0, .C_end = 10 },
-    .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -200, .max = 0, .C_end = 10 },
+    .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -200, .max = 0, .C_end = 3 },
+    .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -200, .max = 0, .C_end = 3 },
 
     .{ .name = "lmr_base", .default = tunable_defaults.lmr_base, .min = 0, .max = 8192, .C_end = 5 },
     .{ .name = "lmr_depth_mult", .default = tunable_defaults.lmr_depth_mult, .min = 1, .max = 4096, .C_end = 5 },
     .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult, .min = 1, .max = 2048, .C_end = 5 },
     .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult, .min = 1, .max = 2048, .C_end = 5 },
 
-    .{ .name = "double_extension_margin", .default = tunable_defaults.double_extension_margin, .min = 0, .max = 64, .C_end = 0.5 },
-
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin, .min = 0, .max = 400, .C_end = 10 },
 
     .{ .name = "singular_beta_depth_mult", .default = tunable_defaults.singular_beta_depth_mult, .min = 0, .max = 400, .C_end = 0.5 },
+    .{ .name = "double_extension_margin", .default = tunable_defaults.double_extension_margin, .min = 0, .max = 64, .C_end = 0.5 },
 
     .{ .name = "history_bonus_mult", .default = tunable_defaults.history_bonus_mult, .min = 100, .max = 600, .C_end = 10 },
     .{ .name = "history_bonus_offs", .default = tunable_defaults.history_bonus_offs, .min = 100, .max = 600, .C_end = 10 },
@@ -75,7 +74,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "pawn_corrhist_weight", .default = tunable_defaults.pawn_corrhist_weight, .min = 1, .max = 64, .C_end = 0.5 },
     .{ .name = "nonpawn_corrhist_weight", .default = tunable_defaults.nonpawn_corrhist_weight, .min = 1, .max = 64, .C_end = 0.5 },
 
-    .{ .name = "aspiration_window_mult", .default = tunable_defaults.aspiration_window_mult, .min = 1, .max = 64, .C_end = 0.5 },
+    .{ .name = "aspiration_window_mult", .default = tunable_defaults.aspiration_window_mult, .min = 1, .max = 256, .C_end = 0.5 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
