@@ -4,13 +4,13 @@ Strongest UCI Chess engine written in zig
 
 ## Strength
 
-|    Version    | [CCRL 40/15][ccrl 40/15] |
-|:-------------:|:------------------------:|
-| [1.3.1415][v1.3.1415]   |           3365          |
-| [1.3][v1.3]   |           3201           |
-| [1.2][v1.2]   |           3120           |
-| [1.1][v1.1]   |           2432           |
-| [1.0][v1.0]   |           2100*          |
+|         Version         | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] |
+|:-----------------------:|:------------------------:|:-------------------------:
+| [1.3.1415][v1.3.1415]   |           3365           |           3401           |
+| [1.3][v1.3]             |           3201           |           3230*          |
+| [1.2][v1.2]             |           3120           |           3150*          |
+| [1.1][v1.1]             |           2432           |           2450*          |
+| [1.0][v1.0]             |           2100*          |           2150*          |
 
 *estimated
 
@@ -52,3 +52,4 @@ The architecture of the network is (768hm->640)x2->1x8
 [v1.3.1415]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.3.1415
 
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
+[ccrl Blitz]:https://www.computerchess.org.uk/ccrl/404/cgi/compare_engines.cgi?family=pawnocchio
