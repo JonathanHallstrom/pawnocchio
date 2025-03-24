@@ -85,7 +85,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "aspiration_window_upper_bound", .default = tunable_defaults.aspiration_window_upper_bound, .min = 1, .max = 204800, .C_end = 50 },
 
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .min = 0, .max = 3072, .C_end = 10 },
-    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .min = 1, .max = 2048, .C_end = 50 },
+    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .min = 1, .max = 2048, .C_end = 5 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
