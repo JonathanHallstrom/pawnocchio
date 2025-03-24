@@ -1,7 +1,7 @@
 const std = @import("std");
 const write = @import("main.zig").write;
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
