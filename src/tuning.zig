@@ -12,42 +12,41 @@ pub const Tunable = struct {
 };
 
 const tunable_defaults = struct {
-    pub const rfp_mult: i32 = 87;
+    pub const rfp_mult: i32 = 77;
 
-    pub const quiesce_see_pruning_threshold: i32 = -100;
-    pub const quiesce_futility_margin: i32 = 93;
+    pub const quiesce_see_pruning_threshold: i32 = -107;
+    pub const quiesce_futility_margin: i32 = 94;
 
-    pub const see_quiet_pruning_mult: i32 = -80;
-    pub const see_noisy_pruning_mult: i32 = -50;
+    pub const see_quiet_pruning_mult: i32 = -79;
+    pub const see_noisy_pruning_mult: i32 = -53;
 
     pub const lmr_base: i32 = 3063;
-    pub const lmr_depth_mult: i32 = 262;
-    pub const lmr_improving_mult: i32 = 1024;
-    pub const lmr_pv_mult: i32 = 1025;
+    pub const lmr_depth_mult: i32 = 261;
+    pub const lmr_improving_mult: i32 = 1025;
+    pub const lmr_pv_mult: i32 = 1023;
+
+    pub const razoring_margin: i32 = 211;
+    pub const singular_beta_depth_mult: i32 = 32;
 
     pub const double_extension_margin: i32 = 20;
 
-    pub const razoring_margin: i32 = 208;
-    pub const singular_beta_depth_mult: i32 = 32;
-
-    pub const history_bonus_mult: i32 = 296;
-    pub const history_bonus_offs: i32 = 298;
-    pub const history_bonus_max: i32 = 2323;
-
-    pub const history_malus_mult: i32 = 294;
-    pub const history_malus_offs: i32 = 305;
-    pub const history_malus_max: i32 = 2311;
+    pub const history_bonus_mult: i32 = 300;
+    pub const history_bonus_offs: i32 = 292;
+    pub const history_bonus_max: i32 = 2303;
+    pub const history_malus_mult: i32 = 292;
+    pub const history_malus_offs: i32 = 301;
+    pub const history_malus_max: i32 = 2338;
 
     pub const pawn_corrhist_weight: i32 = 1024;
     pub const nonpawn_corrhist_weight: i32 = 1024;
 
-    pub const aspiration_window_mult: i32 = 2048;
-    pub const aspiration_window_diff_mult: i32 = 1024;
-    pub const aspiration_window_lower_bound: i32 = 15360;
-    pub const aspiration_window_upper_bound: i32 = 102400;
+    pub const aspiration_window_mult: i32 = 2051;
+    pub const aspiration_window_diff_mult: i32 = 1020;
+    pub const aspiration_window_lower_bound: i32 = 15353;
+    pub const aspiration_window_upper_bound: i32 = 102393;
 
-    pub const nodetm_base: i32 = 1536;
-    pub const nodetm_mult: i32 = 819;
+    pub const nodetm_base: i32 = 1531;
+    pub const nodetm_mult: i32 = 833;
 };
 
 pub const tunables = [_]Tunable{
