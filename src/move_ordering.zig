@@ -32,15 +32,31 @@ fn compare(ctx: MoveOrderContext, lhs: Move, rhs: Move) bool {
     if (lhs.isCapture() != rhs.isCapture()) return @intFromBool(lhs.isCapture()) > @intFromBool(rhs.isCapture());
     return mvvLvaValue(ctx.board, lhs) > mvvLvaValue(ctx.board, rhs);
 }
-
 inline fn sort(
     comptime T: type,
     items: []T,
     context: anytype,
-    comptime lessThanFn: fn (context: @TypeOf(context), lhs: T, rhs: T) bool,
+    comptime lessThanFn: fn (@TypeOf(context), lhs: T, rhs: T) bool,
 ) void {
-    @call(.always_inline, std.mem.sort, .{ T, items, context, lessThanFn });
+    var i: usize = 1;
+    while (i < items.len) : (i += 1) {
+        const current = items[i];
+        var j = i;
+        while (j > 0 and lessThanFn(context, current, items[j - 1])) : (j -= 1) {
+            items[j] = items[j - 1];
+        }
+        items[j] = current;
+    }
 }
+
+// inline fn sort(
+//     comptime T: type,
+//     items: []T,
+//     context: anytype,
+//     comptime lessThanFn: fn (context: @TypeOf(context), lhs: T, rhs: T) bool,
+// ) void {
+//     @call(.always_inline, std.sort.insertion, .{ T, items, context, lessThanFn });
+// }
 
 pub fn mvvLva(board: *const Board, moves: []Move) void {
     std.sort.pdq(Move, moves, board, mvvLvaCompare);
