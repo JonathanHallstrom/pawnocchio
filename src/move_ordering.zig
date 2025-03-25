@@ -46,19 +46,19 @@ pub fn mvvLva(board: *const Board, moves: []Move) void {
     std.sort.pdq(Move, moves, board, mvvLvaCompare);
 }
 
-const ScoreMovePair = struct {
-    move: Move,
+pub const ScoredMove = struct {
+    move: Move align(4),
     score: i16,
 
-    fn cmp(_: void, lhs: ScoreMovePair, rhs: ScoreMovePair) bool {
+    fn cmp(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
         return lhs.score > rhs.score;
     }
 };
 
 pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_move: Move, ply: u8, moves: []Move) void {
-    var quiets = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
-    var good_noisies = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
-    var bad_noisies = std.BoundedArray(ScoreMovePair, 256).init(0) catch unreachable;
+    var quiets = std.BoundedArray(ScoredMove, 256).init(0) catch unreachable;
+    var good_noisies = std.BoundedArray(ScoredMove, 256).init(0) catch unreachable;
+    var bad_noisies = std.BoundedArray(ScoredMove, 256).init(0) catch unreachable;
     var has_tt_move = false;
     var has_killer_move = false;
     for (moves) |move| {
@@ -80,9 +80,9 @@ pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_m
             quiets.appendAssumeCapacity(.{ .move = move, .score = getHistory(turn, board, move, previous_move) });
         }
     }
-    sort(ScoreMovePair, good_noisies.slice(), void{}, ScoreMovePair.cmp);
-    sort(ScoreMovePair, bad_noisies.slice(), void{}, ScoreMovePair.cmp);
-    sort(ScoreMovePair, quiets.slice(), void{}, ScoreMovePair.cmp);
+    sort(ScoredMove, good_noisies.slice(), void{}, ScoredMove.cmp);
+    sort(ScoredMove, bad_noisies.slice(), void{}, ScoredMove.cmp);
+    sort(ScoredMove, quiets.slice(), void{}, ScoredMove.cmp);
     var idx: usize = 0;
     if (has_tt_move) {
         moves[idx] = tt_move;
@@ -105,6 +105,174 @@ pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_m
         idx += 1;
     }
 }
+
+pub const MovePicker = struct {
+    const ScoredMoveArray = std.BoundedArray(ScoredMove, 256);
+
+    moves: ScoredMoveArray = .{},
+    masks: movegen.Masks = undefined,
+    tt_move: MoveSpan = .{},
+    good_noisies: MoveSpan = .{},
+    killer: MoveSpan = .{},
+    bad_noisies: MoveSpan = .{},
+    quiets: MoveSpan = .{},
+    stage: Stage = .tt,
+    num_seen: u8 = 0,
+
+    const MoveSpan = struct {
+        begin: u8 = 0,
+        end: u8 = 0,
+
+        fn init(slice: anytype, len: anytype) MoveSpan {
+            return .{
+                .begin = @intCast(slice.len - len),
+                .end = @intCast(slice.len),
+            };
+        }
+
+        fn dropFirst(self: *MoveSpan) void {
+            self.begin += 1;
+        }
+
+        fn numMoves(self: MoveSpan) usize {
+            return self.end - self.begin;
+        }
+    };
+
+    pub const Stage = enum(u4) {
+        tt = 0,
+        good_noisy = 1,
+        killer = 2,
+        quiet = 3,
+        bad_noisy = 4,
+
+        pub fn increment(self: *Stage) bool {
+            if (self.* == .bad_noisy) return false;
+            self.* = @enumFromInt(@intFromEnum(self.*) + 1);
+            return true;
+        }
+    };
+
+    pub fn moveCount(self: *const MovePicker) usize {
+        return self.moves.len;
+    }
+
+    pub fn skipQuiets(self: *MovePicker) void {
+        self.quiets = &.{};
+        self.killer = &.{};
+    }
+
+    pub fn next(noalias self: *MovePicker) ?ScoredMove {
+        var move_span = self.currentStageMoves();
+        while (move_span.numMoves() == 0) {
+            if (!self.stage.increment())
+                return null;
+            move_span = self.currentStageMoves();
+        }
+        const moves = self.moves.slice()[move_span.begin..move_span.end];
+        var res_ptr: *ScoredMove = &moves[0];
+        var res = res_ptr.*;
+        for (moves) |*candidate_ptr| {
+            if (candidate_ptr.score < res.score) {
+                res_ptr = candidate_ptr;
+                res = res_ptr.*;
+            }
+        }
+        std.mem.swap(ScoredMove, res_ptr, &moves[0]);
+        move_span.dropFirst();
+        self.num_seen += 1;
+        // std.debug.print("{} {} {any}\n", .{
+        //     res.move.getFrom(),
+        //     res.move.getTo(),
+        //     res.move.getFlag(),
+        // });
+        return res;
+    }
+
+    pub fn init(
+        comptime turn: Side,
+        board: *const Board,
+        tt_move: Move,
+        previous_move: Move,
+        ply: u8,
+    ) MovePicker {
+        return initImpl(false, turn, board, tt_move, previous_move, ply);
+    }
+
+    pub fn initQsearch(
+        comptime turn: Side,
+        board: *const Board,
+        tt_move: Move,
+    ) MovePicker {
+        return initImpl(true, turn, board, tt_move, Move.null_move, 0);
+    }
+
+    fn initImpl(
+        comptime qsearch: bool,
+        comptime turn: Side,
+        board: *const Board,
+        tt_move: Move,
+        previous_move: Move,
+        ply: u8,
+    ) MovePicker {
+        var self: MovePicker = .{};
+
+        var temp_buf: [256]Move = undefined;
+        const move_count, self.masks = if (qsearch) movegen.getCapturesOrEvasionsWithInfo(turn, board.*, &temp_buf) else movegen.getMovesWithInfo(turn, false, board.*, &temp_buf);
+
+        var quiets = std.BoundedArray(ScoredMove, 256).init(0) catch unreachable;
+        var good_noisies = std.BoundedArray(ScoredMove, 256).init(0) catch unreachable;
+        var bad_noisies = std.BoundedArray(ScoredMove, 256).init(0) catch unreachable;
+        var has_tt_move = false;
+        var has_killer_move = false;
+        for (temp_buf[0..move_count]) |move| {
+            if (move == tt_move) {
+                has_tt_move = true;
+                continue;
+            }
+            if (move == killers[ply]) {
+                has_killer_move = true;
+                continue;
+            }
+            if (move.isCapture()) {
+                if (SEE.scoreMove(board, move, 0)) {
+                    good_noisies.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
+                } else {
+                    bad_noisies.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
+                }
+            } else {
+                quiets.appendAssumeCapacity(.{ .move = move, .score = getHistory(turn, board, move, previous_move) });
+            }
+        }
+
+        if (has_tt_move) {
+            self.moves.appendAssumeCapacity(.{ .move = tt_move, .score = 0 });
+            self.tt_move = MoveSpan.init(self.moves.slice(), 1);
+        }
+        self.moves.appendSliceAssumeCapacity(good_noisies.slice());
+        self.good_noisies = MoveSpan.init(self.moves.slice(), good_noisies.len);
+        if (has_killer_move) {
+            self.moves.appendAssumeCapacity(.{ .move = killers[ply], .score = 0 });
+            self.killer = MoveSpan.init(self.moves.slice(), 1);
+        }
+        self.moves.appendSliceAssumeCapacity(quiets.slice());
+        self.quiets = MoveSpan.init(self.moves.slice(), quiets.len);
+        self.moves.appendSliceAssumeCapacity(bad_noisies.slice());
+        self.bad_noisies = MoveSpan.init(self.moves.slice(), bad_noisies.len);
+
+        return self;
+    }
+
+    fn currentStageMoves(self: *MovePicker) *MoveSpan {
+        return switch (self.stage) {
+            .tt => &self.tt_move,
+            .good_noisy => &self.good_noisies,
+            .killer => &self.killer,
+            .quiet => &self.quiets,
+            .bad_noisy => &self.bad_noisies,
+        };
+    }
+};
 
 pub fn reset() void {
     @memset(std.mem.asBytes(&history), 0);

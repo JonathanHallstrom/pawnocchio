@@ -9,6 +9,7 @@ const pawn_moves = @import("pawn_moves.zig");
 const sliding_moves = @import("sliding_moves.zig");
 const king_moves = @import("king_moves.zig");
 
+pub const Masks = mask_generation.Masks;
 pub const getMasks = mask_generation.getMasks;
 
 pub const getKnightMoves = knight_moves.getKnightMoves;

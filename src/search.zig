@@ -59,7 +59,6 @@ fn quiesce(
     eval_state: EvalState,
     alpha_inp: i16,
     beta: i16,
-    move_buf: []Move,
 ) i16 {
     var alpha = alpha_inp;
     qnodes += 1;
@@ -70,21 +69,39 @@ fn quiesce(
     if (board.isInsufficientMaterial() or board.isKvKNN()) {
         return 0;
     }
-    const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
     const tt_entry = tt[getTTIndex(board.zobrist)];
+    if (!pv and tt_entry.sameZobrist(board.zobrist)) {
+        const tt_score = eval.scoreFromTt(tt_entry.score, 0);
+        switch (tt_entry.tp) {
+            .exact => return tt_score,
+            .lower => {
+                if (tt_score >= beta) return tt_score;
+            },
+            .upper => {
+                if (tt_score <= alpha) return tt_score;
+            },
+        }
+    }
+    var mp = move_ordering.MovePicker.initQsearch(
+        turn,
+        board,
+        tt_entry.move,
+    );
+    const move_count = mp.moveCount();
+    const masks = mp.masks;
     const raw_static_eval = if (masks.is_in_check) eval.mateIn(1) else if (!pv and tt_entry.sameZobrist(board.zobrist)) tt_entry.raw_static_eval else evaluate(board, eval_state);
     const corrected_static_eval = if (masks.is_in_check) raw_static_eval else correction.correct(board, raw_static_eval);
     var tt_corrected_eval = corrected_static_eval;
     if (tt_entry.zobrist == board.zobrist) {
         const tt_score = eval.scoreFromTt(tt_entry.score, 0);
         switch (tt_entry.tp) {
-            .exact => if (!pv) return tt_score,
+            .exact => {
+                tt_corrected_eval = tt_score;
+            },
             .lower => {
-                if (!pv and tt_score >= beta) return tt_score;
                 if (tt_score >= corrected_static_eval) tt_corrected_eval = tt_score;
             },
             .upper => {
-                if (!pv and tt_score <= alpha) return tt_score;
                 if (tt_score <= corrected_static_eval) tt_corrected_eval = tt_score;
             },
         }
@@ -97,20 +114,12 @@ fn quiesce(
     if (tt_corrected_eval >= beta) return beta;
     if (tt_corrected_eval > alpha) alpha = tt_corrected_eval;
 
-    move_ordering.order(turn, board, tt_entry.move, Move.null_move, 0, move_buf[0..move_count]);
     var best_score = tt_corrected_eval;
     var best_move = Move.null_move;
-    for (move_buf[0..move_count]) |move| {
-        if (std.debug.runtime_safety) {
-            if (board.mailbox[move.getTo().toInt()]) |cap| {
-                if (cap == .king) {
-                    writeLog("{} captures king\nboard:{}\n", .{ move, board.* });
-                    err = true;
-                    shutdown = true;
-                    return 0;
-                }
-            }
-        }
+    while (mp.next()) |scored_move| {
+        const move = scored_move.move;
+        const hist_score = scored_move.score;
+        _ = hist_score;
 
         const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
 
@@ -137,7 +146,6 @@ fn quiesce(
             updated_eval_state,
             -beta,
             -alpha,
-            move_buf[move_count..],
         );
         if (errored()) {
             writeLog("{}\n", .{move});
@@ -264,7 +272,6 @@ fn search(
             eval_state,
             alpha,
             beta,
-            move_buf,
         );
         if (shutdown or errored()) {
             return null;
@@ -319,7 +326,6 @@ fn search(
                 eval_state,
                 alpha,
                 beta,
-                move_buf[move_count..],
             );
             if (razor_score <= alpha) {
                 return razor_score;
