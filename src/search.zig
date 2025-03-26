@@ -220,7 +220,8 @@ fn search(
     if (depth >= 4 and
         excluded.isNull() and
         (pv or cutnode) and
-        tt_entry.move.isNull())
+        tt_entry.move.isNull() and
+        tt_hit)
         depth -= 1;
 
     const worst_possible = eval.mateIn(ply);
