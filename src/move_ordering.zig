@@ -86,14 +86,15 @@ pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_m
             has_killer_move = true;
             continue;
         }
+        const history_val = getHistory(turn, board, move, previous_move);
         if (move.isCapture()) {
             if (SEE.scoreMove(board, move, 0)) {
-                good_noisies.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
+                good_noisies.appendAssumeCapacity(.{ .move = move, .score = history_val });
             } else {
-                bad_noisies.appendAssumeCapacity(.{ .move = move, .score = mvvLvaValue(board, move) });
+                bad_noisies.appendAssumeCapacity(.{ .move = move, .score = history_val });
             }
         } else {
-            quiets.appendAssumeCapacity(.{ .move = move, .score = getHistory(turn, board, move, previous_move) });
+            quiets.appendAssumeCapacity(.{ .move = move, .score = history_val });
         }
     }
     sort(ScoreMovePair, good_noisies.slice(), void{}, ScoreMovePair.cmp);
@@ -126,6 +127,7 @@ pub fn reset() void {
     @memset(std.mem.asBytes(&history), 0);
     @memset(std.mem.asBytes(&cont_hist), 0);
     @memset(std.mem.asBytes(&killers), 0);
+    @memset(std.mem.asBytes(&capt_hist), 0);
 }
 
 fn historyEntry(board: *const Board, move: Move) *i16 {
@@ -144,11 +146,23 @@ fn contHistEntry(comptime turn: Side, board: *const Board, move: Move, previous_
     return &cont_hist[if (board.turn == .white) 0 else 1][moved_type][to][prev_moved_type][prev_to];
 }
 
+fn captHistEntry(comptime turn: Side, board: *const Board, move: Move) *i16 {
+    const from = move.getFrom().toInt();
+    const to = move.getTo().toInt();
+    const moved_type = board.mailbox[from].?.toInt();
+    const captured_type: PieceType = if (move.isEnPassant()) .pawn else board.mailbox[to].?;
+    return &capt_hist[turn.toInt()][from][moved_type][captured_type.toInt()];
+}
+
 pub fn getHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move) i16 {
-    if (previous_move == Move.null_move) {
-        return historyEntry(board, move).*;
+    if (move.isCapture()) {
+        return captHistEntry(turn, board, move).*;
     } else {
-        return @intCast(@as(i32, historyEntry(board, move).*) + contHistEntry(turn, board, move, previous_move).* >> 1);
+        if (previous_move == Move.null_move) {
+            return historyEntry(board, move).*;
+        } else {
+            return @intCast(@as(i32, historyEntry(board, move).*) + contHistEntry(turn, board, move, previous_move).* >> 1);
+        }
     }
 }
 
@@ -164,12 +178,17 @@ pub fn updateHistory(comptime turn: Side, board: *const Board, move: Move, previ
     const clamped_bonus: i16 = @intCast(std.math.clamp(bonus, -max_history, max_history));
     const magnitude: i32 = @abs(clamped_bonus); // i32 to avoid overflows
 
-    const hist_entry = historyEntry(board, move);
-    hist_entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * hist_entry.*, max_history));
+    if (move.isCapture()) {
+        const capt_hist_entry = captHistEntry(turn, board, move);
+        capt_hist_entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * capt_hist_entry.*, max_history));
+    } else {
+        const hist_entry = historyEntry(board, move);
+        hist_entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * hist_entry.*, max_history));
 
-    if (previous_move != Move.null_move) {
-        const cont_hist_entry = contHistEntry(turn, board, move, previous_move);
-        cont_hist_entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * cont_hist_entry.*, max_history));
+        if (previous_move != Move.null_move) {
+            const cont_hist_entry = contHistEntry(turn, board, move, previous_move);
+            cont_hist_entry.* += @intCast(clamped_bonus - @divTrunc(magnitude * cont_hist_entry.*, max_history));
+        }
     }
 }
 
@@ -186,3 +205,4 @@ const max_history = 1 << 14;
 var killers = std.mem.zeroes([256]Move);
 var history = std.mem.zeroes([2][6][64][64]i16);
 var cont_hist = std.mem.zeroes([2][6][64][6][64]i16);
+var capt_hist = std.mem.zeroes([2][6][64][6]i16);
