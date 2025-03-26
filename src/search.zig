@@ -458,7 +458,7 @@ fn search(
         defer _ = hash_history.pop();
 
         var score: i16 = 0;
-        const new_depth: u8 = @intCast(std.math.clamp(depth - 1 + extension, 0, 255));
+        var new_depth: u8 = @intCast(std.math.clamp(depth - 1 + extension, 0, 255));
         if (depth >= 3 and !is_in_check and num_searched > 0 and extension <= 0) {
             // TODO: tuning
 
@@ -491,6 +491,12 @@ fn search(
             ) orelse 0);
 
             if (score > alpha and reduced_depth < new_depth) {
+                const do_deeper_search = score > best_score + 40 + 6 * @as(i32, new_depth);
+                const do_shallower_search = score < best_score + @as(i32, new_depth);
+
+                new_depth +|= @intFromBool(do_deeper_search);
+                new_depth -|= @intFromBool(do_shallower_search);
+
                 score = -(search(
                     false,
                     turn.flipped(),
