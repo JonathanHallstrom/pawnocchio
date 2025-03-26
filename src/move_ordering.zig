@@ -151,7 +151,7 @@ fn captHistEntry(comptime turn: Side, board: *const Board, move: Move) *i16 {
     const to = move.getTo().toInt();
     const moved_type = board.mailbox[from].?.toInt();
     const captured_type: PieceType = if (move.isEnPassant()) .pawn else board.mailbox[to].?;
-    return &capt_hist[turn.toInt()][from][moved_type][captured_type.toInt()];
+    return &capt_hist[turn.toInt()][moved_type][to][captured_type.toInt()];
 }
 
 pub fn getHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move) i16 {
