@@ -477,6 +477,25 @@ fn search(
                 updated_evals,
                 hash_history,
             ) orelse 0);
+
+            if (score > alpha and reduced_depth < new_depth) {
+                score = -(search(
+                    false,
+                    turn.flipped(),
+                    false,
+                    board,
+                    updated_eval_state,
+                    -(alpha + 1),
+                    -alpha,
+                    ply + 1,
+                    new_depth,
+                    move_buf[move_count..],
+                    move,
+                    Move.null_move,
+                    updated_evals,
+                    hash_history,
+                ) orelse 0);
+            }
         } else if (!pv or num_searched > 0) {
             score = -(search(
                 false,
