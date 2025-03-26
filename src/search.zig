@@ -332,8 +332,8 @@ fn search(
             not_pawn_or_king != 0)
         {
             const improving_factor: u8 = 3;
-            const reduction: i32 = 4 + (depth + improving_factor * @intFromBool(improving)) / 5;
-
+            var reduction: i32 = 4 + (depth + improving_factor * @intFromBool(improving)) / 5;
+            reduction += @min(@as(i32, tt_corrected_eval) - beta >> 8, 2);
             const reduced_depth: u8 = @intCast(std.math.clamp(depth - reduction, 0, MAX_SEARCH_DEPTH));
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
