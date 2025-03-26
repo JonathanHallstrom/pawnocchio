@@ -490,6 +490,26 @@ fn search(
                 hash_history,
                 true,
             ) orelse 0);
+
+            if (score > alpha and reduced_depth < new_depth) {
+                score = -(search(
+                    false,
+                    turn.flipped(),
+                    false,
+                    board,
+                    updated_eval_state,
+                    -(alpha + 1),
+                    -alpha,
+                    ply + 1,
+                    new_depth,
+                    move_buf[move_count..],
+                    move,
+                    Move.null_move,
+                    updated_evals,
+                    hash_history,
+                    !cutnode,
+                ) orelse 0);
+            }
         } else if (!pv or num_searched > 0) {
             score = -(search(
                 false,
@@ -729,6 +749,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     fail_highs += 1;
                 } else if (aspiration_score <= alpha) {
                     alpha = @max(-checkmate_score, alpha -| window);
+                    beta = @intCast(@as(i32, beta) + alpha >> 1);
                     fail_lows += 1;
                 } else {
                     break;
