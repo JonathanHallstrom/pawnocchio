@@ -88,10 +88,12 @@ pub fn order(comptime turn: Side, board: *const Board, tt_move: Move, previous_m
         }
         const history_val = getHistory(turn, board, move, previous_move);
         if (move.isCapture()) {
+            const captured_type: PieceType = if (move.isEnPassant()) .pawn else board.mailbox[move.getTo().toInt()].?;
+            const piece_val = SEE.value(captured_type);
             if (SEE.scoreMove(board, move, 0)) {
-                good_noisies.appendAssumeCapacity(.{ .move = move, .score = history_val });
+                good_noisies.appendAssumeCapacity(.{ .move = move, .score = piece_val + history_val });
             } else {
-                bad_noisies.appendAssumeCapacity(.{ .move = move, .score = history_val });
+                bad_noisies.appendAssumeCapacity(.{ .move = move, .score = piece_val + history_val });
             }
         } else {
             quiets.appendAssumeCapacity(.{ .move = move, .score = history_val });
