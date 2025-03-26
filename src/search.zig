@@ -465,8 +465,9 @@ fn search(
             // late move reduction
             var reduction: i32 = tunable_constants.lmr_base +
                 std.math.log2_int(u8, depth) * tunable_constants.lmr_depth_mult * std.math.log2_int(u8, num_searched);
-            reduction -= @intFromBool(pv) * tunable_constants.lmr_pv_mult;
             reduction -= @intFromBool(improving) * tunable_constants.lmr_improving_mult;
+            reduction -= @intFromBool(pv) * tunable_constants.lmr_pv_mult;
+            reduction += @intFromBool(cutnode) * tunable_constants.lmr_cutnode_mult;
             reduction >>= 10;
 
             const clamped_reduction: i32 = std.math.clamp(reduction - extension, 1, depth - 1);

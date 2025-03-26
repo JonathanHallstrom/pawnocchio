@@ -24,6 +24,7 @@ const tunable_defaults = struct {
     pub const lmr_depth_mult: i32 = 262;
     pub const lmr_improving_mult: i32 = 1024;
     pub const lmr_pv_mult: i32 = 1025;
+    pub const lmr_cutnode_mult: i32 = 2048;
 
     pub const double_extension_margin: i32 = 20;
 
@@ -63,6 +64,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_depth_mult", .default = tunable_defaults.lmr_depth_mult, .min = 1, .max = 4096, .C_end = 5 },
     .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult, .min = 1, .max = 2048, .C_end = 5 },
     .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult, .min = 1, .max = 2048, .C_end = 5 },
+    .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult, .min = 1, .max = 4096, .C_end = 5 },
 
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin, .min = 0, .max = 400, .C_end = 10 },
 
@@ -102,6 +104,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_depth_mult: i32 = tunable_defaults.lmr_depth_mult;
     pub var lmr_improving_mult: i32 = tunable_defaults.lmr_improving_mult;
     pub var lmr_pv_mult: i32 = tunable_defaults.lmr_pv_mult;
+    pub var lmr_cutnode_mult: i32 = tunable_defaults.lmr_cutnode_mult;
 
     pub var double_extension_margin: i32 = tunable_defaults.double_extension_margin;
     pub var razoring_margin: i32 = tunable_defaults.razoring_margin;
