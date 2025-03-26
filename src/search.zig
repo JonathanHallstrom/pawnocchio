@@ -713,6 +713,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     fail_highs += 1;
                 } else if (aspiration_score <= alpha) {
                     alpha = @max(-checkmate_score, alpha -| window);
+                    beta = @intCast(@as(i32, beta) + alpha >> 1);
                     fail_lows += 1;
                 } else {
                     break;
