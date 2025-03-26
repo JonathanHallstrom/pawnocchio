@@ -329,7 +329,8 @@ fn search(
         // null move pruning
         if (depth >= 4 and
             tt_corrected_eval >= beta and
-            not_pawn_or_king != 0)
+            not_pawn_or_king != 0 and
+            !(tt_hit and tt_entry.tp == .upper and tt_entry.score < beta))
         {
             const improving_factor: u8 = 3;
             const reduction: i32 = 4 + (depth + improving_factor * @intFromBool(improving)) / 5;
