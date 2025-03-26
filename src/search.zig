@@ -399,7 +399,7 @@ fn search(
             if (prune_quiets and move.isQuiet() and !move.isPromotion())
                 continue;
 
-            if (depth <= 4 and history_score < -tunable_constants.history_pruning_mult * depth) {
+            if (!pv and !is_in_check and depth <= 4 and history_score < -tunable_constants.history_pruning_mult * depth) {
                 prune_quiets = true;
                 continue;
             }
