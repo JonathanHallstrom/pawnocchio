@@ -145,7 +145,7 @@ fn contHistEntry(comptime turn: Side, board: *const Board, move: Move, previous_
 }
 
 pub fn getHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move) i16 {
-    if (previous_move == Move.null_move) {
+    if (previous_move.isNull()) {
         return historyEntry(board, move).*;
     } else {
         return @intCast(@as(i32, historyEntry(board, move).*) + contHistEntry(turn, board, move, previous_move).* >> 1);

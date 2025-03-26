@@ -361,7 +361,7 @@ pub fn main() !void {
             );
             if (i == 0 and @abs(search_result.score) >= 2000) continue :game_loop;
             num_nodes_searched += search_result.stats.nodes + search_result.stats.qnodes;
-            if (search_result.move == Move.null_move) {
+            if (search_result.move.isNull()) {
                 break;
             }
             const score_to_add = if (board.turn == .black) -search_result.score else search_result.score;
