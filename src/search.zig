@@ -209,7 +209,11 @@ fn search(
     comptime assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
     const tt_hit = tt_entry.sameZobrist(board.zobrist);
-    if (!pv and tt_hit and tt_entry.depth >= depth and excluded.isNull()) {
+    if (!pv and tt_hit and
+        tt_entry.depth >= depth and
+        excluded.isNull() and
+        (tt_entry.score <= alpha or cutnode))
+    {
         const tt_score = eval.scoreFromTt(tt_entry.score, ply);
         switch (tt_entry.tp) {
             .exact => return result(tt_score, tt_entry.move),
