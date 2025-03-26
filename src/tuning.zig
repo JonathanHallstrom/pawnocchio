@@ -24,7 +24,7 @@ const tunable_defaults = struct {
     pub const lmr_depth_mult: i32 = 262;
     pub const lmr_improving_mult: i32 = 1024;
     pub const lmr_pv_mult: i32 = 1025;
-    pub const lmr_cutnode_mult: i32 = 2048;
+    pub const lmr_cutnode_mult: i32 = 1024;
 
     pub const double_extension_margin: i32 = 20;
 
