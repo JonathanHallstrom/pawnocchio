@@ -48,6 +48,8 @@ const tunable_defaults = struct {
 
     pub const nodetm_base: i32 = 1536;
     pub const nodetm_mult: i32 = 819;
+
+    pub const history_pruning_mult: i32 = 3000;
 };
 
 pub const tunables = [_]Tunable{
@@ -87,6 +89,7 @@ pub const tunables = [_]Tunable{
 
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .min = 0, .max = 3072, .C_end = 10 },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .min = 1, .max = 2048, .C_end = 50 },
+    .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = 1000, .max = 4000, .C_end = 50 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -125,6 +128,8 @@ pub const tunable_constants = if (do_tuning) struct {
 
     pub var nodetm_base: i32 = tunable_defaults.nodetm_base;
     pub var nodetm_mult: i32 = tunable_defaults.nodetm_mult;
+
+    pub var history_pruning_mult: i32 = tunable_defaults.history_pruning_mult;
 } else tunable_defaults;
 
 comptime {

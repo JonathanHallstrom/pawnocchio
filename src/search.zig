@@ -394,13 +394,22 @@ fn search(
             continue;
         }
         const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
-        if (prune_quiets and move.isQuiet() and !move.isPromotion())
-            continue;
-        const see_pruning_threshold = if (move.isQuiet()) @as(i32, depth) * tunable_constants.see_quiet_pruning_mult else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_mult;
+        const history_score = if (move.isQuiet()) move_ordering.getHistory(turn, board, move, previous_move) else 32000;
+        if (!is_losing) {
+            if (prune_quiets and move.isQuiet() and !move.isPromotion())
+                continue;
 
-        // no longer checking for pawn and king endgames, ty toanth
-        if (!pv and !is_in_check and !is_losing and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
-            continue;
+            if (depth <= 4 and history_score < -tunable_constants.history_pruning_mult * depth) {
+                prune_quiets = true;
+                continue;
+            }
+
+            const see_pruning_threshold = if (move.isQuiet()) @as(i32, depth) * tunable_constants.see_quiet_pruning_mult else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_mult;
+
+            // no longer checking for pawn and king endgames, ty toanth
+            if (!pv and !is_in_check and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
+                continue;
+        }
 
         var extension: i32 = @intFromBool(is_in_check);
 
