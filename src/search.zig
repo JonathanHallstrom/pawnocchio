@@ -573,10 +573,11 @@ fn search(
             if (score >= beta) {
                 if (move.isQuiet()) {
                     move_ordering.recordKiller(move, ply);
-                    move_ordering.updateHistory(turn, board, move, previous_move, move_ordering.getBonus(depth));
+                    const history_depth = depth +| @intFromBool(corrected_static_eval <= alpha);
+                    move_ordering.updateHistory(turn, board, move, previous_move, move_ordering.getBonus(history_depth));
                     for (0..i) |j| {
                         if (move_buf[j].isQuiet()) {
-                            move_ordering.updateHistory(turn, board, move_buf[j], previous_move, move_ordering.getMalus(depth));
+                            move_ordering.updateHistory(turn, board, move_buf[j], previous_move, move_ordering.getMalus(history_depth));
                         }
                     }
                 }
