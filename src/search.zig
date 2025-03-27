@@ -448,6 +448,9 @@ fn search(
                     extension += 1;
             } else if (tt_entry.score >= beta) {
                 extension -= 1;
+                if (!pv and tt_entry.score >= beta + 60) { // from potential
+                    extension -= 1;
+                }
             }
         }
 
