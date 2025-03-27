@@ -220,6 +220,8 @@ fn search(
             .lower => if (tt_score >= beta) return result(tt_score, tt_entry.move),
             .upper => if (tt_score <= alpha) return result(tt_score, tt_entry.move),
         }
+        if (depth <= 5)
+            depth += 1;
     }
     if (depth >= 4 and
         excluded.isNull() and
