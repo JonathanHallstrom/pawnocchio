@@ -155,7 +155,7 @@ fn quiesce(
             }
             alpha = score;
         }
-        if (!is_losing and !masks.is_in_check and move.isQuiet())
+        if (!is_losing and masks.is_in_check and move.isQuiet())
             break;
     }
     var score_type: ScoreType = .exact;
