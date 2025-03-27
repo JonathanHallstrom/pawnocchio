@@ -29,7 +29,7 @@ const tunable_defaults = struct {
     pub const double_negext_margin: i32 = 60;
     pub const singular_beta_depth_mult: i32 = 32;
 
-    pub const razoring_margin: i32 = 208;
+    pub const razoring_margin: i32 = 250;
 
     pub const history_bonus_mult: i32 = 296;
     pub const history_bonus_offs: i32 = 298;
