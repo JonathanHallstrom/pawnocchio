@@ -319,7 +319,7 @@ fn search(
         }
 
         // razoring
-        if (depth <= 3 and tt_corrected_eval + tunable_constants.razoring_margin * depth <= alpha) {
+        if (depth <= 3 and tt_corrected_eval + tunable_constants.razoring_margin * (depth +| @intFromBool(improving)) <= alpha) {
             const razor_score = quiesce(
                 pv,
                 turn,
