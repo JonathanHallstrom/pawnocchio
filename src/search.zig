@@ -268,7 +268,7 @@ fn search(
         }
     }
 
-    if (depth == 0 or depth == max_depth) {
+    if (depth == 0 or ply == max_depth) {
         var score = quiesce(
             pv,
             turn,
