@@ -113,7 +113,6 @@ fn quiesce(
         }
 
         const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
-
         if (!masks.is_in_check and
             !is_losing)
         {
@@ -156,6 +155,8 @@ fn quiesce(
             }
             alpha = score;
         }
+        if (!is_losing and !masks.is_in_check and move.isQuiet())
+            break;
     }
     var score_type: ScoreType = .exact;
     if (best_score <= alpha_inp) score_type = .upper;
