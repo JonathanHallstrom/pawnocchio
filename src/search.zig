@@ -117,10 +117,12 @@ fn quiesce(
         if (!masks.is_in_check and
             !is_losing)
         {
-            const captured_value = SEE.value(if (move.isEnPassant()) .pawn else board.mailbox[move.getTo().toInt()].?);
+            if (move.isCapture()) {
+                const captured_value = SEE.value(if (move.isEnPassant()) .pawn else board.mailbox[move.getTo().toInt()].?);
 
-            if (corrected_static_eval + captured_value + tunable_constants.quiesce_delta_margin < alpha)
-                continue;
+                if (corrected_static_eval + captured_value + tunable_constants.quiesce_delta_margin < alpha)
+                    continue;
+            }
 
             if (tt_corrected_eval + tunable_constants.quiesce_futility_margin < alpha and
                 !SEE.scoreMove(board, move, 1))
