@@ -444,11 +444,11 @@ fn search(
             ) orelse 0;
             if (score < s_beta) {
                 extension += 1;
-                if (score < s_beta - tunable_constants.double_extension_margin and !pv)
+                if (!pv and score < s_beta - tunable_constants.double_extension_margin)
                     extension += 1;
             } else if (tt_entry.score >= beta) {
                 extension -= 1;
-                if (!pv and tt_entry.score >= beta + 60) { // from potential
+                if (!pv and tt_entry.score >= beta + tunable_constants.double_negext_margin) { // from potential
                     extension -= 1;
                 }
             }

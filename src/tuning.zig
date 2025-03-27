@@ -26,9 +26,10 @@ const tunable_defaults = struct {
     pub const lmr_pv_mult: i32 = 1025;
 
     pub const double_extension_margin: i32 = 20;
+    pub const double_negext_margin: i32 = 60;
+    pub const singular_beta_depth_mult: i32 = 32;
 
     pub const razoring_margin: i32 = 208;
-    pub const singular_beta_depth_mult: i32 = 32;
 
     pub const history_bonus_mult: i32 = 296;
     pub const history_bonus_offs: i32 = 298;
@@ -66,8 +67,9 @@ pub const tunables = [_]Tunable{
 
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin, .min = 0, .max = 400, .C_end = 10 },
 
-    .{ .name = "singular_beta_depth_mult", .default = tunable_defaults.singular_beta_depth_mult, .min = 0, .max = 400, .C_end = 0.5 },
     .{ .name = "double_extension_margin", .default = tunable_defaults.double_extension_margin, .min = 0, .max = 64, .C_end = 0.5 },
+    .{ .name = "double_extension_margin", .default = tunable_defaults.double_negext_margin, .min = 0, .max = 64, .C_end = 0.5 },
+    .{ .name = "singular_beta_depth_mult", .default = tunable_defaults.singular_beta_depth_mult, .min = 0, .max = 400, .C_end = 0.5 },
 
     .{ .name = "history_bonus_mult", .default = tunable_defaults.history_bonus_mult, .min = 100, .max = 600, .C_end = 10 },
     .{ .name = "history_bonus_offs", .default = tunable_defaults.history_bonus_offs, .min = 100, .max = 600, .C_end = 10 },
@@ -104,8 +106,10 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_pv_mult: i32 = tunable_defaults.lmr_pv_mult;
 
     pub var double_extension_margin: i32 = tunable_defaults.double_extension_margin;
-    pub var razoring_margin: i32 = tunable_defaults.razoring_margin;
+    pub var double_negext_margin: i32 = tunable_defaults.double_negext_margin;
     pub var singular_beta_depth_mult: i32 = tunable_defaults.singular_beta_depth_mult;
+
+    pub var razoring_margin: i32 = tunable_defaults.razoring_margin;
 
     pub var history_bonus_mult: i32 = tunable_defaults.history_bonus_mult;
     pub var history_bonus_offs: i32 = tunable_defaults.history_bonus_offs;
