@@ -6,6 +6,7 @@ const movegen = @import("movegen.zig");
 const Side = @import("side.zig").Side;
 const PieceType = @import("piece_type.zig").PieceType;
 const SEE = @import("see.zig");
+const tunable_constants = @import("tuning.zig").tunable_constants;
 
 fn mvvLvaValue(board: *const Board, move: Move) u8 {
     if (!move.isCapture()) return 0;
@@ -31,15 +32,31 @@ fn compare(ctx: MoveOrderContext, lhs: Move, rhs: Move) bool {
     if (lhs.isCapture() != rhs.isCapture()) return @intFromBool(lhs.isCapture()) > @intFromBool(rhs.isCapture());
     return mvvLvaValue(ctx.board, lhs) > mvvLvaValue(ctx.board, rhs);
 }
-
 inline fn sort(
     comptime T: type,
     items: []T,
     context: anytype,
-    comptime lessThanFn: fn (context: @TypeOf(context), lhs: T, rhs: T) bool,
+    comptime lessThanFn: fn (@TypeOf(context), lhs: T, rhs: T) bool,
 ) void {
-    @call(.always_inline, std.mem.sort, .{ T, items, context, lessThanFn });
+    var i: usize = 1;
+    while (i < items.len) : (i += 1) {
+        const current = items[i];
+        var j = i;
+        while (j > 0 and lessThanFn(context, current, items[j - 1])) : (j -= 1) {
+            items[j] = items[j - 1];
+        }
+        items[j] = current;
+    }
 }
+
+// inline fn sort(
+//     comptime T: type,
+//     items: []T,
+//     context: anytype,
+//     comptime lessThanFn: fn (context: @TypeOf(context), lhs: T, rhs: T) bool,
+// ) void {
+//     @call(.always_inline, std.sort.insertion, .{ T, items, context, lessThanFn });
+// }
 
 pub fn mvvLva(board: *const Board, moves: []Move) void {
     std.sort.pdq(Move, moves, board, mvvLvaCompare);
@@ -128,7 +145,7 @@ fn contHistEntry(comptime turn: Side, board: *const Board, move: Move, previous_
 }
 
 pub fn getHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move) i16 {
-    if (previous_move == Move.null_move) {
+    if (previous_move.isNull()) {
         return historyEntry(board, move).*;
     } else {
         return @intCast(@as(i32, historyEntry(board, move).*) + contHistEntry(turn, board, move, previous_move).* >> 1);
@@ -136,8 +153,11 @@ pub fn getHistory(comptime turn: Side, board: *const Board, move: Move, previous
 }
 
 pub fn getBonus(depth: u8) i16 {
-    // TODO: tuning
-    return @intCast(@min(@as(i32, depth) * 300 - 300, 2300));
+    return @intCast(@min(@as(i32, depth) * tunable_constants.history_bonus_mult - tunable_constants.history_bonus_offs, tunable_constants.history_bonus_max));
+}
+
+pub fn getMalus(depth: u8) i16 {
+    return @intCast(-@min(@as(i32, depth) * tunable_constants.history_malus_mult - tunable_constants.history_malus_offs, tunable_constants.history_malus_max));
 }
 
 pub fn updateHistory(comptime turn: Side, board: *const Board, move: Move, previous_move: Move, bonus: anytype) void {

@@ -52,6 +52,10 @@ pub const Move = enum(u16) {
 
     pub const null_move = std.mem.zeroes(Self);
 
+    pub fn isNull(self: Self) bool {
+        return self == null_move;
+    }
+
     pub fn isSameAsStr(self: Move, str: []const u8, frc: bool) bool {
         return std.ascii.eqlIgnoreCase(self.toString(frc).slice(), str);
     }

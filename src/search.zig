@@ -62,6 +62,7 @@ fn quiesce(
     move_buf: []Move,
 ) i16 {
     var alpha = alpha_inp;
+    qnodes += 1;
     if (qnodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time or nodes + qnodes >= hard_nodes)) {
         shutdown = true;
         return 0;
@@ -71,31 +72,33 @@ fn quiesce(
     }
     const move_count, const masks = movegen.getCapturesOrEvasionsWithInfo(turn, board.*, move_buf);
     const tt_entry = tt[getTTIndex(board.zobrist)];
-    var static_eval = if (masks.is_in_check) eval.mateIn(1) else evaluate(board, eval_state);
+    const raw_static_eval = if (masks.is_in_check) eval.mateIn(1) else if (!pv and tt_entry.sameZobrist(board.zobrist)) tt_entry.raw_static_eval else evaluate(board, eval_state);
+    const corrected_static_eval = if (masks.is_in_check) raw_static_eval else correction.correct(board, raw_static_eval);
+    var tt_corrected_eval = corrected_static_eval;
     if (tt_entry.zobrist == board.zobrist) {
         const tt_score = eval.scoreFromTt(tt_entry.score, 0);
         switch (tt_entry.tp) {
             .exact => if (!pv) return tt_score,
             .lower => {
                 if (!pv and tt_score >= beta) return tt_score;
-                if (tt_score >= static_eval) static_eval = tt_score;
+                if (tt_score >= corrected_static_eval) tt_corrected_eval = tt_score;
             },
             .upper => {
                 if (!pv and tt_score <= alpha) return tt_score;
-                if (tt_score <= static_eval) static_eval = tt_score;
+                if (tt_score <= corrected_static_eval) tt_corrected_eval = tt_score;
             },
         }
     }
 
     if (move_count == 0) {
-        return static_eval;
+        return tt_corrected_eval;
     }
 
-    if (static_eval >= beta) return beta;
-    if (static_eval > alpha) alpha = static_eval;
+    if (tt_corrected_eval >= beta) return beta;
+    if (tt_corrected_eval > alpha) alpha = tt_corrected_eval;
 
     move_ordering.order(turn, board, tt_entry.move, Move.null_move, 0, move_buf[0..move_count]);
-    var best_score = static_eval;
+    var best_score = tt_corrected_eval;
     var best_move = Move.null_move;
     for (move_buf[0..move_count]) |move| {
         if (std.debug.runtime_safety) {
@@ -114,7 +117,7 @@ fn quiesce(
         if (!masks.is_in_check and
             !is_losing)
         {
-            if (static_eval + 100 < alpha and
+            if (tt_corrected_eval + tunable_constants.quiesce_futility_margin < alpha and
                 !SEE.scoreMove(board, move, 1))
                 continue;
             // if we're not in a pawn and king endgame and the capture is really bad, just skip it
@@ -126,7 +129,6 @@ fn quiesce(
         const inv = board.playMove(turn, move);
         @prefetch(&tt[getTTIndex(board.zobrist)], .{});
         defer board.undoMove(turn, inv);
-        qnodes += 1;
 
         const score = -quiesce(
             pv,
@@ -166,7 +168,7 @@ fn quiesce(
             0,
             score_type,
             eval.scoreToTt(best_score, 0),
-            static_eval,
+            raw_static_eval,
         );
     }
 
@@ -182,12 +184,13 @@ fn search(
     alpha_inp: i16,
     beta: i16,
     ply: u8,
-    depth: u8,
+    depth_inp: u8,
     move_buf: []Move,
     previous_move: Move,
     excluded: Move,
     previous_evals: EvalPair,
     hash_history: *std.ArrayList(u64),
+    cutnode: bool,
 ) ?if (root) struct { i16, Move } else i16 {
     const result = struct {
         inline fn impl(score: i16, move: Move) if (root) struct { i16, Move } else i16 {
@@ -196,6 +199,7 @@ fn search(
     }.impl;
     if (std.debug.runtime_safety and err) return result(0, Move.null_move);
     var alpha = alpha_inp;
+    var depth = depth_inp;
     nodes += 1;
     if (ply > 0 and nodes % 1024 == 0 and (shouldStopSearching() or timer.read() >= hard_time or nodes + qnodes >= hard_nodes)) {
         shutdown = true;
@@ -205,7 +209,7 @@ fn search(
     comptime assert(if (root) pv else true);
     const tt_entry = tt[getTTIndex(board.zobrist)];
     const tt_hit = tt_entry.sameZobrist(board.zobrist);
-    if (!pv and tt_hit and tt_entry.depth >= depth and excluded == Move.null_move) {
+    if (!pv and tt_hit and tt_entry.depth >= depth and excluded.isNull()) {
         const tt_score = eval.scoreFromTt(tt_entry.score, ply);
         switch (tt_entry.tp) {
             .exact => return result(tt_score, tt_entry.move),
@@ -213,6 +217,12 @@ fn search(
             .upper => if (tt_score <= alpha) return result(tt_score, tt_entry.move),
         }
     }
+    if (depth >= 4 and
+        excluded.isNull() and
+        (pv or cutnode) and
+        (tt_entry.move.isNull() or !tt_hit))
+        depth -= 1;
+
     const worst_possible = eval.mateIn(ply);
     const best_possible = -worst_possible;
     if (!root and best_possible < beta) {
@@ -278,8 +288,8 @@ fn search(
         return result(0, move_buf[0]);
     }
 
-    const static_eval = if (tt_hit and !pv) tt_entry.static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
-    const corrected_static_eval = correction.correct(board, static_eval);
+    const raw_static_eval = if (tt_hit and !pv) tt_entry.raw_static_eval else (if (is_in_check) 0 else evaluate(board, eval_state));
+    const corrected_static_eval = correction.correct(board, raw_static_eval);
     var tt_corrected_eval = corrected_static_eval;
     const improving = if (is_in_check) false else previous_evals.isImprovement(turn, corrected_static_eval);
     const updated_evals = if (is_in_check) previous_evals else previous_evals.updateWith(turn, corrected_static_eval);
@@ -299,18 +309,17 @@ fn search(
     if (!pv and
         !is_in_check and
         beta >= eval.mateIn(MAX_SEARCH_DEPTH) and
-        excluded == Move.null_move)
+        excluded.isNull())
     {
 
         // reverse futility pruning
         // this is basically the same as what we do in qsearch, if the position is too good we're probably not gonna get here anyway
-        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_multiplier * (depth -| @intFromBool(improving))) {
+        if (depth <= 5 and tt_corrected_eval >= beta + tunable_constants.rfp_mult * (depth -| @intFromBool(improving))) {
             return result(tt_corrected_eval, move_buf[0]);
         }
 
         // razoring
-        const razoring_margin: i32 = 200;
-        if (depth <= 3 and tt_corrected_eval + razoring_margin * depth <= alpha) {
+        if (depth <= 3 and tt_corrected_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = quiesce(
                 pv,
                 turn,
@@ -330,7 +339,10 @@ fn search(
             tt_corrected_eval >= beta and
             not_pawn_or_king != 0)
         {
-            const reduction = 4 + depth / 5;
+            const improving_factor: u8 = 3;
+            const reduction: i32 = 4 + (depth + improving_factor * @intFromBool(improving)) / 5;
+
+            const reduced_depth: u8 = @intCast(std.math.clamp(depth - reduction, 0, MAX_SEARCH_DEPTH));
             const updated_eval_state = eval_state.negate();
             const inv = board.playNullMove();
             hash_history.appendAssumeCapacity(board.zobrist);
@@ -343,12 +355,13 @@ fn search(
                 -beta,
                 -beta + 1,
                 ply + 1,
-                depth - reduction,
+                reduced_depth,
                 move_buf[move_count..],
                 Move.null_move,
                 Move.null_move,
                 previous_evals,
                 hash_history,
+                !cutnode,
             ) orelse 0);
             _ = hash_history.pop();
             board.undoNullMove(inv);
@@ -363,12 +376,13 @@ fn search(
                     beta - 1,
                     beta,
                     ply + 1,
-                    depth - reduction,
+                    reduced_depth,
                     move_buf[move_count..],
                     previous_move,
                     Move.null_move,
                     previous_evals,
                     hash_history,
+                    true,
                 ) orelse 0;
 
                 if (anti_zugzwang_score >= beta) {
@@ -392,23 +406,23 @@ fn search(
         const is_losing = best_score <= eval.mateIn(MAX_SEARCH_DEPTH);
         if (prune_quiets and move.isQuiet() and !move.isPromotion())
             continue;
-        const see_pruning_threshold = if (move.isQuiet()) @as(i16, depth) * tunable_constants.see_quiet_pruning_multiplier else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_multiplier;
+        const see_pruning_threshold = if (move.isQuiet()) @as(i32, depth) * tunable_constants.see_quiet_pruning_mult else @as(i32, depth) * depth * tunable_constants.see_noisy_pruning_mult;
 
         // no longer checking for pawn and king endgames, ty toanth
         if (!pv and !is_in_check and !is_losing and depth < 10 and !SEE.scoreMove(board, move, see_pruning_threshold))
             continue;
 
-        var extension: u8 = @intFromBool(is_in_check);
+        var extension: i32 = @intFromBool(is_in_check);
 
         const singular_ttentry_depth_margin: u16 = 3;
         if (!root and
             depth >= 8 and
             move == tt_entry.move and
-            excluded == Move.null_move and
+            excluded.isNull() and
             tt_entry.depth + singular_ttentry_depth_margin >= depth and
             tt_entry.tp != .upper)
         {
-            const s_beta = @max(eval.mateIn(0) + 1, tt_entry.score -| depth * 2);
+            const s_beta: i16 = @intCast(@max(eval.mateIn(0) + 1, tt_entry.score -| (depth * tunable_constants.singular_beta_depth_mult >> 4)));
             const s_depth = (depth - 1) / 2;
 
             const score: i16 = search(
@@ -426,11 +440,15 @@ fn search(
                 move,
                 previous_evals,
                 hash_history,
+                cutnode,
             ) orelse 0;
-            if (score < s_beta)
+            if (score < s_beta) {
                 extension += 1;
-            if (score < s_beta - 20 and !pv)
-                extension += 1;
+                if (score < s_beta - tunable_constants.double_extension_margin and !pv)
+                    extension += 1;
+            } else if (tt_entry.score >= beta) {
+                extension -= 1;
+            }
         }
 
         const updated_eval_state = eval_state.updateWith(turn, board, move);
@@ -440,13 +458,18 @@ fn search(
         defer _ = hash_history.pop();
 
         var score: i16 = 0;
-        const new_depth = depth - 1 + extension;
-        if (depth >= 3 and !is_in_check and num_searched > 0 and extension == 0) {
+        var new_depth: u8 = @intCast(std.math.clamp(depth - 1 + extension, 0, 255));
+        if (depth >= 3 and !is_in_check and num_searched > 0 and extension <= 0) {
             // TODO: tuning
 
             // late move reduction
-            const reduction = (tunable_constants.lmr_base - @intFromBool(pv) + @as(u16, std.math.log2_int(u8, depth)) * std.math.log2_int(u8, num_searched) * tunable_constants.lmr_mult) >> 5;
-            const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
+            var reduction: i32 = tunable_constants.lmr_base +
+                std.math.log2_int(u8, depth) * tunable_constants.lmr_depth_mult * std.math.log2_int(u8, num_searched);
+            reduction -= @intFromBool(pv) * tunable_constants.lmr_pv_mult;
+            reduction -= @intFromBool(improving) * tunable_constants.lmr_improving_mult;
+            reduction >>= 10;
+
+            const clamped_reduction: i32 = std.math.clamp(reduction - extension, 1, depth - 1);
             const reduced_depth: u8 = @intCast(depth - clamped_reduction);
 
             score = -(search(
@@ -464,7 +487,34 @@ fn search(
                 Move.null_move,
                 updated_evals,
                 hash_history,
+                true,
             ) orelse 0);
+
+            if (score > alpha and reduced_depth < new_depth) {
+                const do_deeper_search = score > best_score + 40 + 6 * @as(i32, new_depth);
+                const do_shallower_search = score < best_score + @as(i32, new_depth);
+
+                new_depth +|= @intFromBool(do_deeper_search);
+                new_depth -|= @intFromBool(do_shallower_search);
+
+                score = -(search(
+                    false,
+                    turn.flipped(),
+                    false,
+                    board,
+                    updated_eval_state,
+                    -(alpha + 1),
+                    -alpha,
+                    ply + 1,
+                    new_depth,
+                    move_buf[move_count..],
+                    move,
+                    Move.null_move,
+                    updated_evals,
+                    hash_history,
+                    !cutnode,
+                ) orelse 0);
+            }
         } else if (!pv or num_searched > 0) {
             score = -(search(
                 false,
@@ -481,6 +531,7 @@ fn search(
                 Move.null_move,
                 updated_evals,
                 hash_history,
+                !cutnode,
             ) orelse 0);
         }
         if (pv and (num_searched == 0 or score > alpha)) {
@@ -499,6 +550,7 @@ fn search(
                 Move.null_move,
                 updated_evals,
                 hash_history,
+                false,
             ) orelse 0);
         }
         if (errored()) {
@@ -521,7 +573,7 @@ fn search(
                     move_ordering.updateHistory(turn, board, move, previous_move, move_ordering.getBonus(depth));
                     for (0..i) |j| {
                         if (move_buf[j].isQuiet()) {
-                            move_ordering.updateHistory(turn, board, move_buf[j], previous_move, -move_ordering.getBonus(depth));
+                            move_ordering.updateHistory(turn, board, move_buf[j], previous_move, move_ordering.getMalus(depth));
                         }
                     }
                 }
@@ -550,25 +602,25 @@ fn search(
     if (best_score <= alpha_inp) score_type = .upper;
     if (best_score >= beta) score_type = .lower;
 
-    if (excluded == Move.null_move) {
+    if (excluded.isNull()) {
         if (!is_in_check and
             best_move.isQuiet() and
             (score_type == .exact or
-                (score_type == .lower and best_score > static_eval) or
-                (score_type == .upper and best_score < static_eval)))
+                (score_type == .lower and best_score > raw_static_eval) or
+                (score_type == .upper and best_score < raw_static_eval)))
         {
             correction.update(board, corrected_static_eval, best_score, depth);
         }
     }
 
-    if (excluded == Move.null_move) {
+    if (excluded.isNull()) {
         tt[getTTIndex(board.zobrist)] = TTEntry.init(
             board.zobrist,
             best_move,
             depth,
             score_type,
             eval.scoreToTt(best_score, ply),
-            static_eval,
+            raw_static_eval,
         );
     }
 
@@ -658,7 +710,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     for (hash_history.items) |zobrist| repetition_table[@intCast(zobrist % repetition_table.len)] += 1;
     timer = std.time.Timer.start() catch unreachable;
     hard_time = search_params.hardTime();
-    hard_nodes = search_params.maxNodes() *| 2;
+    hard_nodes = search_params.maxNodes() *| 4;
     var board_copy = board;
     var score: i16 = -checkmate_score;
     var move = Move.null_move;
@@ -669,7 +721,11 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         if (depth != 0) {
             var fail_lows: usize = 0;
             var fail_highs: usize = 0;
-            var window: i16 = @intCast(std.math.clamp(@abs(@as(i32, score) - last_score), 15, 100));
+            var window: i16 = @intCast(std.math.clamp(
+                @as(i32, @intCast(@abs(@as(i32, score) - last_score))) * tunable_constants.aspiration_window_diff_mult,
+                tunable_constants.aspiration_window_lower_bound,
+                tunable_constants.aspiration_window_upper_bound,
+            ) >> 10);
             var alpha: i16 = score -| window;
             var beta: i16 = score +| window;
             var aspiration_score, var aspiration_move = .{ score, move };
@@ -690,6 +746,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                         Move.null_move,
                         .{},
                         hash_history,
+                        false,
                     ),
                 } orelse break;
                 if (aspiration_score >= beta) {
@@ -697,6 +754,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     fail_highs += 1;
                 } else if (aspiration_score <= alpha) {
                     alpha = @max(-checkmate_score, alpha -| window);
+                    beta = @intCast(@as(i32, beta) + alpha >> 1);
                     fail_lows += 1;
                 } else {
                     break;
@@ -705,7 +763,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     alpha = -checkmate_score;
                     beta = checkmate_score;
                 } else {
-                    window *|= 2;
+                    window = @intCast(std.math.clamp(window * tunable_constants.aspiration_window_mult >> 10, -eval.win_score + 1, eval.win_score - 1));
                 }
             }
             if (!silence_output and std.debug.runtime_safety) {
@@ -730,6 +788,7 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
                     Move.null_move,
                     .{},
                     hash_history,
+                    false,
                 ),
             } orelse break;
         }
@@ -749,9 +808,9 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
         }
         total_nodes = @max(1, total_nodes);
         const best_move_count = @max(1, root_node_counts[move.getFrom().toInt()][move.getTo().toInt()]);
-        const node_fraction = @as(f64, @floatFromInt(best_move_count)) / @as(f64, @floatFromInt(total_nodes));
-        const node_count_factor = 0.8 * (1.5 - node_fraction);
-        const adjusted_limit: u128 = @intFromFloat(@as(f64, @floatFromInt(search_params.softTime())) * node_count_factor);
+        const node_fraction = @as(u128, best_move_count) * 1024 / total_nodes;
+        const node_count_factor = @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
+        const adjusted_limit: u128 = search_params.softTime() * node_count_factor >> 20;
         // const adjusted_time: u64 = @intFromFloat(@as(f64, @floatFromInt(timer.read())) * node_count_factor);
         if (timer.read() >= @min(search_params.hardTime(), adjusted_limit)) {
             break;
@@ -792,7 +851,7 @@ pub const TTEntry = struct {
     depth: u8,
     tp: ScoreType,
     score: i16,
-    static_eval: i16,
+    raw_static_eval: i16,
 
     pub fn init(zobrist_: u64, move_: Move, depth_: anytype, tp_: ScoreType, score_: i16, static_eval_: i16) TTEntry {
         return .{
@@ -801,7 +860,7 @@ pub const TTEntry = struct {
             .depth = depth_,
             .tp = tp_,
             .score = score_,
-            .static_eval = static_eval_,
+            .raw_static_eval = static_eval_,
         };
     }
 

@@ -6,6 +6,8 @@ const magics = @import("magics.zig");
 const Board = @import("Board.zig");
 const Move = @import("Move.zig").Move;
 
+const tuning = @import("tuning.zig");
+
 fn panic_0_13_0(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     const log_file_path = "/home/jonathanhallstrom/dev/zig/pawnocchio/LOGFILE.pawnocchio_log";
 
@@ -227,7 +229,22 @@ pub fn main() !void {
             write("option name Threads type spin default 1 min 1 max 1\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
+            if (tuning.do_tuning) {
+                for (tuning.tunables) |tunable| {
+                    write(
+                        "option name {s} type spin default {} min {} max {}\n",
+                        .{ tunable.name, tunable.default, tunable.min, tunable.max },
+                    );
+                }
+            }
             write("uciok\n", .{});
+        } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
+            for (tuning.tunables) |tunable| {
+                write(
+                    "{s}, int, {}, {}, {}, {d}, 0.002\n",
+                    .{ tunable.name, tunable.default, tunable.min, tunable.max, tunable.C_end },
+                );
+            }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             engine.reset();
             board = Board.init();
@@ -266,6 +283,17 @@ pub fn main() !void {
                     writeLog("invalid overhead: '{s}'\n", .{value});
                     continue;
                 });
+            }
+
+            if (tuning.do_tuning) {
+                inline for (tuning.tunables) |tunable| {
+                    if (std.ascii.eqlIgnoreCase(tunable.name, name)) {
+                        @field(tuning.tunable_constants, tunable.name) = std.fmt.parseInt(i16, value, 10) catch {
+                            writeLog("invalid constant: '{s}'\n", .{value});
+                            continue :main_loop;
+                        };
+                    }
+                }
             }
         } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             write("readyok\n", .{});
@@ -393,16 +421,13 @@ pub fn main() !void {
             const my_time = if (board.turn == .white) white_time else black_time;
             const my_increment = if (board.turn == .white) white_increment else black_increment;
 
-            // const my_time = @min(white_time, black_time);
-            // const my_increment = @min(white_increment, black_increment);
-
-            // 10ms  seems fine
             const overhead_use = @min(overhead, my_time / 2);
 
-            var soft_time = my_time / @max(board.computePhase() * 3 / 2, 8) + my_increment;
+            var soft_time = my_time / @max(board.computePhase(), 8) + my_increment;
+            std.debug.print("{}\n", .{board.computePhase()});
             var hard_time = my_time / 5 -| overhead_use;
-            // std.debug.print("{}\n", .{std.fmt.fmtDuration(hard_time)});
-            hard_time = @max(std.time.ns_per_ms / 4, hard_time);
+
+            hard_time = @max(std.time.ns_per_ms / 4, hard_time); // use at least 0.25ms
             soft_time = @min(soft_time, hard_time);
 
             if (move_time) |mt| {
