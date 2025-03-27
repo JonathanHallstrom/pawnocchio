@@ -16,6 +16,7 @@ const tunable_defaults = struct {
 
     pub const quiesce_see_pruning_threshold: i32 = -100;
     pub const quiesce_futility_margin: i32 = 93;
+    pub const quiesce_delta_margin: i32 = 350;
 
     pub const see_quiet_pruning_mult: i32 = -80;
     pub const see_noisy_pruning_mult: i32 = -50;
@@ -56,6 +57,7 @@ pub const tunables = [_]Tunable{
 
     .{ .name = "quiesce_see_pruning_threshold", .default = tunable_defaults.quiesce_see_pruning_threshold, .min = -200, .max = 0, .C_end = 10 },
     .{ .name = "quiesce_futility_margin", .default = tunable_defaults.quiesce_futility_margin, .min = -200, .max = 200, .C_end = 7 },
+    .{ .name = "quiesce_delta_margin", .default = tunable_defaults.quiesce_delta_margin, .min = -200, .max = 200, .C_end = 7 },
 
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -200, .max = 0, .C_end = 3 },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -200, .max = 0, .C_end = 3 },
@@ -96,6 +98,7 @@ pub const tunable_constants = if (do_tuning) struct {
 
     pub var quiesce_see_pruning_threshold: i32 = tunable_defaults.quiesce_see_pruning_threshold;
     pub var quiesce_futility_margin: i32 = tunable_defaults.quiesce_futility_margin;
+    pub var quiesce_delta_margin: i32 = tunable_defaults.quiesce_delta_margin;
 
     pub var see_quiet_pruning_mult: i32 = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult: i32 = tunable_defaults.see_noisy_pruning_mult;

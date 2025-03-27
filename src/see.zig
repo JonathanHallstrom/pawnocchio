@@ -15,7 +15,7 @@ const king_moves = @import("king_moves.zig");
 
 // based on impl in https://github.com/SnowballSH/Avalanche/blob/c44569afbee44716e18a9698430c1016438d3874/src/engine/see.zig
 
-pub const SEE_weight = [_]i16{ 93, 308, 346, 521, 994, 0 };
+const SEE_weight = [_]i16{ 93, 308, 346, 521, 994, 0 };
 
 fn getAttacks(comptime turn: anytype, comptime tp: PieceType, sq: Square, occ: u64) u64 {
     return switch (tp) {
@@ -26,6 +26,10 @@ fn getAttacks(comptime turn: anytype, comptime tp: PieceType, sq: Square, occ: u
         .queen => magics.getBishopAttacks(sq, occ) | magics.getRookAttacks(sq, occ),
         .king => king_moves.king_moves_arr[sq.toInt()],
     };
+}
+
+pub fn value(piece_type: PieceType) i16 {
+    return SEE_weight[piece_type.toInt()];
 }
 
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
