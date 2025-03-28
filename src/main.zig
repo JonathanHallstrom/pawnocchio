@@ -424,7 +424,6 @@ pub fn main() !void {
             const overhead_use = @min(overhead, my_time / 2);
 
             var soft_time = my_time / @max(board.computePhase(), 8) + my_increment;
-            std.debug.print("{}\n", .{board.computePhase()});
             var hard_time = my_time / 5 -| overhead_use;
 
             hard_time = @max(std.time.ns_per_ms / 4, hard_time); // use at least 0.25ms
