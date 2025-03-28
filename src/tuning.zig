@@ -39,7 +39,7 @@ const tunable_defaults = struct {
     pub const history_malus_offs: i32 = 305;
     pub const history_malus_max: i32 = 2311;
 
-    pub const history_pruning_mult: i32 = -2048;
+    pub const history_pruning_mult: i32 = -4096;
 
     pub const pawn_corrhist_weight: i32 = 1024;
     pub const nonpawn_corrhist_weight: i32 = 1024;
@@ -81,7 +81,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "history_malus_offs", .default = tunable_defaults.history_malus_offs, .min = 100, .max = 600, .C_end = 10 },
     .{ .name = "history_malus_max", .default = tunable_defaults.history_malus_max, .min = 1000, .max = 5000, .C_end = 50 },
 
-    .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -3072, .max = -1024, .C_end = 50 },
+    .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -6144, .max = -1024, .C_end = 50 },
 
     .{ .name = "pawn_corrhist_weight", .default = tunable_defaults.pawn_corrhist_weight, .min = 1, .max = 2048, .C_end = 0.5 },
     .{ .name = "nonpawn_corrhist_weight", .default = tunable_defaults.nonpawn_corrhist_weight, .min = 1, .max = 2048, .C_end = 0.5 },
