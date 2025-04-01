@@ -30,6 +30,8 @@ pub const PerftEPDParser = @import("PerftEPDParser.zig");
 pub const evaluation = @import("evaluation.zig");
 pub const Searcher = @import("Searcher.zig");
 pub const engine = @import("engine.zig");
+pub const Limits = @import("Limits.zig");
+pub const MovePicker = @import("MovePicker.zig");
 
 const assert = std.debug.assert;
 
@@ -284,6 +286,23 @@ pub const ColouredPieceType = enum(u4) {
     pub fn toAsciiLetter(self: ColouredPieceType) u8 {
         const pt_char = self.toPieceType().toAsciiLetter();
         return if (self.toColour() == .white) std.ascii.toUpper(pt_char) else std.ascii.toLower(pt_char);
+    }
+};
+
+pub const ScoredMove = struct {
+    move: Move,
+    score: i16,
+
+    pub fn desc(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
+        return lhs.score > rhs.score;
+    }
+};
+
+pub const ScoredMoveReceiver = struct {
+    vals: std.BoundedArray(ScoredMove, 256) = .{},
+
+    pub fn receive(self: *@This(), move: Move) void {
+        self.vals.appendAssumeCapacity(.{ .move = move, .score = 0 });
     }
 };
 

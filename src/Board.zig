@@ -621,11 +621,11 @@ pub inline fn isPromo(_: Board, move: Move) bool {
 }
 
 pub inline fn isCapture(self: Board, move: Move) bool {
-    return !self.isCastling(move) and (&self.mailbox)[move.to().toInt()] != null;
+    return self.isEnPassant(move) or !self.isCastling(move) and (&self.mailbox)[move.to().toInt()] != null;
 }
 
 pub inline fn isNoisy(self: Board, move: Move) bool {
-    return self.isCapture(move) or self.isPromo(move);
+    return self.isCapture(move) or (self.isPromo(move) and move.promoType() == .queen);
 }
 
 pub inline fn isQuiet(self: Board, move: Move) bool {
@@ -923,7 +923,6 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     }
 
     if (self.checkers == 0) {
-        @branchHint(.likely);
         // pinned pieces
         if (Bitboard.extendingRayBb(from, to) & self.kingFor(stm) != 0) {
             return true;
@@ -951,7 +950,7 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     return true;
 }
 
-fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, comptime quiet: bool, depth: i32) anyerror!u64 {
+fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, comptime quiet: bool, depth: i32) u64 {
     if (depth == 0) return 1;
     var movelist = movegen.MoveListReceiver{};
     movegen.generateAllNoisies(stm, self, &movelist);
@@ -981,7 +980,7 @@ fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, 
             // };
             if (is_root and !quiet) {
                 std.debug.print("{s} ", .{cp.toFen().slice()});
-                std.debug.print("{}: ", .{move});
+                std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
             if (depth != 1) {}
             const count = cp.perft_impl(
@@ -989,10 +988,7 @@ fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, 
                 stm.flipped(),
                 quiet,
                 depth - 1,
-            ) catch |e| {
-                std.debug.print("{}\n", .{move});
-                return e;
-            };
+            );
             res += count;
             if (is_root and !quiet) {
                 std.debug.print("{}\n", .{count});
@@ -1013,7 +1009,7 @@ pub fn perft(
             stm_comptime,
             quiet,
             depth,
-        ) catch @panic("sad"),
+        ),
     };
 }
 

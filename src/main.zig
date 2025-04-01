@@ -317,7 +317,7 @@ pub fn main() !void {
                 hard_time = mt;
             }
 
-            root.engine.startSearch(.{ .board = board }, 1);
+            root.engine.startSearch(.{ .board = board, .limits = root.Limits.initStandard(my_time, my_increment, overhead) }, 1);
             // engine.startAsyncSearch(
             //     board,
             //     .{
