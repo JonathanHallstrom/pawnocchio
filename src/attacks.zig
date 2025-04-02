@@ -1,4 +1,4 @@
-const std = @import("std"); // Pawnocchio, UCI chess engine
+// pawnocchio, UCI chess engine
 // Copyright (C) 2025 Jonathan Hallström
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,6 +14,7 @@ const std = @import("std"); // Pawnocchio, UCI chess engine
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+const std = @import("std");
 pub const attack_impl = if (std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2))
     @import("pext.zig")
 else

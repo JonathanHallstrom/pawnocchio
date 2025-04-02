@@ -1,4 +1,4 @@
-// Pawnocchio, UCI chess engine
+// pawnocchio, UCI chess engine
 // Copyright (C) 2025 Jonathan Hallström
 //
 // This program is free software: you can redistribute it and/or modify
