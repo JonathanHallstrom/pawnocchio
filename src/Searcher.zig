@@ -40,7 +40,7 @@ pub const Params = struct {
 };
 
 nodes: u64,
-keys: [MAX_PLY + MAX_HALFMOVE]u64,
+hashes: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY]StackEntry,
 root_move: Move,
@@ -48,6 +48,7 @@ root_score: i16,
 limits: Limits,
 ply: usize,
 stop: bool,
+previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 
 pub const StackEntry = struct {
     board: Board,
@@ -84,7 +85,7 @@ fn makeMove(noalias self: *Searcher, comptime stm: Colour, move: Move) void {
     new_stack_entry.init(prev_stack_entry.board);
     new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
-    self.keys[MAX_HALFMOVE + self.ply] = new_stack_entry.board.hash;
+    self.hashes[MAX_HALFMOVE + self.ply] = new_stack_entry.board.hash;
 }
 
 fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
@@ -94,29 +95,20 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
 }
 
 fn isRepetition(self: *Searcher) bool {
-    {
-        return false;
-    }
     const board = &self.curStackEntry().board;
 
-    const key = board.hash;
+    const hash = board.hash;
     for (0..self.ply) |i| {
-        if (self.keys[MAX_HALFMOVE + i] == key) {
+        if (self.hashes[i] == hash) {
             return true; // found repetition in the search tree
         }
     }
-    var has_rep = false;
-    const amt_before: usize = @max(@min(board.halfmove - self.ply, MAX_HALFMOVE), 0);
-    for (0..amt_before) |i| {
-        const matches = key == self.keys[MAX_HALFMOVE - i];
-        if (matches and has_rep) {
-            return true; // found 2 repetitions before the search
-        }
-        has_rep = has_rep or matches;
+    var num_repetitions_in_previous: u8 = 0;
+    for (self.previous_hashes.slice()) |previous_hash| {
+        num_repetitions_in_previous += @intFromBool(hash == previous_hash);
     }
-    return false;
+    return num_repetitions_in_previous >= 2;
 }
-
 fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32, depth: i32) i16 {
     self.nodes += 1;
     var alpha = alpha_;
@@ -201,8 +193,10 @@ pub fn startSearch(self: *Searcher, settings: Params, is_main_thread: bool, quie
     self.stop = false;
     self.nodes = 0;
     const board = settings.board;
-    const num_keys_to_copy = @min(board.halfmove, settings.previous_hashes.len);
-    @memcpy(self.keys[MAX_HALFMOVE - num_keys_to_copy .. MAX_HALFMOVE], settings.previous_hashes[settings.previous_hashes.len - num_keys_to_copy ..]);
+    for (settings.previous_hashes) |previous_hash| {
+        self.previous_hashes.appendAssumeCapacity(previous_hash);
+    }
+
     self.root_move = Move.init();
     self.root_score = 0;
     self.search_stack[0].init(board);
