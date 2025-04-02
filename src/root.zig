@@ -200,6 +200,15 @@ pub const PieceType = enum {
     queen,
     king,
 
+    pub const all = [_]PieceType{
+        .pawn,
+        .knight,
+        .bishop,
+        .rook,
+        .queen,
+        .king,
+    };
+
     pub fn fromInt(i: u8) PieceType {
         return @enumFromInt(i);
     }

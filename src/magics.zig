@@ -180,8 +180,14 @@ pub fn init() void {
 }
 
 pub fn getBishopAttacks(square: Square, blockers: u64) u64 {
+    if (@inComptime()) {
+        return attack_array_generation.computeBishopAttacks(square, blockers);
+    }
     return (&bishop_attacks)[@intCast((&bishop_attack_entries)[square.toInt()].getBishopIndex(blockers))];
 }
 pub fn getRookAttacks(square: Square, blockers: u64) u64 {
+    if (@inComptime()) {
+        return attack_array_generation.computeRookAttacks(square, blockers);
+    }
     return (&rook_attacks)[@intCast((&rook_attack_entries)[square.toInt()].getRookIndex(blockers))];
 }

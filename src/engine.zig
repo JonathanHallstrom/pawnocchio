@@ -24,34 +24,72 @@ var is_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atom
 var stop_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
 pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
 var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
-var current_num_threads: u32 = 0; // 0 for uninitialized
-var searchers: []Searcher = &.{};
+var num_finished_threads: std.atomic.Value(usize) align(std.atomic.cache_line) = std.atomic.Value(usize).init(0);
+var current_num_threads: u32 align(std.atomic.cache_line) = 0; // 0 for uninitialized
+var searchers: []Searcher align(std.atomic.cache_line) = &.{};
+var done_searching_mutex: std.Thread.Mutex = .{};
+var done_searching_cv: std.Thread.Condition = .{};
 
-fn worker(i: usize, settings: Searcher.Params) void {
-    searchers[i].startSearch(settings, i == 0);
+fn worker(i: usize, settings: Searcher.Params, quiet: bool) void {
+    searchers[i].startSearch(settings, i == 0, quiet);
+    _ = num_finished_threads.rmw(.Add, 1, .seq_cst);
+    if (num_finished_threads.load(.seq_cst) == current_num_threads) {
+        is_searching.store(false, .seq_cst);
+        done_searching_mutex.lock();
+        defer done_searching_mutex.unlock();
+        done_searching_cv.signal();
+    }
 }
 
-pub fn startSearch(settings: Searcher.Params, num_threads: u32) void {
-    std.debug.assert(num_threads == 1);
-    if (current_num_threads != num_threads) { // need a new threadpool
+pub const SearchSettings = struct {
+    search_params: Searcher.Params,
+    num_threads: u32 = 1,
+    quiet: bool = false,
+};
+
+pub fn startSearch(settings: SearchSettings) void {
+    std.debug.assert(settings.num_threads == 1);
+    if (current_num_threads != settings.num_threads) { // need a new threadpool
         if (current_num_threads > 0) { // deinit old threadpool
             thread_pool.deinit();
         }
 
-        current_num_threads = num_threads;
+        current_num_threads = settings.num_threads;
         thread_pool.init(.{
             .allocator = std.heap.page_allocator,
-            .n_jobs = num_threads,
+            .n_jobs = settings.num_threads,
         }) catch |e| std.debug.panic("Fatal: creating thread pool failed with error '{}'\n", .{e});
-        searchers = std.heap.page_allocator.realloc(searchers, num_threads) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
+        searchers = std.heap.page_allocator.realloc(searchers, settings.num_threads) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
     }
+
+    num_finished_threads.store(0, .seq_cst);
     is_searching.store(true, .seq_cst);
     stop_searching.store(false, .seq_cst);
-    for (0..num_threads) |i| {
-        thread_pool.spawn(worker, .{ i, settings }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
+    for (0..settings.num_threads) |i| {
+        thread_pool.spawn(worker, .{ i, settings.search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
     }
+}
+
+pub fn querySearchedNodes() u64 {
+    var res: u64 = 0;
+    for (searchers) |*searcher| {
+        res += searcher.nodes;
+    }
+    return res;
 }
 
 pub fn stopSearch() void {
     stop_searching.store(true, .seq_cst);
+}
+
+pub fn shouldStopSearching() bool {
+    return stop_searching.load(.seq_cst);
+}
+
+pub fn waitUntilDoneSearching() void {
+    done_searching_mutex.lock();
+    defer done_searching_mutex.unlock();
+    while (num_finished_threads.load(.seq_cst) < current_num_threads) {
+        done_searching_cv.wait(&done_searching_mutex);
+    }
 }

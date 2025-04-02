@@ -43,6 +43,7 @@ pub fn init(
     board_: *const Board,
     movelist_: *ScoredMoveReceiver,
 ) MovePicker {
+    movelist_.vals.len = 0;
     return .{
         .movelist = movelist_,
         .board = board_,
@@ -63,7 +64,7 @@ fn findBest(self: *MovePicker) usize {
         }
     }
     if (best_idx != 0) {
-        std.mem.swap(ScoredMove, &scored_moves[best_idx], &scored_moves[0]);
+        std.mem.swap(ScoredMove, &scored_moves[0], &scored_moves[best_idx]);
     }
     const res = self.first;
     self.first += 1;
@@ -76,14 +77,11 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             .generate_noisies => {
                 switch (self.board.stm) {
                     inline else => |stm| {
+                        std.debug.assert(self.movelist.vals.len == 0);
                         movegen.generateAllNoisies(stm, self.board, self.movelist);
                     },
                 }
-                self.stage = .noisies;
                 self.last = self.movelist.vals.len;
-                for (self.first..self.last) |i| {
-                    self.movelist.vals.buffer[i].score = @intCast(i *% 13 & 127);
-                }
                 self.stage = .noisies;
                 continue;
             },
@@ -100,11 +98,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
                     },
                 }
-                self.stage = .quiets;
                 self.last = self.movelist.vals.len;
-                for (self.first..self.last) |i| {
-                    self.movelist.vals.buffer[i].score = @intCast(i *% 13 & 127);
-                }
                 self.stage = .quiets;
                 continue;
             },

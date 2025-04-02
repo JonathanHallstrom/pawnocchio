@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
-const attack_table_generation = @import("attack_array_generation.zig");
+const attack_array_generation = @import("attack_array_generation.zig");
 const root = @import("root.zig");
 const Square = root.Square;
 const Bitboard = root.Bitboard;
@@ -85,18 +85,24 @@ var bishop_attacks: [bishop_array_size]u64 = undefined;
 var rook_attacks: [rook_array_size]if (compressed_rook_attacks) u16 else u64 = undefined;
 
 pub fn init() void {
-    attack_table_generation.generateBishopAttackArrayInPlace(bishop_attack_entries, &bishop_attacks);
+    attack_array_generation.generateBishopAttackArrayInPlace(bishop_attack_entries, &bishop_attacks);
     if (compressed_rook_attacks) {
-        attack_table_generation.generateRookAttackArrayInPlaceCompressed(rook_attack_entries, &rook_attacks);
+        attack_array_generation.generateRookAttackArrayInPlaceCompressed(rook_attack_entries, &rook_attacks);
     } else {
-        attack_table_generation.generateRookAttackArrayInPlace(rook_attack_entries, &rook_attacks);
+        attack_array_generation.generateRookAttackArrayInPlace(rook_attack_entries, &rook_attacks);
     }
 }
 
 pub fn getBishopAttacks(square: Square, blockers: u64) u64 {
+    if (@inComptime()) {
+        return attack_array_generation.computeBishopAttacks(square, blockers);
+    }
     return (&bishop_attacks)[@intCast((&bishop_attack_entries)[square.toInt()].getBishopIndex(blockers))];
 }
 pub fn getRookAttacks(square: Square, blockers: u64) u64 {
+    if (@inComptime()) {
+        return attack_array_generation.computeRookAttacks(square, blockers);
+    }
     if (compressed_rook_attacks) {
         const magic = (&rook_attack_entries)[square.toInt()];
         return Bitboard.pdep((&rook_attacks)[@intCast(magic.getRookIndex(blockers))], magic.mask_full);

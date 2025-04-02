@@ -28,6 +28,7 @@ pub const evaluate: fn (*const Board, State) i16 = impl.evaluate;
 
 pub const checkmate_score: i16 = 16000;
 pub const win_score: i16 = checkmate_score - root.Searcher.MAX_PLY;
+pub const inf_score: i16 = 16383;
 
 pub fn clampScore(score: anytype) i16 {
     return @intCast(std.math.clamp(score, -(win_score - 1), win_score - 1));
@@ -62,13 +63,14 @@ pub fn isMateScore(score: i16) bool {
 }
 
 pub fn formatScore(score: i16) std.BoundedArray(u8, 15) {
-    var print_buf: [8]u8 = undefined;
+    var print_buf: [15]u8 = undefined;
     var res: std.BoundedArray(u8, 15) = .{};
     if (isMateScore(score)) {
         const plies_to_mate = if (score > 0) checkmate_score - score else checkmate_score + score;
         const moves_to_mate = @divTrunc(plies_to_mate + 1, 2);
         if (score < 0)
             res.appendAssumeCapacity('-');
+        res.appendSliceAssumeCapacity("mate ");
         res.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{moves_to_mate}) catch unreachable);
     } else {
         res.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{score}) catch unreachable);

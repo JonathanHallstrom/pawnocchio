@@ -164,11 +164,11 @@ fn findMagics(bishops: bool, r: Random) struct { [64]AttackEntry, usize } {
     return .{ res, offs };
 }
 
-fn computeBishopAttacks(square: Square, blockers: u64) u64 {
+pub fn computeBishopAttacks(square: Square, blockers: u64) u64 {
     return computeAttacks(square, blockers, Bitboard.bishop_d_ranks, Bitboard.bishop_d_files);
 }
 
-fn computeRookAttacks(square: Square, blockers: u64) u64 {
+pub fn computeRookAttacks(square: Square, blockers: u64) u64 {
     return computeAttacks(square, blockers, Bitboard.rook_d_ranks, Bitboard.rook_d_files);
 }
 

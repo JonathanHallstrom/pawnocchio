@@ -101,6 +101,7 @@ pub const Move = enum(u16) {
     pub fn promoType(self: Move) PieceType {
         return PieceType.fromInt(@intCast(1 + (self.flag() & ~promotion_flag)));
     }
+
     pub fn getEnPassantPawnSquare(self: Move, comptime col: Colour) Square {
         return self.to().move(if (col == .white) -1 else 1, 0);
     }

@@ -184,7 +184,7 @@ const eg_pesto_table: [6][64]i16 = .{
 const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
 const max_phase = blk: {
     @setEvalBranchQuota(1 << 30);
-    break :blk computePhase(&Board.init());
+    break :blk computePhase(&Board.startpos());
 };
 
 const mg_table = blk: {
@@ -193,7 +193,7 @@ const mg_table = blk: {
         const p: usize = @intFromEnum(pt);
         for (0..64) |sq| {
             res[2 * p + 0][sq] = mg_value[p] + mg_pesto_table[p][sq ^ 56];
-            res[2 * p + 1][sq] = mg_value[p] + mg_pesto_table[p][sq];
+            res[2 * p + 1][sq] = -(mg_value[p] + mg_pesto_table[p][sq]);
         }
     }
     break :blk res;
@@ -204,7 +204,7 @@ const eg_table = blk: {
         const p: usize = @intFromEnum(pt);
         for (0..64) |sq| {
             res[2 * p + 0][sq] = eg_value[p] + eg_pesto_table[p][sq ^ 56];
-            res[2 * p + 1][sq] = eg_value[p] + eg_pesto_table[p][sq];
+            res[2 * p + 1][sq] = -(eg_value[p] + eg_pesto_table[p][sq]);
         }
     }
     break :blk res;
@@ -323,8 +323,8 @@ const Packed = enum(i32) {
 
 fn computePhase(board: *const Board) u8 {
     var res: u8 = 0;
-    inline for (PieceType.all) |pt| {
-        res += gamephaseInc[@intFromEnum(pt)] * @popCount(board.white.getBoard(pt) | board.black.getBoard(pt));
+    for (0..6) |p| {
+        res += gamephaseInc[p] * @popCount(board.pieces[p]);
     }
     return res;
 }
@@ -341,13 +341,11 @@ pub const State = struct {
         var state = Packed.from(0, 0);
 
         for (PieceType.all) |pt| {
-            var iter = Bitboard.iterator(board.white.getBoard(pt));
+            var iter = Bitboard.iterator(board.pieceFor(.white, pt));
             while (iter.next()) |s| state = state.add(readPieceSquareTable(.white, pt, s));
-            iter = Bitboard.iterator(board.black.getBoard(pt));
-            while (iter.next()) |s| state = state.sub(readPieceSquareTable(.black, pt, s));
+            iter = Bitboard.iterator(board.pieceFor(.black, pt));
+            while (iter.next()) |s| state = state.add(readPieceSquareTable(.black, pt, s));
         }
-
-        state = if (board.turn == .white) state else state.negate();
 
         return .{
             .state = state,
@@ -355,53 +353,25 @@ pub const State = struct {
         };
     }
 
-    pub fn updateWith(self: State, comptime stm: Colour, board: *const Board, move: Move) State {
-        assert(board.turn == stm);
-        const from = move.from();
-        const to = move.to();
-        const from_type = (&board.mailbox)[from.toInt()].?.toPieceType();
-        const to_type = if (board.isPromo(move)) move.promoType() else from_type;
-        var update = Packed.init(0);
-        var new_phase: u8 = self.phase + (gamephaseInc[@intFromEnum(to_type)] - gamephaseInc[@intFromEnum(from_type)]);
-        if (move.isCapture()) {
-            if (move.isEnPassant()) {
-                update = update.add(readPieceSquareTable(stm.flipped(), .pawn, move.getEnPassantPawn(stm)));
-                update = update.sub(readPieceSquareTable(stm, .pawn, from));
-                update = update.add(readPieceSquareTable(stm, .pawn, to));
-                new_phase -= gamephaseInc[@intFromEnum(PieceType.pawn)];
-            } else {
-                const captured_type = (&board.mailbox)[to.toInt()].?.toPieceType();
-                update = update.add(readPieceSquareTable(stm.flipped(), captured_type, to));
-                update = update.sub(readPieceSquareTable(stm, from_type, from));
-                update = update.add(readPieceSquareTable(stm, to_type, to));
-                new_phase -= gamephaseInc[@intFromEnum(captured_type)];
-            }
-        } else {
-            if (move.isCastlingMove()) {
-                const rook_from_square = move.to();
-                const king_destination = board.castlingKingDestFor(move, stm);
-                const rook_destination = board.castlingRookDestFor(move, stm);
-                update = update.sub(readPieceSquareTable(stm, .rook, rook_from_square));
-                update = update.add(readPieceSquareTable(stm, .rook, rook_destination));
-                update = update.sub(readPieceSquareTable(stm, .king, from));
-                update = update.add(readPieceSquareTable(stm, .king, king_destination));
-            } else {
-                update = update.sub(readPieceSquareTable(stm, from_type, from));
-                update = update.add(readPieceSquareTable(stm, to_type, to));
-            }
-        }
-
-        return .{
-            .state = self.state.add(update).negate(),
-            .phase = new_phase,
-        };
+    pub fn initInPlace(noalias self: *State, board: *const Board) void {
+        self.* = init(board);
     }
 
-    pub fn negate(self: State) State {
-        return .{
-            .phase = self.phase,
-            .state = self.state.negate(),
-        };
+    pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
+        self.state = self.state.add(readPieceSquareTable(col, pt, square));
+        self.phase += gamephaseInc[pt.toInt()];
+    }
+
+    pub fn sub(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
+        self.state = self.state.sub(readPieceSquareTable(col, pt, square));
+        self.phase -= gamephaseInc[pt.toInt()];
+    }
+
+    pub fn addSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
+        self.add(add_col, add_pt, add_square);
+        self.sub(sub_col, sub_pt, sub_square);
+        self.phase -= gamephaseInc[sub_pt.toInt()];
+        self.phase += gamephaseInc[add_pt.toInt()];
     }
 
     pub fn eval(self: State) i16 {
@@ -412,6 +382,8 @@ pub const State = struct {
     }
 };
 
-pub fn evaluate(_: *const Board, state: State) i16 {
-    return evaluation.clampScore(state.eval());
+pub fn evaluate(board: *const Board, state: State) i16 {
+    var res = evaluation.clampScore(state.eval());
+    if (board.stm == .black) res = -res;
+    return res;
 }
