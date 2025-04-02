@@ -6,16 +6,26 @@ pub fn build(b: *std.Build) void {
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
     const net = b.option([]const u8, "net", "Change the net to be used") orelse "pawnocchio-nets/networks/net20_04_1024_400_8_mirrored.nnue";
 
+    const omit_frame_ptr = switch (optimize) {
+        .ReleaseFast, .ReleaseSmall => true,
+        .Debug, .ReleaseSafe => false,
+    };
+
     const exe = b.addExecutable(.{
         .name = name,
         .target = target,
         .optimize = optimize,
         .root_source_file = b.path("src/main.zig"),
+        .omit_frame_pointer = omit_frame_ptr,
     });
 
     exe.root_module.addAnonymousImport(
         "net",
-        .{ .root_source_file = b.path(net) },
+        .{
+            .root_source_file = std.Build.LazyPath{
+                .cwd_relative = net, // OB passes the path as an absolute path so this is is the only way
+            },
+        },
     );
 
     b.installArtifact(exe);
