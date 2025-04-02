@@ -962,6 +962,16 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     return true;
 }
 pub const NullEvalState = struct {
+    pub fn init(board: *const Board) NullEvalState {
+        _ = board;
+        return .{};
+    }
+
+    pub fn initInPlace(self: @This(), board: *const Board) void {
+        _ = self;
+        _ = board;
+    }
+
     pub fn add(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
         _ = self;
         _ = col;

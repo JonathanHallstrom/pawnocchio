@@ -162,6 +162,7 @@ pub fn main() !void {
     defer previous_hashes.deinit();
 
     var board = Board.startpos();
+    try previous_hashes.append(board.hash);
     var overhead: u64 = std.time.ns_per_ms * 10;
     loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
@@ -456,7 +457,7 @@ pub fn main() !void {
                 // write("EVAL: {}\n", .{nnue.nnEval(&try Board.parseFen(fen))});
             }
         } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
-            const hce = @import("hce.zig");
+            const hce = @import("material_eval.zig");
             write("{}\n", .{hce.evaluate(&board, hce.State.init(&board))});
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");

@@ -94,6 +94,9 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
 }
 
 fn isRepetition(self: *Searcher) bool {
+    {
+        return false;
+    }
     const board = &self.curStackEntry().board;
 
     const key = board.hash;
@@ -114,8 +117,9 @@ fn isRepetition(self: *Searcher) bool {
     return false;
 }
 
-fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, depth: i32) i16 {
+fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32, depth: i32) i16 {
     self.nodes += 1;
+    var alpha = alpha_;
     if (self.stop or self.limits.checkSearch(self.nodes)) {
         self.stop = true;
         return 0;
@@ -148,7 +152,7 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, depth:
         }
 
         self.makeMove(stm, move);
-        const score = -self.negamax(false, stm.flipped(), depth - 1);
+        const score = -self.negamax(false, stm.flipped(), -beta, -alpha, depth - 1);
         self.unmakeMove(stm, move);
         if (self.stop) {
             return 0;
@@ -157,6 +161,12 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, depth:
         if (score > best_score) {
             best_score = score;
             best_move = move;
+        }
+        if (score > alpha) {
+            alpha = score;
+            if (score >= beta) {
+                break;
+            }
         }
     }
 
@@ -200,7 +210,7 @@ pub fn startSearch(self: *Searcher, settings: Params, is_main_thread: bool, quie
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         _ = switch (board.stm) {
-            inline else => |stm| self.negamax(true, stm, depth),
+            inline else => |stm| self.negamax(true, stm, -evaluation.inf_score, evaluation.inf_score, depth),
         };
         if (self.stop)
             break;
