@@ -504,6 +504,9 @@ pub fn main() !void {
                     writeLog("invalid move: '{s}'\n", .{played_move});
                     continue;
                 };
+                if (board.halfmove == 0) {
+                    previous_hashes.clearRetainingCapacity();
+                }
                 try previous_hashes.append(board.hash);
             }
         }

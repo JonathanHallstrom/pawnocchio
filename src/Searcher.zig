@@ -98,16 +98,17 @@ fn isRepetition(self: *Searcher) bool {
     const board = &self.curStackEntry().board;
 
     const hash = board.hash;
-    for (0..self.ply) |i| {
-        if (self.hashes[i] == hash) {
+    for (self.hashes[0..self.ply]) |previous_hash| {
+        if (previous_hash == hash) {
             return true; // found repetition in the search tree
         }
     }
-    var num_repetitions_in_previous: u8 = 0;
     for (self.previous_hashes.slice()) |previous_hash| {
-        num_repetitions_in_previous += @intFromBool(hash == previous_hash);
+        if (previous_hash == hash) {
+            return true;
+        }
     }
-    return num_repetitions_in_previous >= 2;
+    return false;
 }
 fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32, depth: i32) i16 {
     self.nodes += 1;
@@ -187,23 +188,59 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32) void {
     });
 }
 
-pub fn startSearch(self: *Searcher, settings: Params, is_main_thread: bool, quiet: bool) void {
-    self.limits = settings.limits;
+fn retainOnlyDuplicates(slice: []u64) usize {
+    std.sort.pdq(u64, slice, void{}, std.sort.asc(u64));
+    var write_idx: usize = 0;
+    var last: u64 = 0;
+    var count: usize = 0;
+    for (slice) |hash| {
+        if (hash == last) {
+            count += 1;
+            if (count == 2) {
+                slice[write_idx] = last;
+                write_idx += 1;
+            }
+        } else {
+            count = 1;
+        }
+        last = hash;
+    }
+    return write_idx;
+}
+
+test retainOnlyDuplicates {
+    var vals = [_]u64{ 0, 1, 1, 2, 2, 2, 8, 2, 2, 2, 3, 8, 4, 4 };
+    const count = retainOnlyDuplicates(&vals);
+    try std.testing.expectEqualSlices(u64, &.{ 1, 2, 4, 8 }, vals[0..count]);
+}
+/// we make the previous hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
+fn fixupPreviousHashes(self: *Searcher) void {
+    self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
+    self.previous_hashes.appendAssumeCapacity(std.math.maxInt(u64));
+}
+
+fn initStack(self: *Searcher, params: Params) void {
+    self.limits = params.limits;
     self.ply = 0;
     self.stop = false;
     self.nodes = 0;
-    const board = settings.board;
-    for (settings.previous_hashes) |previous_hash| {
+    const board = params.board;
+    for (params.previous_hashes) |previous_hash| {
         self.previous_hashes.appendAssumeCapacity(previous_hash);
     }
+    self.fixupPreviousHashes();
 
     self.root_move = Move.init();
     self.root_score = 0;
     self.search_stack[0].init(board);
     self.eval_states[0].initInPlace(&board);
+}
+
+pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
+    self.initStack(params);
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
-        _ = switch (board.stm) {
+        _ = switch (params.board.stm) {
             inline else => |stm| self.negamax(true, stm, -evaluation.inf_score, evaluation.inf_score, depth),
         };
         if (self.stop)
@@ -216,6 +253,6 @@ pub fn startSearch(self: *Searcher, settings: Params, is_main_thread: bool, quie
 
     if (is_main_thread) {
         if (!quiet)
-            write("bestmove {s}\n", .{self.root_move.toString(&board).slice()});
+            write("bestmove {s}\n", .{self.root_move.toString(&params.board).slice()});
     }
 }
