@@ -71,6 +71,24 @@ fn findBest(self: *MovePicker) usize {
     return res;
 }
 
+fn noisyValue(self: MovePicker, move: Move) i16 {
+    var res: i16 = 0;
+
+    if (self.board.isPromo(move)) {
+        res += (move.promoType().toInt() + 1) * 10;
+    }
+
+    if ((&self.board.mailbox)[move.to().toInt()]) |captured_type| {
+        res += (captured_type.toInt() + 1) * 10;
+    } else if (self.board.isEnPassant(move)) {
+        res += 10;
+    }
+    const from_type = (&self.board.mailbox)[move.from().toInt()].?.toPieceType();
+    res -= from_type.toInt();
+
+    return res;
+}
+
 pub fn next(self: *MovePicker) ?ScoredMove {
     while (true) {
         switch (self.stage) {
@@ -79,6 +97,9 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                     inline else => |stm| {
                         std.debug.assert(self.movelist.vals.len == 0);
                         movegen.generateAllNoisies(stm, self.board, self.movelist);
+                        for (self.movelist.vals.slice()) |*scored_move| {
+                            scored_move.score = self.noisyValue(scored_move.move);
+                        }
                     },
                 }
                 self.last = self.movelist.vals.len;
