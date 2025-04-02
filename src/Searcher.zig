@@ -93,39 +93,47 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     self.ply -= 1;
 }
 
-fn negamax(self: *Searcher, comptime stm: Colour, depth: i32) i16 {
+fn isRepetition(self: *Searcher) bool {
+    const board = &self.curStackEntry().board;
+
+    const key = board.hash;
+    for (0..self.ply) |i| {
+        if (self.keys[MAX_HALFMOVE + i] == key) {
+            return true; // found repetition in the search tree
+        }
+    }
+    var has_rep = false;
+    const amt_before: usize = @max(@min(board.halfmove - self.ply, MAX_HALFMOVE), 0);
+    for (0..amt_before) |i| {
+        const matches = key == self.keys[MAX_HALFMOVE - i];
+        if (matches and has_rep) {
+            return true; // found 2 repetitions before the search
+        }
+        has_rep = has_rep or matches;
+    }
+    return false;
+}
+
+fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, depth: i32) i16 {
     self.nodes += 1;
     if (self.stop or self.limits.checkSearch(self.nodes)) {
         self.stop = true;
         return 0;
     }
-    if (depth <= 0 or self.ply == MAX_PLY) {
-        return evaluate(&self.search_stack[self.ply].board, self.eval_states[self.ply]);
+    if (depth <= 0) {
+        return evaluate(&self.curStackEntry().board, self.eval_states[self.ply]);
     }
-    const is_root = self.ply == 0;
+
+    if (self.ply >= MAX_PLY - 1) {
+        return 0;
+    }
+
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
-    {
-        if (is_root) {
-            if (depth > 1) { // even if this is a repetition we might as well return *some* legal move, so do a d1 search
-                var num_repetitions: usize = 1;
-                for (0..board.halfmove) |i| {
-                    num_repetitions += @intFromBool(self.keys[self.ply + MAX_HALFMOVE - i - 1] == board.hash);
-                }
-                if (num_repetitions >= 3) {
-                    return 0;
-                }
-            }
-        } else {
-            var repetition: u8 = 0;
-            for (0..board.halfmove) |i| {
-                repetition |= @intFromBool(self.keys[self.ply + MAX_HALFMOVE - i - 1] == board.hash);
-            }
-            if (repetition != 0) {
-                return 0;
-            }
-        }
+
+    if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
+        return 0;
     }
 
     var mp = MovePicker.init(board, &cur.movelist);
@@ -140,10 +148,9 @@ fn negamax(self: *Searcher, comptime stm: Colour, depth: i32) i16 {
         }
 
         self.makeMove(stm, move);
-        const score = -self.negamax(stm.flipped(), depth - 1);
+        const score = -self.negamax(false, stm.flipped(), depth - 1);
         self.unmakeMove(stm, move);
         if (self.stop) {
-            std.debug.print("stopped!\n", .{});
             return 0;
         }
 
@@ -186,13 +193,14 @@ pub fn startSearch(self: *Searcher, settings: Params, is_main_thread: bool, quie
     const board = settings.board;
     const num_keys_to_copy = @min(board.halfmove, settings.previous_hashes.len);
     @memcpy(self.keys[MAX_HALFMOVE - num_keys_to_copy .. MAX_HALFMOVE], settings.previous_hashes[settings.previous_hashes.len - num_keys_to_copy ..]);
-
+    self.root_move = Move.init();
+    self.root_score = 0;
     self.search_stack[0].init(board);
     self.eval_states[0].initInPlace(&board);
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         _ = switch (board.stm) {
-            inline else => |stm| self.negamax(stm, depth),
+            inline else => |stm| self.negamax(true, stm, depth),
         };
         if (self.stop)
             break;

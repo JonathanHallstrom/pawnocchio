@@ -854,6 +854,7 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
     self.halfmove = updated_halfmove;
     self.castling_rights = updated_castling_rights;
     self.stm = stm.flipped();
+    self.fullmove += stm.toInt();
 
     self.updateMasks(stm.flipped());
     self.updateTurnHash();
