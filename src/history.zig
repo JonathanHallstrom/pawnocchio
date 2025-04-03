@@ -62,6 +62,5 @@ pub const QuietHistory = struct {
 fn gravityUpdate(entry: *i16, adjustment: anytype) void {
     const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));
     const magnitude: i32 = @abs(clamped);
-    // std.debug.print("{} {} {} {}\n", .{ entry.*, clamped, magnitude, comptime @ctz(MAX_HISTORY) });
-    entry.* += @intCast(clamped - (magnitude * entry.*) >> SHIFT);
+    entry.* += @intCast(clamped - (((magnitude * entry.*) >> SHIFT)));
 }

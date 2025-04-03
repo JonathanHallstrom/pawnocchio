@@ -243,9 +243,9 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
             if (score >= beta) {
                 if (is_quiet) {
                     self.quiet_history.update(stm, move, root.history.bonus(depth));
-                    for (searched_quiets.slice()) |searched_move| {
-                        self.quiet_history.update(stm, searched_move, -root.history.penalty(depth));
-                    }
+                    // for (searched_quiets.slice()) |searched_move| {
+                    //     self.quiet_history.update(stm, searched_move, -root.history.penalty(depth));
+                    // }
                 }
                 break;
             }
