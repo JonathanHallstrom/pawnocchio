@@ -27,12 +27,10 @@ const PieceType = root.PieceType;
 const ColouredPieceType = root.ColouredPieceType;
 const Move = root.Move;
 const movegen = root.movegen;
+const CastlingRights = root.CastlingRights;
 const Board = @This();
 
-const white_kingside_castle: u8 = 1;
-const black_kingside_castle: u8 = 2;
-const white_queenside_castle: u8 = 4;
-const black_queenside_castle: u8 = 8;
+comptime {}
 
 white: u64 = 0,
 black: u64 = 0,
@@ -47,11 +45,7 @@ stm: Colour = .white,
 
 hash: u64 = 0,
 
-castling_rights: u8 = 0,
-white_kingside_rook_file: File = .h,
-black_kingside_rook_file: File = .h,
-white_queenside_rook_file: File = .a,
-black_queenside_rook_file: File = .a,
+castling_rights: CastlingRights = CastlingRights.init(),
 
 pinned: [2]u64 = .{0} ** 2,
 pinner: [2]u64 = .{0} ** 2,
@@ -121,53 +115,8 @@ pub inline fn king(self: Board) u64 {
     return self.pieces[5];
 }
 
-pub inline fn kingsideCastlingFor(self: Board, col: Colour) bool {
-    if (col == .white) {
-        return self.castling_rights & white_kingside_castle != 0;
-    } else {
-        return self.castling_rights & black_kingside_castle != 0;
-    }
-}
-
-pub inline fn queensideCastlingFor(self: Board, col: Colour) bool {
-    if (col == .white) {
-        return self.castling_rights & white_queenside_castle != 0;
-    } else {
-        return self.castling_rights & black_queenside_castle != 0;
-    }
-}
-
-pub inline fn kingsideRookFileFor(self: Board, col: Colour) File {
-    if (col == .white) {
-        return self.white_kingside_rook_file;
-    } else {
-        return self.black_kingside_rook_file;
-    }
-}
-
-pub inline fn queensideRookFileFor(self: Board, col: Colour) File {
-    if (col == .white) {
-        return self.white_queenside_rook_file;
-    } else {
-        return self.black_queenside_rook_file;
-    }
-}
-
-pub inline fn startingRankFor(_: Board, col: Colour) Rank {
-    return if (col == .white) .first else .eighth;
-}
-
-pub inline fn castlingUpdateFor(self: Board, sq: Square, col: Colour) u8 {
-    const queenside_rook_sq = Square.fromRankFile(self.startingRankFor(col), self.queensideRookFileFor(col));
-    const kingside_rook_sq = Square.fromRankFile(self.startingRankFor(col), self.kingsideRookFileFor(col));
-
-    var kingside_rook_mask: u8 = @intFromBool(sq == kingside_rook_sq);
-    kingside_rook_mask <<= @intCast(col.toInt());
-
-    var queenside_rook_mask: u8 = @intFromBool(sq == queenside_rook_sq);
-    queenside_rook_mask <<= @intCast(col.toInt() + 2);
-
-    return ~(kingside_rook_mask | queenside_rook_mask);
+pub inline fn startingRankFor(self: Board, col: Colour) Rank {
+    return self.castling_rights.startingRankFor(col);
 }
 
 pub fn parseFen(fen: []const u8, permissive: bool) !Board {
@@ -233,23 +182,24 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
         var white_kingside_file: ?File = null;
         var black_queenside_file: ?File = null;
         var black_kingside_file: ?File = null;
+        var raw_castling_rights: u8 = 0;
         for (castling_string) |castle_ch| {
-            self.castling_rights |= switch (castle_ch) {
-                'K' => white_kingside_castle,
-                'k' => black_kingside_castle,
-                'Q' => white_queenside_castle,
-                'q' => black_queenside_castle,
+            raw_castling_rights |= switch (castle_ch) {
+                'K' => CastlingRights.white_kingside_castle,
+                'k' => CastlingRights.black_kingside_castle,
+                'Q' => CastlingRights.white_queenside_castle,
+                'q' => CastlingRights.black_queenside_castle,
                 else => blk: {
                     const file = File.parse(castle_ch) catch return error.InvalidCharacter;
                     const king_square, const kingside_castle, const queenside_castle, const rook_array = if (std.ascii.isUpper(castle_ch)) .{
                         white_king_square.?,
-                        white_kingside_castle,
-                        white_queenside_castle,
+                        CastlingRights.white_kingside_castle,
+                        CastlingRights.white_queenside_castle,
                         &white_rooks_on_first_rank,
                     } else .{
                         black_king_square.?,
-                        black_kingside_castle,
-                        black_queenside_castle,
+                        CastlingRights.black_kingside_castle,
+                        CastlingRights.black_queenside_castle,
                         &black_rooks_on_last_rank,
                     };
 
@@ -276,8 +226,16 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
                 },
             };
         }
+        self.castling_rights = CastlingRights.initFromParts(
+            raw_castling_rights,
+            white_kingside_file orelse white_king_square.?.getFile(),
+            black_kingside_file orelse black_king_square.?.getFile(),
+            white_queenside_file orelse white_king_square.?.getFile(),
+            black_queenside_file orelse black_king_square.?.getFile(),
+        );
+
         // determine the white queenside castling file
-        if (self.castling_rights & white_queenside_castle != 0 and white_queenside_file == null) {
+        if (self.castling_rights.queensideCastlingFor(.white) and white_queenside_file == null) {
             const king_file = white_king_square.?.getFile();
             var candidate_rook: File = .h;
             var num_candidates: usize = 0;
@@ -291,7 +249,7 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
             if (num_candidates > 1 and candidate_rook != .a) return error.AmbiguousRookCastlingFile;
             white_queenside_file = candidate_rook;
         }
-        if (self.castling_rights & white_kingside_castle != 0 and white_kingside_file == null) {
+        if (self.castling_rights.kingsideCastlingFor(.white) and white_kingside_file == null) {
             const king_file = white_king_square.?.getFile();
             var candidate_rook: File = .a;
             var num_candidates: usize = 0;
@@ -306,7 +264,7 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
             white_kingside_file = candidate_rook;
         }
 
-        if (self.castling_rights & black_queenside_castle != 0 and black_queenside_file == null) {
+        if (self.castling_rights.queensideCastlingFor(.black) and black_queenside_file == null) {
             const king_file = black_king_square.?.getFile();
             var candidate_rook: File = .h;
             var num_candidates: usize = 0;
@@ -320,7 +278,7 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
             if (num_candidates > 1 and candidate_rook != .a) return error.AmbiguousRookCastlingFile;
             black_queenside_file = candidate_rook;
         }
-        if (self.castling_rights & black_kingside_castle != 0 and black_kingside_file == null) {
+        if (self.castling_rights.kingsideCastlingFor(.black) and black_kingside_file == null) {
             const king_file = black_king_square.?.getFile();
             var candidate_rook: File = .a;
             var num_candidates: usize = 0;
@@ -334,10 +292,13 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
             if (num_candidates > 1 and candidate_rook != .h) return error.AmbiguousRookCastlingFile;
             black_kingside_file = candidate_rook;
         }
-        self.white_kingside_rook_file = white_kingside_file orelse white_king_square.?.getFile();
-        self.white_queenside_rook_file = white_queenside_file orelse white_king_square.?.getFile();
-        self.black_kingside_rook_file = black_kingside_file orelse black_king_square.?.getFile();
-        self.black_queenside_rook_file = black_queenside_file orelse black_king_square.?.getFile();
+        self.castling_rights = CastlingRights.initFromParts(
+            raw_castling_rights,
+            white_kingside_file orelse white_king_square.?.getFile(),
+            black_kingside_file orelse black_king_square.?.getFile(),
+            white_queenside_file orelse white_king_square.?.getFile(),
+            black_queenside_file orelse black_king_square.?.getFile(),
+        );
     }
 
     const ep_target_square_string = iter.next() orelse return error.MissingEnPassantTarget;
@@ -413,13 +374,21 @@ pub fn toFen(self: Board) std.BoundedArray(u8, 128) {
     out.appendAssumeCapacity(' ');
     out.appendAssumeCapacity(if (self.stm == .white) 'w' else 'b');
     out.appendAssumeCapacity(' ');
-    if (self.castling_rights == 0) {
+    if (self.castling_rights.rawCastlingAvailability() == 0) {
         out.appendAssumeCapacity('-');
     } else {
-        if (self.castling_rights & white_kingside_castle != 0) out.appendAssumeCapacity('K');
-        if (self.castling_rights & white_queenside_castle != 0) out.appendAssumeCapacity('Q');
-        if (self.castling_rights & black_kingside_castle != 0) out.appendAssumeCapacity('k');
-        if (self.castling_rights & black_queenside_castle != 0) out.appendAssumeCapacity('q');
+        if (self.castling_rights.kingsideCastlingFor(.white)) {
+            out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.kingsideRookFileFor(.white).toAsciiLetter()) else 'K');
+        }
+        if (self.castling_rights.queensideCastlingFor(.white)) {
+            out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.queensideRookFileFor(.white).toAsciiLetter()) else 'Q');
+        }
+        if (self.castling_rights.kingsideCastlingFor(.black)) {
+            out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.kingsideRookFileFor(.black).toAsciiLetter()) else 'k');
+        }
+        if (self.castling_rights.queensideCastlingFor(.black)) {
+            out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.queensideRookFileFor(.black).toAsciiLetter()) else 'q');
+        }
     }
     out.appendAssumeCapacity(' ');
     if (self.ep_target) |ep_target| {
@@ -540,6 +509,10 @@ pub fn dfrcPosition(n: u20) Board {
     var res: Board = .{};
     var white_rook = false;
     var black_rook = false;
+    var white_kingside_rook_file: File = undefined;
+    var black_kingside_rook_file: File = undefined;
+    var white_queenside_rook_file: File = undefined;
+    var black_queenside_rook_file: File = undefined;
     inline for (0..8) |c| {
         res.mailbox[c] = ColouredPieceType.fromPieceType(white_rank[c], .white);
         res.mailbox[8 + c] = ColouredPieceType.fromPieceType(.pawn, .white);
@@ -549,9 +522,9 @@ pub fn dfrcPosition(n: u20) Board {
         res.pieces[PieceType.pawn.toInt()] |= Square.fromInt(8 + c).toBitboard();
         if (white_rank[c] == .rook) {
             if (white_rook) {
-                res.white_kingside_rook_file = File.fromInt(c);
+                white_kingside_rook_file = File.fromInt(c);
             } else {
-                res.white_queenside_rook_file = File.fromInt(c);
+                white_queenside_rook_file = File.fromInt(c);
             }
             white_rook = true;
         }
@@ -565,15 +538,21 @@ pub fn dfrcPosition(n: u20) Board {
 
         if (black_rank[c] == .rook) {
             if (black_rook) {
-                res.black_kingside_rook_file = File.fromInt(c);
+                black_kingside_rook_file = File.fromInt(c);
             } else {
-                res.black_queenside_rook_file = File.fromInt(c);
+                black_queenside_rook_file = File.fromInt(c);
             }
             black_rook = true;
         }
     }
 
-    res.castling_rights = white_kingside_castle | white_queenside_castle | black_kingside_castle | black_queenside_castle;
+    res.castling_rights = CastlingRights.initFromParts(
+        0b1111,
+        white_kingside_rook_file,
+        black_kingside_rook_file,
+        white_queenside_rook_file,
+        black_queenside_rook_file,
+    );
     res.halfmove = 0;
     res.fullmove = 1;
     res.stm = .white;
@@ -596,7 +575,7 @@ pub fn updatePieceHash(self: *Board, comptime stm: Colour, pt: PieceType, sq: Sq
 }
 
 pub fn updateCastlingHash(self: *Board) void {
-    self.hash ^= root.zobrist.castling(self.castling_rights);
+    self.hash ^= root.zobrist.castling(self.castling_rights.rawCastlingAvailability());
 }
 
 pub fn updateTurnHash(self: *Board) void {
@@ -793,10 +772,10 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
 
             const cap_opt = (&self.mailbox)[to.toInt()];
 
-            updated_castling_rights &= self.castlingUpdateFor(from, stm);
+            updated_castling_rights.updateSquare(from, stm);
             if (cap_opt) |cap| {
                 updated_halfmove = 0;
-                updated_castling_rights &= self.castlingUpdateFor(to, stm.flipped());
+                updated_castling_rights.updateSquare(to, stm.flipped());
                 self.removePiece(stm.flipped(), cap.toPieceType(), to, eval_state);
             }
             self.movePiece(stm, pt, from, to, eval_state);
@@ -814,7 +793,7 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
                 }
             }
             if (pt == .king) {
-                updated_castling_rights &= ~@as(u8, 0b101 << comptime stm.toInt());
+                updated_castling_rights.kingMoved(stm);
             }
         },
         .ep => {
@@ -830,7 +809,7 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             const king_to = self.castlingKingDestFor(move, stm);
             const rook_from = move.to();
             const rook_to = self.castlingRookDestFor(move, stm);
-            updated_castling_rights &= ~@as(u8, 0b101 << comptime stm.toInt());
+            updated_castling_rights.kingMoved(stm);
             self.removePiece(stm, .rook, rook_from, eval_state); // cant be a movePiece due to FRC
             self.movePiece(stm, .king, king_from, king_to, eval_state);
             self.addPiece(stm, .rook, rook_to, eval_state);
@@ -841,15 +820,15 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             const cap_opt = (&self.mailbox)[to.toInt()];
             if (cap_opt) |cap| {
                 updated_halfmove = 0;
-                updated_castling_rights &= self.castlingUpdateFor(to, stm.flipped());
+                updated_castling_rights.updateSquare(to, stm.flipped());
                 self.removePiece(stm.flipped(), cap.toPieceType(), to, eval_state);
             }
             self.removePiece(stm, .pawn, from, eval_state);
             self.addPiece(stm, move.promoType(), to, eval_state);
         },
     }
-    if (updated_castling_rights != self.castling_rights) {
-        self.hash ^= root.zobrist.castling(self.castling_rights ^ updated_castling_rights);
+    if (updated_castling_rights.rawCastlingAvailability() != self.castling_rights.rawCastlingAvailability()) {
+        self.hash ^= root.zobrist.castling(self.castling_rights.rawCastlingAvailability() ^ updated_castling_rights.rawCastlingAvailability());
     }
     self.halfmove = updated_halfmove;
     self.castling_rights = updated_castling_rights;
@@ -1009,7 +988,7 @@ fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, 
             const is_legal = self.isLegal(stm, move);
             res += @intFromBool(is_legal);
             if (is_root and is_legal and !quiet) {
-                std.debug.print("{}: 1\n", .{move});
+                std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
             }
         }
     } else {
@@ -1018,7 +997,6 @@ fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, 
             var cp = self.*;
             cp.makeMove(stm, move, NullEvalState{});
             if (is_root and !quiet) {
-                std.debug.print("{s} ", .{cp.toFen().slice()});
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
             if (depth != 1) {}

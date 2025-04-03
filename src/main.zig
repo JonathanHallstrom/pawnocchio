@@ -304,6 +304,7 @@ pub fn main() !void {
                             for (pos.node_counts.slice()) |node_count| {
                                 const expected = node_count.nodes;
                                 const actual = perft_board.perft(true, node_count.depth);
+                                if (@atomicLoad(bool, stop, .seq_cst)) return;
                                 if (expected != actual) {
                                     writeLog(
                                         \\error at depth: {}

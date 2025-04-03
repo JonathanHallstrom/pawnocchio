@@ -234,15 +234,15 @@ pub fn generateKingQuiets(comptime stm: Colour, noalias board: *const Board, noa
     if (board.checkers == 0) {
         const home_rank: Rank = board.startingRankFor(stm);
 
-        const kingside_rook_file = board.kingsideRookFileFor(stm);
-        const queenside_rook_file = board.queensideRookFileFor(stm);
+        const kingside_rook_file = board.castling_rights.kingsideRookFileFor(stm);
+        const queenside_rook_file = board.castling_rights.queensideRookFileFor(stm);
 
         const kingside_rook_square = Square.fromRankFile(home_rank, kingside_rook_file);
         const queenside_rook_square = Square.fromRankFile(home_rank, queenside_rook_file);
 
-        const can_kingside_castle = board.kingsideCastlingFor(stm) and
+        const can_kingside_castle = board.castling_rights.kingsideCastlingFor(stm) and
             Bitboard.queenRayBetweenExclusive(king_sq, kingside_rook_square) & occ == 0;
-        const can_queenside_castle = board.queensideCastlingFor(stm) and
+        const can_queenside_castle = board.castling_rights.queensideCastlingFor(stm) and
             Bitboard.queenRayBetweenExclusive(king_sq, queenside_rook_square) & occ == 0;
 
         if (can_kingside_castle) {

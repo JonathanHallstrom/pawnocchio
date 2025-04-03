@@ -32,6 +32,7 @@ pub const Searcher = @import("Searcher.zig");
 pub const engine = @import("engine.zig");
 pub const Limits = @import("Limits.zig");
 pub const MovePicker = @import("MovePicker.zig");
+pub const CastlingRights = @import("CastlingRights.zig");
 
 const assert = std.debug.assert;
 
@@ -160,6 +161,10 @@ pub const File = enum {
 
     pub fn cmp(_: void, lhs: File, rhs: File) bool {
         return @intFromEnum(lhs) < @intFromEnum(rhs);
+    }
+
+    pub fn toAsciiLetter(self: File) u8 {
+        return @as(u8, 'a') + self.toInt();
     }
 };
 
