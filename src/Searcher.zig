@@ -27,6 +27,7 @@ const ScoredMove = root.ScoredMove;
 const ScoredMoveReceiver = root.ScoredMoveReceiver;
 const Colour = root.Colour;
 const MovePicker = root.MovePicker;
+const history = root.history;
 const write = root.write;
 const evaluate = evaluation.evaluate;
 
@@ -37,6 +38,7 @@ pub const Params = struct {
     board: Board,
     limits: Limits,
     previous_hashes: []u64,
+    needs_full_reset: bool = false,
 };
 
 nodes: u64,
@@ -49,6 +51,7 @@ limits: Limits,
 ply: usize,
 stop: bool,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
+quiet_history: history.QuietHistory,
 
 pub const StackEntry = struct {
     board: Board,
@@ -134,7 +137,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
     }
     var best_score = static_eval;
     var best_move = Move.init();
-    var mp = MovePicker.initQs(board, &cur.movelist);
+    var mp = MovePicker.initQs(
+        board,
+        &cur.movelist,
+        &self.quiet_history,
+    );
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
@@ -196,9 +203,15 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         return 0;
     }
 
-    var mp = MovePicker.init(board, &cur.movelist);
+    var mp = MovePicker.init(
+        board,
+        &cur.movelist,
+        &self.quiet_history,
+    );
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
+    var searched_quiets: std.BoundedArray(Move, 64) = .{};
+    var searched_noisies: std.BoundedArray(Move, 64) = .{};
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         const ordering_score = scored_move.score;
@@ -207,11 +220,18 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
             continue;
         }
 
+        const is_quiet = board.isQuiet(move);
         self.makeMove(stm, move);
         const score = -self.negamax(false, stm.flipped(), -beta, -alpha, depth - 1);
         self.unmakeMove(stm, move);
         if (self.stop) {
             return 0;
+        }
+
+        if (is_quiet) {
+            searched_quiets.append(move) catch {};
+        } else {
+            searched_noisies.append(move) catch {};
         }
 
         if (score > best_score) {
@@ -221,6 +241,12 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         if (score > alpha) {
             alpha = score;
             if (score >= beta) {
+                if (is_quiet) {
+                    self.quiet_history.update(stm, move, root.history.bonus(depth));
+                    for (searched_quiets.slice()) |searched_move| {
+                        self.quiet_history.update(stm, searched_move, -root.history.penalty(depth));
+                    }
+                }
                 break;
             }
         }
@@ -282,7 +308,7 @@ fn fixupPreviousHashes(self: *Searcher) void {
     self.previous_hashes.appendAssumeCapacity(std.math.maxInt(u64));
 }
 
-fn initStack(self: *Searcher, params: Params) void {
+fn init(self: *Searcher, params: Params) void {
     self.limits = params.limits;
     self.ply = 0;
     self.stop = false;
@@ -298,10 +324,13 @@ fn initStack(self: *Searcher, params: Params) void {
     self.root_score = 0;
     self.search_stack[0].init(board);
     self.eval_states[0].initInPlace(&board);
+    if (params.needs_full_reset) {
+        self.quiet_history.reset();
+    }
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
-    self.initStack(params);
+    self.init(params);
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         _ = switch (params.board.stm) {

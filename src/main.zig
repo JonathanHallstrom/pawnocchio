@@ -33,7 +33,7 @@ pub fn main() !void {
 
     {
         var do_bench = false;
-        var bench_depth: i32 = 3;
+        var bench_depth: i32 = 5;
         while (args.next()) |arg| {
             if (std.ascii.eqlIgnoreCase(arg, "bench")) {
                 do_bench = true;
@@ -138,6 +138,7 @@ pub fn main() !void {
                 "rnbqkb1r/pppppppp/5n2/8/2PP4/8/PP2PPPP/RNBQKBNR b KQkq - 0 2",
                 "rnbqkb1r/pppppppp/5n2/8/2PP4/8/PP2PPPP/RNBQKBNR b KQkq - 0 2",
             }) |fen| {
+                root.engine.reset();
                 root.engine.startSearch(.{
                     .search_params = .{
                         .board = try Board.parseFen(fen, false),
@@ -149,6 +150,8 @@ pub fn main() !void {
                 root.engine.waitUntilDoneSearching();
                 total_nodes += root.engine.querySearchedNodes();
             }
+            // in the event that bench *somehow* takes 0ns lets still not divide by 0
+            // more realistically this would indicate that the timer is broken
             const elapsed = @max(1, timer.read());
             write("{} nodes {} nps\n", .{ total_nodes, @as(u256, total_nodes) * std.time.ns_per_s / elapsed });
             return;
@@ -192,7 +195,7 @@ pub fn main() !void {
             write("option name UCI_Chess960 type check default false\n", .{});
             write("uciok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
-            // engine.reset();
+            root.engine.reset();
             board = Board.startpos();
         } else if (std.ascii.eqlIgnoreCase(command, "setoption")) {
             if (!std.ascii.eqlIgnoreCase("name", parts.next() orelse "")) continue;
