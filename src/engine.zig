@@ -29,6 +29,7 @@ var current_num_threads: u32 align(std.atomic.cache_line) = 0; // 0 for uninitia
 var searchers: []Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
+var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
 
 fn worker(i: usize, settings: Searcher.Params, quiet: bool) void {
     searchers[i].startSearch(settings, i == 0, quiet);
@@ -46,6 +47,10 @@ pub const SearchSettings = struct {
     num_threads: u32 = 1,
     quiet: bool = false,
 };
+
+pub fn reset() void {
+    needs_full_reset = true;
+}
 
 pub fn startSearch(settings: SearchSettings) void {
     std.debug.assert(settings.num_threads == 1);
@@ -65,9 +70,12 @@ pub fn startSearch(settings: SearchSettings) void {
     num_finished_threads.store(0, .seq_cst);
     is_searching.store(true, .seq_cst);
     stop_searching.store(false, .seq_cst);
+    var search_params = settings.search_params;
+    search_params.needs_full_reset = needs_full_reset;
     for (0..settings.num_threads) |i| {
-        thread_pool.spawn(worker, .{ i, settings.search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
+        thread_pool.spawn(worker, .{ i, search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
     }
+    needs_full_reset = false; // don't clear state unnecessarily
 }
 
 pub fn querySearchedNodes() u64 {

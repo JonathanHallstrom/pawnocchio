@@ -33,6 +33,11 @@ pub const engine = @import("engine.zig");
 pub const Limits = @import("Limits.zig");
 pub const MovePicker = @import("MovePicker.zig");
 pub const CastlingRights = @import("CastlingRights.zig");
+pub const history = @import("history.zig");
+pub const tuning = @import("tuning.zig");
+pub const tunable_constants = tuning.tunable_constants;
+
+pub const is_0_14_0 = @import("builtin").zig_version.minor >= 14;
 
 const assert = std.debug.assert;
 
@@ -58,6 +63,7 @@ pub fn init() void {
         fn initImpl() void {
             stdout = std.io.getStdOut();
             attacks.init();
+            engine.reset();
         }
         var init_once = std.once(initImpl);
     };
@@ -331,4 +337,34 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
     stdout.writer().writeAll(to_print) catch |e| {
         std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
     };
+}
+
+pub fn isConstPointer(comptime T: type) bool {
+    if (is_0_14_0) {
+        if (@typeInfo(T) == .pointer) {
+            return @typeInfo(T).pointer.is_const;
+        }
+    } else {
+        if (@typeInfo(T) == .Pointer) {
+            return @typeInfo(T).Pointer.is_const;
+        }
+    }
+    return false;
+}
+
+pub fn inheritConstness(comptime Base: type, comptime Pointer: type) type {
+    comptime var ptr_attrs: std.builtin.Type.Pointer = undefined;
+    if (is_0_14_0) {
+        ptr_attrs = @typeInfo(Pointer).pointer;
+    } else {
+        ptr_attrs = @typeInfo(Pointer).Pointer;
+    }
+    if (isConstPointer(Base)) {
+        ptr_attrs.is_const = true;
+    }
+    if (is_0_14_0) {
+        return @Type(.{ .pointer = ptr_attrs });
+    } else {
+        return @Type(.{ .Pointer = ptr_attrs });
+    }
 }
