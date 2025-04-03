@@ -110,19 +110,82 @@ fn isRepetition(self: *Searcher) bool {
     }
     return false;
 }
-fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32, depth: i32) i16 {
-    self.nodes += 1;
+
+fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
     var alpha = alpha_;
+
+    self.nodes += 1;
     if (self.stop or self.limits.checkSearch(self.nodes)) {
         self.stop = true;
         return 0;
     }
+    const cur = self.curStackEntry();
+    const board = &cur.board;
+    const is_in_check = board.checkers != 0;
+
+    var static_eval: i16 = evaluation.matedIn(@intCast(self.ply));
+    if (!is_in_check) {
+        static_eval = evaluate(&self.curStackEntry().board, (&self.eval_states)[self.ply]);
+
+        if (static_eval >= beta)
+            return static_eval;
+        if (static_eval > alpha)
+            alpha = static_eval;
+    }
+    var best_score = static_eval;
+    var best_move = Move.init();
+    var mp = MovePicker.initQs(board, &cur.movelist);
+
+    while (mp.next()) |scored_move| {
+        const move = scored_move.move;
+        const ordering_score = scored_move.score;
+        _ = ordering_score; // autofix
+        if (!board.isLegal(stm, move)) {
+            continue;
+        }
+
+        self.makeMove(stm, move);
+        const score = -self.qsearch(false, stm.flipped(), -beta, -alpha);
+        self.unmakeMove(stm, move);
+        if (self.stop) {
+            return 0;
+        }
+
+        if (score > best_score) {
+            best_score = score;
+            best_move = move;
+        }
+
+        if (score > alpha) {
+            alpha = score;
+            if (score >= beta) {
+                break;
+            }
+        }
+    }
+
+    if (is_root) {
+        self.root_move = best_move;
+        self.root_score = best_score;
+    }
+
+    return best_score;
+}
+
+fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32, depth: i32) i16 {
+    var alpha = alpha_;
+
+    self.nodes += 1;
+    if (self.stop or (!is_root and self.limits.checkSearch(self.nodes))) {
+        self.stop = true;
+        return 0;
+    }
     if (depth <= 0) {
-        return evaluate(&self.curStackEntry().board, self.eval_states[self.ply]);
+        return self.qsearch(is_root, stm, alpha, beta);
     }
 
     if (self.ply >= MAX_PLY - 1) {
-        return 0;
+        return evaluate(&self.curStackEntry().board, (&self.eval_states)[self.ply]);
     }
 
     const cur = self.curStackEntry();
@@ -225,6 +288,7 @@ fn initStack(self: *Searcher, params: Params) void {
     self.stop = false;
     self.nodes = 0;
     const board = params.board;
+    self.previous_hashes.len = 0;
     for (params.previous_hashes) |previous_hash| {
         self.previous_hashes.appendAssumeCapacity(previous_hash);
     }

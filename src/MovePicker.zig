@@ -31,6 +31,7 @@ first: usize,
 last: usize,
 board: *const Board,
 stage: Stage,
+skip_quiets: bool,
 
 pub const Stage = enum {
     generate_noisies,
@@ -50,6 +51,22 @@ pub fn init(
         .first = 0,
         .last = 0,
         .stage = .generate_noisies,
+        .skip_quiets = false,
+    };
+}
+
+pub fn initQs(
+    board_: *const Board,
+    movelist_: *ScoredMoveReceiver,
+) MovePicker {
+    movelist_.vals.len = 0;
+    return .{
+        .movelist = movelist_,
+        .board = board_,
+        .first = 0,
+        .last = 0,
+        .stage = .generate_noisies,
+        .skip_quiets = board_.checkers == 0,
     };
 }
 
@@ -114,6 +131,10 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 return self.movelist.vals.slice()[self.findBest()];
             },
             .generate_quiets => {
+                if (self.skip_quiets) {
+                    self.stage = .quiets;
+                    return null;
+                }
                 switch (self.board.stm) {
                     inline else => |stm| {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
@@ -124,7 +145,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 continue;
             },
             .quiets => {
-                if (self.first == self.last) {
+                if (self.first == self.last or self.skip_quiets) {
                     return null;
                 }
                 return self.movelist.vals.slice()[self.findBest()];
