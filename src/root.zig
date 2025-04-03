@@ -63,6 +63,7 @@ pub fn init() void {
         fn initImpl() void {
             stdout = std.io.getStdOut();
             attacks.init();
+            engine.reset();
         }
         var init_once = std.once(initImpl);
     };

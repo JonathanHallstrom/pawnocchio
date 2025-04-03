@@ -23,6 +23,7 @@ const Colour = root.Colour;
 const tunable_constants = root.tunable_constants;
 
 pub const MAX_HISTORY: i16 = 1 << 14;
+const SHIFT = @ctz(MAX_HISTORY);
 
 pub fn bonus(depth: i32) i16 {
     return @intCast(@min(
@@ -61,5 +62,6 @@ pub const QuietHistory = struct {
 fn gravityUpdate(entry: *i16, adjustment: anytype) void {
     const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));
     const magnitude: i32 = @abs(clamped);
-    entry.* += @intCast(clamped - (magnitude * entry.*) >> comptime @clz(MAX_HISTORY));
+    // std.debug.print("{} {} {} {}\n", .{ entry.*, clamped, magnitude, comptime @ctz(MAX_HISTORY) });
+    entry.* += @intCast(clamped - (magnitude * entry.*) >> SHIFT);
 }
