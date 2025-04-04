@@ -88,7 +88,7 @@ fn makeMove(noalias self: *Searcher, comptime stm: Colour, move: Move) void {
     new_stack_entry.init(prev_stack_entry.board);
     new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
-    self.hashes[MAX_HALFMOVE + self.ply] = new_stack_entry.board.hash;
+    self.hashes[self.ply] = new_stack_entry.board.hash;
 }
 
 fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
@@ -101,7 +101,8 @@ fn isRepetition(self: *Searcher) bool {
     const board = &self.curStackEntry().board;
 
     const hash = board.hash;
-    for (self.hashes[0..self.ply]) |previous_hash| {
+    const amt = @min(self.ply, board.halfmove);
+    for (self.hashes[self.ply - amt .. self.ply]) |previous_hash| {
         if (previous_hash == hash) {
             return true; // found repetition in the search tree
         }
