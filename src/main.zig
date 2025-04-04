@@ -22,6 +22,7 @@ const Board = root.Board;
 
 pub fn main() !void {
     root.init();
+    defer root.deinit();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -189,7 +190,7 @@ pub fn main() !void {
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             write("id name pawnocchio 1.4\n", .{});
             write("id author Jonathan Hallström\n", .{});
-            write("option name Hash type spin default 256 min 1 max 65535\n", .{});
+            write("option name Hash type spin default 16 min 1 max 65535\n", .{});
             write("option name Threads type spin default 1 min 1 max 1\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
@@ -214,8 +215,7 @@ pub fn main() !void {
                     writeLog("invalid hash size: '{s}'\n", .{value});
                     continue;
                 };
-                _ = size; // autofix
-                // try engine.setTTSize(size);
+                try root.engine.setTTSize(size);
             }
 
             if (std.ascii.eqlIgnoreCase("UCI_Chess960", name)) {

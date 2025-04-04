@@ -64,6 +64,7 @@ pub fn init() void {
             stdout = std.io.getStdOut();
             attacks.init();
             engine.reset();
+            engine.setTTSize(16) catch std.debug.panic("Fatal: couldn't allocate default TT size\n", .{});
         }
         var init_once = std.once(initImpl);
     };
@@ -324,6 +325,31 @@ pub const ScoredMoveReceiver = struct {
     pub fn receive(self: *@This(), move: Move) void {
         self.vals.appendAssumeCapacity(.{ .move = move, .score = 0 });
     }
+};
+
+pub const FilteringScoredMoveReceiver = struct {
+    vals: std.BoundedArray(ScoredMove, 256) = .{},
+    filter: Move,
+
+    pub fn receive(self: *@This(), move: Move) void {
+        if (move == self.filter) return;
+        self.vals.appendAssumeCapacity(.{ .move = move, .score = 0 });
+    }
+};
+
+pub const ScoreType = enum {
+    none,
+    lower,
+    upper,
+    exact,
+};
+
+pub const TTEntry = struct {
+    // score: i16 = 0,
+    // score_type: ScoreType = .none,
+    move: Move = Move.init(),
+    hash: u64 = 0,
+    // depth: u8 = 0,
 };
 
 var stdout: std.fs.File = undefined;

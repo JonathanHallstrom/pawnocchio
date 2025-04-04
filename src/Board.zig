@@ -28,6 +28,7 @@ const ColouredPieceType = root.ColouredPieceType;
 const Move = root.Move;
 const movegen = root.movegen;
 const CastlingRights = root.CastlingRights;
+const attacks = root.attacks;
 const Board = @This();
 
 comptime {}
@@ -592,15 +593,15 @@ pub fn getHashWithHalfmove(self: *Board) u64 {
 }
 
 pub inline fn isEnPassant(_: Board, move: Move) bool {
-    return move.flag() == Move.ep_flag;
+    return move.tp() == .ep;
 }
 
 pub inline fn isCastling(_: Board, move: Move) bool {
-    return move.flag() == Move.castling_flag;
+    return move.tp() == .castling;
 }
 
 pub inline fn isPromo(_: Board, move: Move) bool {
-    return move.flag() & Move.promotion_flag == Move.promotion_flag;
+    return move.tp() == .promotion;
 }
 
 pub inline fn isCapture(self: Board, move: Move) bool {
@@ -940,6 +941,127 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
 
     return true;
 }
+
+pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
+    const from = move.from();
+    const to = move.to();
+    if (from == to or move.isNull()) {
+        return false;
+    }
+
+    const tp = move.tp();
+    const from_bb = from.toBitboard();
+    const to_bb = to.toBitboard();
+
+    if (tp == .castling) {
+        if (self.checkers != 0) {
+            return false;
+        }
+
+        if (self.castling_rights.rawCastlingAvailability() & (@as(u8, 1) << @intCast(move.extra())) == 0) {
+            return false;
+        }
+
+        const from_is_king = self.kingFor(stm) & from_bb != 0;
+        const to_is_rook = self.rooksFor(stm) & to_bb != 0;
+
+        if (!from_is_king or !to_is_rook) {
+            return false;
+        }
+        // no pieces in between is checked in `isLegal`
+        return true;
+    }
+
+    // equivalent since from != to
+    // (us_occ & from_bb == 0) or (us_occ & to_bb != 0)
+    // this saves 1 cycle
+    if ((self.occupancyFor(stm) & (from_bb | to_bb)) != from_bb) {
+        return false;
+    }
+
+    const pt = (&self.mailbox)[from.toInt()].?.toPieceType();
+
+    // if we're in double check it has to be the king that moves, and it cant be castling
+    if (self.checkers & self.checkers -% 1 != 0) {
+        return pt == .king and
+            tp == .default and
+            Bitboard.kingMoves(from) & to_bb != 0;
+    }
+
+    if (pt == .king) {
+        return Bitboard.kingMoves(from) & to_bb != 0;
+    }
+
+    if (tp == .ep) {
+        return pt == .pawn and
+            to == self.ep_target and
+            Bitboard.pawnAttacks(from, stm) & to_bb != 0;
+    }
+
+    if (self.checkers != 0) {
+        if (Bitboard.checkMask(Square.fromBitboard(self.kingFor(stm)), Square.fromBitboard(self.checkers)) & to_bb == 0) {
+            return false;
+        }
+    }
+
+    if (pt == .pawn) {
+        const d_rank = if (stm == .white) 1 else -1;
+        const promo_rank: Rank = if (stm == .white) .first else .eighth;
+        const promo_mask = @as(u64, 0b11111111) << @as(comptime_int, comptime promo_rank.toInt()) * 8;
+        const double_push_rank: Rank = if (stm == .white) .fourth else .fifth;
+        const double_push_mask = @as(u64, 0b11111111) << @as(comptime_int, comptime double_push_rank.toInt()) * 8;
+
+        var allowed: u64 = 0;
+        allowed |= Bitboard.move(from_bb, d_rank, 0) & ~self.occupancy();
+        allowed |= Bitboard.move(allowed, d_rank, 0) & ~self.occupancy() & double_push_mask;
+
+        allowed |= Bitboard.move(from_bb, d_rank, 1) & self.occupancyFor(stm.flipped());
+        allowed |= Bitboard.move(from_bb, d_rank, -1) & self.occupancyFor(stm.flipped());
+
+        if (tp == .promotion) {
+            allowed &= promo_mask;
+        }
+
+        return allowed & to_bb != 0;
+    }
+
+    // we already handled castling, ep, and promotion
+    if (tp != .default) {
+        return false;
+    }
+
+    if (self.pinned[stm.toInt()] & from_bb != 0) {
+        if (Bitboard.extendingRayBb(from, to) & self.kingFor(stm) == 0) {
+            return false;
+        }
+    }
+
+    return to_bb & switch (pt) {
+        .pawn => unreachable,
+        .knight => Bitboard.knightMoves(from),
+        .bishop => attacks.getBishopAttacks(from, self.occupancy()),
+        .rook => attacks.getRookAttacks(from, self.occupancy()),
+        .queen => attacks.getBishopAttacks(from, self.occupancy()) | attacks.getRookAttacks(from, self.occupancy()),
+        .king => unreachable,
+    } != 0;
+}
+
+pub fn roughHashAfter(self: *const Board, move: Move) u64 {
+    var res: u64 = self.hash;
+
+    if ((&self.mailbox)[move.to().toInt()]) |cpt| {
+        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+    }
+
+    const cpt = (&self.mailbox)[move.from().toInt()].?;
+
+    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
+    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+    res ^= root.zobrist.turn();
+
+    return res;
+}
+
 pub const NullEvalState = struct {
     pub fn init(board: *const Board) NullEvalState {
         _ = board;
@@ -976,12 +1098,74 @@ pub const NullEvalState = struct {
     }
 };
 
-fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, comptime quiet: bool, depth: i32) u64 {
+// const HashPair = struct {
+//     zobrist: u64 = 0,
+//     crc: u128 = 0,
+//     b: Board = .{},
+
+//     fn init(board: *const Board) HashPair {
+//         var hasher = std.hash.Fnv1a_128.init();
+
+//         hasher.update(std.mem.asBytes(&board.white));
+//         hasher.update(std.mem.asBytes(&board.black));
+//         hasher.update(std.mem.asBytes(&board.pieces));
+//         hasher.update(std.mem.asBytes(&board.ep_target));
+//         hasher.update(std.mem.asBytes(&board.mailbox));
+//         hasher.update(std.mem.asBytes(&board.stm));
+//         hasher.update(std.mem.asBytes(&board.castling_rights));
+//         var b = board.*;
+//         b.resetHash();
+//         return .{
+//             .zobrist = b.hash,
+//             .crc = hasher.final(),
+//             .b = b,
+//         };
+//     }
+// };
+
+// threadlocal var hash_backing: [1 << 20]HashPair = undefined;
+fn perft_impl(
+    self: *const Board,
+    comptime is_root: bool,
+    comptime stm: Colour,
+    comptime quiet: bool,
+    depth: i32,
+    // hashes_: []HashPair,
+) u64 {
     if (depth == 0) return 1;
     var movelist = movegen.MoveListReceiver{};
     movegen.generateAllNoisies(stm, self, &movelist);
     movegen.generateAllQuiets(stm, self, &movelist);
     var res: u64 = 0;
+
+    // const hashes: []HashPair = if (is_root) &hash_backing else hashes_;
+    // if (is_root) {
+    //     @memset(&hash_backing, .{});
+    // }
+
+    // const new_entry = HashPair.init(self);
+    // const hash_for_indexing = new_entry.zobrist;
+    // const prev_entry = hashes[@intCast(hash_for_indexing % hashes.len)];
+    // if ((prev_entry.zobrist != new_entry.zobrist) != (prev_entry.crc != new_entry.crc)) {
+    //     std.debug.print(
+    //         \\--------------------------------------------
+    //         \\collision
+    //         \\crc: {} {}
+    //         \\zobrist: {} {}
+    //         \\fen: {s} {s}
+    //         \\--------------------------------------------
+    //         \\
+    //     , .{
+    //         prev_entry.crc,
+    //         new_entry.crc,
+    //         prev_entry.zobrist,
+    //         new_entry.zobrist,
+    //         prev_entry.b.toFen().slice(),
+    //         new_entry.b.toFen().slice(),
+    //     });
+    //     @panic("");
+    // }
+    // hashes[hash_for_indexing % hashes.len] = new_entry;
 
     if (depth == 1) {
         for (movelist.vals.slice()) |move| {
@@ -994,8 +1178,10 @@ fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, 
     } else {
         for (movelist.vals.slice()) |move| {
             if (!self.isLegal(stm, move)) continue;
+            assert(self.isPseudoLegal(stm, move));
             var cp = self.*;
             cp.makeMove(stm, move, NullEvalState{});
+            // std.debug.print("{} {s} {s}\n", .{depth, move.toString(self).slice(), self.toFen().slice()});
             if (is_root and !quiet) {
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
@@ -1005,6 +1191,7 @@ fn perft_impl(self: *const Board, comptime is_root: bool, comptime stm: Colour, 
                 stm.flipped(),
                 quiet,
                 depth - 1,
+                // if (is_root) &hash_backing else hashes,
             );
             res += count;
             if (is_root and !quiet) {
@@ -1026,6 +1213,7 @@ pub fn perft(
             stm_comptime,
             quiet,
             depth,
+            // &.{},
         ),
     };
 }

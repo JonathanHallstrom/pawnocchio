@@ -65,6 +65,10 @@ pub const Move = enum(u16) {
         return @enumFromInt(self.toInt() >> 14);
     }
 
+    pub fn extra(self: Move) u8 {
+        return @intCast((self.toInt() >> 12) & 0b11);
+    }
+
     pub fn init() Move {
         return @enumFromInt(0);
     }
@@ -90,16 +94,16 @@ pub const Move = enum(u16) {
         return initFromParts(from_.toInt(), to_.toInt(), promotion_flag | tp_.toInt() - 1);
     }
 
-    pub fn castlingKingside(from_: Square, to_: Square) Move {
-        return initFromParts(from_.toInt(), to_.toInt(), castling_flag);
+    pub fn castlingKingside(col: Colour, from_: Square, to_: Square) Move {
+        return initFromParts(from_.toInt(), to_.toInt(), castling_flag | col.toInt());
     }
 
-    pub fn castlingQueenside(from_: Square, to_: Square) Move {
-        return initFromParts(from_.toInt(), to_.toInt(), castling_flag);
+    pub fn castlingQueenside(col: Colour, from_: Square, to_: Square) Move {
+        return initFromParts(from_.toInt(), to_.toInt(), castling_flag | 2 + col.toInt());
     }
 
     pub fn promoType(self: Move) PieceType {
-        return PieceType.fromInt(@intCast(1 + (self.flag() & ~promotion_flag)));
+        return PieceType.fromInt(@intCast(1 + self.extra()));
     }
 
     pub fn getEnPassantPawnSquare(self: Move, comptime col: Colour) Square {

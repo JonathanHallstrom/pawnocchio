@@ -21,20 +21,22 @@ const root = @import("root.zig");
 const Move = root.Move;
 const Board = root.Board;
 const ScoredMove = root.ScoredMove;
-const ScoredMoveReceiver = root.ScoredMoveReceiver;
+const FilteringScoredMoveReceiver = root.FilteringScoredMoveReceiver;
 const movegen = root.movegen;
 
 const MovePicker = @This();
 
-movelist: *ScoredMoveReceiver,
+movelist: *FilteringScoredMoveReceiver,
 first: usize,
 last: usize,
 board: *const Board,
 stage: Stage,
 skip_quiets: bool,
 quiet_history: *const root.history.QuietHistory,
+ttmove: Move,
 
 pub const Stage = enum {
+    tt,
     generate_noisies,
     noisies,
     generate_quiets,
@@ -43,35 +45,41 @@ pub const Stage = enum {
 
 pub fn init(
     board_: *const Board,
-    movelist_: *ScoredMoveReceiver,
+    movelist_: *FilteringScoredMoveReceiver,
     quiet_history_: *root.history.QuietHistory,
+    ttmove_: Move,
 ) MovePicker {
     movelist_.vals.len = 0;
+    movelist_.filter = ttmove_;
     return .{
         .movelist = movelist_,
         .board = board_,
         .first = 0,
         .last = 0,
-        .stage = .generate_noisies,
+        .stage = .tt,
         .skip_quiets = false,
         .quiet_history = quiet_history_,
+        .ttmove = ttmove_,
     };
 }
 
 pub fn initQs(
     board_: *const Board,
-    movelist_: *ScoredMoveReceiver,
+    movelist_: *FilteringScoredMoveReceiver,
     quiet_history_: *root.history.QuietHistory,
+    ttmove_: Move,
 ) MovePicker {
     movelist_.vals.len = 0;
+    movelist_.filter = ttmove_;
     return .{
         .movelist = movelist_,
         .board = board_,
         .first = 0,
         .last = 0,
-        .stage = .generate_noisies,
+        .stage = .tt,
         .skip_quiets = board_.checkers == 0,
         .quiet_history = quiet_history_,
+        .ttmove = ttmove_,
     };
 }
 
@@ -114,6 +122,17 @@ fn noisyValue(self: MovePicker, move: Move) i16 {
 pub fn next(self: *MovePicker) ?ScoredMove {
     while (true) {
         switch (self.stage) {
+            .tt => {
+                self.stage = .generate_noisies;
+                switch (self.board.stm) {
+                    inline else => |stm| {
+                        if (self.board.isPseudoLegal(stm, self.ttmove)) {
+                            return ScoredMove{ .move = self.ttmove, .score = 0 };
+                        }
+                    },
+                }
+                continue;
+            },
             .generate_noisies => {
                 switch (self.board.stm) {
                     inline else => |stm| {

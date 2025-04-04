@@ -30,6 +30,7 @@ var searchers: []Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
+var tt: []root.TTEntry = &.{};
 
 fn worker(i: usize, settings: Searcher.Params, quiet: bool) void {
     searchers[i].startSearch(settings, i == 0, quiet);
@@ -42,6 +43,32 @@ fn worker(i: usize, settings: Searcher.Params, quiet: bool) void {
     }
 }
 
+const disable_tt = true;
+
+pub fn writeTT(hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
+    _ = score;
+    _ = score_type;
+    _ = depth;
+    if (disable_tt) return;
+    tt[hash % tt.len] = root.TTEntry{
+        // .score = score,
+        // .score_type = score_type,
+        .move = move,
+        .hash = hash,
+        // .depth = @intCast(depth),
+    };
+}
+
+pub fn prefetchTT(hash: u64) void {
+    if (disable_tt) return;
+    @prefetch(&tt[hash % tt.len], .{});
+}
+
+pub fn readTT(hash: u64) root.TTEntry {
+    if (disable_tt) return .{};
+    return tt[hash % tt.len];
+}
+
 pub const SearchSettings = struct {
     search_params: Searcher.Params,
     num_threads: u32 = 1,
@@ -50,6 +77,16 @@ pub const SearchSettings = struct {
 
 pub fn reset() void {
     needs_full_reset = true;
+}
+
+pub fn setTTSize(new_size: usize) !void {
+    tt = try std.heap.page_allocator.realloc(tt, new_size);
+    @memset(tt, .{});
+}
+
+pub fn deinit() void {
+    std.heap.page_allocator.free(tt);
+    std.heap.page_allocator.free(searchers);
 }
 
 pub fn startSearch(settings: SearchSettings) void {

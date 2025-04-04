@@ -246,10 +246,10 @@ pub fn generateKingQuiets(comptime stm: Colour, noalias board: *const Board, noa
             Bitboard.queenRayBetweenExclusive(king_sq, queenside_rook_square) & occ == 0;
 
         if (can_kingside_castle) {
-            move_receiver.receive(Move.castlingKingside(king_sq, kingside_rook_square));
+            move_receiver.receive(Move.castlingKingside(stm, king_sq, kingside_rook_square));
         }
         if (can_queenside_castle) {
-            move_receiver.receive(Move.castlingKingside(king_sq, queenside_rook_square));
+            move_receiver.receive(Move.castlingKingside(stm, king_sq, queenside_rook_square));
         }
     }
 }

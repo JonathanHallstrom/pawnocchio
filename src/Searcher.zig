@@ -24,13 +24,14 @@ const Move = root.Move;
 const Board = root.Board;
 const Limits = root.Limits;
 const ScoredMove = root.ScoredMove;
-const ScoredMoveReceiver = root.ScoredMoveReceiver;
+const FilteringScoredMoveReceiver = root.FilteringScoredMoveReceiver;
 const Colour = root.Colour;
 const MovePicker = root.MovePicker;
 const history = root.history;
+const ScoreType = root.ScoreType;
+const engine = root.engine;
 const write = root.write;
 const evaluate = evaluation.evaluate;
-
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -48,14 +49,14 @@ search_stack: [MAX_PLY]StackEntry,
 root_move: Move,
 root_score: i16,
 limits: Limits,
-ply: usize,
+ply: u8,
 stop: bool,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 quiet_history: history.QuietHistory,
 
 pub const StackEntry = struct {
     board: Board,
-    movelist: ScoredMoveReceiver,
+    movelist: FilteringScoredMoveReceiver,
 
     pub fn init(self: *StackEntry, board_: anytype) void {
         self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
@@ -127,7 +128,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
-    var static_eval: i16 = evaluation.matedIn(@intCast(self.ply));
+    var static_eval: i16 = evaluation.matedIn(self.ply);
     if (!is_in_check) {
         static_eval = evaluate(&self.curStackEntry().board, (&self.eval_states)[self.ply]);
 
@@ -142,12 +143,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         board,
         &cur.movelist,
         &self.quiet_history,
+        Move.init(),
     );
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
-        const ordering_score = scored_move.score;
-        _ = ordering_score; // autofix
         if (!board.isLegal(stm, move)) {
             continue;
         }
@@ -204,22 +204,31 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         return 0;
     }
 
+    const tt_hash = board.hash;
+    var tt_entry = engine.readTT(tt_hash);
+    if (tt_entry.hash != tt_hash) {
+        tt_entry = .{};
+    }
+
     var mp = MovePicker.init(
         board,
         &cur.movelist,
         &self.quiet_history,
+        tt_entry.move,
     );
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
     var searched_quiets: std.BoundedArray(Move, 64) = .{};
     var searched_noisies: std.BoundedArray(Move, 64) = .{};
+    var score_type: ScoreType = .upper;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
-        const ordering_score = scored_move.score;
-        _ = ordering_score; // autofix
+        engine.prefetchTT(board.roughHashAfter(move));
         if (!board.isLegal(stm, move)) {
             continue;
         }
+        std.debug.assert(std.mem.count(Move, searched_noisies.slice(), &.{move}) == 0);
+        std.debug.assert(std.mem.count(Move, searched_quiets.slice(), &.{move}) == 0);
 
         const is_quiet = board.isQuiet(move);
         self.makeMove(stm, move);
@@ -241,7 +250,9 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         }
         if (score > alpha) {
             alpha = score;
+            score_type = .exact;
             if (score >= beta) {
+                score_type = .lower;
                 if (is_quiet) {
                     self.quiet_history.update(stm, move, root.history.bonus(depth));
                     for (searched_quiets.slice()) |searched_move| {
@@ -255,9 +266,17 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
     }
 
     if (best_move.isNull()) {
-        const mated_score = evaluation.matedIn(@intCast(self.ply));
+        const mated_score = evaluation.matedIn(self.ply);
         return if (is_in_check) mated_score else 0;
     }
+
+    engine.writeTT(
+        tt_hash,
+        best_move,
+        evaluation.scoreToTt(best_score, self.ply),
+        score_type,
+        depth,
+    );
 
     if (is_root) {
         self.root_move = best_move;
@@ -347,7 +366,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     }
 
     if (is_main_thread) {
-        if (!quiet)
+        if (!quiet) {
             write("bestmove {s}\n", .{self.root_move.toString(&params.board).slice()});
+        }
     }
 }
