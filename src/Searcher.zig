@@ -180,7 +180,15 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
     return best_score;
 }
 
-fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32, depth: i32) i16 {
+fn negamax(
+    self: *Searcher,
+    comptime is_root: bool,
+    comptime is_pv: bool,
+    comptime stm: Colour,
+    alpha_: i32,
+    beta: i32,
+    depth: i32,
+) i16 {
     var alpha = alpha_;
 
     self.nodes += 1;
@@ -221,18 +229,44 @@ fn negamax(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
     var searched_quiets: std.BoundedArray(Move, 64) = .{};
     var searched_noisies: std.BoundedArray(Move, 64) = .{};
     var score_type: ScoreType = .upper;
+    var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         engine.prefetchTT(board.roughHashAfter(move));
         if (!board.isLegal(stm, move)) {
             continue;
         }
+        num_legal += 1;
         std.debug.assert(std.mem.count(Move, searched_noisies.slice(), &.{move}) == 0);
         std.debug.assert(std.mem.count(Move, searched_quiets.slice(), &.{move}) == 0);
 
         const is_quiet = board.isQuiet(move);
         self.makeMove(stm, move);
-        const score = -self.negamax(false, stm.flipped(), -beta, -alpha, depth - 1);
+        const score = blk: {
+            var s: i16 = 0;
+            if (!is_pv or num_legal > 1) {
+                s = -self.negamax(
+                    false,
+                    false,
+                    stm.flipped(),
+                    -alpha - 1,
+                    -alpha,
+                    depth - 1,
+                );
+            }
+            if (is_pv and (num_legal == 1 or s > alpha)) {
+                s = -self.negamax(
+                    false,
+                    true,
+                    stm.flipped(),
+                    -beta,
+                    -alpha,
+                    depth - 1,
+                );
+            }
+
+            break :blk s;
+        };
         self.unmakeMove(stm, move);
         if (self.stop) {
             return 0;
@@ -355,7 +389,14 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         _ = switch (params.board.stm) {
-            inline else => |stm| self.negamax(true, stm, -evaluation.inf_score, evaluation.inf_score, depth),
+            inline else => |stm| self.negamax(
+                true,
+                true,
+                stm,
+                -evaluation.inf_score,
+                evaluation.inf_score,
+                depth,
+            ),
         };
         if (self.stop)
             break;
