@@ -246,7 +246,8 @@ fn negamax(
         const score = blk: {
             var s: i16 = 0;
             if (depth >= 3 and num_legal > 1) {
-                var reduction: i32 = 3;
+                var reduction: i32 = 1;
+                reduction -= @intFromBool(is_pv);
                 reduction += std.math.log2_int(u32, @intCast(depth)) * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
