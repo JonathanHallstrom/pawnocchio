@@ -30,6 +30,7 @@ const MovePicker = root.MovePicker;
 const history = root.history;
 const ScoreType = root.ScoreType;
 const engine = root.engine;
+const tunable_constants = root.tunable_constants;
 const write = root.write;
 const evaluate = evaluation.evaluate;
 pub const MAX_PLY = 256;
@@ -244,7 +245,20 @@ fn negamax(
         self.makeMove(stm, move);
         const score = blk: {
             var s: i16 = 0;
-            if (!is_pv or num_legal > 1) {
+            if (depth >= 3 and num_legal > 1) {
+                const reduction = 3 + depth >> 2;
+
+                const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
+
+                s = -self.negamax(
+                    false,
+                    false,
+                    stm.flipped(),
+                    -alpha - 1,
+                    -alpha,
+                    depth - clamped_reduction,
+                );
+            } else if (!is_pv or num_legal > 1) {
                 s = -self.negamax(
                     false,
                     false,
