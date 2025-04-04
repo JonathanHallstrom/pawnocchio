@@ -258,6 +258,17 @@ fn negamax(
                     -alpha,
                     depth - clamped_reduction,
                 );
+
+                if (s > alpha) {
+                    s = -self.negamax(
+                        false,
+                        false,
+                        stm.flipped(),
+                        -alpha - 1,
+                        -alpha,
+                        depth - 1,
+                    );
+                }
             } else if (!is_pv or num_legal > 1) {
                 s = -self.negamax(
                     false,
