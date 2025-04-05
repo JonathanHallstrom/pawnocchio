@@ -46,7 +46,7 @@ fn worker(i: usize, settings: Searcher.Params, quiet: bool) void {
 const disable_tt = false;
 
 fn ttIndex(hash: u64) usize {
-    return ((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt.len >> 32;
+    return @intCast(@as(u128, hash) * tt.len >> 64);
 }
 
 pub fn writeTT(hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
