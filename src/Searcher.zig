@@ -24,6 +24,7 @@ const Move = root.Move;
 const Board = root.Board;
 const Limits = root.Limits;
 const ScoredMove = root.ScoredMove;
+const ScoredMoveReceiver = root.ScoredMoveReceiver;
 const FilteringScoredMoveReceiver = root.FilteringScoredMoveReceiver;
 const Colour = root.Colour;
 const MovePicker = root.MovePicker;

@@ -191,6 +191,7 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
                 'Q' => CastlingRights.white_queenside_castle,
                 'q' => CastlingRights.black_queenside_castle,
                 else => blk: {
+                    self.frc = true;
                     const file = File.parse(castle_ch) catch return error.InvalidCharacter;
                     const king_square, const kingside_castle, const queenside_castle, const rook_array = if (std.ascii.isUpper(castle_ch)) .{
                         white_king_square.?,
@@ -208,7 +209,7 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
                         return error.NoRookForCastling;
 
                     if (@intFromEnum(file) > @intFromEnum(king_square.getFile())) {
-                        if (self.stm == .white) {
+                        if (std.ascii.isUpper(castle_ch)) {
                             white_kingside_file = file;
                         } else {
                             black_kingside_file = file;
@@ -216,7 +217,7 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
                         break :blk kingside_castle;
                     }
                     if (@intFromEnum(file) < @intFromEnum(king_square.getFile())) {
-                        if (self.stm == .white) {
+                        if (std.ascii.isUpper(castle_ch)) {
                             white_queenside_file = file;
                         } else {
                             black_queenside_file = file;
@@ -382,10 +383,10 @@ pub fn toFen(self: Board) std.BoundedArray(u8, 128) {
             out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.kingsideRookFileFor(.white).toAsciiLetter()) else 'K');
         }
         if (self.castling_rights.queensideCastlingFor(.white)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.queensideRookFileFor(.white).toAsciiLetter()) else 'Q');
+            out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.queensideRookFileFor(.white).toAsciiLetter()) else 'Q');
         }
         if (self.castling_rights.kingsideCastlingFor(.black)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.kingsideRookFileFor(.black).toAsciiLetter()) else 'k');
+            out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.kingsideRookFileFor(.black).toAsciiLetter()) else 'k');
         }
         if (self.castling_rights.queensideCastlingFor(.black)) {
             out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.queensideRookFileFor(.black).toAsciiLetter()) else 'q');
@@ -829,7 +830,7 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
         },
     }
     if (updated_castling_rights.rawCastlingAvailability() != self.castling_rights.rawCastlingAvailability()) {
-        self.hash ^= root.zobrist.castling(self.castling_rights.rawCastlingAvailability() ^ updated_castling_rights.rawCastlingAvailability());
+        self.hash ^= root.zobrist.castling(self.castling_rights.rawCastlingAvailability()) ^ root.zobrist.castling(updated_castling_rights.rawCastlingAvailability());
     }
     self.halfmove = updated_halfmove;
     self.castling_rights = updated_castling_rights;
@@ -958,7 +959,9 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
             return false;
         }
 
-        if (self.castling_rights.rawCastlingAvailability() & (@as(u8, 1) << @intCast(move.extra())) == 0) {
+        const raw: u16 = self.castling_rights.rawCastlingAvailability();
+        const extra: u16 = move.extra();
+        if (raw & (@as(u8, 1) << @intCast(extra)) == 0) {
             return false;
         }
 
@@ -1006,7 +1009,7 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
 
     if (pt == .pawn) {
         const d_rank = if (stm == .white) 1 else -1;
-        const promo_rank: Rank = if (stm == .white) .first else .eighth;
+        const promo_rank: Rank = if (stm == .white) .eighth else .first;
         const promo_mask = @as(u64, 0b11111111) << @as(comptime_int, comptime promo_rank.toInt()) * 8;
         const double_push_rank: Rank = if (stm == .white) .fourth else .fifth;
         const double_push_mask = @as(u64, 0b11111111) << @as(comptime_int, comptime double_push_rank.toInt()) * 8;
@@ -1170,6 +1173,10 @@ fn perft_impl(
     if (depth == 1) {
         for (movelist.vals.slice()) |move| {
             const is_legal = self.isLegal(stm, move);
+            if (is_legal and !self.isPseudoLegal(stm, move)) {
+                std.debug.print("{s} {s}\n", .{ self.toFen().slice(), move.toString(self).slice() });
+                @panic("not pseudolegal");
+            }
             res += @intFromBool(is_legal);
             if (is_root and is_legal and !quiet) {
                 std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
