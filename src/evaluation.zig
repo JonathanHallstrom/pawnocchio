@@ -54,8 +54,8 @@ pub fn scoreFromTt(score: i16, ply: u8) i16 {
     return score;
 }
 
-pub fn matedIn(plies: u8) i16 {
-    return -checkmate_score + plies;
+pub fn matedIn(plies: u16) i16 {
+    return -checkmate_score + @as(i16, @intCast(plies));
 }
 
 pub fn isMateScore(score: i16) bool {

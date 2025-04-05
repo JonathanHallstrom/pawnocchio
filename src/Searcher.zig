@@ -220,6 +220,20 @@ fn negamax(
         tt_entry = .{};
     }
 
+    var static_eval: i16 = evaluation.matedIn(self.ply);
+    if (!is_in_check) {
+        static_eval = evaluate(&self.curStackEntry().board, (&self.eval_states)[self.ply]);
+    }
+
+    if (!is_pv and
+        beta >= evaluation.matedIn(MAX_PLY) and
+        !is_in_check)
+    {
+        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * depth) {
+            return static_eval;
+        }
+    }
+
     var mp = MovePicker.init(
         board,
         &cur.movelist,
