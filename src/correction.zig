@@ -43,19 +43,19 @@ fn updateNonPawnCorrhist(board: *const Board, err: i32, weight: i32) void {
 }
 
 fn pawnCorrhistEntry(board: *const Board) *i16 {
-    return &pawn_corrhist[board.pawn_zobrist % corrhist_size];
+    return &pawn_corrhist[@intCast(board.pawn_zobrist % corrhist_size)];
 }
 
 fn whiteNonPawnCorrhistEntry(board: *const Board) *i16 {
-    return &non_pawn_corrhist[Side.white.toInt()][board.non_pawn_zobrist[Side.white.toInt()] % corrhist_size];
+    return &non_pawn_corrhist[Side.white.toInt()][@intCast(board.non_pawn_zobrist[Side.white.toInt()] % corrhist_size)];
 }
 
 fn blackNonCorrhistEntry(board: *const Board) *i16 {
-    return &non_pawn_corrhist[Side.black.toInt()][board.non_pawn_zobrist[Side.black.toInt()] % corrhist_size];
+    return &non_pawn_corrhist[Side.black.toInt()][@intCast(board.non_pawn_zobrist[Side.black.toInt()] % corrhist_size)];
 }
 
 fn nonPawnCorrhistEntry(board: *const Board) *i16 {
-    return &non_pawn_corrhist[board.turn.toInt()][board.non_pawn_zobrist[board.turn.toInt()] % corrhist_size];
+    return &non_pawn_corrhist[board.turn.toInt()][@intCast(board.non_pawn_zobrist[board.turn.toInt()] % corrhist_size)];
 }
 
 const corrhist_size = 16384;
