@@ -269,7 +269,7 @@ fn search(
         }
     }
 
-    if (depth == 0 or depth == max_depth) {
+    if (depth == 0 or ply >= MAX_SEARCH_DEPTH - 3) {
         var score = quiesce(
             pv,
             turn,
@@ -726,7 +726,6 @@ pub fn iterativeDeepening(board: Board, search_params: engine.SearchParameters, 
     const eval_state = EvalState.init(&board);
     var last_score: i16 = 0;
     for (0..search_params.maxDepth()) |depth| {
-        max_depth = @intCast(@min(MAX_SEARCH_DEPTH, 2 * depth));
         if (depth != 0) {
             var fail_lows: usize = 0;
             var fail_highs: usize = 0;
@@ -899,7 +898,6 @@ pub fn resetSoft() void {
     shutdown = false;
     tt_hits = 0;
     tt_collisions = 0;
-    max_depth = MAX_SEARCH_DEPTH;
     hard_nodes = std.math.maxInt(u64);
     @memset(std.mem.asBytes(&root_node_counts), 0);
     @memset(&repetition_table, 0);
@@ -924,7 +922,6 @@ var timer: std.time.Timer = undefined;
 var shutdown = false;
 var hard_time: u64 = 0;
 var hard_nodes: u64 = std.math.maxInt(u64);
-var max_depth: u8 = MAX_SEARCH_DEPTH;
 var tt_hits: usize = 0;
 var tt_collisions: usize = 0;
 fn errored() bool {
