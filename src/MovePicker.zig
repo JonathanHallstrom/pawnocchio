@@ -124,6 +124,11 @@ pub fn next(self: *MovePicker) ?ScoredMove {
         switch (self.stage) {
             .tt => {
                 self.stage = .generate_noisies;
+                if (self.skip_quiets) {
+                    if (self.board.isQuiet(self.ttmove)) {
+                        continue;
+                    }
+                }
                 switch (self.board.stm) {
                     inline else => |stm| {
                         if (self.board.isPseudoLegal(stm, self.ttmove)) {

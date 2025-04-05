@@ -139,17 +139,26 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         if (static_eval > alpha)
             alpha = static_eval;
     }
+
+    const tt_hash = board.hash;
+    var tt_entry = engine.readTT(tt_hash);
+    if (tt_entry.hash != tt_hash) {
+        tt_entry = .{};
+    }
+
     var best_score = static_eval;
     var best_move = Move.init();
+    var score_type: ScoreType = .upper;
     var mp = MovePicker.initQs(
         board,
         &cur.movelist,
         &self.quiet_history,
-        Move.init(),
+        tt_entry.move,
     );
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
+        engine.prefetchTT(board.roughHashAfter(move));
         if (!board.isLegal(stm, move)) {
             continue;
         }
@@ -168,11 +177,21 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
 
         if (score > alpha) {
             alpha = score;
+            score_type = .exact;
             if (score >= beta) {
+                score_type = .lower;
                 break;
             }
         }
     }
+
+    engine.writeTT(
+        tt_hash,
+        best_move,
+        evaluation.scoreToTt(best_score, self.ply),
+        score_type,
+        0,
+    );
 
     if (is_root) {
         self.root_move = best_move;
