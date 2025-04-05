@@ -45,28 +45,30 @@ fn worker(i: usize, settings: Searcher.Params, quiet: bool) void {
 
 const disable_tt = false;
 
+fn ttIndex(hash: u64) usize {
+    return hash % tt.len;
+    // return ((hash & std.math.maxInt(u32)) ^ (hash >> 32)) * tt.len >> 32;
+}
+
 pub fn writeTT(hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
-    _ = score;
-    _ = score_type;
-    _ = depth;
     if (disable_tt) return;
-    tt[hash % tt.len] = root.TTEntry{
-        // .score = score,
-        // .score_type = score_type,
+    tt[ttIndex(hash)] = root.TTEntry{
+        .score = score,
+        .score_type = score_type,
         .move = move,
         .hash = hash,
-        // .depth = @intCast(depth),
+        .depth = @intCast(depth),
     };
 }
 
 pub fn prefetchTT(hash: u64) void {
     if (disable_tt) return;
-    @prefetch(&tt[hash % tt.len], .{});
+    @prefetch(&tt[ttIndex(hash)], .{});
 }
 
 pub fn readTT(hash: u64) root.TTEntry {
     if (disable_tt) return .{};
-    return tt[hash % tt.len];
+    return tt[ttIndex(hash)];
 }
 
 pub const SearchSettings = struct {

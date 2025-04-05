@@ -44,6 +44,9 @@ pub const Params = struct {
     needs_full_reset: bool = false,
 };
 
+tt_accesses: u64,
+tt_hits: u64,
+
 nodes: u64,
 hashes: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
@@ -218,6 +221,25 @@ fn negamax(
     var tt_entry = engine.readTT(tt_hash);
     if (tt_entry.hash != tt_hash) {
         tt_entry = .{};
+    }
+    if (tt_entry.hash == tt_hash) {
+        if (tt_entry.depth >= depth) {
+            const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
+            if (!is_pv) {
+                switch (tt_entry.score_type) {
+                    .none => {},
+                    .lower => {
+                        if (tt_score >= beta) return tt_score;
+                    },
+                    .upper => {
+                        if (tt_score <= alpha) return tt_score;
+                    },
+                    .exact => {
+                        return tt_score;
+                    },
+                }
+            }
+        }
     }
 
     var mp = MovePicker.init(

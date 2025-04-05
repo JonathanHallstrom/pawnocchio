@@ -345,11 +345,11 @@ pub const ScoreType = enum {
 };
 
 pub const TTEntry = struct {
-    // score: i16 = 0,
-    // score_type: ScoreType = .none,
+    score: i16 = 0,
+    score_type: ScoreType = .none,
     move: Move = Move.init(),
     hash: u64 = 0,
-    // depth: u8 = 0,
+    depth: u8 = 0,
 };
 
 var stdout: std.fs.File = undefined;
