@@ -239,6 +239,7 @@ pub fn main() !void {
             // for (board.toString()) |row| {
             //     write("{s}\n", .{row});
             // }
+            write("zobrist: {}\n", .{board.hash});
             write("{s}\n", .{board.toFen().slice()});
         } else if (std.ascii.eqlIgnoreCase(command, "go")) {
             var max_depth_opt: ?u8 = null;
@@ -476,8 +477,8 @@ pub fn main() !void {
                     continue;
                 }, &std.ascii.whitespace);
 
-                board = Board.parseFen(fen_to_parse, true) catch {
-                    writeLog("invalid fen: '{s}'\n", .{fen_to_parse});
+                board = Board.parseFen(fen_to_parse, true) catch |e| {
+                    writeLog("invalid fen: '{s}' error: {}\n", .{ fen_to_parse, e });
                     continue;
                 };
 

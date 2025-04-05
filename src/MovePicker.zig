@@ -21,12 +21,12 @@ const root = @import("root.zig");
 const Move = root.Move;
 const Board = root.Board;
 const ScoredMove = root.ScoredMove;
-const FilteringScoredMoveReceiver = root.FilteringScoredMoveReceiver;
+const MoveReceiver = root.FilteringScoredMoveReceiver;
 const movegen = root.movegen;
 
 const MovePicker = @This();
 
-movelist: *FilteringScoredMoveReceiver,
+movelist: *MoveReceiver,
 first: usize,
 last: usize,
 board: *const Board,
@@ -45,7 +45,7 @@ pub const Stage = enum {
 
 pub fn init(
     board_: *const Board,
-    movelist_: *FilteringScoredMoveReceiver,
+    movelist_: *MoveReceiver,
     quiet_history_: *root.history.QuietHistory,
     ttmove_: Move,
 ) MovePicker {
@@ -65,7 +65,7 @@ pub fn init(
 
 pub fn initQs(
     board_: *const Board,
-    movelist_: *FilteringScoredMoveReceiver,
+    movelist_: *MoveReceiver,
     quiet_history_: *root.history.QuietHistory,
     ttmove_: Move,
 ) MovePicker {

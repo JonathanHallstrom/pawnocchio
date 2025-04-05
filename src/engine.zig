@@ -43,7 +43,7 @@ fn worker(i: usize, settings: Searcher.Params, quiet: bool) void {
     }
 }
 
-const disable_tt = true;
+const disable_tt = false;
 
 pub fn writeTT(hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
     _ = score;
