@@ -80,7 +80,7 @@ pub fn reset() void {
 }
 
 pub fn setTTSize(new_size: usize) !void {
-    tt = try std.heap.page_allocator.realloc(tt, new_size);
+    tt = try std.heap.page_allocator.realloc(tt, (new_size * 1000000) / @sizeOf(root.TTEntry));
     @memset(tt, .{});
 }
 
