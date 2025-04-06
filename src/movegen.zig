@@ -84,7 +84,7 @@ pub fn attackersFor(comptime col: Colour, noalias board: *const Board, square: S
         (attacks.getRookAttacks(square, occ) & (board.rooks() | board.queens())) |
         (Bitboard.pawnAttacks(square, col.flipped()) & board.pawns()) |
         (Bitboard.knightMoves(square) & board.knights()) |
-        (Bitboard.kingMoves(square) & board.king());
+        (Bitboard.kingMoves(square) & board.kings());
 
     return attacks_from_square & board.occupancyFor(col);
 }

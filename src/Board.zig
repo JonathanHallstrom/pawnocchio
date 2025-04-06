@@ -112,7 +112,7 @@ pub inline fn queens(self: Board) u64 {
     return self.pieces[4];
 }
 
-pub inline fn king(self: Board) u64 {
+pub inline fn kings(self: Board) u64 {
     return self.pieces[5];
 }
 
@@ -757,6 +757,17 @@ fn resetHashDbg(self: *Board) !void {
             self.hash ^= root.zobrist.piece(self.mailbox[sq.toInt()].?.toColour(), pt, sq);
         }
     }
+}
+
+pub fn makeNullMove(self: *Board, comptime stm: Colour) void {
+    self.updateEPHash();
+    self.updateTurnHash();
+    self.plies += 1;
+    self.ep_target = null;
+    self.halfmove += 1;
+    self.stm = stm.flipped();
+
+    // dont call updateMasks since there has been no change in the position, especially not checkers
 }
 
 pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {

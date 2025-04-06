@@ -40,6 +40,8 @@ const tunable_defaults = struct {
     pub const aspiration_initial: i32 = 20;
     pub const aspiration_multiplier: i32 = 2048;
     pub const lmr_base: i32 = 2;
+    pub const nmp_base: i32 = 4;
+    pub const nmp_mult: i32 = 4;
 };
 
 pub const tunables = [_]Tunable{
@@ -53,6 +55,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier },
     .{ .name = "lmr_base", .default = tunable_defaults.lmr_base },
+    .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
+    .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -63,6 +67,9 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var history_penalty_offs = tunable_defaults.history_penalty_offs;
     pub var history_penalty_max = tunable_defaults.history_penalty_max;
     pub var rfp_margin = tunable_defaults.rfp_margin;
-    pub var aspiration_multiplier: i32 = tunable_defaults.rfp_margin;
-    pub var lmr_base: i32 = tunable_defaults.lmr_base;
+    pub var aspiration_initial = tunable_defaults.aspiration_initial;
+    pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
+    pub var lmr_base = tunable_defaults.lmr_base;
+    pub var nmp_base = tunable_defaults.nmp_base;
+    pub var nmp_mult = tunable_defaults.nmp_mult;
 } else tunable_defaults;
