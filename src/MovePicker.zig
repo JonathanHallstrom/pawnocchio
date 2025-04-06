@@ -154,7 +154,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             },
             .noisies => {
                 if (self.first == self.last) {
-                    self.stage = .generate_quiets;
+                    self.stage = .killer;
                     continue;
                 }
                 return self.movelist.vals.slice()[self.findBest()];
@@ -166,7 +166,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 }
                 switch (self.board.stm) {
                     inline else => |stm| {
-                        if (self.board.isPseudoLegal(stm, self.killer)) {
+                        if (self.board.isPseudoLegal(stm, self.killer) and self.board.isQuiet(self.killer)) {
                             return ScoredMove{ .move = self.killer, .score = 0 };
                         }
                     },
