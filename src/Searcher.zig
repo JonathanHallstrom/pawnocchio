@@ -57,6 +57,7 @@ ply: u8,
 stop: bool,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 quiet_history: history.QuietHistory,
+killer: [MAX_PLY]Move,
 
 pub const StackEntry = struct {
     board: Board,
@@ -236,7 +237,7 @@ fn negamax(
         return self.qsearch(is_root, stm, alpha, beta);
     }
 
-    if (self.ply >= MAX_PLY - 1) {
+    if (self.ply >= MAX_PLY - 3) {
         return evaluate(&self.curStackEntry().board, self.curEvalState().*);
     }
 
@@ -342,7 +343,10 @@ fn negamax(
         &cur.movelist,
         &self.quiet_history,
         tt_entry.move,
+        self.killer[self.ply],
     );
+    // clear killer two plies ahead
+    self.killer[self.ply + 2] = Move.init();
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
     var searched_quiets: std.BoundedArray(Move, 64) = .{};
@@ -432,6 +436,7 @@ fn negamax(
             if (score >= beta) {
                 score_type = .lower;
                 if (is_quiet) {
+                    self.killer[self.ply] = move;
                     self.quiet_history.update(stm, move, root.history.bonus(depth));
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;

@@ -34,11 +34,13 @@ stage: Stage,
 skip_quiets: bool,
 quiet_history: *const root.history.QuietHistory,
 ttmove: Move,
+killer: Move,
 
 pub const Stage = enum {
     tt,
     generate_noisies,
     noisies,
+    killer,
     generate_quiets,
     quiets,
 };
@@ -47,6 +49,7 @@ pub fn init(
     board_: *const Board,
     movelist_: *MoveReceiver,
     quiet_history_: *root.history.QuietHistory,
+    killer_: Move,
     ttmove_: Move,
 ) MovePicker {
     movelist_.vals.len = 0;
@@ -60,6 +63,7 @@ pub fn init(
         .skip_quiets = false,
         .quiet_history = quiet_history_,
         .ttmove = ttmove_,
+        .killer = killer_,
     };
 }
 
@@ -80,6 +84,7 @@ pub fn initQs(
         .skip_quiets = board_.checkers == 0,
         .quiet_history = quiet_history_,
         .ttmove = ttmove_,
+        .killer = Move.init(),
     };
 }
 
@@ -154,6 +159,20 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 }
                 return self.movelist.vals.slice()[self.findBest()];
             },
+            .killer => {
+                self.stage = .generate_quiets;
+                if (self.killer == self.ttmove) {
+                    continue;
+                }
+                switch (self.board.stm) {
+                    inline else => |stm| {
+                        if (self.board.isPseudoLegal(stm, self.killer)) {
+                            return ScoredMove{ .move = self.killer, .score = 0 };
+                        }
+                    },
+                }
+                continue;
+            },
             .generate_quiets => {
                 if (self.skip_quiets) {
                     self.stage = .quiets;
@@ -175,7 +194,11 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 if (self.first == self.last or self.skip_quiets) {
                     return null;
                 }
-                return self.movelist.vals.slice()[self.findBest()];
+                const res = self.movelist.vals.slice()[self.findBest()];
+                if (res.move == self.killer) {
+                    continue;
+                }
+                return res;
             },
         }
     }
