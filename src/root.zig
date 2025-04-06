@@ -65,6 +65,7 @@ pub fn init() void {
             attacks.init();
             engine.reset();
             engine.setTTSize(16) catch std.debug.panic("Fatal: couldn't allocate default TT size\n", .{});
+            engine.setThreadCount(1) catch std.debug.panic("Fatal: couldn't allocate default thread count\n", .{});
         }
         var init_once = std.once(initImpl);
     };
@@ -337,7 +338,7 @@ pub const FilteringScoredMoveReceiver = struct {
     }
 };
 
-pub const ScoreType = enum {
+pub const ScoreType = enum(u8) {
     none,
     lower,
     upper,
@@ -345,10 +346,10 @@ pub const ScoreType = enum {
 };
 
 pub const TTEntry = struct {
+    hash: u64 = 0,
     score: i16 = 0,
     score_type: ScoreType = .none,
     move: Move = Move.init(),
-    hash: u64 = 0,
     depth: u8 = 0,
 };
 

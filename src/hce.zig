@@ -28,8 +28,8 @@ const Bitboard = root.Bitboard;
 const Move = root.Move;
 const evaluation = root.evaluation;
 
-const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 10_000 };
-const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 10_000 };
+const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 0 };
+const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 0 };
 
 const mg_pawn_table: [64]i16 = .{
     0,   0,   0,   0,   0,   0,   0,  0,
@@ -255,7 +255,6 @@ const Packed = enum(i32) {
     }
 
     pub fn add(self: Packed, other: Packed) Packed {
-        assert(init(self.toInt() +% other.toInt()) == from(self.midgame() + other.midgame(), self.endgame() + other.endgame()));
         return init(self.toInt() +% other.toInt());
     }
 

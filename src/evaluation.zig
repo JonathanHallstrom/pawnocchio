@@ -73,6 +73,7 @@ pub fn formatScore(score: i16) std.BoundedArray(u8, 15) {
         res.appendSliceAssumeCapacity("mate ");
         res.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{moves_to_mate}) catch unreachable);
     } else {
+        res.appendSliceAssumeCapacity("cp ");
         res.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{score}) catch unreachable);
     }
     return res;

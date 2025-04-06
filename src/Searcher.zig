@@ -46,9 +46,6 @@ pub const Params = struct {
 
 const STACK_PADDING = 1;
 
-tt_accesses: u64,
-tt_hits: u64,
-
 nodes: u64,
 hashes: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
@@ -537,6 +534,7 @@ fn init(self: *Searcher, params: Params) void {
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
     self.init(params);
     var previous_score: i32 = 0;
+    var completed_depth: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
 
@@ -571,16 +569,21 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         }
         previous_score = score;
 
+        completed_depth = depth;
         if (self.stop)
             break;
         if (self.limits.checkRoot(self.nodes, depth))
             break;
-        if (!quiet)
-            self.writeInfo(self.root_score, depth);
+        if (is_main_thread) {
+            if (!quiet) {
+                self.writeInfo(self.root_score, depth);
+            }
+        }
     }
 
     if (is_main_thread) {
         if (!quiet) {
+            self.writeInfo(self.root_score, completed_depth);
             write("bestmove {s}\n", .{self.root_move.toString(&params.board).slice()});
         }
     }

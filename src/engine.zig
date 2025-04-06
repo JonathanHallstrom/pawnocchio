@@ -72,7 +72,6 @@ pub fn readTT(hash: u64) root.TTEntry {
 
 pub const SearchSettings = struct {
     search_params: Searcher.Params,
-    num_threads: u32 = 1,
     quiet: bool = false,
 };
 
@@ -85,32 +84,34 @@ pub fn setTTSize(new_size: usize) !void {
     @memset(tt, .{});
 }
 
+pub fn setThreadCount(thread_count: u32) !void {
+    if (current_num_threads != thread_count) { // need a new threadpool
+        if (current_num_threads > 0) { // deinit old threadpool
+            thread_pool.deinit();
+        }
+
+        current_num_threads = thread_count;
+        try thread_pool.init(.{
+            .allocator = std.heap.page_allocator,
+            .n_jobs = thread_count,
+        });
+        searchers = std.heap.page_allocator.realloc(searchers, thread_count) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
+    }
+}
+
 pub fn deinit() void {
     std.heap.page_allocator.free(tt);
     std.heap.page_allocator.free(searchers);
 }
 
 pub fn startSearch(settings: SearchSettings) void {
-    std.debug.assert(settings.num_threads == 1);
-    if (current_num_threads != settings.num_threads) { // need a new threadpool
-        if (current_num_threads > 0) { // deinit old threadpool
-            thread_pool.deinit();
-        }
-
-        current_num_threads = settings.num_threads;
-        thread_pool.init(.{
-            .allocator = std.heap.page_allocator,
-            .n_jobs = settings.num_threads,
-        }) catch |e| std.debug.panic("Fatal: creating thread pool failed with error '{}'\n", .{e});
-        searchers = std.heap.page_allocator.realloc(searchers, settings.num_threads) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
-    }
-
+    stopSearch();
     num_finished_threads.store(0, .seq_cst);
     is_searching.store(true, .seq_cst);
     stop_searching.store(false, .seq_cst);
     var search_params = settings.search_params;
     search_params.needs_full_reset = needs_full_reset;
-    for (0..settings.num_threads) |i| {
+    for (0..current_num_threads) |i| {
         thread_pool.spawn(worker, .{ i, search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
     }
     needs_full_reset = false; // don't clear state unnecessarily
@@ -126,6 +127,7 @@ pub fn querySearchedNodes() u64 {
 
 pub fn stopSearch() void {
     stop_searching.store(true, .seq_cst);
+    waitUntilDoneSearching();
 }
 
 pub fn shouldStopSearching() bool {
@@ -133,9 +135,11 @@ pub fn shouldStopSearching() bool {
 }
 
 pub fn waitUntilDoneSearching() void {
-    done_searching_mutex.lock();
-    defer done_searching_mutex.unlock();
-    while (num_finished_threads.load(.seq_cst) < current_num_threads) {
-        done_searching_cv.wait(&done_searching_mutex);
+    if (is_searching.load(.seq_cst)) {
+        done_searching_mutex.lock();
+        defer done_searching_mutex.unlock();
+        while (num_finished_threads.load(.seq_cst) < current_num_threads) {
+            done_searching_cv.wait(&done_searching_mutex);
+        }
     }
 }
