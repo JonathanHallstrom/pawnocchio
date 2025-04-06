@@ -355,6 +355,12 @@ fn negamax(
         if (!board.isLegal(stm, move)) {
             continue;
         }
+        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+            if (num_legal >= 3 + depth * depth) {
+                mp.skip_quiets = true;
+                continue;
+            }
+        }
         num_legal += 1;
         std.debug.assert(std.mem.count(Move, searched_noisies.slice(), &.{move}) == 0);
         std.debug.assert(std.mem.count(Move, searched_quiets.slice(), &.{move}) == 0);
