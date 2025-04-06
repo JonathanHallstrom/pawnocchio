@@ -248,7 +248,29 @@ fn negamax(
     const is_in_check = board.checkers != 0;
 
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
-        return 0;
+        if (board.halfmove >= 100) {
+            if (is_in_check) {
+                var rec: root.movegen.MoveListReceiver = .{};
+                movegen.generateAllQuiets(stm, board, &rec);
+                movegen.generateAllNoisies(stm, board, &rec);
+                var has_legal = false;
+                for (rec.vals.slice()) |move| {
+                    if (board.isLegal(stm, move)) {
+                        has_legal = true;
+                        break;
+                    }
+                }
+                if (has_legal) {
+                    return 0;
+                } else {
+                    return evaluation.matedIn(self.ply);
+                }
+            } else {
+                return 0;
+            }
+        } else {
+            return 0;
+        }
     }
 
     const tt_hash = board.hash;
