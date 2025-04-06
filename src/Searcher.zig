@@ -335,7 +335,21 @@ fn negamax(
             self.unmakeNullMove(stm);
 
             if (nmp_score >= beta) {
-                return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                if (depth <= 10) {
+                    return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                }
+
+                const verification_score = self.negamax(
+                    false,
+                    false,
+                    stm,
+                    -beta,
+                    -beta + 1,
+                    depth - nmp_reduction,
+                );
+                if (verification_score >= beta) {
+                    return if (evaluation.isMateScore(verification_score)) @intCast(beta) else verification_score;
+                }
             }
         }
     }
