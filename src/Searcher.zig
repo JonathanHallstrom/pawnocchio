@@ -355,8 +355,17 @@ fn negamax(
         if (!board.isLegal(stm, move)) {
             continue;
         }
-        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY) and board.isQuiet(move)) {
             if (num_legal >= 3 + depth * depth) {
+                mp.skip_quiets = true;
+                continue;
+            }
+
+            if (!is_in_check and
+                depth <= 6 and
+                @abs(alpha) < 2000 and
+                static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+            {
                 mp.skip_quiets = true;
                 continue;
             }

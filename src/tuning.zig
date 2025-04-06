@@ -42,6 +42,8 @@ const tunable_defaults = struct {
     pub const lmr_base: i32 = 2;
     pub const nmp_base: i32 = 4;
     pub const nmp_mult: i32 = 4;
+    pub const fp_base: i32 = 250;
+    pub const fp_mult: i32 = 100;
 };
 
 pub const tunables = [_]Tunable{
@@ -57,6 +59,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_base", .default = tunable_defaults.lmr_base },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
+    .{ .name = "fp_base", .default = tunable_defaults.fp_base },
+    .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -72,4 +76,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_base = tunable_defaults.lmr_base;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
+    pub var fp_base = tunable_defaults.fp_base;
+    pub var fp_mult = tunable_defaults.fp_mult;
 } else tunable_defaults;
