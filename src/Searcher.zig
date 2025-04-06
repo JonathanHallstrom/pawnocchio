@@ -449,18 +449,41 @@ fn init(self: *Searcher, params: Params) void {
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
     self.init(params);
+    var previous_score: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
-        _ = switch (params.board.stm) {
-            inline else => |stm| self.negamax(
-                true,
-                true,
-                stm,
-                -evaluation.inf_score,
-                evaluation.inf_score,
-                depth,
-            ),
-        };
+
+        var window = tunable_constants.aspiration_initial;
+        if (d == 1) {
+            window = evaluation.inf_score;
+        }
+        var aspiration_lower = @max(previous_score - window, -evaluation.inf_score);
+        var aspiration_upper = @min(previous_score + window, evaluation.inf_score);
+
+        var score = -evaluation.inf_score;
+        switch (params.board.stm) {
+            inline else => |stm| while (true) : (window = (window * tunable_constants.aspiration_multiplier) >> 10) {
+                score = self.negamax(
+                    true,
+                    true,
+                    stm,
+                    aspiration_lower,
+                    aspiration_upper,
+                    depth,
+                );
+                if (score >= aspiration_upper) {
+                    aspiration_lower = @max(score - window, -evaluation.inf_score);
+                    aspiration_upper = @min(score + window, evaluation.inf_score);
+                } else if (score <= aspiration_lower) {
+                    aspiration_lower = @max(score - window, -evaluation.inf_score);
+                    aspiration_upper = @min(score + window, evaluation.inf_score);
+                } else {
+                    break;
+                }
+            },
+        }
+        previous_score = score;
+
         if (self.stop)
             break;
         if (self.limits.checkRoot(self.nodes, depth))

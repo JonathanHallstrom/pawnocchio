@@ -37,6 +37,8 @@ const tunable_defaults = struct {
     pub const history_penalty_offs: i32 = 300;
     pub const history_penalty_max: i32 = 2300;
     pub const rfp_margin: i32 = 150;
+    pub const aspiration_initial: i32 = 20;
+    pub const aspiration_multiplier: i32 = 2048;
 };
 
 pub const tunables = [_]Tunable{
@@ -47,6 +49,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "history_penalty_offs", .default = tunable_defaults.history_penalty_offs },
     .{ .name = "history_penalty_max", .default = tunable_defaults.history_penalty_max },
     .{ .name = "rfp_margin", .default = tunable_defaults.rfp_margin },
+    .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial },
+    .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -57,4 +61,5 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var history_penalty_offs = tunable_defaults.history_penalty_offs;
     pub var history_penalty_max = tunable_defaults.history_penalty_max;
     pub var rfp_margin = tunable_defaults.rfp_margin;
+    pub var aspiration_multiplier: i32 = tunable_defaults.rfp_margin;
 } else tunable_defaults;
