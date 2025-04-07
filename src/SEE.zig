@@ -24,12 +24,13 @@ const Bitboard = root.Bitboard;
 const attacks = root.attacks;
 const Board = root.Board;
 const Move = root.Move;
+const Colour = root.Colour;
 
 const SEE_weight = [_]i16{ 93, 308, 346, 521, 994, 0 };
 
-inline fn getAttacks(comptime turn: anytype, comptime tp: PieceType, sq: Square, occ: u64) u64 {
+inline fn getAttacks(comptime stm: Colour, comptime tp: PieceType, sq: Square, occ: u64) u64 {
     return switch (tp) {
-        .pawn => Bitboard.move(sq.toBitboard(), if (turn == .white) -1 else 1, 1) | Bitboard.move(sq.toBitboard(), if (turn == .white) -1 else 1, -1),
+        .pawn => Bitboard.pawnAttacks(sq, stm),
         .knight => Bitboard.knightMoves(sq),
         .bishop => attacks.getBishopAttacks(sq, occ),
         .rook => attacks.getRookAttacks(sq, occ),
@@ -59,15 +60,15 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
     var score = captured_value - threshold;
     if (board.isPromo(move)) {
         const pt = move.promoType();
-        const promo_value = SEE_weight[pt.toInt()];
-        score += promo_value - SEE_weight[0]; // add promoted piece, remove pawn since it disappears
+        const promo_value = value(pt);
+        score += promo_value - value(.pawn); // add promoted piece, remove pawn since it disappears
         if (score < 0) return false; // if we're worse off than we need to be even just after promoting and possibly capturing, theres no point continuing
 
         score -= promo_value; // remove the promoted piece, assuming it was captured, if we're still okay even assuming we lose it immeditely, we're good!
         if (score >= 0) return true;
     } else {
         if (score < 0) return false; // if the capture is immeditely not good enough just return
-        score -= SEE_weight[from_type.toInt()];
+        score -= value(from_type);
         if (score >= 0) return true; // if we can lose the piece we used to capture and still be okay, we're good!
     }
 
@@ -85,8 +86,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
         (getAttacks(undefined, .knight, to, occ) & knights) |
         (getAttacks(undefined, .bishop, to, occ) & bishops) |
         (getAttacks(undefined, .rook, to, occ) & rooks) |
-        (getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.white)) |
-        (getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.black));
+        (getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.black)) |
+        (getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.white));
 
     var attacker: PieceType = undefined;
     while (true) {
@@ -106,15 +107,13 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
             break;
         }
 
-        switch (attacker) {
-            .pawn, .bishop => attackers |= getAttacks(undefined, .bishop, to, occ),
-            .rook => attackers |= getAttacks(undefined, .rook, to, occ),
-            .queen => attackers |= getAttacks(undefined, .queen, to, occ),
-            else => {},
-        }
+        if (attacker == .pawn or attacker == .bishop or attacker == .queen)
+            attackers |= getAttacks(undefined, .bishop, to, occ) & bishops;
+        if (attacker == .rook or attacker == .queen)
+            attackers |= getAttacks(undefined, .rook, to, occ) & rooks;
 
         attackers &= occ;
-        score = -score - 1 - SEE_weight[attacker.toInt()];
+        score = -score - 1 - value(attacker);
         stm = stm.flipped();
 
         if (score >= 0) {
@@ -125,6 +124,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
 }
 
 test scoreMove {
+    root.init();
     try std.testing.expect(scoreMove(&(Board.parseFen("k6b/8/8/8/8/8/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), 93));
     try std.testing.expect(!scoreMove(&(Board.parseFen("k6b/8/8/8/8/2p5/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), 93));
     try std.testing.expect(!scoreMove(&(Board.parseFen("k7/8/8/8/8/2p5/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), 93));
@@ -132,4 +132,8 @@ test scoreMove {
     try std.testing.expect(!scoreMove(&(Board.parseFen("k6b/8/8/8/8/2q5/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), 93));
     try std.testing.expect(!scoreMove(&(Board.parseFen("k3n2r/3P4/8/8/8/8/8/1K6 w - - 0 1", false) catch unreachable), Move.promo(.d7, .e8, .queen), 500));
     try std.testing.expect(scoreMove(&(Board.parseFen("k3n3/3P4/8/8/8/8/8/1K6 w - - 0 1", false) catch unreachable), Move.promo(.d7, .e8, .queen), 500));
+    try std.testing.expect(scoreMove(&(Board.parseFen("k3n3/3P4/8/8/8/8/8/1K6 w - - 0 1", false) catch unreachable), Move.promo(.d7, .e8, .queen), 500));
+    try std.testing.expect(scoreMove(&(Board.parseFen("rn2k2r/p3bpp1/2p4p/8/2P3Q1/1P1q4/P4P1P/RNB1K2R w KQkq - 0 8", false) catch unreachable), Move.capture(.g4, .g7), 0));
+    try std.testing.expect(scoreMove(&(Board.parseFen("r1bq1rk1/pppp1Npp/2nb1n2/4p3/2B1P3/2P5/PP1P1PPP/RNBQK2R b KQ - 0 6", false) catch unreachable), Move.capture(.f8, .f7), 0));
+    try std.testing.expect(scoreMove(&(Board.parseFen("r1bqkb1r/ppp1pppp/2n2n2/8/2BPP3/5P2/PP4PP/RNBQK1NR b KQkq - 0 5", false) catch unreachable), Move.capture(.c6, .d4), 0));
 }
