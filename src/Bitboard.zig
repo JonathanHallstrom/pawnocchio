@@ -484,14 +484,18 @@ pub const LocIterator = struct {
     }
 
     pub fn next(self: *LocIterator) ?Square {
-        if (self.state == 0) return null;
+        if (self.state == 0) {
+            return null;
+        }
         const res = @ctz(self.state);
         self.state &= self.state -% 1;
         return Square.fromInt(@intCast(res));
     }
 
     pub fn peek(self: *const LocIterator) ?Square {
-        if (self.state == 0) return null;
+        if (self.state == 0) {
+            return null;
+        }
         const res = @ctz(self.state);
         return Square.fromInt(@intCast(res));
     }

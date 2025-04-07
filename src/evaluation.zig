@@ -68,9 +68,9 @@ pub fn formatScore(score: i16) std.BoundedArray(u8, 15) {
     if (isMateScore(score)) {
         const plies_to_mate = if (score > 0) checkmate_score - score else checkmate_score + score;
         const moves_to_mate = @divTrunc(plies_to_mate + 1, 2);
+        res.appendSliceAssumeCapacity("mate ");
         if (score < 0)
             res.appendAssumeCapacity('-');
-        res.appendSliceAssumeCapacity("mate ");
         res.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{moves_to_mate}) catch unreachable);
     } else {
         res.appendSliceAssumeCapacity("cp ");

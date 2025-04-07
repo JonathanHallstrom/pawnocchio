@@ -32,8 +32,9 @@ last: usize,
 board: *const Board,
 stage: Stage,
 skip_quiets: bool,
-quiet_history: *const root.history.QuietHistory,
+histories: *const root.history.HistoryTable,
 ttmove: Move,
+prev: root.history.TypedMove,
 
 pub const Stage = enum {
     tt,
@@ -46,8 +47,9 @@ pub const Stage = enum {
 pub fn init(
     board_: *const Board,
     movelist_: *MoveReceiver,
-    quiet_history_: *root.history.QuietHistory,
+    histories_: *root.history.HistoryTable,
     ttmove_: Move,
+    prev_: root.history.TypedMove,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -58,16 +60,18 @@ pub fn init(
         .last = 0,
         .stage = .tt,
         .skip_quiets = false,
-        .quiet_history = quiet_history_,
+        .histories = histories_,
         .ttmove = ttmove_,
+        .prev = prev_,
     };
 }
 
 pub fn initQs(
     board_: *const Board,
     movelist_: *MoveReceiver,
-    quiet_history_: *root.history.QuietHistory,
+    histories_: *root.history.HistoryTable,
     ttmove_: Move,
+    prev_: root.history.TypedMove,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -78,15 +82,16 @@ pub fn initQs(
         .last = 0,
         .stage = .tt,
         .skip_quiets = board_.checkers == 0,
-        .quiet_history = quiet_history_,
+        .histories = histories_,
         .ttmove = ttmove_,
+        .prev = prev_,
     };
 }
 
 fn findBest(self: *MovePicker) usize {
     const scored_moves = self.movelist.vals.slice()[self.first..self.last];
     var best_idx: usize = 0;
-    var best_score: i16 = scored_moves[0].score;
+    var best_score: i32 = scored_moves[0].score;
     for (0..scored_moves.len) |i| {
         if (scored_moves[i].score > best_score) {
             best_idx = i;
@@ -163,7 +168,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                     inline else => |stm| {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
                         for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
-                            scored_move.score = self.quiet_history.read(stm, scored_move.move);
+                            scored_move.score = self.histories.read(self.board, scored_move.move, self.prev);
                         }
                     },
                 }
