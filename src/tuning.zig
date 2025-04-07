@@ -44,6 +44,7 @@ const tunable_defaults = struct {
     pub const nmp_mult: i32 = 4;
     pub const fp_base: i32 = 250;
     pub const fp_mult: i32 = 100;
+    pub const qs_see_threshold: i32 = 100;
 };
 
 pub const tunables = [_]Tunable{
@@ -61,6 +62,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
+    .{ .name = "qs_see_threshold", .default = tunable_defaults.fp_mult },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -78,4 +80,5 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
+    pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
 } else tunable_defaults;

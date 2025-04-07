@@ -192,6 +192,12 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
             continue;
         }
 
+        if (best_score > evaluation.matedIn(MAX_PLY)) {
+            if (!is_in_check and !root.SEE.scoreMove(board, move, -tunable_constants.qs_see_threshold)) {
+                continue;
+            }
+        }
+
         self.makeMove(stm, move);
         const score = -self.qsearch(false, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
