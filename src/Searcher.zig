@@ -31,6 +31,7 @@ const MovePicker = root.MovePicker;
 const history = root.history;
 const ScoreType = root.ScoreType;
 const engine = root.engine;
+const TypedMove = history.TypedMove;
 const tunable_constants = root.tunable_constants;
 const write = root.write;
 const evaluate = evaluation.evaluate;
@@ -56,16 +57,18 @@ limits: Limits,
 ply: u8,
 stop: bool,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
-quiet_history: history.QuietHistory,
+histories: history.HistoryTable,
 
 pub const StackEntry = struct {
     board: Board,
     movelist: FilteringScoredMoveReceiver,
-    move: Move,
+    move: TypedMove,
+    prev: TypedMove,
 
-    pub fn init(self: *StackEntry, board_: anytype, move_: Move) void {
+    pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove) void {
         self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
         self.move = move_;
+        self.prev = prev_;
     }
 };
 
@@ -97,14 +100,14 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
     return 0;
 }
 
-fn makeMove(noalias self: *Searcher, comptime stm: Colour, move: Move) void {
+fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const prev_stack_entry = self.curStackEntry();
     const prev_eval_state = self.curEvalState();
     self.ply += 1;
     const new_stack_entry = self.curStackEntry();
     const new_eval_state = self.curEvalState();
 
-    new_stack_entry.init(prev_stack_entry.board, move);
+    new_stack_entry.init(prev_stack_entry.board, TypedMove.fromBoard(&prev_stack_entry.board, move), prev_stack_entry.move);
     new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -116,14 +119,14 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     self.ply -= 1;
 }
 
-fn makeNullMove(noalias self: *Searcher, comptime stm: Colour) void {
+fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const prev_stack_entry = self.curStackEntry();
     const prev_eval_state = self.curEvalState();
     self.ply += 1;
     const new_stack_entry = self.curStackEntry();
     const new_eval_state = self.curEvalState();
 
-    new_stack_entry.init(prev_stack_entry.board, Move.init());
+    new_stack_entry.init(prev_stack_entry.board, TypedMove.init(), TypedMove.init());
     new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -166,7 +169,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
 
     var static_eval: i16 = evaluation.matedIn(self.ply);
     if (!is_in_check) {
-        static_eval = evaluate(&self.curStackEntry().board, self.curEvalState().*);
+        static_eval = evaluate(board, self.curEvalState().*);
 
         if (static_eval >= beta)
             return static_eval;
@@ -178,8 +181,9 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
     var mp = MovePicker.initQs(
         board,
         &cur.movelist,
-        &self.quiet_history,
+        &self.histories,
         Move.init(),
+        TypedMove.init(),
     );
 
     while (mp.next()) |scored_move| {
@@ -236,13 +240,13 @@ fn negamax(
         return self.qsearch(is_root, stm, alpha, beta);
     }
 
-    if (self.ply >= MAX_PLY - 1) {
-        return evaluate(&self.curStackEntry().board, self.curEvalState().*);
-    }
-
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
+
+    if (self.ply >= MAX_PLY - 1) {
+        return evaluate(board, self.curEvalState().*);
+    }
 
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
         if (board.halfmove >= 100) {
@@ -297,7 +301,7 @@ fn negamax(
 
     var static_eval: i16 = evaluation.matedIn(self.ply);
     if (!is_in_check) {
-        static_eval = evaluate(&self.curStackEntry().board, self.curEvalState().*);
+        static_eval = evaluate(board, self.curEvalState().*);
     }
 
     if (!is_pv and
@@ -310,12 +314,10 @@ fn negamax(
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
-        const previous_move = self.prevStackEntry().move;
-
         if (depth >= 4 and
             static_eval >= beta and
             non_pk != 0 and
-            !previous_move.isNull())
+            !cur.prev.move.isNull())
         {
             engine.prefetchTT(board.hash ^ root.zobrist.turn());
             const nmp_reduction = tunable_constants.nmp_base + (depth * tunable_constants.nmp_mult >> 5);
@@ -340,13 +342,14 @@ fn negamax(
     var mp = MovePicker.init(
         board,
         &cur.movelist,
-        &self.quiet_history,
+        &self.histories,
         tt_entry.move,
+        cur.prev,
     );
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
-    var searched_quiets: std.BoundedArray(Move, 64) = .{};
-    var searched_noisies: std.BoundedArray(Move, 64) = .{};
+    var searched_quiets: std.BoundedArray(TypedMove, 64) = .{};
+    var searched_noisies: std.BoundedArray(TypedMove, 64) = .{};
     var score_type: ScoreType = .upper;
     var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
@@ -371,8 +374,22 @@ fn negamax(
             }
         }
         num_legal += 1;
-        std.debug.assert(std.mem.count(Move, searched_noisies.slice(), &.{move}) == 0);
-        std.debug.assert(std.mem.count(Move, searched_quiets.slice(), &.{move}) == 0);
+        const typed = TypedMove.fromBoard(board, move);
+
+        if (std.debug.runtime_safety) {
+            var count: usize = 0;
+            for (searched_noisies.slice()) |searched| {
+                if (std.meta.eql(searched, typed)) {
+                    count += 1;
+                }
+            }
+            for (searched_quiets.slice()) |searched| {
+                if (std.meta.eql(searched, typed)) {
+                    count += 1;
+                }
+            }
+            std.debug.assert(count == 0);
+        }
 
         const is_quiet = board.isQuiet(move);
         self.makeMove(stm, move);
@@ -432,9 +449,9 @@ fn negamax(
         }
 
         if (is_quiet) {
-            searched_quiets.append(move) catch {};
+            searched_quiets.append(typed) catch {};
         } else {
-            searched_noisies.append(move) catch {};
+            searched_noisies.append(typed) catch {};
         }
 
         if (score > best_score) {
@@ -447,10 +464,10 @@ fn negamax(
             if (score >= beta) {
                 score_type = .lower;
                 if (is_quiet) {
-                    self.quiet_history.update(stm, move, root.history.bonus(depth));
+                    self.histories.update(board, move, cur.prev, root.history.bonus(depth));
                     for (searched_quiets.slice()) |searched_move| {
-                        if (searched_move == move) break;
-                        self.quiet_history.update(stm, searched_move, -root.history.penalty(depth));
+                        if (searched_move.move == move) break;
+                        self.histories.update(board, searched_move.move, cur.prev, -root.history.penalty(depth));
                     }
                 }
                 break;
@@ -536,10 +553,10 @@ fn init(self: *Searcher, params: Params) void {
 
     self.root_move = Move.init();
     self.root_score = 0;
-    self.searchStackRoot()[0].init(board, Move.init());
+    self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init());
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
-        self.quiet_history.reset();
+        self.histories.reset();
     }
 }
 

@@ -313,7 +313,7 @@ pub const ColouredPieceType = enum(u4) {
 
 pub const ScoredMove = struct {
     move: Move,
-    score: i16,
+    score: i32,
 
     pub fn desc(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
         return lhs.score > rhs.score;
