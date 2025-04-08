@@ -45,6 +45,7 @@ ep_target: ?Square = null,
 stm: Colour = .white,
 
 hash: u64 = 0,
+pawn_hash: u64 = 0,
 
 castling_rights: CastlingRights = CastlingRights.init(),
 
@@ -663,7 +664,11 @@ pub inline fn addPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Sq
     const bb = sq.toBitboard();
     self.occupancyPtrFor(col).* |= bb;
     self.pieces[pt.toInt()] |= bb;
-    self.hash ^= root.zobrist.piece(col, pt, sq);
+    const zobrist_update = root.zobrist.piece(col, pt, sq);
+    self.hash ^= zobrist_update;
+    if (pt == .pawn) {
+        self.pawn_hash ^= zobrist_update;
+    }
     (&self.mailbox)[sq.toInt()] = ColouredPieceType.fromPieceType(pt, col);
     eval_state.add(col, pt, sq);
 }
@@ -672,7 +677,11 @@ pub inline fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq:
     const bb = sq.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.pieces[pt.toInt()] ^= bb;
-    self.hash ^= root.zobrist.piece(col, pt, sq);
+    const zobrist_update = root.zobrist.piece(col, pt, sq);
+    self.hash ^= zobrist_update;
+    if (pt == .pawn) {
+        self.pawn_hash ^= zobrist_update;
+    }
     (&self.mailbox)[sq.toInt()] = null;
     eval_state.sub(col, pt, sq);
 }
@@ -681,7 +690,11 @@ pub inline fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from:
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.pieces[pt.toInt()] ^= bb;
-    self.hash ^= root.zobrist.piece(col, pt, from) ^ root.zobrist.piece(col, pt, to);
+    const zobrist_update = root.zobrist.piece(col, pt, from) ^ root.zobrist.piece(col, pt, to);
+    self.hash ^= zobrist_update;
+    if (pt == .pawn) {
+        self.pawn_hash ^= zobrist_update;
+    }
     (&self.mailbox)[from.toInt()] = null;
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col);
     eval_state.addSub(col, pt, to, col, pt, from);
