@@ -1,5 +1,5 @@
 // pawnocchio, UCI chess engine
-// Copyright (C) 2025 Jonathan HallstrÃ¶m
+// Copyright (C) 2025 Jonathan Hallström
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -227,7 +227,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
     return best_score;
 }
 
-fn negamax(
+fn search(
     self: *Searcher,
     comptime is_root: bool,
     comptime is_pv: bool,
@@ -330,7 +330,7 @@ fn negamax(
             const nmp_reduction = tunable_constants.nmp_base + (depth * tunable_constants.nmp_mult >> 5);
 
             self.makeNullMove(stm);
-            const nmp_score = -self.negamax(
+            const nmp_score = -self.search(
                 false,
                 false,
                 stm.flipped(),
@@ -418,7 +418,7 @@ fn negamax(
 
                 const reduced_depth = depth + extension - clamped_reduction;
 
-                s = -self.negamax(
+                s = -self.search(
                     false,
                     false,
                     stm.flipped(),
@@ -431,7 +431,7 @@ fn negamax(
                 }
 
                 if (s > alpha and clamped_reduction > 1) {
-                    s = -self.negamax(
+                    s = -self.search(
                         false,
                         false,
                         stm.flipped(),
@@ -444,7 +444,7 @@ fn negamax(
                     }
                 }
             } else if (!is_pv or num_legal > 1) {
-                s = -self.negamax(
+                s = -self.search(
                     false,
                     false,
                     stm.flipped(),
@@ -457,7 +457,7 @@ fn negamax(
                 }
             }
             if (is_pv and (num_legal == 1 or s > alpha)) {
-                s = -self.negamax(
+                s = -self.search(
                     false,
                     true,
                     stm.flipped(),
@@ -622,7 +622,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
             inline else => |stm| while (true) : (window = (window * tunable_constants.aspiration_multiplier) >> 10) {
-                score = self.negamax(
+                score = self.search(
                     true,
                     true,
                     stm,
