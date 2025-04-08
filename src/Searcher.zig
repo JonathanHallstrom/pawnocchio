@@ -524,7 +524,7 @@ fn search(
         self.root_score = best_score;
     }
 
-    if (!is_in_check and (best_move.isNull() or board.isQuiet(best_move))) {
+    if (!is_in_check and (best_score <= alpha or board.isQuiet(best_move))) {
         if (switch (score_type) {
             .none => unreachable,
             .lower => best_score > corrected_static_eval,
