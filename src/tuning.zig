@@ -45,6 +45,8 @@ const tunable_defaults = struct {
     pub const fp_base: i32 = 250;
     pub const fp_mult: i32 = 100;
     pub const qs_see_threshold: i32 = 100;
+    pub const see_quiet_pruning_mult: i32 = 80;
+    pub const see_noisy_pruning_mult: i32 = 50;
 };
 
 pub const tunables = [_]Tunable{
@@ -63,6 +65,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
     .{ .name = "qs_see_threshold", .default = tunable_defaults.fp_mult },
+    .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult },
+    .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -81,4 +85,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
+    pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
+    pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
 } else tunable_defaults;

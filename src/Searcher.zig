@@ -382,6 +382,15 @@ fn negamax(
                 mp.skip_quiets = true;
                 continue;
             }
+
+            const see_pruning_thresh = if (is_quiet)
+                tunable_constants.see_quiet_pruning_mult * depth
+            else
+                tunable_constants.see_noisy_pruning_mult * depth * depth;
+
+            if (!SEE.scoreMove(board, move, -see_pruning_thresh)) {
+                continue;
+            }
         }
         num_legal += 1;
 
