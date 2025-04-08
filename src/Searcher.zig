@@ -402,7 +402,7 @@ fn negamax(
         self.makeMove(stm, move);
 
         var extension: i32 = 0;
-        const gives_check = self.curStackEntry().board.checkers != 0 and false;
+        const gives_check = self.curStackEntry().board.checkers != 0;
         if (gives_check) {
             extension += 1;
         }
