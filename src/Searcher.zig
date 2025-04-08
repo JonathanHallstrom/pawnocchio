@@ -1,5 +1,5 @@
 // pawnocchio, UCI chess engine
-// Copyright (C) 2025 Jonathan Hallström
+// Copyright (C) 2025 Jonathan HallstrÃ¶m
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -400,8 +400,15 @@ fn negamax(
         }
 
         self.makeMove(stm, move);
+
+        var extension: i32 = 0;
+        const gives_check = self.curStackEntry().board.checkers != 0;
+        if (gives_check) {
+            extension += 1;
+        }
         const score = blk: {
             var s: i16 = 0;
+            const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 var reduction: i32 = tunable_constants.lmr_base;
                 reduction += std.math.log2_int(u32, @intCast(depth)) * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
@@ -409,13 +416,15 @@ fn negamax(
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
 
+                const reduced_depth = depth + extension - clamped_reduction;
+
                 s = -self.negamax(
                     false,
                     false,
                     stm.flipped(),
                     -alpha - 1,
                     -alpha,
-                    depth - clamped_reduction,
+                    reduced_depth,
                 );
                 if (self.stop) {
                     break :blk 0;
@@ -428,7 +437,7 @@ fn negamax(
                         stm.flipped(),
                         -alpha - 1,
                         -alpha,
-                        depth - 1,
+                        new_depth,
                     );
                     if (self.stop) {
                         break :blk 0;
@@ -441,7 +450,7 @@ fn negamax(
                     stm.flipped(),
                     -alpha - 1,
                     -alpha,
-                    depth - 1,
+                    new_depth,
                 );
                 if (self.stop) {
                     break :blk 0;
@@ -454,7 +463,7 @@ fn negamax(
                     stm.flipped(),
                     -beta,
                     -alpha,
-                    depth - 1,
+                    new_depth,
                 );
             }
 
