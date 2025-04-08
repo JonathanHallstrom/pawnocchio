@@ -138,9 +138,9 @@ pub const HistoryTable = struct {
         self.countermove.update(board.stm, typed, prev, adjustment);
     }
 
-    pub fn updateCorrection(self: *HistoryTable, board: *const Board, corrected_static_eval: i16, score: i16, depth: i32) void {
-        const err: i32 = (@as(i32, score) - corrected_static_eval) * 256;
-        const weight: i32 = @min(@as(i32, depth), 15) + 1;
+    pub fn updateCorrection(self: *HistoryTable, board: *const Board, corrected_static_eval: i32, score: i32, depth: i32) void {
+        const err = (score - corrected_static_eval) * 256;
+        const weight = @min(depth, 15) + 1;
 
         self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE].update(err, weight);
     }
