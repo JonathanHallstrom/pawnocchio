@@ -242,6 +242,7 @@ pub fn main() !void {
                 });
             }
         } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
+            root.engine.waitUntilDoneSearching();
             write("readyok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "d")) {
             // for (board.toString()) |row| {
@@ -260,7 +261,7 @@ pub fn main() !void {
             var white_increment: u64 = 0 * std.time.ns_per_s;
             var black_increment: u64 = 0 * std.time.ns_per_s;
             var mate_finding_depth: ?u8 = null;
-            var move_time: ?u64 = null;
+            var move_time_opt: ?u64 = null;
 
             while (parts.next()) |command_part| {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
@@ -399,7 +400,7 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "movetime")) {
                     const time = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    move_time = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
+                    move_time_opt = std.time.ns_per_ms * (std.fmt.parseInt(u64, time, 10) catch {
                         writeLog("invalid time: '{s}'\n", .{time});
                         continue;
                     });
@@ -431,12 +432,20 @@ pub fn main() !void {
                 overhead,
             );
 
-            if (move_time) |mt| {
-                limits = root.Limits.initFixedTime(mt);
+            if (move_time_opt) |move_time| {
+                limits = root.Limits.initFixedTime(move_time);
             }
 
             if (max_depth_opt) |max_depth| {
                 limits.max_depth = max_depth;
+            }
+
+            if (max_nodes_opt) |max_nodes| {
+                if (!std.debug.runtime_safety) {
+                    write("info string Not built with runtime safety, node bound will not be exact\n", .{});
+                }
+                limits.soft_nodes = max_nodes;
+                limits.hard_nodes = max_nodes;
             }
 
             root.engine.startSearch(.{

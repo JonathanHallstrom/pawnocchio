@@ -58,7 +58,7 @@ pub fn matedIn(plies: u16) i16 {
     return -checkmate_score + @as(i16, @intCast(plies));
 }
 
-pub fn isMateScore(score: i16) bool {
+pub fn isMateScore(score: i32) bool {
     return @abs(score) >= win_score;
 }
 

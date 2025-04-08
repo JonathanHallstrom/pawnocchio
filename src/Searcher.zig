@@ -32,6 +32,7 @@ const history = root.history;
 const ScoreType = root.ScoreType;
 const engine = root.engine;
 const TypedMove = history.TypedMove;
+const SEE = root.SEE;
 const tunable_constants = root.tunable_constants;
 const write = root.write;
 const evaluate = evaluation.evaluate;
@@ -193,7 +194,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         }
 
         if (best_score > evaluation.matedIn(MAX_PLY)) {
-            if (!is_in_check and !root.SEE.scoreMove(board, move, -tunable_constants.qs_see_threshold)) {
+            if (!is_in_check and !SEE.scoreMove(board, move, -tunable_constants.qs_see_threshold)) {
                 continue;
             }
         }
@@ -354,8 +355,8 @@ fn negamax(
     );
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
-    var searched_quiets: std.BoundedArray(TypedMove, 64) = .{};
-    var searched_noisies: std.BoundedArray(TypedMove, 64) = .{};
+    var searched_quiets: std.BoundedArray(Move, 64) = .{};
+    var searched_noisies: std.BoundedArray(Move, 64) = .{};
     var score_type: ScoreType = .upper;
     var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
@@ -364,13 +365,16 @@ fn negamax(
         if (!board.isLegal(stm, move)) {
             continue;
         }
-        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY) and board.isQuiet(move)) {
-            if (num_legal >= 3 + depth * depth) {
+
+        const is_quiet = board.isQuiet(move);
+        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+            if (num_legal >= 3 + depth * depth and is_quiet) {
                 mp.skip_quiets = true;
                 continue;
             }
 
-            if (!is_in_check and
+            if (is_quiet and
+                !is_in_check and
                 depth <= 6 and
                 @abs(alpha) < 2000 and
                 static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
@@ -380,24 +384,12 @@ fn negamax(
             }
         }
         num_legal += 1;
-        const typed = TypedMove.fromBoard(board, move);
 
         if (std.debug.runtime_safety) {
-            var count: usize = 0;
-            for (searched_noisies.slice()) |searched| {
-                if (std.meta.eql(searched, typed)) {
-                    count += 1;
-                }
-            }
-            for (searched_quiets.slice()) |searched| {
-                if (std.meta.eql(searched, typed)) {
-                    count += 1;
-                }
-            }
-            std.debug.assert(count == 0);
+            std.debug.assert(std.mem.count(Move, searched_noisies.slice(), &.{move}) == 0);
+            std.debug.assert(std.mem.count(Move, searched_quiets.slice(), &.{move}) == 0);
         }
 
-        const is_quiet = board.isQuiet(move);
         self.makeMove(stm, move);
         const score = blk: {
             var s: i16 = 0;
@@ -416,6 +408,10 @@ fn negamax(
                     -alpha,
                     depth - clamped_reduction,
                 );
+                if (self.stop) {
+                    break :blk 0;
+                }
+
                 if (s > alpha and clamped_reduction > 1) {
                     s = -self.negamax(
                         false,
@@ -425,6 +421,9 @@ fn negamax(
                         -alpha,
                         depth - 1,
                     );
+                    if (self.stop) {
+                        break :blk 0;
+                    }
                 }
             } else if (!is_pv or num_legal > 1) {
                 s = -self.negamax(
@@ -435,6 +434,9 @@ fn negamax(
                     -alpha,
                     depth - 1,
                 );
+                if (self.stop) {
+                    break :blk 0;
+                }
             }
             if (is_pv and (num_legal == 1 or s > alpha)) {
                 s = -self.negamax(
@@ -455,9 +457,9 @@ fn negamax(
         }
 
         if (is_quiet) {
-            searched_quiets.append(typed) catch {};
+            searched_quiets.append(move) catch {};
         } else {
-            searched_noisies.append(typed) catch {};
+            searched_noisies.append(move) catch {};
         }
 
         if (score > best_score) {
@@ -465,6 +467,9 @@ fn negamax(
             best_move = move;
         }
         if (score > alpha) {
+            if (is_root) {
+                self.root_move = move;
+            }
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
@@ -472,8 +477,8 @@ fn negamax(
                 if (is_quiet) {
                     self.histories.update(board, move, cur.prev, root.history.bonus(depth));
                     for (searched_quiets.slice()) |searched_move| {
-                        if (searched_move.move == move) break;
-                        self.histories.update(board, searched_move.move, cur.prev, -root.history.penalty(depth));
+                        if (searched_move == move) break;
+                        self.histories.update(board, searched_move, cur.prev, -root.history.penalty(depth));
                     }
                 }
                 break;
@@ -495,20 +500,36 @@ fn negamax(
     );
 
     if (is_root) {
-        self.root_move = best_move;
+        // self.root_move = best_move;
         self.root_score = best_score;
     }
 
     return best_score;
 }
 
-fn writeInfo(self: *Searcher, score: i16, depth: i32) void {
+const InfoType = enum {
+    completed,
+    lower,
+    upper,
+};
+
+fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     const elapsed = @max(1, self.limits.timer.read());
-    write("info depth {} score {s} nodes {} nps {} time {} pv {s}\n", .{
+    const type_str = switch (tp) {
+        .completed => "",
+        .lower => " lowerbound",
+        .upper => " upperbound",
+    };
+    var nodes: u64 = 0;
+    for (engine.searchers) |searcher| {
+        nodes += searcher.nodes;
+    }
+    write("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
         depth,
         evaluation.formatScore(score).slice(),
-        self.nodes,
-        @as(u128, self.nodes) * std.time.ns_per_s / elapsed,
+        type_str,
+        nodes,
+        @as(u128, nodes) * std.time.ns_per_s / elapsed,
         (elapsed + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
         self.root_move.toString(&self.searchStackRoot()[0].board).slice(),
     });
@@ -591,12 +612,22 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper,
                     depth,
                 );
+                if (self.stop or evaluation.isMateScore(score)) {
+                    break;
+                }
+                const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
                 if (score >= aspiration_upper) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
+                    if (should_print) {
+                        self.writeInfo(score, depth, .lower);
+                    }
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
+                    if (should_print) {
+                        self.writeInfo(score, depth, .upper);
+                    }
                 } else {
                     break;
                 }
@@ -605,21 +636,20 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         previous_score = score;
 
         completed_depth = depth;
-        if (self.stop)
-            break;
-        if (self.limits.checkRoot(self.nodes, depth))
-            break;
         if (is_main_thread) {
             if (!quiet) {
-                self.writeInfo(self.root_score, depth);
+                self.writeInfo(self.root_score, depth, .completed);
             }
+        }
+        if (self.stop or self.limits.checkRoot(self.nodes, depth)) {
+            break;
         }
     }
 
     if (is_main_thread) {
         if (!quiet) {
-            self.writeInfo(self.root_score, completed_depth);
             write("bestmove {s}\n", .{self.root_move.toString(&params.board).slice()});
         }
+        engine.stopSearch();
     }
 }

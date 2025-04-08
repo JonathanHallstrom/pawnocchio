@@ -21,7 +21,10 @@ const root = @import("root.zig");
 hard_time: u64, // must always have a hard time limit
 soft_time: ?u64 = null,
 max_depth: ?i32 = null,
+soft_nodes: u64 = std.math.maxInt(u64),
+hard_nodes: u64 = std.math.maxInt(u64),
 timer: std.time.Timer,
+last_aspiration_print: u64 = 0,
 
 const Limits = @This();
 
@@ -55,7 +58,13 @@ pub fn initFixedDepth(max_depth_: i32) Limits {
 }
 
 pub fn checkSearch(self: *Limits, nodes: u64) bool {
+    if (std.debug.runtime_safety and nodes >= self.hard_nodes) {
+        return true;
+    }
     if (nodes % 1024 == 0) {
+        if (nodes >= self.hard_nodes) {
+            return true;
+        }
         if (self.timer.read() >= self.hard_time) {
             return true;
         }
@@ -67,7 +76,9 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
 }
 
 pub fn checkRoot(self: *Limits, nodes: u64, depth: i32) bool {
-    _ = nodes;
+    if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
+        return true;
+    }
     if (self.max_depth) |md| {
         if (depth >= md) {
             return true;
@@ -88,6 +99,11 @@ pub fn checkRoot(self: *Limits, nodes: u64, depth: i32) bool {
     return false;
 }
 
-pub fn getMaxDepth(self: Limits) i32 {
-    return if (self.max_depth) |md| md else root.Searcher.MAX_PLY;
+pub fn shouldPrintInfoInAspiration(self: *Limits) bool {
+    const cur_time = self.timer.read();
+    if (cur_time - self.last_aspiration_print > std.time.ns_per_ms * 50) {
+        self.last_aspiration_print = cur_time;
+        return true;
+    }
+    return false;
 }

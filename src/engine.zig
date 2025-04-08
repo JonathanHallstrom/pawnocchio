@@ -26,7 +26,7 @@ pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atom
 var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
 var num_finished_threads: std.atomic.Value(usize) align(std.atomic.cache_line) = std.atomic.Value(usize).init(0);
 var current_num_threads: u32 align(std.atomic.cache_line) = 0; // 0 for uninitialized
-var searchers: []Searcher align(std.atomic.cache_line) = &.{};
+pub var searchers: []Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
@@ -106,6 +106,7 @@ pub fn deinit() void {
 
 pub fn startSearch(settings: SearchSettings) void {
     stopSearch();
+    waitUntilDoneSearching();
     num_finished_threads.store(0, .seq_cst);
     is_searching.store(true, .seq_cst);
     stop_searching.store(false, .seq_cst);
@@ -127,7 +128,6 @@ pub fn querySearchedNodes() u64 {
 
 pub fn stopSearch() void {
     stop_searching.store(true, .seq_cst);
-    waitUntilDoneSearching();
 }
 
 pub fn shouldStopSearching() bool {
