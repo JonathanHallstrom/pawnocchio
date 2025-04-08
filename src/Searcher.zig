@@ -307,22 +307,24 @@ fn search(
     }
 
     var static_eval: i16 = evaluation.matedIn(self.ply);
+    var corrected_static_eval: i16 = static_eval;
     if (!is_in_check) {
         static_eval = evaluate(board, self.curEvalState().*);
+        corrected_static_eval = self.histories.correct(board, static_eval);
     }
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check)
     {
-        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * depth) {
-            return static_eval;
+        if (depth <= 5 and corrected_static_eval >= beta + tunable_constants.rfp_margin * depth) {
+            return corrected_static_eval;
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
-            static_eval >= beta and
+            corrected_static_eval >= beta and
             non_pk != 0 and
             !cur.prev.move.isNull())
         {
@@ -377,7 +379,7 @@ fn search(
                 !is_in_check and
                 depth <= 6 and
                 @abs(alpha) < 2000 and
-                static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+                corrected_static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
             {
                 mp.skip_quiets = true;
                 continue;
@@ -493,10 +495,10 @@ fn search(
             if (score >= beta) {
                 score_type = .lower;
                 if (is_quiet) {
-                    self.histories.update(board, move, cur.prev, root.history.bonus(depth));
+                    self.histories.updateQuiet(board, move, cur.prev, root.history.bonus(depth));
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.update(board, searched_move, cur.prev, -root.history.penalty(depth));
+                        self.histories.updateQuiet(board, searched_move, cur.prev, -root.history.penalty(depth));
                     }
                 }
                 break;
@@ -520,6 +522,17 @@ fn search(
     if (is_root) {
         // self.root_move = best_move;
         self.root_score = best_score;
+    }
+
+    if (!is_in_check and best_score >= alpha_) {
+        if (switch (score_type) {
+            .none => unreachable,
+            .lower => best_score > corrected_static_eval,
+            .upper => best_score < corrected_static_eval,
+            .exact => true,
+        }) {
+            self.histories.updateCorrection(board, corrected_static_eval, best_score, depth);
+        }
     }
 
     return best_score;
