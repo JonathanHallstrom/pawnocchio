@@ -156,7 +156,7 @@ fn isRepetition(self: *Searcher) bool {
     return false;
 }
 
-fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
+fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
     var alpha = alpha_;
 
     self.nodes += 1;
@@ -200,7 +200,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         }
 
         self.makeMove(stm, move);
-        const score = -self.qsearch(false, stm.flipped(), -beta, -alpha);
+        const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
         if (self.stop) {
             return 0;
@@ -244,7 +244,7 @@ fn search(
         return 0;
     }
     if (depth <= 0) {
-        return self.qsearch(is_root, stm, alpha, beta);
+        return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
 
     const cur = self.curStackEntry();
@@ -315,6 +315,19 @@ fn search(
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check)
     {
+        if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
+            const razor_score = self.qsearch(
+                is_root,
+                is_pv,
+                stm,
+                alpha,
+                alpha + 1,
+            );
+            if (razor_score <= alpha) {
+                return razor_score;
+            }
+        }
+
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * depth) {
             return static_eval;
         }
