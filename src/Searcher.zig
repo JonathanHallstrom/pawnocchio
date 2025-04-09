@@ -242,7 +242,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     }
 
     if (tt_entry.depth == 0) {
-        engine.writeTT(tt_hash, best_move, best_score, score_type, 0);
+        engine.writeTT(tt_hash, best_move, evaluation.scoreToTt(best_score, self.ply), score_type, 0);
     }
 
     return best_score;
