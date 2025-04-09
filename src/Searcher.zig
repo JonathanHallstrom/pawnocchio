@@ -386,25 +386,26 @@ fn search(
 
         const is_quiet = board.isQuiet(move);
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
-            if (num_legal >= 3 + depth * depth and is_quiet) {
-                mp.skip_quiets = true;
-                continue;
-            }
+            if (is_quiet) {
+                if (num_legal >= 3 + depth * depth) {
+                    mp.skip_quiets = true;
+                    continue;
+                }
 
-            const history_score = self.histories.readQuiet(board, move, cur.prev);
-            if (depth <= 3 and history_score < depth * -tunable_constants.history_pruning_mult) {
-                mp.skip_quiets = true;
-                continue;
-            }
+                const history_score = self.histories.readQuiet(board, move, cur.prev);
+                if (depth <= 3 and history_score < depth * -tunable_constants.history_pruning_mult) {
+                    mp.skip_quiets = true;
+                    continue;
+                }
 
-            if (is_quiet and
-                !is_in_check and
-                depth <= 6 and
-                @abs(alpha) < 2000 and
-                corrected_static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
-            {
-                mp.skip_quiets = true;
-                continue;
+                if (!is_in_check and
+                    depth <= 6 and
+                    @abs(alpha) < 2000 and
+                    corrected_static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+                {
+                    mp.skip_quiets = true;
+                    continue;
+                }
             }
 
             const see_pruning_thresh = if (is_quiet)
