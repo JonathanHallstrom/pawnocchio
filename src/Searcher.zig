@@ -323,6 +323,19 @@ fn search(
         if (depth <= 5 and corrected_static_eval >= beta + tunable_constants.rfp_margin * depth) {
             return corrected_static_eval;
         }
+        if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
+            const razor_score = self.qsearch(
+                is_root,
+                is_pv,
+                stm,
+                alpha,
+                alpha + 1,
+            );
+
+            if (razor_score <= alpha) {
+                return razor_score;
+            }
+        }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
