@@ -122,6 +122,7 @@ pub const HistoryTable = struct {
         self.quiet.reset();
         self.countermove.reset();
         @memset(std.mem.asBytes(&self.pawn_corrhist), 0);
+        @memset(std.mem.asBytes(&self.nonpawn_corrhist), 0);
     }
 
     pub fn readQuiet(self: *const HistoryTable, board: *const Board, move: Move, prev: TypedMove) i32 {
