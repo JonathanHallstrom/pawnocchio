@@ -391,6 +391,12 @@ fn search(
                 continue;
             }
 
+            const history_score = self.histories.readQuiet(board, move, cur.prev);
+            if (depth <= 3 and history_score < depth * -tunable_constants.history_pruning_mult) {
+                mp.skip_quiets = true;
+                continue;
+            }
+
             if (is_quiet and
                 !is_in_check and
                 depth <= 6 and
