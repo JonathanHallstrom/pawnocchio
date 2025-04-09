@@ -189,8 +189,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         if (corrected_static_eval > alpha)
             alpha = corrected_static_eval;
     }
+
     var best_score = corrected_static_eval;
     var best_move = Move.init();
+    var score_type: ScoreType = .upper;
+
     var mp = MovePicker.initQs(
         board,
         &cur.movelist,
@@ -225,7 +228,9 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
         if (score > alpha) {
             alpha = score;
+            score_type = .exact;
             if (score >= beta) {
+                score_type = .lower;
                 break;
             }
         }
@@ -234,6 +239,10 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     if (is_root) {
         self.root_move = best_move;
         self.root_score = best_score;
+    }
+
+    if (tt_entry.depth == 0) {
+        engine.writeTT(tt_hash, best_move, best_score, score_type, 0);
     }
 
     return best_score;
