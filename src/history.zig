@@ -115,12 +115,12 @@ pub const ContHistory = struct {
 pub const HistoryTable = struct {
     quiet: QuietHistory,
     countermove: ContHistory,
-    pawn_corrhist: [16384]CorrhistEntry,
+    pawn_corrhist: [16384][2]CorrhistEntry,
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
         self.countermove.reset();
-        @memset(&self.pawn_corrhist, .{});
+        @memset(std.mem.asBytes(&self.pawn_corrhist), 0);
     }
 
     pub fn readQuiet(self: *const HistoryTable, board: *const Board, move: Move, prev: TypedMove) i32 {
@@ -142,11 +142,11 @@ pub const HistoryTable = struct {
         const err = (score - corrected_static_eval) * 256;
         const weight = @min(depth, 15) + 1;
 
-        self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE].update(err, weight);
+        self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
     }
 
     pub fn correct(self: *const HistoryTable, board: *const Board, static_eval: i16) i16 {
-        const pawn_correction: i32 = self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE].val;
+        const pawn_correction: i32 = self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].val;
 
         const correction = pawn_correction >> 8;
         return evaluation.clampScore(static_eval + correction);
