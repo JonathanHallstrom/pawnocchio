@@ -54,6 +54,15 @@ pub fn scoreFromTt(score: i16, ply: u8) i16 {
     return score;
 }
 
+pub fn checkTTBound(score: i16, alpha: i32, beta: i32, tp: root.ScoreType) bool {
+    return switch (tp) {
+        .none => false,
+        .lower => score >= beta,
+        .upper => score <= alpha,
+        .exact => true,
+    };
+}
+
 pub fn matedIn(plies: u16) i16 {
     return -checkmate_score + @as(i16, @intCast(plies));
 }

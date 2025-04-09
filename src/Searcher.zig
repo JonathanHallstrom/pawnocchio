@@ -156,7 +156,7 @@ fn isRepetition(self: *Searcher) bool {
     return false;
 }
 
-fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
+fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
     var alpha = alpha_;
 
     self.nodes += 1;
@@ -167,6 +167,17 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
+
+    const tt_hash = board.hash;
+    var tt_entry = engine.readTT(tt_hash);
+    const tt_hit = tt_entry.hash == tt_hash;
+    if (!tt_hit) {
+        tt_entry = .{};
+    }
+    const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
+    if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+        return tt_score;
+    }
 
     var static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval: i16 = static_eval;
@@ -184,7 +195,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         board,
         &cur.movelist,
         &self.histories,
-        Move.init(),
+        tt_entry.move,
         TypedMove.init(),
     );
 
@@ -201,7 +212,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime stm: Colour, alpha_
         }
 
         self.makeMove(stm, move);
-        const score = -self.qsearch(false, stm.flipped(), -beta, -alpha);
+        const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
         if (self.stop) {
             return 0;
@@ -245,7 +256,7 @@ fn search(
         return 0;
     }
     if (depth <= 0) {
-        return self.qsearch(is_root, stm, alpha, beta);
+        return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
 
     const cur = self.curStackEntry();
@@ -291,17 +302,8 @@ fn search(
         if (tt_entry.depth >= depth) {
             const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
             if (!is_pv) {
-                switch (tt_entry.score_type) {
-                    .none => {},
-                    .lower => {
-                        if (tt_score >= beta) return tt_score;
-                    },
-                    .upper => {
-                        if (tt_score <= alpha) return tt_score;
-                    },
-                    .exact => {
-                        return tt_score;
-                    },
+                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+                    return tt_score;
                 }
             }
         }
@@ -526,12 +528,9 @@ fn search(
     }
 
     if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
-        if (switch (score_type) {
-            .none => unreachable,
-            .lower => best_score > corrected_static_eval,
-            .upper => best_score < corrected_static_eval,
-            .exact => true,
-        }) {
+        if (corrected_static_eval != best_score and
+            evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
+        {
             self.histories.updateCorrection(board, corrected_static_eval, best_score, depth);
         }
     }
