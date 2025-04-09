@@ -809,9 +809,8 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             if (pt == .pawn) {
                 updated_halfmove = 0;
                 const pawn_d_rank = if (stm == .white) 1 else -1;
-                const from_double_pushed = from.move(2 * pawn_d_rank, 0);
-                const target = from.move(pawn_d_rank, 0);
-                if (from_double_pushed == to) {
+                if (to.toInt() == @as(i8, from.toInt()) + 8 * 2 * pawn_d_rank) {
+                    const target = from.move(pawn_d_rank, 0);
                     if (Bitboard.pawnAttacks(target, stm) & self.pawnsFor(stm.flipped()) != 0) {
                         self.ep_target = target;
                         self.updateEPHash();
