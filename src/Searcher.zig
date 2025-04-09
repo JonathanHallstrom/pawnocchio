@@ -449,13 +449,16 @@ fn search(
                 }
 
                 if (s > alpha and clamped_reduction > 1) {
+                    const do_deeper_search = s > best_score + 40 + 4 * @as(i32, new_depth);
+                    const do_shallower_search = s < best_score + @as(i32, new_depth);
+
                     s = -self.search(
                         false,
                         false,
                         stm.flipped(),
                         -alpha - 1,
                         -alpha,
-                        new_depth,
+                        new_depth + @intFromBool(do_deeper_search) - @intFromBool(do_shallower_search),
                     );
                     if (self.stop) {
                         break :blk 0;
