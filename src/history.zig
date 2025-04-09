@@ -151,7 +151,7 @@ pub const HistoryTable = struct {
         const pawn_correction: i32 = self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE].val;
         const white_nonpawn_correction: i32 = self.nonpawn_corrhist[board.nonpawn_hash[0] % CORRHIST_SIZE][0].val;
         const black_nonpawn_correction: i32 = self.nonpawn_corrhist[board.nonpawn_hash[1] % CORRHIST_SIZE][1].val;
-        const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction >> 1;
+        const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction;
         const correction = (pawn_correction + nonpawn_correction) >> 8;
         return evaluation.clampScore(static_eval + correction);
     }
