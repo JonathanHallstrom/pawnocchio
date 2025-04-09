@@ -323,7 +323,7 @@ fn search(
         if (depth <= 5 and corrected_static_eval >= beta + tunable_constants.rfp_margin * depth) {
             return corrected_static_eval;
         }
-        if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
+        if (depth <= 3 and corrected_static_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
                 is_root,
                 is_pv,
@@ -334,6 +334,9 @@ fn search(
 
             if (razor_score <= alpha) {
                 return razor_score;
+            }
+            if (tt_entry.score_type == .none) {
+                tt_entry = engine.readTT(tt_hash);
             }
         }
 
