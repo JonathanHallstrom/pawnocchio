@@ -49,7 +49,7 @@ const tunable_defaults = struct {
     pub const see_noisy_pruning_mult: i32 = 50;
     pub const razoring_margin: i32 = 200;
     pub const history_pruning_mult: i32 = 2048;
-    pub const nmp_eval_reduction_scale: i32 = 2048;
+    pub const nmp_eval_reduction_scale: i32 = 41;
 };
 
 pub const tunables = [_]Tunable{
