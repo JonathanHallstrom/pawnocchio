@@ -65,15 +65,29 @@ pub const StackEntry = struct {
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
     prev: TypedMove,
+    pv_moves: std.BoundedArray(Move, MAX_PLY) = .{},
 
     pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove) void {
         self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
         self.move = move_;
         self.prev = prev_;
+        self.pv_moves.len = 0;
     }
 };
 
 const Searcher = @This();
+
+pub fn updatePv(self: *Searcher, move: Move) void {
+    const cur = self.curStackEntry();
+    cur.pv_moves.len = self.ply + 1;
+    cur.pv_moves.slice()[self.ply] = move;
+    if (self.ply + 1 < MAX_PLY) {
+        const next = &self.searchStackRoot()[self.ply + 1];
+        const num_moves = @max(self.ply + 1, next.pv_moves.len);
+        cur.pv_moves.len = num_moves;
+        @memcpy(cur.pv_moves.slice()[self.ply + 1 .. num_moves], next.pv_moves.buffer[self.ply + 1 .. num_moves]);
+    }
+}
 
 fn curStackEntry(self: *Searcher) *StackEntry {
     return &self.searchStackRoot()[self.ply];
@@ -528,6 +542,9 @@ fn search(
             if (is_root) {
                 self.root_move = move;
             }
+            if (is_pv) {
+                self.updatePv(best_move);
+            }
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
@@ -590,15 +607,27 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     for (engine.searchers) |searcher| {
         nodes += searcher.nodes;
     }
-    write("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
+    var buf: [16384]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    const writer = fbs.writer();
+    var board = self.searchStackRoot()[0].board;
+    writer.print("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}", .{
         depth,
         evaluation.formatScore(score).slice(),
         type_str,
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
         (elapsed + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
-        self.root_move.toString(&self.searchStackRoot()[0].board).slice(),
-    });
+        self.root_move.toString(&board).slice(),
+    }) catch unreachable;
+
+    if (self.curStackEntry().pv_moves.len > 1) {
+        for (self.curStackEntry().pv_moves.slice()[1..]) |move| {
+            board.stm = board.stm.flipped();
+            writer.print(" {s}", .{move.toString(&board).slice()}) catch break;
+        }
+    }
+    write("{s}\n", .{fbs.getWritten()});
 }
 
 fn retainOnlyDuplicates(slice: []u64) usize {
@@ -686,13 +715,13 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 if (score >= aspiration_upper) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
-                    if (should_print) {
+                    if (!quiet and should_print) {
                         self.writeInfo(score, depth, .lower);
                     }
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
-                    if (should_print) {
+                    if (!quiet and should_print) {
                         self.writeInfo(score, depth, .upper);
                     }
                 } else {
