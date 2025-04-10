@@ -179,11 +179,17 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         return tt_score;
     }
 
-    var static_eval: i16 = evaluation.matedIn(self.ply);
-    var corrected_static_eval: i16 = static_eval;
+    var raw_static_eval: i16 = evaluation.matedIn(self.ply);
+    var corrected_static_eval = raw_static_eval;
+    var static_eval = corrected_static_eval;
     if (!is_in_check) {
-        static_eval = evaluate(board, self.curEvalState().*);
-        corrected_static_eval = self.histories.correct(board, static_eval);
+        raw_static_eval = evaluate(board, self.curEvalState().*);
+        corrected_static_eval = self.histories.correct(board, raw_static_eval);
+        static_eval = corrected_static_eval;
+        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
+            static_eval = tt_score;
+        }
+
         if (corrected_static_eval >= beta)
             return corrected_static_eval;
         if (corrected_static_eval > alpha)
@@ -295,12 +301,13 @@ fn search(
 
     const tt_hash = board.hash;
     var tt_entry = engine.readTT(tt_hash);
-    if (tt_entry.hash != tt_hash) {
+    const tt_hit = tt_entry.hash == tt_hash;
+    if (!tt_hit) {
         tt_entry = .{};
     }
-    if (tt_entry.hash == tt_hash) {
+    const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
+    if (tt_hit) {
         if (tt_entry.depth >= depth) {
-            const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
                     return tt_score;
@@ -309,18 +316,23 @@ fn search(
         }
     }
 
-    var static_eval: i16 = evaluation.matedIn(self.ply);
-    var corrected_static_eval: i16 = static_eval;
+    var raw_static_eval: i16 = evaluation.matedIn(self.ply);
+    var corrected_static_eval = raw_static_eval;
+    var static_eval = corrected_static_eval;
     if (!is_in_check) {
-        static_eval = evaluate(board, self.curEvalState().*);
-        corrected_static_eval = self.histories.correct(board, static_eval);
+        raw_static_eval = evaluate(board, self.curEvalState().*);
+        corrected_static_eval = self.histories.correct(board, raw_static_eval);
+        static_eval = corrected_static_eval;
+        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
+            static_eval = tt_score;
+        }
     }
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check)
     {
-        if (depth <= 5 and corrected_static_eval >= beta + tunable_constants.rfp_margin * depth) {
+        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * depth) {
             return corrected_static_eval;
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
@@ -340,7 +352,7 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
-            corrected_static_eval >= beta and
+            static_eval >= beta and
             non_pk != 0 and
             !cur.prev.move.isNull())
         {
@@ -401,7 +413,7 @@ fn search(
                 if (!is_in_check and
                     depth <= 6 and
                     @abs(alpha) < 2000 and
-                    corrected_static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+                    static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
                 {
                     mp.skip_quiets = true;
                     continue;
