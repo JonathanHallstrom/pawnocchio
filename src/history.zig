@@ -153,13 +153,13 @@ pub const HistoryTable = struct {
     }
 
     pub fn correct(self: *const HistoryTable, board: *const Board, prev: TypedMove, static_eval: i16) i16 {
-        const pawn_correction: i32 = self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].val;
+        const pawn_correction: i32 = (&self.pawn_corrhist)[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].val;
 
-        const white_nonpawn_correction: i32 = self.nonpawn_corrhist[board.nonpawn_hash[0] % CORRHIST_SIZE][board.stm.toInt()][0].val;
-        const black_nonpawn_correction: i32 = self.nonpawn_corrhist[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].val;
+        const white_nonpawn_correction: i32 = (&self.nonpawn_corrhist)[board.nonpawn_hash[0] % CORRHIST_SIZE][board.stm.toInt()][0].val;
+        const black_nonpawn_correction: i32 = (&self.nonpawn_corrhist)[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].val;
         const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction >> 1;
 
-        const countermove_correction: i32 = self.countermove_corrhist[@as(usize, prev.tp.toInt()) * 64 + prev.move.to().toInt()][board.stm.toInt()].val;
+        const countermove_correction: i32 = (&self.countermove_corrhist)[@as(usize, prev.tp.toInt()) * 64 + prev.move.to().toInt()][board.stm.toInt()].val;
 
         const correction = (pawn_correction + nonpawn_correction + countermove_correction) >> 8;
         return evaluation.clampScore(static_eval + correction);
