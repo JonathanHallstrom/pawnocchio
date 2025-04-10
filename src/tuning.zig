@@ -49,6 +49,8 @@ const tunable_defaults = struct {
     pub const see_noisy_pruning_mult: i32 = 50;
     pub const razoring_margin: i32 = 200;
     pub const history_pruning_mult: i32 = 2048;
+    pub const nodetm_base: i32 = 1536;
+    pub const nodetm_mult: i32 = 819;
 };
 
 pub const tunables = [_]Tunable{
@@ -71,6 +73,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult },
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult },
+    .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
+    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -93,4 +97,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
     pub var razoring_margin = tunable_defaults.razoring_margin;
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
+    pub var nodetm_base = tunable_defaults.nodetm_base;
+    pub var nodetm_mult = tunable_defaults.nodetm_mult;
 } else tunable_defaults;

@@ -444,6 +444,9 @@ fn search(
             extension += 1;
         }
         const score = blk: {
+            const node_count_before: u64 = if (is_root) self.nodes else undefined;
+            defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
+
             var s: i16 = 0;
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
@@ -648,6 +651,7 @@ fn init(self: *Searcher, params: Params) void {
     if (params.needs_full_reset) {
         self.histories.reset();
     }
+    self.limits.resetNodeCounts();
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
@@ -704,7 +708,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.root_score, depth, .completed);
             }
         }
-        if (self.stop or self.limits.checkRoot(self.nodes, depth)) {
+        if (self.stop or self.limits.checkRoot(self.nodes, depth, self.root_move)) {
             break;
         }
     }
