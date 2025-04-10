@@ -180,8 +180,8 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     }
 
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
-    var corrected_static_eval = raw_static_eval;
-    var static_eval = corrected_static_eval;
+    var corrected_static_eval: i16 = raw_static_eval;
+    var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = evaluate(board, self.curEvalState().*);
         corrected_static_eval = self.histories.correct(board, raw_static_eval);
@@ -190,12 +190,12 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             static_eval = tt_score;
         }
 
-        if (corrected_static_eval >= beta)
-            return corrected_static_eval;
-        if (corrected_static_eval > alpha)
-            alpha = corrected_static_eval;
+        if (static_eval >= beta)
+            return static_eval;
+        if (static_eval > alpha)
+            alpha = static_eval;
     }
-    var best_score = corrected_static_eval;
+    var best_score = static_eval;
     var best_move = Move.init();
     var mp = MovePicker.initQs(
         board,
@@ -333,7 +333,7 @@ fn search(
         !is_in_check)
     {
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * depth) {
-            return corrected_static_eval;
+            return static_eval;
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
@@ -413,7 +413,7 @@ fn search(
                 if (!is_in_check and
                     depth <= 6 and
                     @abs(alpha) < 2000 and
-                    static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+                    corrected_static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
                 {
                     mp.skip_quiets = true;
                     continue;
