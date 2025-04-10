@@ -357,7 +357,8 @@ fn search(
             !cur.prev.move.isNull())
         {
             engine.prefetchTT(board.hash ^ root.zobrist.turn());
-            const nmp_reduction = tunable_constants.nmp_base + (depth * tunable_constants.nmp_mult >> 5);
+            var nmp_reduction = tunable_constants.nmp_base + (depth * tunable_constants.nmp_mult >> 5);
+            nmp_reduction += @min(3, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale >> 14);
 
             self.makeNullMove(stm);
             const nmp_score = -self.search(
