@@ -444,17 +444,20 @@ fn search(
         const is_quiet = board.isQuiet(move);
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             if (is_quiet) {
-                if (num_legal >= 3 + depth * depth) {
+                // late move pruning, lmp
+                if (num_legal >= (3 + depth * depth) >> @intFromBool(!improving)) {
                     mp.skip_quiets = true;
                     continue;
                 }
 
+                // history pruning, hp
                 const history_score = self.histories.readQuiet(board, move, cur.prev);
                 if (depth <= 3 and history_score < depth * -tunable_constants.history_pruning_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
 
+                // futility pruning, fp
                 if (!is_in_check and
                     depth <= 6 and
                     @abs(alpha) < 2000 and
