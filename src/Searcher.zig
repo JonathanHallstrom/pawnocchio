@@ -264,6 +264,9 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         if (score > best_score) {
             best_score = score;
             best_move = move;
+            if (score > evaluation.matedIn(MAX_PLY)) {
+                mp.skip_quiets = true;
+            }
         }
 
         if (score > alpha) {
