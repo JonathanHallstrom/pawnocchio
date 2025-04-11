@@ -51,6 +51,7 @@ const tunable_defaults = struct {
     pub const history_pruning_mult: i32 = 2048;
     pub const nodetm_base: i32 = 1536;
     pub const nodetm_mult: i32 = 819;
+    pub const nmp_eval_reduction_scale: i32 = 41;
 };
 
 pub const tunables = [_]Tunable{
@@ -75,6 +76,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
+    .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -99,4 +101,5 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
+    pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
 } else tunable_defaults;
