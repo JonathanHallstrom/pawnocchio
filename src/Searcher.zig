@@ -46,6 +46,30 @@ pub const Params = struct {
     needs_full_reset: bool = false,
 };
 
+const EvalPair = struct {
+    white: ?i16 = null,
+    black: ?i16 = null,
+
+    pub fn updateWith(self: EvalPair, comptime col: Colour, val: i16) EvalPair {
+        if (col == .white) {
+            return .{
+                .white = val,
+                .black = self.black,
+            };
+        } else {
+            return .{
+                .white = self.white,
+                .black = val,
+            };
+        }
+    }
+
+    pub fn isImprovement(self: EvalPair, comptime col: Colour, val: i16) bool {
+        const prev_opt = if (col == .white) self.white else self.black;
+        return if (prev_opt) |prev| val > prev else false;
+    }
+};
+
 const STACK_PADDING = 1;
 
 nodes: u64,
@@ -65,11 +89,13 @@ pub const StackEntry = struct {
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
     prev: TypedMove,
+    evals: EvalPair,
 
-    pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove) void {
+    pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
         self.move = move_;
         self.prev = prev_;
+        self.evals = prev_evals;
     }
 };
 
@@ -108,7 +134,12 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const new_stack_entry = self.curStackEntry();
     const new_eval_state = self.curEvalState();
 
-    new_stack_entry.init(prev_stack_entry.board, TypedMove.fromBoard(&prev_stack_entry.board, move), prev_stack_entry.move);
+    new_stack_entry.init(
+        prev_stack_entry.board,
+        TypedMove.fromBoard(&prev_stack_entry.board, move),
+        prev_stack_entry.move,
+        prev_stack_entry.evals,
+    );
     new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -127,7 +158,12 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const new_stack_entry = self.curStackEntry();
     const new_eval_state = self.curEvalState();
 
-    new_stack_entry.init(prev_stack_entry.board, TypedMove.init(), TypedMove.init());
+    new_stack_entry.init(
+        prev_stack_entry.board,
+        TypedMove.init(),
+        TypedMove.init(),
+        prev_stack_entry.evals,
+    );
     new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -185,6 +221,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     if (!is_in_check) {
         raw_static_eval = evaluate(board, self.curEvalState().*);
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
             static_eval = tt_score;
@@ -319,9 +356,13 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     var static_eval = corrected_static_eval;
+    var improving = false;
     if (!is_in_check) {
         raw_static_eval = evaluate(board, self.curEvalState().*);
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        improving = cur.evals.isImprovement(stm, corrected_static_eval);
+        cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
             static_eval = tt_score;
@@ -332,7 +373,7 @@ fn search(
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check)
     {
-        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * depth) {
+        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
             return static_eval;
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
@@ -647,7 +688,7 @@ fn init(self: *Searcher, params: Params) void {
 
     self.root_move = Move.init();
     self.root_score = 0;
-    self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init());
+    self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
         self.histories.reset();
