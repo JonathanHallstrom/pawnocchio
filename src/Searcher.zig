@@ -292,8 +292,10 @@ fn search(
     comptime stm: Colour,
     alpha_original: i32,
     beta: i32,
-    depth: i32,
+    depth_: i32,
+    cutnode: bool,
 ) i16 {
+    var depth = depth_;
     var alpha = alpha_original;
 
     self.nodes += 1;
@@ -356,6 +358,13 @@ fn search(
         }
     }
 
+    if (depth >= 4 and
+        (is_pv or cutnode) and
+        (tt_entry.move.isNull() or !tt_hit))
+    {
+        depth -= 1;
+    }
+
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     var static_eval = corrected_static_eval;
@@ -412,6 +421,7 @@ fn search(
                 -beta,
                 -beta + 1,
                 depth - nmp_reduction,
+                !cutnode,
             );
             self.unmakeNullMove(stm);
 
@@ -510,6 +520,7 @@ fn search(
                     -alpha - 1,
                     -alpha,
                     reduced_depth,
+                    true,
                 );
                 if (self.stop) {
                     break :blk 0;
@@ -523,6 +534,7 @@ fn search(
                         -alpha - 1,
                         -alpha,
                         new_depth,
+                        !cutnode,
                     );
                     if (self.stop) {
                         break :blk 0;
@@ -536,6 +548,7 @@ fn search(
                     -alpha - 1,
                     -alpha,
                     new_depth,
+                    !cutnode,
                 );
                 if (self.stop) {
                     break :blk 0;
@@ -549,6 +562,7 @@ fn search(
                     -beta,
                     -alpha,
                     new_depth,
+                    false,
                 );
             }
 
@@ -723,6 +737,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_lower,
                     aspiration_upper,
                     depth,
+                    false,
                 );
                 if (self.stop or evaluation.isMateScore(score)) {
                     break;
