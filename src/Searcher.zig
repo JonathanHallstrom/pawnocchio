@@ -445,7 +445,7 @@ fn search(
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             if (is_quiet) {
                 // late move pruning, lmp
-                const lmp_threshold = 3 + if (improving) depth * depth else depth;
+                const lmp_threshold = 3 + if (improving) depth * depth else (depth * depth * 3 + 3) >> 2;
                 if (num_legal >= lmp_threshold) {
                     mp.skip_quiets = true;
                     continue;
