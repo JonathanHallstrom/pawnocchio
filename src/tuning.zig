@@ -51,7 +51,7 @@ const tunable_defaults = struct {
     pub const history_pruning_mult: i32 = 2048;
     pub const nodetm_base: i32 = 1536;
     pub const nodetm_mult: i32 = 819;
-    pub const nmp_eval_reduction_scale: i32 = 41;
+    pub const nmp_eval_reduction_scale: i32 = 27;
 };
 
 pub const tunables = [_]Tunable{
