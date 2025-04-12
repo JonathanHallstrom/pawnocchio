@@ -593,10 +593,10 @@ fn search(
             if (score >= beta) {
                 score_type = .lower;
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, root.history.bonus(depth));
+                    self.histories.updateQuiet(board, move, cur.prev, root.history.bonus(depth + @intFromBool(static_eval <= alpha)));
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, -root.history.penalty(depth));
+                        self.histories.updateQuiet(board, searched_move, cur.prev, -root.history.penalty(depth + @intFromBool(static_eval <= alpha)));
                     }
                 }
                 break;
