@@ -52,6 +52,7 @@ const tunable_defaults = struct {
     pub const nodetm_base: i32 = 1536;
     pub const nodetm_mult: i32 = 819;
     pub const nmp_eval_reduction_scale: i32 = 27;
+    pub const qs_futility_margin: i32 = 200;
 };
 
 pub const tunables = [_]Tunable{
@@ -77,6 +78,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
+    .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -102,4 +104,5 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
+    pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
 } else tunable_defaults;
