@@ -244,7 +244,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         &cur.movelist,
         &self.histories,
         tt_entry.move,
-        TypedMove.init(),
+        cur.prev,
     );
 
     while (mp.next()) |scored_move| {
