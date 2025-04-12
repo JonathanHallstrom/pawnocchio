@@ -232,6 +232,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         if (static_eval > alpha)
             alpha = static_eval;
     }
+
+    if (self.ply >= MAX_PLY - 1) {
+        return static_eval;
+    }
+
     var best_score = static_eval;
     var best_move = Move.init();
     var mp = MovePicker.initQs(
