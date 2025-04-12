@@ -510,6 +510,10 @@ fn search(
                 reduction -= @intFromBool(is_pv);
                 reduction += @intFromBool(cutnode);
 
+                if (is_quiet) {
+                    reduction -= self.histories.readQuiet(board, move, cur.prev) >> 13;
+                }
+
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
 
                 const reduced_depth = depth + extension - clamped_reduction;
