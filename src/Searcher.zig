@@ -46,6 +46,30 @@ pub const Params = struct {
     needs_full_reset: bool = false,
 };
 
+const EvalPair = struct {
+    white: ?i16 = null,
+    black: ?i16 = null,
+
+    pub fn updateWith(self: EvalPair, comptime col: Colour, val: i16) EvalPair {
+        if (col == .white) {
+            return .{
+                .white = val,
+                .black = self.black,
+            };
+        } else {
+            return .{
+                .white = self.white,
+                .black = val,
+            };
+        }
+    }
+
+    pub fn isImprovement(self: EvalPair, comptime col: Colour, val: i16) bool {
+        const prev_opt = if (col == .white) self.white else self.black;
+        return if (prev_opt) |prev| val > prev else false;
+    }
+};
+
 const STACK_PADDING = 1;
 
 nodes: u64,
@@ -65,11 +89,13 @@ pub const StackEntry = struct {
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
     prev: TypedMove,
+    evals: EvalPair,
 
-    pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove) void {
+    pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
         self.move = move_;
         self.prev = prev_;
+        self.evals = prev_evals;
     }
 };
 
@@ -108,7 +134,12 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const new_stack_entry = self.curStackEntry();
     const new_eval_state = self.curEvalState();
 
-    new_stack_entry.init(prev_stack_entry.board, TypedMove.fromBoard(&prev_stack_entry.board, move), prev_stack_entry.move);
+    new_stack_entry.init(
+        prev_stack_entry.board,
+        TypedMove.fromBoard(&prev_stack_entry.board, move),
+        prev_stack_entry.move,
+        prev_stack_entry.evals,
+    );
     new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -127,7 +158,12 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const new_stack_entry = self.curStackEntry();
     const new_eval_state = self.curEvalState();
 
-    new_stack_entry.init(prev_stack_entry.board, TypedMove.init(), TypedMove.init());
+    new_stack_entry.init(
+        prev_stack_entry.board,
+        TypedMove.init(),
+        TypedMove.init(),
+        prev_stack_entry.evals,
+    );
     new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -179,17 +215,24 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         return tt_score;
     }
 
-    var static_eval: i16 = evaluation.matedIn(self.ply);
-    var corrected_static_eval: i16 = static_eval;
+    var raw_static_eval: i16 = evaluation.matedIn(self.ply);
+    var corrected_static_eval: i16 = raw_static_eval;
+    var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        static_eval = evaluate(board, self.curEvalState().*);
-        corrected_static_eval = self.histories.correct(board, static_eval);
-        if (corrected_static_eval >= beta)
-            return corrected_static_eval;
-        if (corrected_static_eval > alpha)
-            alpha = corrected_static_eval;
+        raw_static_eval = evaluate(board, self.curEvalState().*);
+        corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+        static_eval = corrected_static_eval;
+        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
+            static_eval = tt_score;
+        }
+
+        if (static_eval >= beta)
+            return static_eval;
+        if (static_eval > alpha)
+            alpha = static_eval;
     }
-    var best_score = corrected_static_eval;
+    var best_score = static_eval;
     var best_move = Move.init();
     var mp = MovePicker.initQs(
         board,
@@ -221,6 +264,9 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         if (score > best_score) {
             best_score = score;
             best_move = move;
+            if (score > evaluation.matedIn(MAX_PLY)) {
+                mp.skip_quiets = true;
+            }
         }
 
         if (score > alpha) {
@@ -246,8 +292,10 @@ fn search(
     comptime stm: Colour,
     alpha_original: i32,
     beta: i32,
-    depth: i32,
+    depth_: i32,
+    cutnode: bool,
 ) i16 {
+    var depth = depth_;
     var alpha = alpha_original;
 
     self.nodes += 1;
@@ -295,12 +343,13 @@ fn search(
 
     const tt_hash = board.hash;
     var tt_entry = engine.readTT(tt_hash);
-    if (tt_entry.hash != tt_hash) {
+    const tt_hit = tt_entry.hash == tt_hash;
+    if (!tt_hit) {
         tt_entry = .{};
     }
-    if (tt_entry.hash == tt_hash) {
+    const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
+    if (tt_hit) {
         if (tt_entry.depth >= depth) {
-            const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
                     return tt_score;
@@ -309,19 +358,35 @@ fn search(
         }
     }
 
-    var static_eval: i16 = evaluation.matedIn(self.ply);
-    var corrected_static_eval: i16 = static_eval;
+    if (depth >= 4 and
+        (is_pv or cutnode) and
+        (tt_entry.move.isNull() or !tt_hit))
+    {
+        depth -= 1;
+    }
+
+    var raw_static_eval: i16 = evaluation.matedIn(self.ply);
+    var corrected_static_eval = raw_static_eval;
+    var static_eval = corrected_static_eval;
+    var improving = false;
     if (!is_in_check) {
-        static_eval = evaluate(board, self.curEvalState().*);
-        corrected_static_eval = self.histories.correct(board, static_eval);
+        raw_static_eval = evaluate(board, self.curEvalState().*);
+        corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        improving = cur.evals.isImprovement(stm, corrected_static_eval);
+        cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+
+        static_eval = corrected_static_eval;
+        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
+            static_eval = tt_score;
+        }
     }
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check)
     {
-        if (depth <= 5 and corrected_static_eval >= beta + tunable_constants.rfp_margin * depth) {
-            return corrected_static_eval;
+        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
+            return static_eval;
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
@@ -340,12 +405,13 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
-            corrected_static_eval >= beta and
+            static_eval >= beta and
             non_pk != 0 and
             !cur.prev.move.isNull())
         {
             engine.prefetchTT(board.hash ^ root.zobrist.turn());
-            const nmp_reduction = tunable_constants.nmp_base + (depth * tunable_constants.nmp_mult >> 5);
+            var nmp_reduction = tunable_constants.nmp_base + (depth * tunable_constants.nmp_mult >> 5);
+            nmp_reduction += @intCast(@min(3, @abs(static_eval - beta) / 300));
 
             self.makeNullMove(stm);
             const nmp_score = -self.search(
@@ -355,6 +421,7 @@ fn search(
                 -beta,
                 -beta + 1,
                 depth - nmp_reduction,
+                !cutnode,
             );
             self.unmakeNullMove(stm);
 
@@ -386,19 +453,26 @@ fn search(
 
         const is_quiet = board.isQuiet(move);
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
-            if (num_legal >= 3 + depth * depth and is_quiet) {
-                mp.skip_quiets = true;
-                continue;
-            }
+            if (is_quiet) {
+                if (num_legal >= 3 + depth * depth) {
+                    mp.skip_quiets = true;
+                    continue;
+                }
 
-            if (is_quiet and
-                !is_in_check and
-                depth <= 6 and
-                @abs(alpha) < 2000 and
-                corrected_static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
-            {
-                mp.skip_quiets = true;
-                continue;
+                const history_score = self.histories.readQuiet(board, move, cur.prev);
+                if (depth <= 3 and history_score < depth * -tunable_constants.history_pruning_mult) {
+                    mp.skip_quiets = true;
+                    continue;
+                }
+
+                if (!is_in_check and
+                    depth <= 6 and
+                    @abs(alpha) < 2000 and
+                    static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+                {
+                    mp.skip_quiets = true;
+                    continue;
+                }
             }
 
             const see_pruning_thresh = if (is_quiet)
@@ -425,12 +499,20 @@ fn search(
             extension += 1;
         }
         const score = blk: {
+            const node_count_before: u64 = if (is_root) self.nodes else undefined;
+            defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
+
             var s: i16 = 0;
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 var reduction: i32 = tunable_constants.lmr_base;
                 reduction += std.math.log2_int(u32, @intCast(depth)) * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
                 reduction -= @intFromBool(is_pv);
+                reduction += @intFromBool(cutnode);
+
+                if (is_quiet) {
+                    reduction -= self.histories.readQuiet(board, move, cur.prev) >> 13;
+                }
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
 
@@ -443,6 +525,7 @@ fn search(
                     -alpha - 1,
                     -alpha,
                     reduced_depth,
+                    true,
                 );
                 if (self.stop) {
                     break :blk 0;
@@ -459,6 +542,7 @@ fn search(
                         -alpha - 1,
                         -alpha,
                         new_depth + @intFromBool(do_deeper_search) - @intFromBool(do_shallower_search),
+                        !cutnode,
                     );
                     if (self.stop) {
                         break :blk 0;
@@ -472,6 +556,7 @@ fn search(
                     -alpha - 1,
                     -alpha,
                     new_depth,
+                    !cutnode,
                 );
                 if (self.stop) {
                     break :blk 0;
@@ -485,6 +570,7 @@ fn search(
                     -beta,
                     -alpha,
                     new_depth,
+                    false,
                 );
             }
 
@@ -547,7 +633,7 @@ fn search(
         if (corrected_static_eval != best_score and
             evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
         {
-            self.histories.updateCorrection(board, corrected_static_eval, best_score, depth);
+            self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
         }
     }
 
@@ -627,11 +713,12 @@ fn init(self: *Searcher, params: Params) void {
 
     self.root_move = Move.init();
     self.root_score = 0;
-    self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init());
+    self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
         self.histories.reset();
     }
+    self.limits.resetNodeCounts();
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
@@ -658,6 +745,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_lower,
                     aspiration_upper,
                     depth,
+                    false,
                 );
                 if (self.stop or evaluation.isMateScore(score)) {
                     break;
@@ -688,7 +776,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.root_score, depth, .completed);
             }
         }
-        if (self.stop or self.limits.checkRoot(self.nodes, depth)) {
+        if (self.stop or self.limits.checkRoot(self.nodes, depth, self.root_move)) {
             break;
         }
     }

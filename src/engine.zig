@@ -105,7 +105,9 @@ pub fn deinit() void {
 }
 
 pub fn startSearch(settings: SearchSettings) void {
-    stopSearch();
+    if (!std.debug.runtime_safety) {
+        stopSearch();
+    }
     waitUntilDoneSearching();
     num_finished_threads.store(0, .seq_cst);
     is_searching.store(true, .seq_cst);

@@ -46,6 +46,7 @@ stm: Colour = .white,
 
 hash: u64 = 0,
 pawn_hash: u64 = 0,
+nonpawn_hash: [2]u64 = .{0} ** 2,
 
 castling_rights: CastlingRights = CastlingRights.init(),
 
@@ -668,6 +669,8 @@ pub inline fn addPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Sq
     self.hash ^= zobrist_update;
     if (pt == .pawn) {
         self.pawn_hash ^= zobrist_update;
+    } else {
+        self.nonpawn_hash[col.toInt()] ^= zobrist_update;
     }
     (&self.mailbox)[sq.toInt()] = ColouredPieceType.fromPieceType(pt, col);
     eval_state.add(col, pt, sq);
@@ -681,6 +684,8 @@ pub inline fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq:
     self.hash ^= zobrist_update;
     if (pt == .pawn) {
         self.pawn_hash ^= zobrist_update;
+    } else {
+        self.nonpawn_hash[col.toInt()] ^= zobrist_update;
     }
     (&self.mailbox)[sq.toInt()] = null;
     eval_state.sub(col, pt, sq);
@@ -694,6 +699,8 @@ pub inline fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from:
     self.hash ^= zobrist_update;
     if (pt == .pawn) {
         self.pawn_hash ^= zobrist_update;
+    } else {
+        self.nonpawn_hash[col.toInt()] ^= zobrist_update;
     }
     (&self.mailbox)[from.toInt()] = null;
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col);
@@ -809,9 +816,8 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             if (pt == .pawn) {
                 updated_halfmove = 0;
                 const pawn_d_rank = if (stm == .white) 1 else -1;
-                const from_double_pushed = from.move(2 * pawn_d_rank, 0);
-                const target = from.move(pawn_d_rank, 0);
-                if (from_double_pushed == to) {
+                if (to.toInt() == @as(i8, from.toInt()) + 8 * 2 * pawn_d_rank) {
+                    const target = from.move(pawn_d_rank, 0);
                     if (Bitboard.pawnAttacks(target, stm) & self.pawnsFor(stm.flipped()) != 0) {
                         self.ep_target = target;
                         self.updateEPHash();

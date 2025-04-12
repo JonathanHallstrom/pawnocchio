@@ -36,7 +36,7 @@ const tunable_defaults = struct {
     pub const history_penalty_mult: i32 = 300;
     pub const history_penalty_offs: i32 = 300;
     pub const history_penalty_max: i32 = 2300;
-    pub const rfp_margin: i32 = 90;
+    pub const rfp_margin: i32 = 70;
     pub const aspiration_initial: i32 = 20;
     pub const aspiration_multiplier: i32 = 2048;
     pub const lmr_base: i32 = 2;
@@ -48,6 +48,10 @@ const tunable_defaults = struct {
     pub const see_quiet_pruning_mult: i32 = 80;
     pub const see_noisy_pruning_mult: i32 = 50;
     pub const razoring_margin: i32 = 200;
+    pub const history_pruning_mult: i32 = 2048;
+    pub const nodetm_base: i32 = 1536;
+    pub const nodetm_mult: i32 = 819;
+    pub const nmp_eval_reduction_scale: i32 = 41;
 };
 
 pub const tunables = [_]Tunable{
@@ -69,6 +73,10 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult },
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin },
+    .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult },
+    .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
+    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
+    .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -90,4 +98,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
     pub var razoring_margin = tunable_defaults.razoring_margin;
+    pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
+    pub var nodetm_base = tunable_defaults.nodetm_base;
+    pub var nodetm_mult = tunable_defaults.nodetm_mult;
+    pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
 } else tunable_defaults;

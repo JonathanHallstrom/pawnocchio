@@ -18,6 +18,9 @@ const std = @import("std");
 
 const root = @import("root.zig");
 
+const Move = root.Move;
+const tunable_constants = root.tunable_constants;
+
 hard_time: u64, // must always have a hard time limit
 soft_time: ?u64 = null,
 max_depth: ?i32 = null,
@@ -25,6 +28,7 @@ soft_nodes: u64 = std.math.maxInt(u64),
 hard_nodes: u64 = std.math.maxInt(u64),
 timer: std.time.Timer,
 last_aspiration_print: u64 = 0,
+node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
 
 const Limits = @This();
 
@@ -75,7 +79,19 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
     return false;
 }
 
-pub fn checkRoot(self: *Limits, nodes: u64, depth: i32) bool {
+fn computeNodeCountFactor(self: *const Limits, move: Move) u128 {
+    var total_nodes: u64 = 0;
+    for (self.node_counts) |counts| {
+        for (counts) |count| {
+            total_nodes += count;
+        }
+    }
+    const best_move_count = @max(1, self.node_counts[move.from().toInt()][move.to().toInt()]);
+    const node_fraction = @as(u128, best_move_count) * 1024 / total_nodes;
+    return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
+}
+
+pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move) bool {
     if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
         return true;
     }
@@ -86,7 +102,8 @@ pub fn checkRoot(self: *Limits, nodes: u64, depth: i32) bool {
     }
     const curr_time = self.timer.read();
     if (self.soft_time) |st| {
-        if (curr_time >= st) {
+        const adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
+        if (curr_time >= adjusted_limit) {
             return true;
         }
     }
@@ -106,4 +123,12 @@ pub fn shouldPrintInfoInAspiration(self: *Limits) bool {
         return true;
     }
     return false;
+}
+
+pub fn updateNodeCounts(self: *Limits, move: Move, nodes: u64) void {
+    self.node_counts[move.from().toInt()][move.to().toInt()] += nodes;
+}
+
+pub fn resetNodeCounts(self: *Limits) void {
+    @memset(std.mem.asBytes(&self.node_counts), 0);
 }
