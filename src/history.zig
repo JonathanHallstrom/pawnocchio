@@ -114,32 +114,36 @@ pub const ContHistory = struct {
 
 pub const HistoryTable = struct {
     quiet: QuietHistory,
-    countermove: ContHistory,
+    counter_move: ContHistory,
+    followup_move: ContHistory,
     pawn_corrhist: [16384][2]CorrhistEntry,
     nonpawn_corrhist: [16384][2][2]CorrhistEntry,
     countermove_corrhist: [6 * 64][2]CorrhistEntry,
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
-        self.countermove.reset();
+        self.counter_move.reset();
+        self.followup_move.reset();
         @memset(std.mem.asBytes(&self.pawn_corrhist), 0);
         @memset(std.mem.asBytes(&self.nonpawn_corrhist), 0);
         @memset(std.mem.asBytes(&self.countermove_corrhist), 0);
     }
 
-    pub fn readQuiet(self: *const HistoryTable, board: *const Board, move: Move, prev: TypedMove) i32 {
+    pub fn readQuiet(self: *const HistoryTable, board: *const Board, move: Move, prev: TypedMove, followup: TypedMove) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += self.quiet.read(board.stm, typed);
-        res += self.countermove.read(board.stm, typed, prev);
+        res += self.counter_move.read(board.stm, typed, prev);
+        res += self.followup_move.read(board.stm, typed, followup);
 
         return res;
     }
 
-    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, prev: TypedMove, adjustment: i16) void {
+    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, prev: TypedMove, followup: TypedMove, adjustment: i16) void {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board.stm, typed, adjustment);
-        self.countermove.update(board.stm, typed, prev, adjustment);
+        self.counter_move.update(board.stm, typed, prev, adjustment);
+        self.followup_move.update(board.stm, typed, followup, adjustment);
     }
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {
