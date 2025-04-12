@@ -508,7 +508,7 @@ fn search(
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
 
             var s: i16 = 0;
-            const new_depth = depth + extension - 1;
+            var new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 var reduction: i32 = tunable_constants.lmr_base;
                 reduction += std.math.log2_int(u32, @intCast(depth)) * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
@@ -540,13 +540,16 @@ fn search(
                     const do_deeper_search = s > best_score + 40 + 4 * @as(i32, new_depth);
                     const do_shallower_search = s < best_score + @as(i32, new_depth);
 
+                    new_depth += @intFromBool(do_deeper_search);
+                    new_depth -= @intFromBool(do_shallower_search);
+
                     s = -self.search(
                         false,
                         false,
                         stm.flipped(),
                         -alpha - 1,
                         -alpha,
-                        new_depth + @intFromBool(do_deeper_search) - @intFromBool(do_shallower_search),
+                        new_depth,
                         !cutnode,
                     );
                     if (self.stop) {
