@@ -26,7 +26,7 @@ const Board = root.Board;
 const Move = root.Move;
 const Colour = root.Colour;
 
-const SEE_weight = [_]i16{ 93, 308, 346, 521, 994 };
+const SEE_weight = [_]i16{ 93, 308, 346, 521, 994, 0 };
 
 inline fn getAttacks(comptime stm: Colour, comptime tp: PieceType, sq: Square, occ: u64) u64 {
     return switch (tp) {
