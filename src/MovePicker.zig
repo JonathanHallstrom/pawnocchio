@@ -114,15 +114,16 @@ fn findBest(self: *MovePicker) usize {
 fn noisyValue(self: MovePicker, move: Move) i32 {
     var res: i32 = 0;
 
-    if (self.board.isPromo(move)) {
-        res -= SEE.value(move.promoType());
-    }
+    // if (self.board.isPromo(move)) {
+    //     res += SEE.value(move.promoType());
+    // }
     if ((&self.board.mailbox)[move.to().toInt()]) |captured_type| {
         res += SEE.value(captured_type.toPieceType());
     } else if (self.board.isEnPassant(move)) {
         res += SEE.value(.pawn);
     }
-    res += self.histories.readNoisy(self.board, move) >> 3;
+    res *= 1024;
+    res += self.histories.readNoisy(self.board, move);
 
     return res;
 }
