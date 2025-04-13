@@ -91,19 +91,18 @@ pub const QuietHistory = struct {
 };
 
 pub const NoisyHistory = struct {
-    vals: [2 * 64 * 64 * 13]i16,
+    vals: [64 * 64 * 13]i16,
 
     inline fn reset(self: *NoisyHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
     inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
-        const col_offs: usize = board.stm.toInt();
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
         const captured = (&board.mailbox)[to_offs];
         const captured_offs = if (captured) |capt| capt.toInt() else 12;
-        return &(&self.vals)[col_offs * 64 * 64 * 13 + from_offs * 64 * 13 + to_offs * 13 + captured_offs];
+        return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
     }
 
     inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, adjustment: i16) void {
