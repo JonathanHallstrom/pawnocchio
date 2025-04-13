@@ -83,8 +83,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
 
     const all_pinned = board.pinned[0] | board.pinned[1];
 
-    const white_king_to_ray = Bitboard.queenRayBetweenInclusive(Square.fromBitboard(board.kingFor(.white)), to);
-    const black_king_to_ray = Bitboard.queenRayBetweenInclusive(Square.fromBitboard(board.kingFor(.black)), to);
+    const white_king_to_ray = Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(.white)), to);
+    const black_king_to_ray = Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(.black)), to);
 
     const white_allowed_pinned = board.pinned[0] & white_king_to_ray;
     const black_allowed_pinned = board.pinned[1] & black_king_to_ray;
@@ -151,4 +151,5 @@ test scoreMove {
     try std.testing.expect(scoreMove(&(Board.parseFen("r1bq1rk1/pppp1Npp/2nb1n2/4p3/2B1P3/2P5/PP1P1PPP/RNBQK2R b KQ - 0 6", false) catch unreachable), Move.capture(.f8, .f7), 0));
     try std.testing.expect(scoreMove(&(Board.parseFen("r1bqkb1r/ppp1pppp/2n2n2/8/2BPP3/5P2/PP4PP/RNBQK1NR b KQkq - 0 5", false) catch unreachable), Move.capture(.c6, .d4), 0));
     try std.testing.expect(!scoreMove(&(Board.parseFen("3b2k1/1b6/8/3R2p1/4K3/5N2/8/8 w - - 0 1", false) catch unreachable), Move.capture(.f3, .g5), 0));
+    try std.testing.expect(scoreMove(&(Board.parseFen("6k1/1b6/8/3B4/4K3/8/8/8 w - - 0 1", false) catch unreachable), Move.capture(.d5, .b7), 0));
 }
