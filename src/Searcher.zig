@@ -220,7 +220,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = evaluate(board, self.curEvalState().*);
-        corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        corrected_static_eval = self.histories.correct(board, cur.prev, TypedMove.fromBoard(board, tt_entry.move), raw_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
@@ -376,7 +376,7 @@ fn search(
     var improving = false;
     if (!is_in_check) {
         raw_static_eval = evaluate(board, self.curEvalState().*);
-        corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        corrected_static_eval = self.histories.correct(board, cur.prev, TypedMove.fromBoard(board, tt_entry.move), raw_static_eval);
         improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
 
@@ -635,7 +635,7 @@ fn search(
         if (corrected_static_eval != best_score and
             evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
         {
-            self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
+            self.histories.updateCorrection(board, cur.prev, TypedMove.fromBoard(board, tt_entry.move), corrected_static_eval, best_score, depth);
         }
     }
 
