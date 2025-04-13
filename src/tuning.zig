@@ -52,7 +52,7 @@ const tunable_defaults = struct {
     pub const nodetm_base: i32 = 1536;
     pub const nodetm_mult: i32 = 819;
     pub const nmp_eval_reduction_scale: i32 = 27;
-    pub const qs_futility_margin: i32 = 300;
+    pub const qs_futility_margin: i32 = 250;
 };
 
 pub const tunables = [_]Tunable{
