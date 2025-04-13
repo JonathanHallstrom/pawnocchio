@@ -601,12 +601,20 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
+                const bonus = root.history.bonus(depth);
+                const penalty = -root.history.penalty(depth);
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, root.history.bonus(depth));
+                    self.histories.updateQuiet(board, move, cur.prev, bonus);
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, -root.history.penalty(depth));
+                        self.histories.updateQuiet(board, searched_move, cur.prev, penalty);
                     }
+                } else {
+                    self.histories.updateNoisy(board, move, bonus);
+                }
+                for (searched_noisies.slice()) |searched_move| {
+                    if (searched_move == move) break;
+                    self.histories.updateNoisy(board, searched_move, penalty);
                 }
                 break;
             }
