@@ -93,6 +93,10 @@ pub fn initQs(
     };
 }
 
+pub fn deinit(self: MovePicker) void {
+    self.movelist.vals.len = 0;
+}
+
 fn findBest(self: *MovePicker) usize {
     const scored_moves = self.movelist.vals.slice()[self.first..self.last];
     var best_idx: usize = 0;

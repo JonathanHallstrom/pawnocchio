@@ -248,6 +248,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         tt_entry.move,
         cur.prev,
     );
+    defer mp.deinit();
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
@@ -447,6 +448,7 @@ fn search(
         tt_entry.move,
         cur.prev,
     );
+    defer mp.deinit();
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
     var searched_quiets: std.BoundedArray(Move, 64) = .{};
