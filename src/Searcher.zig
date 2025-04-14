@@ -454,6 +454,9 @@ fn search(
     var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
+        if (move == cur.excluded) {
+            continue;
+        }
         engine.prefetchTT(board.roughHashAfter(move));
         if (!board.isLegal(stm, move)) {
             continue;
@@ -504,6 +507,7 @@ fn search(
             const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_depth_mult >> 5));
             const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
 
+            cur.excluded = move;
             const s_score = self.search(
                 false,
                 is_pv,
@@ -513,6 +517,7 @@ fn search(
                 s_depth,
                 cutnode,
             );
+            cur.excluded = Move.init();
 
             if (s_score < s_beta) {
                 extension += 1;
