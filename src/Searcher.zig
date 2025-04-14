@@ -348,6 +348,7 @@ fn search(
         }
     }
 
+    const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.hash;
     var tt_entry = engine.readTT(tt_hash);
     const tt_hit = tt_entry.hash == tt_hash;
@@ -356,7 +357,7 @@ fn search(
     }
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
-        if (tt_entry.depth >= depth) {
+        if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
                     return tt_score;
@@ -391,7 +392,7 @@ fn search(
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check and
-        cur.excluded.isNull())
+        !is_singular_search)
     {
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
             return static_eval;
@@ -500,7 +501,7 @@ fn search(
         if (!is_root and
             depth >= tunable_constants.singular_depth_limit and
             move == tt_entry.move and
-            cur.excluded.isNull() and
+            !is_singular_search and
             tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
             tt_entry.score_type != .upper)
         {
@@ -660,7 +661,7 @@ fn search(
         return if (is_in_check) mated_score else 0;
     }
 
-    if (cur.excluded.isNull()) {
+    if (!is_singular_search) {
         engine.writeTT(
             tt_hash,
             best_move,
