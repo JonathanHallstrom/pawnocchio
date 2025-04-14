@@ -56,6 +56,7 @@ const tunable_defaults = struct {
     pub const singular_tt_depth_margin: i32 = 3;
     pub const singular_beta_mult: i32 = 16;
     pub const singular_depth_mult: i32 = 16;
+    pub const singular_dext_margin: i32 = 15;
 };
 
 pub const tunables = [_]Tunable{
@@ -85,6 +86,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "singular_tt_depth_margin", .default = tunable_defaults.singular_tt_depth_margin },
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult },
+    .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -114,4 +116,5 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var singular_tt_depth_margin = tunable_defaults.singular_tt_depth_margin;
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
+    pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
 } else tunable_defaults;
