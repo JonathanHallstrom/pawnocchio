@@ -91,6 +91,7 @@ pub const StackEntry = struct {
     prev: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
+    static_eval: i16,
 
     pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
@@ -98,6 +99,7 @@ pub const StackEntry = struct {
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
+        self.static_eval = 0;
     }
 };
 
@@ -351,11 +353,17 @@ fn search(
 
     const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.hash;
-    var tt_entry = engine.readTT(tt_hash);
-    const tt_hit = tt_entry.hash == tt_hash;
-    if (!tt_hit) {
-        tt_entry = .{};
+    var tt_entry: root.TTEntry = .{};
+    var tt_hit = false;
+    if (!is_singular_search) {
+        tt_entry = engine.readTT(tt_hash);
+
+        tt_hit = tt_entry.hash == tt_hash;
+        if (!tt_hit) {
+            tt_entry = .{};
+        }
     }
+
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
@@ -374,21 +382,22 @@ fn search(
         depth -= 1;
     }
 
+    var improving = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
-    var static_eval = corrected_static_eval;
-    var improving = false;
-    if (!is_in_check) {
+    if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(board, self.curEvalState().*);
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
 
-        static_eval = corrected_static_eval;
-        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
-            static_eval = tt_score;
+        if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.score_type)) {
+            cur.static_eval = tt_score;
+        } else {
+            cur.static_eval = corrected_static_eval;
         }
     }
+    const static_eval = cur.static_eval;
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
@@ -445,8 +454,9 @@ fn search(
         board,
         &cur.movelist,
         &self.histories,
-        tt_entry.move,
+        if (is_singular_search) cur.excluded else tt_entry.move,
         cur.prev,
+        is_singular_search,
     );
     defer mp.deinit();
     var best_move = Move.init();
@@ -529,8 +539,12 @@ fn search(
         num_legal += 1;
 
         if (std.debug.runtime_safety) {
-            std.debug.assert(std.mem.count(Move, searched_noisies.slice(), &.{move}) == 0);
-            std.debug.assert(std.mem.count(Move, searched_quiets.slice(), &.{move}) == 0);
+            if (std.mem.count(Move, searched_noisies.slice(), &.{move}) != 0) {
+                unreachable;
+            }
+            if (std.mem.count(Move, searched_quiets.slice(), &.{move}) != 0) {
+                unreachable;
+            }
         }
 
         self.makeMove(stm, move);

@@ -55,6 +55,7 @@ pub fn init(
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
     prev_: root.history.TypedMove,
+    is_singular_search: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -63,7 +64,7 @@ pub fn init(
         .board = board_,
         .first = 0,
         .last = 0,
-        .stage = .tt,
+        .stage = if (is_singular_search) .generate_noisies else .tt,
         .skip_quiets = false,
         .histories = histories_,
         .ttmove = ttmove_,
@@ -150,6 +151,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 continue;
             },
             .generate_noisies => {
+                self.movelist.vals.len = 0;
                 switch (self.board.stm) {
                     inline else => |stm| {
                         std.debug.assert(self.movelist.vals.len == 0);
