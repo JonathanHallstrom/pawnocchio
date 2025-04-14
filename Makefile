@@ -23,5 +23,5 @@ NET_SPECIFIER=
 endif
 
 default: net
-	zig build --release=fast install $(NET_SPECIFIER)
+	zig build --release=safe install $(NET_SPECIFIER)
 	@$(MV)
