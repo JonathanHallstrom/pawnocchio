@@ -81,8 +81,8 @@ root_score: i16,
 limits: Limits,
 ply: u8,
 stop: bool,
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE + 10), // 10 extra to prevent crashes
 histories: history.HistoryTable,
+previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 
 pub const StackEntry = struct {
     board: Board,
