@@ -81,8 +81,8 @@ root_score: i16,
 limits: Limits,
 ply: u8,
 stop: bool,
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 histories: history.HistoryTable,
+previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 
 pub const StackEntry = struct {
     board: Board,
@@ -601,12 +601,20 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
+                const bonus = root.history.bonus(depth);
+                const penalty = -root.history.penalty(depth);
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, root.history.bonus(depth));
+                    self.histories.updateQuiet(board, move, cur.prev, bonus);
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, -root.history.penalty(depth));
+                        self.histories.updateQuiet(board, searched_move, cur.prev, penalty);
                     }
+                } else {
+                    self.histories.updateNoisy(board, move, bonus);
+                }
+                for (searched_noisies.slice()) |searched_move| {
+                    if (searched_move == move) break;
+                    self.histories.updateNoisy(board, searched_move, penalty);
                 }
                 break;
             }
@@ -698,7 +706,6 @@ test retainOnlyDuplicates {
 /// we make the previous hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
 fn fixupPreviousHashes(self: *Searcher) void {
     self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
-    self.previous_hashes.appendAssumeCapacity(std.math.maxInt(u64));
 }
 
 fn init(self: *Searcher, params: Params) void {

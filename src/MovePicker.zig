@@ -24,6 +24,7 @@ const ScoredMove = root.ScoredMove;
 const MoveReceiver = root.FilteringScoredMoveReceiver;
 const movegen = root.movegen;
 const SEE = root.SEE;
+const PieceType = root.PieceType;
 
 const MovePicker = @This();
 
@@ -110,20 +111,19 @@ fn findBest(self: *MovePicker) usize {
     return res;
 }
 
-fn noisyValue(self: MovePicker, move: Move) i16 {
-    var res: i16 = 0;
+fn noisyValue(self: MovePicker, move: Move) i32 {
+    var res: i32 = 0;
 
-    if (self.board.isPromo(move)) {
-        res += (move.promoType().toInt() + 1) * 10;
-    }
-
+    // if (self.board.isPromo(move)) {
+    //     res += SEE.value(move.promoType());
+    // }
     if ((&self.board.mailbox)[move.to().toInt()]) |captured_type| {
-        res += (captured_type.toInt() + 1) * 10;
+        res += SEE.value(captured_type.toPieceType());
     } else if (self.board.isEnPassant(move)) {
-        res += 10;
+        res += SEE.value(.pawn);
     }
-    const from_type = (&self.board.mailbox)[move.from().toInt()].?.toPieceType();
-    res -= from_type.toInt();
+    res *= 1024;
+    res += self.histories.readNoisy(self.board, move);
 
     return res;
 }
