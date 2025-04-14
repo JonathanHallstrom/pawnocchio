@@ -870,8 +870,8 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             const from = move.from();
             const to = move.to();
             const cap_opt = (&self.mailbox)[to.toInt()];
+            updated_halfmove = 0;
             if (cap_opt) |cap| {
-                updated_halfmove = 0;
                 updated_castling_rights.updateSquare(to, stm.flipped());
                 self.removePiece(stm.flipped(), cap.toPieceType(), to, eval_state);
             }
