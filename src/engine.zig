@@ -76,6 +76,7 @@ pub const SearchSettings = struct {
 };
 
 pub fn reset() void {
+    @memset(tt, .{});
     needs_full_reset = true;
 }
 
