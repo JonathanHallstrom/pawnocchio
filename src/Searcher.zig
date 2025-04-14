@@ -795,13 +795,17 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     if (should_print) {
-                        self.writeInfo(score, depth, .lower);
+                        if (!quiet) {
+                            self.writeInfo(score, depth, .lower);
+                        }
                     }
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     if (should_print) {
-                        self.writeInfo(score, depth, .upper);
+                        if (!quiet) {
+                            self.writeInfo(score, depth, .upper);
+                        }
                     }
                 } else {
                     break;
