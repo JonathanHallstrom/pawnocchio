@@ -52,6 +52,10 @@ const tunable_defaults = struct {
     pub const nodetm_base: i32 = 1536;
     pub const nodetm_mult: i32 = 819;
     pub const nmp_eval_reduction_scale: i32 = 27;
+    pub const singular_depth_limit: i32 = 8;
+    pub const singular_tt_depth_margin: i32 = 3;
+    pub const singular_beta_mult: i32 = 16;
+    pub const singular_depth_mult: i32 = 16;
 };
 
 pub const tunables = [_]Tunable{
@@ -77,6 +81,10 @@ pub const tunables = [_]Tunable{
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
+    .{ .name = "singular_depth_limit", .default = tunable_defaults.singular_depth_limit },
+    .{ .name = "singular_tt_depth_margin", .default = tunable_defaults.singular_tt_depth_margin },
+    .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult },
+    .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -102,4 +110,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
+    pub var singular_depth_limit = tunable_defaults.singular_depth_limit;
+    pub var singular_tt_depth_margin = tunable_defaults.singular_tt_depth_margin;
+    pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
+    pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
 } else tunable_defaults;

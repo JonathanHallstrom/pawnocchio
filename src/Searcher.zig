@@ -90,12 +90,14 @@ pub const StackEntry = struct {
     move: TypedMove,
     prev: TypedMove,
     evals: EvalPair,
+    excluded: Move = Move.init(),
 
     pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
         self.move = move_;
         self.prev = prev_;
         self.evals = prev_evals;
+        self.excluded = Move.init();
     }
 };
 
@@ -388,7 +390,8 @@ fn search(
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
-        !is_in_check)
+        !is_in_check and
+        cur.excluded.isNull())
     {
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
             return static_eval;
@@ -489,6 +492,32 @@ fn search(
                 continue;
             }
         }
+
+        var extension: i32 = 0;
+        if (!is_root and
+            depth >= tunable_constants.singular_depth_limit and
+            move == tt_entry.move and
+            cur.excluded.isNull() and
+            tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
+            tt_entry.score_type != .upper)
+        {
+            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_depth_mult >> 5));
+            const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
+
+            const s_score = self.search(
+                false,
+                is_pv,
+                stm,
+                s_beta - 1,
+                s_beta,
+                s_depth,
+                cutnode,
+            );
+
+            if (s_score < s_beta) {
+                extension += 1;
+            }
+        }
         num_legal += 1;
 
         if (std.debug.runtime_safety) {
@@ -498,7 +527,6 @@ fn search(
 
         self.makeMove(stm, move);
 
-        var extension: i32 = 0;
         const gives_check = self.curStackEntry().board.checkers != 0;
         if (gives_check) {
             extension += 1;
@@ -596,6 +624,7 @@ fn search(
         if (score > alpha) {
             if (is_root) {
                 self.root_move = move;
+                self.root_score = best_score;
             }
             alpha = score;
             score_type = .exact;
@@ -626,24 +655,21 @@ fn search(
         return if (is_in_check) mated_score else 0;
     }
 
-    engine.writeTT(
-        tt_hash,
-        best_move,
-        evaluation.scoreToTt(best_score, self.ply),
-        score_type,
-        depth,
-    );
+    if (cur.excluded.isNull()) {
+        engine.writeTT(
+            tt_hash,
+            best_move,
+            evaluation.scoreToTt(best_score, self.ply),
+            score_type,
+            depth,
+        );
 
-    if (is_root) {
-        // self.root_move = best_move;
-        self.root_score = best_score;
-    }
-
-    if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
-        if (corrected_static_eval != best_score and
-            evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
-        {
-            self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
+        if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
+            if (corrected_static_eval != best_score and
+                evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
+            {
+                self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
+            }
         }
     }
 
