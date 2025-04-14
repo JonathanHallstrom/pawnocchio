@@ -76,7 +76,26 @@ pub const SearchSettings = struct {
 };
 
 pub fn reset() void {
-    @memset(tt, .{});
+    const reset_worker = struct {
+        fn impl(start: usize, end: usize) void {
+            @memset(tt[start..end], .{});
+        }
+    }.impl;
+
+    if (current_num_threads <= 1) {
+        @memset(tt, .{});
+    } else {
+        var wg = std.Thread.WaitGroup{};
+        const amt_per_thread = (tt.len + current_num_threads - 1) / current_num_threads;
+        var start: usize = 0;
+        var end: usize = amt_per_thread;
+        for (0..current_num_threads) |_| {
+            thread_pool.spawnWg(&wg, reset_worker, .{ start, end });
+            start = end;
+            end = @min(end + amt_per_thread, tt.len);
+        }
+        thread_pool.waitAndWork(&wg);
+    }
     @memset(std.mem.sliceAsBytes(searchers), 0);
     needs_full_reset = true;
 }
