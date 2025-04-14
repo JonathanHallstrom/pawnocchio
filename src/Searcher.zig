@@ -81,7 +81,7 @@ root_score: i16,
 limits: Limits,
 ply: u8,
 stop: bool,
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
+previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE + 10), // 10 extra to prevent crashes
 histories: history.HistoryTable,
 
 pub const StackEntry = struct {
@@ -706,7 +706,6 @@ test retainOnlyDuplicates {
 /// we make the previous hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
 fn fixupPreviousHashes(self: *Searcher) void {
     self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
-    self.previous_hashes.appendAssumeCapacity(std.math.maxInt(u64));
 }
 
 fn init(self: *Searcher, params: Params) void {
