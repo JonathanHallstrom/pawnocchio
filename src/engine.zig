@@ -77,6 +77,7 @@ pub const SearchSettings = struct {
 
 pub fn reset() void {
     @memset(tt, .{});
+    @memset(std.mem.sliceAsBytes(searchers), 0);
     needs_full_reset = true;
 }
 
