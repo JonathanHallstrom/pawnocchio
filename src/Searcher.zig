@@ -537,6 +537,10 @@ fn search(
 
                 if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
                     extension += 1;
+
+                    if (is_quiet and s_score < s_beta - tunable_constants.singular_text_margin) {
+                        extension += 1;
+                    }
                 }
             }
         }
