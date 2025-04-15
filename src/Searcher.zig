@@ -566,9 +566,9 @@ fn search(
             if (depth >= 3 and num_legal > 1) {
                 var reduction: i32 = tunable_constants.lmr_base;
                 reduction += std.math.log2_int(u32, @intCast(depth)) * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
-                reduction -= @intFromBool(is_pv);
-                reduction += @intFromBool(cutnode);
-                reduction -= @intFromBool(improving);
+                reduction -= tunable_constants.lmr_pv * @intFromBool(is_pv);
+                reduction += tunable_constants.lmr_cutnode * @intFromBool(cutnode);
+                reduction -= tunable_constants.lmr_improving * @intFromBool(improving);
 
                 if (is_quiet) {
                     reduction -= self.histories.readQuiet(board, move, cur.prev) >> 13;

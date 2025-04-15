@@ -40,6 +40,9 @@ const tunable_defaults = struct {
     pub const aspiration_initial: i32 = 20;
     pub const aspiration_multiplier: i32 = 2048;
     pub const lmr_base: i32 = 2;
+    pub const lmr_pv: i32 = 1;
+    pub const lmr_cutnode: i32 = 1;
+    pub const lmr_improving: i32 = 1;
     pub const nmp_base: i32 = 4;
     pub const nmp_mult: i32 = 4;
     pub const fp_base: i32 = 250;
@@ -70,6 +73,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier },
     .{ .name = "lmr_base", .default = tunable_defaults.lmr_base },
+    .{ .name = "lmr_pv", .default = tunable_defaults.lmr_pv },
+    .{ .name = "lmr_cutnode", .default = tunable_defaults.lmr_cutnode },
+    .{ .name = "lmr_improving", .default = tunable_defaults.lmr_improving },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
@@ -100,6 +106,9 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
     pub var lmr_base = tunable_defaults.lmr_base;
+    pub var lmr_pv = tunable_defaults.lmr_pv;
+    pub var lmr_cutnode = tunable_defaults.lmr_cutnode;
+    pub var lmr_improving = tunable_defaults.lmr_improving;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var fp_base = tunable_defaults.fp_base;
