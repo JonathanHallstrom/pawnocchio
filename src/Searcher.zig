@@ -568,6 +568,7 @@ fn search(
                 reduction += std.math.log2_int(u32, @intCast(depth)) * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
                 reduction -= @intFromBool(is_pv);
                 reduction += @intFromBool(cutnode);
+                reduction -= @intFromBool(improving);
 
                 if (is_quiet) {
                     reduction -= self.histories.readQuiet(board, move, cur.prev) >> 13;
