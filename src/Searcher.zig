@@ -252,6 +252,8 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     );
     defer mp.deinit();
 
+    const futility = static_eval + tunable_constants.qs_futility_margin;
+
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (!board.isLegal(stm, move)) {
@@ -259,6 +261,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         }
 
         if (best_score > evaluation.matedIn(MAX_PLY)) {
+            if (!is_in_check and futility <= alpha and !SEE.scoreMove(board, move, 1)) {
+                best_score = @intCast(@max(best_score, futility));
+                continue;
+            }
+
             if (!is_in_check and !SEE.scoreMove(board, move, -tunable_constants.qs_see_threshold)) {
                 continue;
             }
