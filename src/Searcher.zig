@@ -81,8 +81,8 @@ root_score: i16,
 limits: Limits,
 ply: u8,
 stop: bool,
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 histories: history.HistoryTable,
+previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 
 pub const StackEntry = struct {
     board: Board,
@@ -90,12 +90,16 @@ pub const StackEntry = struct {
     move: TypedMove,
     prev: TypedMove,
     evals: EvalPair,
+    excluded: Move = Move.init(),
+    static_eval: i16,
 
     pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
         self.move = move_;
         self.prev = prev_;
         self.evals = prev_evals;
+        self.excluded = Move.init();
+        self.static_eval = 0;
     }
 };
 
@@ -246,6 +250,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         tt_entry.move,
         cur.prev,
     );
+    defer mp.deinit();
 
     const futility = static_eval + tunable_constants.qs_futility_margin;
 
@@ -353,15 +358,22 @@ fn search(
         }
     }
 
+    const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.hash;
-    var tt_entry = engine.readTT(tt_hash);
-    const tt_hit = tt_entry.hash == tt_hash;
-    if (!tt_hit) {
-        tt_entry = .{};
+    var tt_entry: root.TTEntry = .{};
+    var tt_hit = false;
+    if (!is_singular_search) {
+        tt_entry = engine.readTT(tt_hash);
+
+        tt_hit = tt_entry.hash == tt_hash;
+        if (!tt_hit) {
+            tt_entry = .{};
+        }
     }
+
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
-        if (tt_entry.depth >= depth) {
+        if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
                     return tt_score;
@@ -377,25 +389,27 @@ fn search(
         depth -= 1;
     }
 
+    var improving = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
-    var static_eval = corrected_static_eval;
-    var improving = false;
-    if (!is_in_check) {
+    if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(board, self.curEvalState().*);
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
 
-        static_eval = corrected_static_eval;
-        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
-            static_eval = tt_score;
+        if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.score_type)) {
+            cur.static_eval = tt_score;
+        } else {
+            cur.static_eval = corrected_static_eval;
         }
     }
+    const static_eval = cur.static_eval;
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
-        !is_in_check)
+        !is_in_check and
+        !is_singular_search)
     {
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
             return static_eval;
@@ -447,9 +461,11 @@ fn search(
         board,
         &cur.movelist,
         &self.histories,
-        tt_entry.move,
+        if (is_singular_search) cur.excluded else tt_entry.move,
         cur.prev,
+        is_singular_search,
     );
+    defer mp.deinit();
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
     var searched_quiets: std.BoundedArray(Move, 64) = .{};
@@ -458,6 +474,9 @@ fn search(
     var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
+        if (move == cur.excluded) {
+            continue;
+        }
         engine.prefetchTT(board.roughHashAfter(move));
         if (!board.isLegal(stm, move)) {
             continue;
@@ -496,16 +515,51 @@ fn search(
                 continue;
             }
         }
+
+        var extension: i32 = 0;
+        if (!is_root and
+            depth >= tunable_constants.singular_depth_limit and
+            move == tt_entry.move and
+            !is_singular_search and
+            tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
+            tt_entry.score_type != .upper)
+        {
+            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_depth_mult >> 5));
+            const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
+
+            cur.excluded = move;
+            const s_score = self.search(
+                false,
+                is_pv,
+                stm,
+                s_beta - 1,
+                s_beta,
+                s_depth,
+                cutnode,
+            );
+            cur.excluded = Move.init();
+
+            if (s_score < s_beta) {
+                extension += 1;
+
+                if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
+                    extension += 1;
+                }
+            }
+        }
         num_legal += 1;
 
         if (std.debug.runtime_safety) {
-            std.debug.assert(std.mem.count(Move, searched_noisies.slice(), &.{move}) == 0);
-            std.debug.assert(std.mem.count(Move, searched_quiets.slice(), &.{move}) == 0);
+            if (std.mem.count(Move, searched_noisies.slice(), &.{move}) != 0) {
+                unreachable;
+            }
+            if (std.mem.count(Move, searched_quiets.slice(), &.{move}) != 0) {
+                unreachable;
+            }
         }
 
         self.makeMove(stm, move);
 
-        var extension: i32 = 0;
         const gives_check = self.curStackEntry().board.checkers != 0;
         if (gives_check) {
             extension += 1;
@@ -519,8 +573,9 @@ fn search(
             if (depth >= 3 and num_legal > 1) {
                 var reduction: i32 = tunable_constants.lmr_base;
                 reduction += std.math.log2_int(u32, @intCast(depth)) * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
-                reduction -= @intFromBool(is_pv);
-                reduction += @intFromBool(cutnode);
+                reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
+                reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
+                reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
 
                 if (is_quiet) {
                     reduction -= self.histories.readQuiet(board, move, cur.prev) >> 13;
@@ -603,17 +658,26 @@ fn search(
         if (score > alpha) {
             if (is_root) {
                 self.root_move = move;
+                self.root_score = best_score;
             }
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
+                const bonus = root.history.bonus(depth);
+                const penalty = -root.history.penalty(depth);
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, root.history.bonus(depth));
+                    self.histories.updateQuiet(board, move, cur.prev, bonus);
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, -root.history.penalty(depth));
+                        self.histories.updateQuiet(board, searched_move, cur.prev, penalty);
                     }
+                } else {
+                    self.histories.updateNoisy(board, move, bonus);
+                }
+                for (searched_noisies.slice()) |searched_move| {
+                    if (searched_move == move) break;
+                    self.histories.updateNoisy(board, searched_move, penalty);
                 }
                 break;
             }
@@ -625,24 +689,21 @@ fn search(
         return if (is_in_check) mated_score else 0;
     }
 
-    engine.writeTT(
-        tt_hash,
-        best_move,
-        evaluation.scoreToTt(best_score, self.ply),
-        score_type,
-        depth,
-    );
+    if (!is_singular_search) {
+        engine.writeTT(
+            tt_hash,
+            best_move,
+            evaluation.scoreToTt(best_score, self.ply),
+            score_type,
+            depth,
+        );
 
-    if (is_root) {
-        // self.root_move = best_move;
-        self.root_score = best_score;
-    }
-
-    if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
-        if (corrected_static_eval != best_score and
-            evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
-        {
-            self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
+        if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
+            if (corrected_static_eval != best_score and
+                evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
+            {
+                self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
+            }
         }
     }
 
@@ -705,7 +766,6 @@ test retainOnlyDuplicates {
 /// we make the previous hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
 fn fixupPreviousHashes(self: *Searcher) void {
     self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
-    self.previous_hashes.appendAssumeCapacity(std.math.maxInt(u64));
 }
 
 fn init(self: *Searcher, params: Params) void {
@@ -764,13 +824,17 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     if (should_print) {
-                        self.writeInfo(score, depth, .lower);
+                        if (!quiet) {
+                            self.writeInfo(score, depth, .lower);
+                        }
                     }
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     if (should_print) {
-                        self.writeInfo(score, depth, .upper);
+                        if (!quiet) {
+                            self.writeInfo(score, depth, .upper);
+                        }
                     }
                 } else {
                     break;

@@ -34,7 +34,7 @@ pub fn main() !void {
 
     {
         var do_bench = false;
-        var bench_depth: i32 = 5;
+        var bench_depth: i32 = 10;
         while (args.next()) |arg| {
             if (std.ascii.eqlIgnoreCase(arg, "bench")) {
                 do_bench = true;

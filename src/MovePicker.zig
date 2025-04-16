@@ -23,6 +23,8 @@ const Board = root.Board;
 const ScoredMove = root.ScoredMove;
 const MoveReceiver = root.FilteringScoredMoveReceiver;
 const movegen = root.movegen;
+const SEE = root.SEE;
+const PieceType = root.PieceType;
 
 const MovePicker = @This();
 
@@ -35,13 +37,16 @@ skip_quiets: bool,
 histories: *const root.history.HistoryTable,
 ttmove: Move,
 prev: root.history.TypedMove,
+last_bad_noisy: usize = 0,
 
 pub const Stage = enum {
     tt,
     generate_noisies,
-    noisies,
+    good_noisies,
     generate_quiets,
     quiets,
+    bad_noisy_prep,
+    bad_noisies,
 };
 
 pub fn init(
@@ -50,6 +55,7 @@ pub fn init(
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
     prev_: root.history.TypedMove,
+    is_singular_search: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -58,7 +64,7 @@ pub fn init(
         .board = board_,
         .first = 0,
         .last = 0,
-        .stage = .tt,
+        .stage = if (is_singular_search) .generate_noisies else .tt,
         .skip_quiets = false,
         .histories = histories_,
         .ttmove = ttmove_,
@@ -88,6 +94,10 @@ pub fn initQs(
     };
 }
 
+pub fn deinit(self: MovePicker) void {
+    self.movelist.vals.len = 0;
+}
+
 fn findBest(self: *MovePicker) usize {
     const scored_moves = self.movelist.vals.slice()[self.first..self.last];
     var best_idx: usize = 0;
@@ -106,20 +116,19 @@ fn findBest(self: *MovePicker) usize {
     return res;
 }
 
-fn noisyValue(self: MovePicker, move: Move) i16 {
-    var res: i16 = 0;
+fn noisyValue(self: MovePicker, move: Move) i32 {
+    var res: i32 = 0;
 
-    if (self.board.isPromo(move)) {
-        res += (move.promoType().toInt() + 1) * 10;
-    }
-
+    // if (self.board.isPromo(move)) {
+    //     res += SEE.value(move.promoType());
+    // }
     if ((&self.board.mailbox)[move.to().toInt()]) |captured_type| {
-        res += (captured_type.toInt() + 1) * 10;
+        res += SEE.value(captured_type.toPieceType());
     } else if (self.board.isEnPassant(move)) {
-        res += 10;
+        res += SEE.value(.pawn);
     }
-    const from_type = (&self.board.mailbox)[move.from().toInt()].?.toPieceType();
-    res -= from_type.toInt();
+    res *= 1024;
+    res += self.histories.readNoisy(self.board, move);
 
     return res;
 }
@@ -142,6 +151,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 continue;
             },
             .generate_noisies => {
+                self.movelist.vals.len = 0;
                 switch (self.board.stm) {
                     inline else => |stm| {
                         std.debug.assert(self.movelist.vals.len == 0);
@@ -152,21 +162,28 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                     },
                 }
                 self.last = self.movelist.vals.len;
-                self.stage = .noisies;
+                self.stage = .good_noisies;
                 continue;
             },
-            .noisies => {
+            .good_noisies => {
                 if (self.first == self.last) {
                     self.stage = .generate_quiets;
                     continue;
                 }
-                return self.movelist.vals.slice()[self.findBest()];
+                const res = self.movelist.vals.slice()[self.findBest()];
+                if (SEE.scoreMove(self.board, res.move, 0)) {
+                    return res;
+                }
+                self.movelist.vals.slice()[self.last_bad_noisy] = res;
+                self.last_bad_noisy += 1;
+                continue;
             },
             .generate_quiets => {
                 if (self.skip_quiets) {
                     self.stage = .quiets;
                     return null;
                 }
+                self.first = self.movelist.vals.len;
                 switch (self.board.stm) {
                     inline else => |stm| {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
@@ -181,6 +198,19 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             },
             .quiets => {
                 if (self.first == self.last or self.skip_quiets) {
+                    self.stage = .bad_noisy_prep;
+                    continue;
+                }
+                return self.movelist.vals.slice()[self.findBest()];
+            },
+            .bad_noisy_prep => {
+                self.first = 0;
+                self.last = self.last_bad_noisy;
+                self.stage = .bad_noisies;
+                continue;
+            },
+            .bad_noisies => {
+                if (self.first == self.last) {
                     return null;
                 }
                 return self.movelist.vals.slice()[self.findBest()];

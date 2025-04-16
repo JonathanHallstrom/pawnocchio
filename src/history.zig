@@ -20,6 +20,7 @@ const root = @import("root.zig");
 
 const Move = root.Move;
 const Colour = root.Colour;
+const ColouredPieceType = root.ColouredPieceType;
 const PieceType = root.PieceType;
 const Board = root.Board;
 const evaluation = root.evaluation;
@@ -76,7 +77,7 @@ pub const QuietHistory = struct {
     inline fn entry(self: anytype, col: Colour, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = col.toInt();
         const from_offs: usize = move.move.from().toInt();
-        const to_offs = move.move.to().toInt();
+        const to_offs: usize = move.move.to().toInt();
         return &(&self.vals)[col_offs * 64 * 64 + from_offs * 64 + to_offs];
     }
 
@@ -86,6 +87,30 @@ pub const QuietHistory = struct {
 
     inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {
         return self.entry(col, move).*;
+    }
+};
+
+pub const NoisyHistory = struct {
+    vals: [64 * 64 * 13]i16,
+
+    inline fn reset(self: *NoisyHistory) void {
+        @memset(std.mem.asBytes(&self.vals), 0);
+    }
+
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const from_offs: usize = move.move.from().toInt();
+        const to_offs: usize = move.move.to().toInt();
+        const captured = (&board.mailbox)[to_offs];
+        const captured_offs = if (captured) |capt| capt.toInt() else 12;
+        return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
+    }
+
+    inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, adjustment: i16) void {
+        gravityUpdate(self.entry(board, move), adjustment);
+    }
+
+    inline fn read(self: *const NoisyHistory, board: *const Board, move: TypedMove) i16 {
+        return self.entry(board, move).*;
     }
 };
 
@@ -114,15 +139,21 @@ pub const ContHistory = struct {
 
 pub const HistoryTable = struct {
     quiet: QuietHistory,
+    noisy: NoisyHistory,
     countermove: ContHistory,
     pawn_corrhist: [16384][2]CorrhistEntry,
+    major_corrhist: [16384][2]CorrhistEntry,
+    minor_corrhist: [16384][2]CorrhistEntry,
     nonpawn_corrhist: [16384][2][2]CorrhistEntry,
     countermove_corrhist: [6 * 64][2]CorrhistEntry,
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
+        self.noisy.reset();
         self.countermove.reset();
         @memset(std.mem.asBytes(&self.pawn_corrhist), 0);
+        @memset(std.mem.asBytes(&self.major_corrhist), 0);
+        @memset(std.mem.asBytes(&self.minor_corrhist), 0);
         @memset(std.mem.asBytes(&self.nonpawn_corrhist), 0);
         @memset(std.mem.asBytes(&self.countermove_corrhist), 0);
     }
@@ -142,11 +173,26 @@ pub const HistoryTable = struct {
         self.countermove.update(board.stm, typed, prev, adjustment);
     }
 
+    pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
+        const typed = TypedMove.fromBoard(board, move);
+        var res: i32 = 0;
+        res += self.noisy.read(board, typed);
+
+        return res;
+    }
+
+    pub fn updateNoisy(self: *HistoryTable, board: *const Board, move: Move, adjustment: i16) void {
+        const typed = TypedMove.fromBoard(board, move);
+        self.noisy.update(board, typed, adjustment);
+    }
+
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {
         const err = (score - corrected_static_eval) * 256;
         const weight = @min(depth, 15) + 1;
 
         self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
+        self.major_corrhist[board.major_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
+        self.minor_corrhist[board.minor_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
         self.nonpawn_corrhist[board.nonpawn_hash[0] % CORRHIST_SIZE][board.stm.toInt()][0].update(err, weight);
         self.nonpawn_corrhist[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].update(err, weight);
         self.countermove_corrhist[@as(usize, prev.tp.toInt()) * 64 + prev.move.to().toInt()][board.stm.toInt()].update(err, weight);
@@ -155,13 +201,17 @@ pub const HistoryTable = struct {
     pub fn correct(self: *const HistoryTable, board: *const Board, prev: TypedMove, static_eval: i16) i16 {
         const pawn_correction: i32 = (&self.pawn_corrhist)[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].val;
 
+        const major_correction: i32 = (&self.major_corrhist)[board.major_hash % CORRHIST_SIZE][board.stm.toInt()].val;
+
+        const minor_correction: i32 = (&self.minor_corrhist)[board.minor_hash % CORRHIST_SIZE][board.stm.toInt()].val;
+
         const white_nonpawn_correction: i32 = (&self.nonpawn_corrhist)[board.nonpawn_hash[0] % CORRHIST_SIZE][board.stm.toInt()][0].val;
         const black_nonpawn_correction: i32 = (&self.nonpawn_corrhist)[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].val;
         const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction >> 1;
 
         const countermove_correction: i32 = (&self.countermove_corrhist)[@as(usize, prev.tp.toInt()) * 64 + prev.move.to().toInt()][board.stm.toInt()].val;
 
-        const correction = (pawn_correction + nonpawn_correction + countermove_correction) >> 8;
+        const correction = (pawn_correction + nonpawn_correction + countermove_correction + major_correction + minor_correction) >> 8;
         return evaluation.clampScore(static_eval + correction);
     }
 };

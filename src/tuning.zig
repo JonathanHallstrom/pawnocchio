@@ -40,6 +40,9 @@ const tunable_defaults = struct {
     pub const aspiration_initial: i32 = 20;
     pub const aspiration_multiplier: i32 = 2048;
     pub const lmr_base: i32 = 2;
+    pub const lmr_pv_mult: i32 = 1;
+    pub const lmr_cutnode_mult: i32 = 1;
+    pub const lmr_improving_mult: i32 = 1;
     pub const nmp_base: i32 = 4;
     pub const nmp_mult: i32 = 4;
     pub const fp_base: i32 = 250;
@@ -53,6 +56,11 @@ const tunable_defaults = struct {
     pub const nodetm_mult: i32 = 819;
     pub const nmp_eval_reduction_scale: i32 = 27;
     pub const qs_futility_margin: i32 = 250;
+    pub const singular_depth_limit: i32 = 8;
+    pub const singular_tt_depth_margin: i32 = 3;
+    pub const singular_beta_mult: i32 = 16;
+    pub const singular_depth_mult: i32 = 16;
+    pub const singular_dext_margin: i32 = 15;
 };
 
 pub const tunables = [_]Tunable{
@@ -66,6 +74,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier },
     .{ .name = "lmr_base", .default = tunable_defaults.lmr_base },
+    .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult },
+    .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult },
+    .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
@@ -79,6 +90,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin },
+    .{ .name = "singular_depth_limit", .default = tunable_defaults.singular_depth_limit },
+    .{ .name = "singular_tt_depth_margin", .default = tunable_defaults.singular_tt_depth_margin },
+    .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult },
+    .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult },
+    .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -92,6 +108,9 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
     pub var lmr_base = tunable_defaults.lmr_base;
+    pub var lmr_pv_mult = tunable_defaults.lmr_pv_mult;
+    pub var lmr_cutnode_mult = tunable_defaults.lmr_cutnode_mult;
+    pub var lmr_improving_mult = tunable_defaults.lmr_improving_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var fp_base = tunable_defaults.fp_base;
@@ -105,4 +124,9 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
+    pub var singular_depth_limit = tunable_defaults.singular_depth_limit;
+    pub var singular_tt_depth_margin = tunable_defaults.singular_tt_depth_margin;
+    pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
+    pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
+    pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
 } else tunable_defaults;

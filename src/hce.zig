@@ -375,7 +375,7 @@ pub const State = struct {
 
     pub fn eval(self: State) i16 {
         const mg_phase: i32 = @min(self.phase, max_phase);
-        const eg_phase = 24 - mg_phase;
+        const eg_phase = max_phase - mg_phase;
 
         return @intCast(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), max_phase));
     }

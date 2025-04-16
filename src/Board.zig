@@ -46,6 +46,8 @@ stm: Colour = .white,
 
 hash: u64 = 0,
 pawn_hash: u64 = 0,
+major_hash: u64 = 0,
+minor_hash: u64 = 0,
 nonpawn_hash: [2]u64 = .{0} ** 2,
 
 castling_rights: CastlingRights = CastlingRights.init(),
@@ -672,6 +674,12 @@ pub inline fn addPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Sq
     } else {
         self.nonpawn_hash[col.toInt()] ^= zobrist_update;
     }
+    if (pt == .rook or pt == .queen) {
+        self.major_hash ^= zobrist_update;
+    }
+    if (pt == .knight or pt == .bishop) {
+        self.minor_hash ^= zobrist_update;
+    }
     (&self.mailbox)[sq.toInt()] = ColouredPieceType.fromPieceType(pt, col);
     eval_state.add(col, pt, sq);
 }
@@ -687,6 +695,12 @@ pub inline fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq:
     } else {
         self.nonpawn_hash[col.toInt()] ^= zobrist_update;
     }
+    if (pt == .rook or pt == .queen) {
+        self.major_hash ^= zobrist_update;
+    }
+    if (pt == .knight or pt == .bishop) {
+        self.minor_hash ^= zobrist_update;
+    }
     (&self.mailbox)[sq.toInt()] = null;
     eval_state.sub(col, pt, sq);
 }
@@ -701,6 +715,12 @@ pub inline fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from:
         self.pawn_hash ^= zobrist_update;
     } else {
         self.nonpawn_hash[col.toInt()] ^= zobrist_update;
+    }
+    if (pt == .rook or pt == .queen) {
+        self.major_hash ^= zobrist_update;
+    }
+    if (pt == .knight or pt == .bishop) {
+        self.minor_hash ^= zobrist_update;
     }
     (&self.mailbox)[from.toInt()] = null;
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col);
@@ -850,8 +870,8 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             const from = move.from();
             const to = move.to();
             const cap_opt = (&self.mailbox)[to.toInt()];
+            updated_halfmove = 0;
             if (cap_opt) |cap| {
-                updated_halfmove = 0;
                 updated_castling_rights.updateSquare(to, stm.flipped());
                 self.removePiece(stm.flipped(), cap.toPieceType(), to, eval_state);
             }
