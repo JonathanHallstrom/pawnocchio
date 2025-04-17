@@ -388,7 +388,8 @@ fn search(
 
     if (depth >= 4 and
         (is_pv or cutnode) and
-        (tt_entry.move.isNull() or !tt_hit))
+        (tt_entry.move.isNull() or !tt_hit) and
+        !is_singular_search)
     {
         depth -= 1;
     }
