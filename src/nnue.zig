@@ -78,9 +78,6 @@ const Accumulator = struct {
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
 
-    added: std.BoundedArray(usize, 256) = .{},
-    subed: std.BoundedArray(usize, 256) = .{},
-
     const MirroringType = if (HORIZONTAL_MIRRORING) struct {
         data: bool = false,
 
@@ -164,7 +161,6 @@ const Accumulator = struct {
     fn doAdd(self: *Accumulator, comptime side: Colour, tp: PieceType, sq: Square) void {
         const white_idx = idx(.white, side, tp, sq, self.white_mirrored);
         const black_idx = idx(.black, side, tp, sq, self.black_mirrored);
-        self.added.appendAssumeCapacity(black_idx);
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] += weights.hidden_layer_weights[white_idx * HIDDEN_SIZE + i];
         }
@@ -178,9 +174,6 @@ const Accumulator = struct {
         const add_black_idx = idx(.black, side, add_tp, add_sq, self.black_mirrored);
         const sub_white_idx = idx(.white, side, sub_tp, sub_sq, self.white_mirrored);
         const sub_black_idx = idx(.black, side, sub_tp, sub_sq, self.black_mirrored);
-        self.added.appendAssumeCapacity(add_black_idx);
-        self.subed.appendAssumeCapacity(sub_black_idx);
-
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] += weights.hidden_layer_weights[add_white_idx * HIDDEN_SIZE + i] - weights.hidden_layer_weights[sub_white_idx * HIDDEN_SIZE + i];
         }
@@ -196,9 +189,6 @@ const Accumulator = struct {
         const sub_black_idx = idx(.black, side, sub_tp, sub_sq, self.black_mirrored);
         const opp_sub_white_idx = idx(.white, side.flipped(), opp_sub_tp, opp_sub_sq, self.white_mirrored);
         const opp_sub_black_idx = idx(.black, side.flipped(), opp_sub_tp, opp_sub_sq, self.black_mirrored);
-        self.added.appendAssumeCapacity(add_black_idx);
-        self.subed.appendAssumeCapacity(sub_black_idx);
-        self.subed.appendAssumeCapacity(opp_sub_black_idx);
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] +=
                 weights.hidden_layer_weights[add_white_idx * HIDDEN_SIZE + i] -
@@ -223,10 +213,6 @@ const Accumulator = struct {
         const add2_black_idx = idx(.black, side, add2_tp, add2_sq, self.black_mirrored);
         const sub2_white_idx = idx(.white, side, sub2_tp, sub2_sq, self.white_mirrored);
         const sub2_black_idx = idx(.black, side, sub2_tp, sub2_sq, self.black_mirrored);
-        self.added.appendAssumeCapacity(add1_black_idx);
-        self.subed.appendAssumeCapacity(sub1_black_idx);
-        self.added.appendAssumeCapacity(add2_black_idx);
-        self.subed.appendAssumeCapacity(sub2_black_idx);
 
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] +=
@@ -412,6 +398,10 @@ const Accumulator = struct {
             return;
         }
         defer self.dirty_piece = .{};
+        const correct = if (std.debug.runtime_safety) Accumulator.init(board) else void{};
+        defer if (std.debug.runtime_safety and !(std.meta.eql(correct.white, self.white) and std.meta.eql(correct.black, self.black))) {
+            unreachable;
+        };
         // {
         //     self.initInPlace(board);
         //     return;
