@@ -727,6 +727,63 @@ pub inline fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from:
     eval_state.addSub(col, pt, to, col, pt, from);
 }
 
+pub inline fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType, from: Square, to: Square, captured_pt: PieceType, captured_square: Square, eval_state: anytype) void {
+    const bb = from.toBitboard() ^ to.toBitboard();
+    self.occupancyPtrFor(col).* ^= bb;
+    self.occupancyPtrFor(col.flipped()).* ^= captured_square.toBitboard();
+    self.pieces[pt.toInt()] ^= bb;
+    self.pieces[captured_pt.toInt()] ^= captured_square.toBitboard();
+    const zobrist_update = root.zobrist.piece(col, pt, from) ^ root.zobrist.piece(col, pt, to);
+    const captured_zobrist_update = root.zobrist.piece(col.flipped(), captured_pt, captured_square);
+    self.hash ^= zobrist_update ^ captured_zobrist_update;
+
+    if (pt == .pawn) {
+        self.pawn_hash ^= zobrist_update;
+    } else {
+        self.nonpawn_hash[col.toInt()] ^= zobrist_update;
+    }
+    if (pt == .rook or pt == .queen) {
+        self.major_hash ^= zobrist_update;
+    }
+    if (pt == .knight or pt == .bishop) {
+        self.minor_hash ^= zobrist_update;
+    }
+
+    if (captured_pt == .pawn) {
+        self.pawn_hash ^= captured_zobrist_update;
+    } else {
+        self.nonpawn_hash[col.flipped().toInt()] ^= captured_zobrist_update;
+    }
+    if (captured_pt == .rook or captured_pt == .queen) {
+        self.major_hash ^= captured_zobrist_update;
+    }
+    if (captured_pt == .knight or captured_pt == .bishop) {
+        self.minor_hash ^= captured_zobrist_update;
+    }
+    (&self.mailbox)[from.toInt()] = null;
+    (&self.mailbox)[captured_square.toInt()] = null;
+    (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col);
+    eval_state.addSubSub(col, pt, to, col, pt, from, col.flipped(), captured_pt, captured_square);
+}
+
+pub inline fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, king_to: Square, rook_from: Square, rook_to: Square, eval_state: anytype) void {
+    const king_bb = king_from.toBitboard() ^ king_to.toBitboard();
+    const rook_bb = rook_from.toBitboard() ^ rook_to.toBitboard();
+    self.occupancyPtrFor(col).* ^= king_bb ^ rook_bb;
+    self.pieces[PieceType.king.toInt()] ^= king_bb;
+    self.pieces[PieceType.rook.toInt()] ^= rook_bb;
+    const king_zobrist_update = root.zobrist.piece(col, .king, king_from) ^ root.zobrist.piece(col, .king, king_to);
+    const rook_zobrist_update = root.zobrist.piece(col, .rook, rook_from) ^ root.zobrist.piece(col, .rook, rook_to);
+    self.hash ^= king_zobrist_update ^ rook_zobrist_update;
+    self.nonpawn_hash[col.toInt()] ^= king_zobrist_update ^ rook_zobrist_update;
+    self.major_hash ^= rook_zobrist_update;
+    (&self.mailbox)[king_from.toInt()] = null;
+    (&self.mailbox)[rook_from.toInt()] = null;
+    (&self.mailbox)[king_to.toInt()] = ColouredPieceType.fromPieceType(.king, col);
+    (&self.mailbox)[rook_to.toInt()] = ColouredPieceType.fromPieceType(.rook, col);
+    eval_state.addAddSubSub(col, .king, king_to, col, .rook, rook_to, col, .king, king_from, col, .rook, rook_from);
+}
+
 pub inline fn updatePins(self: *Board, comptime col: Colour) void {
     const occ = self.occupancy();
     const us_occ = self.occupancyFor(col);
@@ -829,9 +886,12 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             if (cap_opt) |cap| {
                 updated_halfmove = 0;
                 updated_castling_rights.updateSquare(to, stm.flipped());
-                self.removePiece(stm.flipped(), cap.toPieceType(), to, eval_state);
+                self.movePieceCapture(stm, pt, from, to, cap.toPieceType(), to, eval_state);
+                // self.removePiece(stm.flipped(), cap.toPieceType(), to, eval_state);
+                // self.movePiece(stm, pt, from, to, eval_state);
+            } else {
+                self.movePiece(stm, pt, from, to, eval_state);
             }
-            self.movePiece(stm, pt, from, to, eval_state);
 
             if (pt == .pawn) {
                 updated_halfmove = 0;
@@ -853,8 +913,7 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             const to = move.to();
             const target = move.getEnPassantPawnSquare(stm);
             updated_halfmove = 0;
-            self.removePiece(stm.flipped(), .pawn, target, eval_state);
-            self.movePiece(stm, .pawn, from, to, eval_state);
+            self.movePieceCapture(stm, .pawn, from, to, .pawn, target, eval_state);
         },
         .castling => {
             const king_from = move.from();
@@ -862,9 +921,7 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
             const rook_from = move.to();
             const rook_to = self.castlingRookDestFor(move, stm);
             updated_castling_rights.kingMoved(stm);
-            self.removePiece(stm, .rook, rook_from, eval_state); // cant be a movePiece due to FRC
-            self.movePiece(stm, .king, king_from, king_to, eval_state);
-            self.addPiece(stm, .rook, rook_to, eval_state);
+            self.movePieceCastling(stm, king_from, king_to, rook_from, rook_to, eval_state);
         },
         .promotion => {
             const from = move.from();
@@ -875,8 +932,8 @@ pub fn makeMove(self: *Board, comptime stm: Colour, move: Move, eval_state: anyt
                 updated_castling_rights.updateSquare(to, stm.flipped());
                 self.removePiece(stm.flipped(), cap.toPieceType(), to, eval_state);
             }
-            self.removePiece(stm, .pawn, from, eval_state);
             self.addPiece(stm, move.promoType(), to, eval_state);
+            self.removePiece(stm, .pawn, from, eval_state);
         },
     }
     if (updated_castling_rights.rawCastlingAvailability() != self.castling_rights.rawCastlingAvailability()) {
@@ -1148,6 +1205,35 @@ pub const NullEvalState = struct {
         _ = sub_col;
         _ = sub_pt;
         _ = sub_square;
+    }
+
+    pub fn addSubSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
+        _ = self;
+        _ = add_col;
+        _ = add_pt;
+        _ = add_square;
+        _ = sub1_col;
+        _ = sub1_pt;
+        _ = sub1_square;
+        _ = sub2_col;
+        _ = sub2_pt;
+        _ = sub2_square;
+    }
+
+    pub fn addAddSubSub(self: @This(), comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
+        _ = self;
+        _ = add1_col;
+        _ = add1_pt;
+        _ = add1_square;
+        _ = add2_col;
+        _ = add2_pt;
+        _ = add2_square;
+        _ = sub1_col;
+        _ = sub1_pt;
+        _ = sub1_square;
+        _ = sub2_col;
+        _ = sub2_pt;
+        _ = sub2_square;
     }
 };
 

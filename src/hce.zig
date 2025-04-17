@@ -369,8 +369,19 @@ pub const State = struct {
     pub fn addSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
         self.add(add_col, add_pt, add_square);
         self.sub(sub_col, sub_pt, sub_square);
-        self.phase -= gamephaseInc[sub_pt.toInt()];
-        self.phase += gamephaseInc[add_pt.toInt()];
+    }
+
+    pub fn addSubSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
+        self.add(add_col, add_pt, add_square);
+        self.sub(sub1_col, sub1_pt, sub1_square);
+        self.sub(sub2_col, sub2_pt, sub2_square);
+    }
+
+    pub fn addAddSubSub(self: *State, comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
+        self.add(add1_col, add1_pt, add1_square);
+        self.add(add2_col, add2_pt, add2_square);
+        self.sub(sub1_col, sub1_pt, sub1_square);
+        self.sub(sub2_col, sub2_pt, sub2_square);
     }
 
     pub fn eval(self: State) i16 {
