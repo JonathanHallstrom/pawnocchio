@@ -20,11 +20,17 @@ const root = @import("root.zig");
 
 const Board = root.Board;
 
-const use_hce = true;
-const impl = if (use_hce) @import("hce.zig") else @compileError("TODO: nnue");
+const use_hce = false;
+const impl = if (use_hce) @import("hce.zig") else @import("nnue.zig");
+
+pub fn init() void {
+    if (@hasDecl(impl, "init")) {
+        impl.init();
+    }
+}
 
 pub const State = impl.State;
-pub const evaluate: fn (*const Board, State) i16 = impl.evaluate;
+pub const evaluate: fn (comptime root.Colour, *const Board, *State) i16 = impl.evaluate;
 
 pub const checkmate_score: i16 = 16000;
 pub const win_score: i16 = checkmate_score - root.Searcher.MAX_PLY;

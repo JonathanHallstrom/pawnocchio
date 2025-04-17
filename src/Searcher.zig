@@ -93,8 +93,8 @@ pub const StackEntry = struct {
     excluded: Move = Move.init(),
     static_eval: i16,
 
-    pub fn init(self: *StackEntry, board_: anytype, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
-        self.board = if (@TypeOf(board_) == std.builtin.Type.Pointer) board_.* else board_;
+    pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
+        self.board = board_.*;
         self.move = move_;
         self.prev = prev_;
         self.evals = prev_evals;
@@ -137,14 +137,16 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     self.ply += 1;
     const new_stack_entry = self.curStackEntry();
     const new_eval_state = self.curEvalState();
+    const board = &prev_stack_entry.board;
 
+    new_eval_state.* = prev_eval_state.*;
+    new_eval_state.update(board);
     new_stack_entry.init(
-        prev_stack_entry.board,
-        TypedMove.fromBoard(&prev_stack_entry.board, move),
+        board,
+        TypedMove.fromBoard(board, move),
         prev_stack_entry.move,
         prev_stack_entry.evals,
     );
-    new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
@@ -161,14 +163,16 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     self.ply += 1;
     const new_stack_entry = self.curStackEntry();
     const new_eval_state = self.curEvalState();
+    const board = &prev_stack_entry.board;
 
+    new_eval_state.* = prev_eval_state.*;
+    new_eval_state.update(board);
     new_stack_entry.init(
-        prev_stack_entry.board,
+        board,
         TypedMove.init(),
         TypedMove.init(),
         prev_stack_entry.evals,
     );
-    new_eval_state.* = prev_eval_state.*;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
@@ -223,7 +227,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = evaluate(board, self.curEvalState().*);
+        raw_static_eval = evaluate(stm, board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -329,7 +333,7 @@ fn search(
     const is_in_check = board.checkers != 0;
 
     if (self.ply >= MAX_PLY - 1) {
-        return evaluate(board, self.curEvalState().*);
+        return evaluate(stm, board, self.curEvalState());
     }
 
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
@@ -393,7 +397,7 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = evaluate(board, self.curEvalState().*);
+        raw_static_eval = evaluate(stm, board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
@@ -782,7 +786,7 @@ fn init(self: *Searcher, params: Params) void {
 
     self.root_move = Move.init();
     self.root_score = 0;
-    self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init(), .{});
+    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
         self.histories.reset();

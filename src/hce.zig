@@ -356,6 +356,8 @@ pub const State = struct {
         self.* = init(board);
     }
 
+    pub fn update(_: State, _: *const Board) void {}
+
     pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
         self.state = self.state.add(readPieceSquareTable(col, pt, square));
         self.phase += gamephaseInc[pt.toInt()];
@@ -392,7 +394,7 @@ pub const State = struct {
     }
 };
 
-pub fn evaluate(board: *const Board, state: State) i16 {
+pub fn evaluate(comptime _: Colour, board: *const Board, state: *State) i16 {
     var res = evaluation.clampScore(state.eval());
     if (board.stm == .black) res = -res;
     return res;

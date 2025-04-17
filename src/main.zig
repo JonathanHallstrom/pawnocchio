@@ -460,7 +460,7 @@ pub fn main() !void {
         } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
             return;
         } else if (std.ascii.eqlIgnoreCase(command, "nneval")) {
-            // write("{}\n", .{nnue.nnEval(&board)});
+            write("{}\n", .{@import("nnue.zig").nnEval(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
             for ([_][]const u8{
                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -476,7 +476,7 @@ pub fn main() !void {
                 "1nbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk - 0 1",
             }) |fen| {
                 write("FEN: {s}\n", .{fen});
-                // write("EVAL: {}\n", .{nnue.nnEval(&try Board.parseFen(fen))});
+                write("EVAL: {}\n", .{@import("nnue.zig").nnEval(&try Board.parseFen(fen, false))});
             }
         } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
             const hce = @import("material_eval.zig");

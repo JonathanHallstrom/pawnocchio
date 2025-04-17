@@ -64,6 +64,7 @@ pub fn init() void {
         fn initImpl() void {
             stdout = std.io.getStdOut();
             attacks.init();
+            evaluation.init();
             engine.reset();
             engine.setTTSize(16) catch std.debug.panic("Fatal: couldn't allocate default TT size\n", .{});
             engine.setThreadCount(1) catch std.debug.panic("Fatal: couldn't allocate default thread count\n", .{});
