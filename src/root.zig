@@ -353,6 +353,7 @@ pub const TTEntry = struct {
     score_type: ScoreType = .none,
     move: Move = Move.init(),
     depth: u8 = 0,
+    raw_static_eval: i16 = 0,
 };
 
 var stdout: std.fs.File = undefined;

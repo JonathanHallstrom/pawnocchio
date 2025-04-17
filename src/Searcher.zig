@@ -227,7 +227,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = evaluate(stm, board, self.curEvalState());
+        raw_static_eval = if (tt_hit and !is_pv) tt_entry.raw_static_eval else evaluate(stm, board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -397,7 +397,7 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = evaluate(stm, board, self.curEvalState());
+        raw_static_eval = if (tt_hit and !is_pv) tt_entry.raw_static_eval else evaluate(stm, board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
@@ -698,6 +698,7 @@ fn search(
             tt_hash,
             best_move,
             evaluation.scoreToTt(best_score, self.ply),
+            raw_static_eval,
             score_type,
             depth,
         );
