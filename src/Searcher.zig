@@ -366,6 +366,8 @@ fn search(
     const tt_hash = board.hash;
     var tt_entry: root.TTEntry = .{};
     var tt_hit = false;
+    var ttmove_quiet = false;
+    var ttmove_noisy = false;
     if (!is_singular_search) {
         tt_entry = engine.readTT(tt_hash);
 
@@ -384,6 +386,8 @@ fn search(
                 }
             }
         }
+        ttmove_noisy = board.isNoisy(tt_entry.move);
+        ttmove_quiet = !ttmove_noisy;
     }
 
     if (depth >= 4 and
@@ -583,6 +587,10 @@ fn search(
 
                 if (is_quiet) {
                     reduction -= self.histories.readQuiet(board, move, cur.prev) >> 13;
+
+                    if (ttmove_noisy) {
+                        reduction += 1;
+                    }
                 }
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
