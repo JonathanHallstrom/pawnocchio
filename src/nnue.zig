@@ -273,7 +273,7 @@ const Accumulator = struct {
         }
 
         var res: i32 = @reduce(std.builtin.ReduceOp.Add, acc);
-        if (std.debug.runtime_safety) {
+        if (@import("builtin").mode == .Debug) {
             var verify_res: i32 = 0;
             for (0..HIDDEN_SIZE) |j| {
                 verify_res += screlu(us_acc[j]) * weights.output_weights[bucket_offset..][j];
@@ -398,8 +398,8 @@ const Accumulator = struct {
             return;
         }
         defer self.dirty_piece = .{};
-        const correct = if (std.debug.runtime_safety) Accumulator.init(board) else void{};
-        defer if (std.debug.runtime_safety and !(std.meta.eql(correct.white, self.white) and std.meta.eql(correct.black, self.black))) {
+        const correct = if (@import("builtin").mode == .Debug) Accumulator.init(board) else void{};
+        defer if (@import("builtin").mode == .Debug and !(std.meta.eql(correct.white, self.white) and std.meta.eql(correct.black, self.black))) {
             unreachable;
         };
         // {
