@@ -580,7 +580,7 @@ fn search(
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
-                reduction -= tunable_constants.lmr_history_mult * (history_score >> 13);
+                reduction -= @intCast(@as(i64, tunable_constants.lmr_history_mult) * history_score >> 13);
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
