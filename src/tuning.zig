@@ -45,8 +45,8 @@ const tunable_defaults = struct {
     pub const lmr_cutnode_mult: i32 = 1024;
     pub const lmr_improving_mult: i32 = 1024;
     pub const lmr_history_mult: i32 = 1024;
-    pub const nmp_base: i32 = 4;
-    pub const nmp_mult: i32 = 4;
+    pub const nmp_base: i32 = 32768;
+    pub const nmp_mult: i32 = 1024;
     pub const fp_base: i32 = 250;
     pub const fp_mult: i32 = 100;
     pub const qs_see_threshold: i32 = -100;
@@ -57,6 +57,7 @@ const tunable_defaults = struct {
     pub const nodetm_base: i32 = 1536;
     pub const nodetm_mult: i32 = 819;
     pub const nmp_eval_reduction_scale: i32 = 27;
+    pub const nmp_eval_reduction_max: i32 = 24576;
     pub const qs_futility_margin: i32 = 100;
     pub const singular_depth_limit: i32 = 8;
     pub const singular_tt_depth_margin: i32 = 3;
@@ -92,6 +93,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
+    .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin },
     .{ .name = "singular_depth_limit", .default = tunable_defaults.singular_depth_limit },
     .{ .name = "singular_tt_depth_margin", .default = tunable_defaults.singular_tt_depth_margin },
@@ -127,6 +129,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
+    pub var nmp_eval_reduction_max = tunable_defaults.nmp_eval_reduction_max;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
     pub var singular_depth_limit = tunable_defaults.singular_depth_limit;
     pub var singular_tt_depth_margin = tunable_defaults.singular_tt_depth_margin;
