@@ -456,6 +456,21 @@ fn search(
             self.unmakeNullMove(stm);
 
             if (nmp_score >= beta) {
+                if (depth >= 10) {
+                    const verification_score = self.search(
+                        false,
+                        false,
+                        stm,
+                        -beta,
+                        -beta + 1,
+                        depth - nmp_reduction,
+                        !cutnode,
+                    );
+                    if (verification_score >= beta) {
+                        return if (evaluation.isMateScore(verification_score)) @intCast(beta) else verification_score;
+                    }
+                }
+
                 return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
             }
         }
