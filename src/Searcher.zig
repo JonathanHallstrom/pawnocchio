@@ -489,13 +489,13 @@ fn search(
         const is_quiet = board.isQuiet(move);
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
-            if (depth <= 3 and history_score < depth * -tunable_constants.history_pruning_mult) {
-                mp.skip_quiets = true;
-                continue;
-            }
-
             if (is_quiet) {
                 if (num_legal >= 3 + depth * depth) {
+                    mp.skip_quiets = true;
+                    continue;
+                }
+
+                if (depth <= 3 and history_score < depth * -tunable_constants.history_pruning_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -506,6 +506,10 @@ fn search(
                     static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
                 {
                     mp.skip_quiets = true;
+                    continue;
+                }
+            } else {
+                if (depth <= 3 and history_score < tunable_constants.noisy_history_pruning_base + tunable_constants.noisy_history_pruning_mult * depth * depth) {
                     continue;
                 }
             }
