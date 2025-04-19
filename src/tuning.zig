@@ -39,19 +39,21 @@ const tunable_defaults = struct {
     pub const rfp_margin: i32 = 70;
     pub const aspiration_initial: i32 = 20;
     pub const aspiration_multiplier: i32 = 2048;
-    pub const lmr_base: i32 = 2;
-    pub const lmr_pv_mult: i32 = 1;
-    pub const lmr_cutnode_mult: i32 = 1;
-    pub const lmr_improving_mult: i32 = 1;
+    pub const lmr_base: i32 = 2048;
+    pub const lmr_log_mult: i32 = 1024;
+    pub const lmr_pv_mult: i32 = 1024;
+    pub const lmr_cutnode_mult: i32 = 1024;
+    pub const lmr_improving_mult: i32 = 1024;
+    pub const lmr_history_mult: i32 = 1024;
     pub const nmp_base: i32 = 4;
     pub const nmp_mult: i32 = 4;
     pub const fp_base: i32 = 250;
     pub const fp_mult: i32 = 100;
-    pub const qs_see_threshold: i32 = 100;
-    pub const see_quiet_pruning_mult: i32 = 80;
-    pub const see_noisy_pruning_mult: i32 = 50;
+    pub const qs_see_threshold: i32 = -100;
+    pub const see_quiet_pruning_mult: i32 = -80;
+    pub const see_noisy_pruning_mult: i32 = -50;
     pub const razoring_margin: i32 = 200;
-    pub const history_pruning_mult: i32 = 2048;
+    pub const history_pruning_mult: i32 = -2048;
     pub const nodetm_base: i32 = 1536;
     pub const nodetm_mult: i32 = 819;
     pub const nmp_eval_reduction_scale: i32 = 27;
@@ -74,6 +76,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier },
     .{ .name = "lmr_base", .default = tunable_defaults.lmr_base },
+    .{ .name = "lmr_log_mult", .default = tunable_defaults.lmr_log_mult },
     .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult },
     .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult },
     .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult },
@@ -108,6 +111,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
     pub var lmr_base = tunable_defaults.lmr_base;
+    pub var lmr_log_mult = tunable_defaults.lmr_log_mult;
     pub var lmr_pv_mult = tunable_defaults.lmr_pv_mult;
     pub var lmr_cutnode_mult = tunable_defaults.lmr_cutnode_mult;
     pub var lmr_improving_mult = tunable_defaults.lmr_improving_mult;

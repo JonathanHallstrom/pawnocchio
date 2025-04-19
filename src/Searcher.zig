@@ -270,7 +270,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
                 continue;
             }
 
-            if (!is_in_check and !SEE.scoreMove(board, move, -tunable_constants.qs_see_threshold)) {
+            if (!is_in_check and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold)) {
                 continue;
             }
         }
@@ -487,6 +487,7 @@ fn search(
         }
 
         const is_quiet = board.isQuiet(move);
+        const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             if (is_quiet) {
                 if (num_legal >= 3 + depth * depth) {
@@ -494,8 +495,7 @@ fn search(
                     continue;
                 }
 
-                const history_score = self.histories.readQuiet(board, move, cur.prev);
-                if (depth <= 3 and history_score < depth * -tunable_constants.history_pruning_mult) {
+                if (depth <= 3 and history_score < depth * tunable_constants.history_pruning_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -515,7 +515,7 @@ fn search(
             else
                 tunable_constants.see_noisy_pruning_mult * depth * depth;
 
-            if (!SEE.scoreMove(board, move, -see_pruning_thresh)) {
+            if (!SEE.scoreMove(board, move, see_pruning_thresh)) {
                 continue;
             }
         }
@@ -576,16 +576,12 @@ fn search(
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 var reduction: i32 = tunable_constants.lmr_base;
-                reduction += std.math.log2_int(u32, @intCast(depth)) * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
+                reduction += std.math.log2_int(u32, @intCast(depth)) * tunable_constants.lmr_log_mult * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
-
-                if (is_quiet) {
-                    reduction -= self.histories.readQuiet(board, move, cur.prev) >> 13;
-                } else {
-                    reduction -= self.histories.readNoisy(board, move) >> 13;
-                }
+                reduction -= tunable_constants.lmr_history_mult * (history_score >> 13);
+                reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
 

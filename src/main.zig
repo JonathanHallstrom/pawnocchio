@@ -195,6 +195,21 @@ pub fn main() !void {
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
             write("uciok\n", .{});
+            if (root.tuning.do_tuning) {
+                for (root.tuning.tunables) |tunable| {
+                    write(
+                        "option name {s} type spin default {} min {} max {}\n",
+                        .{ tunable.name, tunable.default, tunable.min, tunable.max },
+                    );
+                }
+            }
+        } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
+            for (root.tuning.tunables) |tunable| {
+                write(
+                    "{s}, int, {}, {}, {}, {d}, 0.002\n",
+                    .{ tunable.name, tunable.default, tunable.getMin(), tunable.getMax(), tunable.getCend() },
+                );
+            }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
             board = Board.startpos();
@@ -240,6 +255,16 @@ pub fn main() !void {
                     writeLog("invalid overhead: '{s}'\n", .{value});
                     continue;
                 });
+            }
+            if (root.tuning.do_tuning) {
+                inline for (root.tuning.tunables) |tunable| {
+                    if (std.ascii.eqlIgnoreCase(tunable.name, name)) {
+                        @field(root.tuning.tunable_constants, tunable.name) = std.fmt.parseInt(i32, value, 10) catch {
+                            writeLog("invalid constant: '{s}'\n", .{value});
+                            continue :loop;
+                        };
+                    }
+                }
             }
         } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             root.engine.waitUntilDoneSearching();
