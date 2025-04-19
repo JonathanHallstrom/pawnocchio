@@ -509,7 +509,7 @@ fn search(
                     continue;
                 }
             } else {
-                if (depth <= 3 and history_score < tunable_constants.noisy_history_pruning_base + tunable_constants.noisy_history_pruning_mult * depth * depth) {
+                if (depth <= 3 and history_score < -tunable_constants.noisy_history_pruning_base + -tunable_constants.noisy_history_pruning_mult * depth * depth) {
                     continue;
                 }
             }
