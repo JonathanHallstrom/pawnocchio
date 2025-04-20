@@ -28,7 +28,7 @@ pub const Tunable = struct {
     pub fn getCend(self: Tunable) f64 {
         if (self.c_end) |m|
             return m;
-        const d: f64 = @floatFromInt(self.default);
+        const d: f64 = @floatFromInt(@abs(self.default));
         return @max(0.5, d / 20);
     }
 };
