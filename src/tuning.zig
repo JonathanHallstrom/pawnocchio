@@ -90,7 +90,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
-    .{ .name = "qs_see_threshold", .default = tunable_defaults.fp_mult },
+    .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold },
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult },
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin },
