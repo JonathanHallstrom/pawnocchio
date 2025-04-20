@@ -336,6 +336,18 @@ fn search(
         return evaluate(stm, board, self.curEvalState());
     }
 
+    if (!is_root) {
+        const best_possible = evaluation.matedIn(self.ply);
+        const worst_possible = -evaluation.matedIn(self.ply + 1);
+
+        if (best_possible >= beta) {
+            return best_possible;
+        }
+        if (worst_possible <= alpha) {
+            return worst_possible;
+        }
+    }
+
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
         if (board.halfmove >= 100) {
             if (is_in_check) {
