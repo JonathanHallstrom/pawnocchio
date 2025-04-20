@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -10,7 +10,7 @@ pub const Tunable = struct {
     c_end: ?f64 = null,
 
     fn margin(self: Tunable) i32 {
-        return 10 + self.default * std.math.sign(self.default) >> 1;
+        return 10 + (self.default * std.math.sign(self.default) >> 1);
     }
 
     pub fn getMin(self: Tunable) i32 {
@@ -28,46 +28,46 @@ pub const Tunable = struct {
     pub fn getCend(self: Tunable) f64 {
         if (self.c_end) |m|
             return m;
-        const d: f64 = @floatFromInt(self.default);
+        const d: f64 = @floatFromInt(@abs(self.default));
         return @max(0.5, d / 20);
     }
 };
 
 const tunable_defaults = struct {
-    pub const history_bonus_mult: i32 = 322;
-    pub const history_bonus_offs: i32 = 325;
-    pub const history_bonus_max: i32 = 2389;
-    pub const history_penalty_mult: i32 = 288;
-    pub const history_penalty_offs: i32 = 278;
-    pub const history_penalty_max: i32 = 2125;
-    pub const rfp_margin: i32 = 70;
+    pub const history_bonus_mult: i32 = 351;
+    pub const history_bonus_offs: i32 = 333;
+    pub const history_bonus_max: i32 = 2523;
+    pub const history_penalty_mult: i32 = 272;
+    pub const history_penalty_offs: i32 = 270;
+    pub const history_penalty_max: i32 = 2164;
+    pub const rfp_margin: i32 = 68;
     pub const aspiration_initial: i32 = 21;
-    pub const aspiration_multiplier: i32 = 2121;
-    pub const lmr_base: i32 = 2084;
-    pub const lmr_log_mult: i32 = 986;
-    pub const lmr_pv_mult: i32 = 1128;
-    pub const lmr_cutnode_mult: i32 = 951;
-    pub const lmr_improving_mult: i32 = 1086;
-    pub const lmr_history_mult: i32 = 991;
-    pub const nmp_base: i32 = 33140;
-    pub const nmp_mult: i32 = 1046;
-    pub const fp_base: i32 = 237;
-    pub const fp_mult: i32 = 107;
+    pub const aspiration_multiplier: i32 = 2160;
+    pub const lmr_base: i32 = 2053;
+    pub const lmr_log_mult: i32 = 965;
+    pub const lmr_pv_mult: i32 = 1161;
+    pub const lmr_cutnode_mult: i32 = 954;
+    pub const lmr_improving_mult: i32 = 1053;
+    pub const lmr_history_mult: i32 = 975;
+    pub const nmp_base: i32 = 34100;
+    pub const nmp_mult: i32 = 1044;
+    pub const fp_base: i32 = 241;
+    pub const fp_mult: i32 = 112;
     pub const qs_see_threshold: i32 = -100;
     pub const see_quiet_pruning_mult: i32 = -80;
     pub const see_noisy_pruning_mult: i32 = -50;
-    pub const razoring_margin: i32 = 194;
+    pub const razoring_margin: i32 = 185;
     pub const history_pruning_mult: i32 = -2047;
-    pub const nodetm_base: i32 = 1536;
-    pub const nodetm_mult: i32 = 819;
-    pub const nmp_eval_reduction_scale: i32 = 28;
-    pub const nmp_eval_reduction_max: i32 = 24270;
-    pub const qs_futility_margin: i32 = 96;
+    pub const nodetm_base: i32 = 1594;
+    pub const nodetm_mult: i32 = 799;
+    pub const nmp_eval_reduction_scale: i32 = 29;
+    pub const nmp_eval_reduction_max: i32 = 24120;
+    pub const qs_futility_margin: i32 = 93;
     pub const singular_depth_limit: i32 = 8;
     pub const singular_tt_depth_margin: i32 = 3;
-    pub const singular_beta_mult: i32 = 16;
-    pub const singular_depth_mult: i32 = 16;
-    pub const singular_dext_margin: i32 = 15;
+    pub const singular_beta_mult: i32 = 17;
+    pub const singular_depth_mult: i32 = 17;
+    pub const singular_dext_margin: i32 = 14;
 };
 
 pub const tunables = [_]Tunable{
