@@ -529,7 +529,7 @@ fn search(
             tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
             tt_entry.score_type != .upper)
         {
-            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_depth_mult >> 5));
+            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 5));
             const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
 
             cur.excluded = move;
