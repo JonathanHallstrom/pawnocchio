@@ -9,16 +9,20 @@ pub const Tunable = struct {
     max: ?i32 = null,
     c_end: ?f64 = null,
 
+    fn margin(self: Tunable) i32 {
+        return 10 + self.default * std.math.sign(self.default) >> 1;
+    }
+
     pub fn getMin(self: Tunable) i32 {
         if (self.min) |m|
             return m;
-        return self.default >> 1;
+        return -self.margin() + if (self.default > 0) self.default >> 1 else self.default * 2;
     }
 
     pub fn getMax(self: Tunable) i32 {
         if (self.max) |m|
             return m;
-        return self.default * 2 + std.math.sign(self.default) * 16;
+        return self.margin() + if (self.default > 0) self.default * 2 else self.default >> 1;
     }
 
     pub fn getCend(self: Tunable) f64 {
