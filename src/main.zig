@@ -199,11 +199,11 @@ pub fn main() !void {
                 for (root.tuning.tunables) |tunable| {
                     write(
                         "option name {s} type spin default {} min {} max {}\n",
-                        .{ tunable.name, tunable.default, tunable.min, tunable.max },
+                        .{ tunable.name, tunable.default, tunable.getMin(), tunable.getMax() },
                     );
                 }
             }
-        } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             for (root.tuning.tunables) |tunable| {
                 write(
                     "{s}, int, {}, {}, {}, {d}, 0.002\n",

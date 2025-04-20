@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -81,6 +81,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult },
     .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult },
     .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult },
+    .{ .name = "lmr_history_mult", .default = tunable_defaults.lmr_history_mult },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
@@ -117,6 +118,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_pv_mult = tunable_defaults.lmr_pv_mult;
     pub var lmr_cutnode_mult = tunable_defaults.lmr_cutnode_mult;
     pub var lmr_improving_mult = tunable_defaults.lmr_improving_mult;
+    pub var lmr_history_mult = tunable_defaults.lmr_history_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var fp_base = tunable_defaults.fp_base;
@@ -137,3 +139,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
     pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
 } else tunable_defaults;
+
+comptime {
+    std.debug.assert(std.meta.declarations(tunable_defaults).len == tunables.len);
+    std.debug.assert(std.meta.declarations(tunable_constants).len == tunables.len);
+}
