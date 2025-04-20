@@ -206,8 +206,14 @@ pub fn main() !void {
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             for (root.tuning.tunables) |tunable| {
                 write(
-                    "{s}, int, {}, {}, {}, {d}, 0.002\n",
-                    .{ tunable.name, tunable.default, tunable.getMin(), tunable.getMax(), tunable.getCend() },
+                    "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                    .{
+                        tunable.name,
+                        @as(f64, @floatFromInt(tunable.default)),
+                        @as(f64, @floatFromInt(tunable.getMin())),
+                        @as(f64, @floatFromInt(tunable.getMax())),
+                        tunable.getCend(),
+                    },
                 );
             }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
