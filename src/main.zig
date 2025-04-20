@@ -194,20 +194,26 @@ pub fn main() !void {
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
-            write("uciok\n", .{});
             if (root.tuning.do_tuning) {
                 for (root.tuning.tunables) |tunable| {
                     write(
                         "option name {s} type spin default {} min {} max {}\n",
-                        .{ tunable.name, tunable.default, tunable.min, tunable.max },
+                        .{ tunable.name, tunable.default, tunable.getMin(), tunable.getMax() },
                     );
                 }
             }
-        } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
+            write("uciok\n", .{});
+        } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             for (root.tuning.tunables) |tunable| {
                 write(
-                    "{s}, int, {}, {}, {}, {d}, 0.002\n",
-                    .{ tunable.name, tunable.default, tunable.getMin(), tunable.getMax(), tunable.getCend() },
+                    "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                    .{
+                        tunable.name,
+                        @as(f64, @floatFromInt(tunable.default)),
+                        @as(f64, @floatFromInt(tunable.getMin())),
+                        @as(f64, @floatFromInt(tunable.getMax())),
+                        tunable.getCend(),
+                    },
                 );
             }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {

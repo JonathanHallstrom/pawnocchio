@@ -440,8 +440,9 @@ fn search(
             !cur.prev.move.isNull())
         {
             engine.prefetchTT(board.hash ^ root.zobrist.turn());
-            var nmp_reduction = tunable_constants.nmp_base + (depth * tunable_constants.nmp_mult >> 5);
-            nmp_reduction += @intCast(@min(3, @abs(static_eval - beta) * tunable_constants.nmp_eval_reduction_scale >> 13));
+            var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
+            nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale);
+            nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
             const nmp_score = -self.search(
@@ -528,7 +529,7 @@ fn search(
             tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
             tt_entry.score_type != .upper)
         {
-            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_depth_mult >> 5));
+            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 5));
             const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
 
             cur.excluded = move;
