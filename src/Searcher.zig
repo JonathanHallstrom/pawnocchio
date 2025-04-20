@@ -312,12 +312,13 @@ fn search(
     comptime is_pv: bool,
     comptime stm: Colour,
     alpha_original: i32,
-    beta: i32,
+    beta_original: i32,
     depth_: i32,
     cutnode: bool,
 ) i16 {
     var depth = depth_;
     var alpha = alpha_original;
+    var beta = beta_original;
 
     self.nodes += 1;
     if (self.stop or (!is_root and self.limits.checkSearch(self.nodes))) {
@@ -337,14 +338,13 @@ fn search(
     }
 
     if (!is_root) {
-        const best_possible = evaluation.matedIn(self.ply);
-        const worst_possible = -evaluation.matedIn(self.ply + 1);
+        const worst_possible = evaluation.matedIn(self.ply);
+        const best_possible = -evaluation.matedIn(self.ply + 1);
 
-        if (best_possible >= beta) {
-            return best_possible;
-        }
-        if (worst_possible <= alpha) {
-            return worst_possible;
+        alpha = @max(alpha, worst_possible);
+        beta = @min(beta, best_possible);
+        if (alpha >= beta) {
+            return @intCast(alpha);
         }
     }
 
