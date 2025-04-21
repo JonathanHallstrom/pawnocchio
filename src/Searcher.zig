@@ -83,6 +83,7 @@ ply: u8,
 stop: bool,
 histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
+min_nmp_ply: u8,
 
 pub const StackEntry = struct {
     board: Board,
@@ -455,6 +456,7 @@ fn search(
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale);
             nmp_reduction >>= 13;
+            nmp_reduction = @min(nmp_reduction, depth);
 
             self.makeNullMove(stm);
             const nmp_score = -self.search(
@@ -469,7 +471,26 @@ fn search(
             self.unmakeNullMove(stm);
 
             if (nmp_score >= beta) {
-                return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                if (depth <= 14 or self.min_nmp_ply != 0) {
+                    return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                }
+
+                const reduced_depth: u8 = @intCast(depth - nmp_reduction);
+                self.min_nmp_ply = self.ply +| reduced_depth * 3 / 4;
+                const verification_score = self.search(
+                    false,
+                    false,
+                    stm,
+                    beta - 1,
+                    beta,
+                    depth - nmp_reduction,
+                    true,
+                );
+                self.min_nmp_ply = 0;
+
+                if (verification_score >= beta) {
+                    return if (evaluation.isMateScore(verification_score)) @intCast(beta) else nmp_score;
+                }
             }
         }
     }
