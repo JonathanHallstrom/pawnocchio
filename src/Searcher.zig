@@ -450,7 +450,7 @@ fn search(
         if (depth >= 4 and
             static_eval >= beta and
             non_pk != 0 and
-            !cur.prev.move.isNull())
+            !cur.prev.move.isNull() and self.ply >= self.min_nmp_ply)
         {
             engine.prefetchTT(board.hash ^ root.zobrist.turn());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
