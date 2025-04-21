@@ -828,6 +828,7 @@ fn init(self: *Searcher, params: Params) void {
         self.histories.reset();
     }
     self.limits.resetNodeCounts();
+    self.min_nmp_ply = 0;
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
