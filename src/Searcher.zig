@@ -706,6 +706,9 @@ fn search(
     }
 
     if (!is_singular_search) {
+        if (score_type == .upper and tt_hit) {
+            best_move = tt_entry.move;
+        }
         engine.writeTT(
             tt_hash,
             best_move,
