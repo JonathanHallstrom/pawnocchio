@@ -215,6 +215,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     const tt_hash = board.hash;
     var tt_entry = engine.readTT(tt_hash);
     const tt_hit = tt_entry.hash == tt_hash;
+    const old_entry_was_empty = tt_entry.depth == 0;
     if (!tt_hit) {
         tt_entry = .{};
     }
@@ -247,6 +248,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     var best_score = static_eval;
     var best_move = Move.init();
+    var score_type = ScoreType.upper;
     var mp = MovePicker.initQs(
         board,
         &cur.movelist,
@@ -292,7 +294,9 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
         if (score > alpha) {
             alpha = score;
+            score_type = .exact;
             if (score >= beta) {
+                score_type = .lower;
                 break;
             }
         }
@@ -301,6 +305,16 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     if (is_root) {
         self.root_move = best_move;
         self.root_score = best_score;
+    }
+
+    if (old_entry_was_empty) {
+        engine.writeTT(
+            tt_hash,
+            best_move,
+            evaluation.scoreToTt(best_score, self.ply),
+            score_type,
+            0,
+        );
     }
 
     return best_score;
