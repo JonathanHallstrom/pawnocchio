@@ -833,7 +833,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     stm,
                     aspiration_lower,
                     aspiration_upper,
-                    depth - failhigh_reduction,
+                    @max(1, depth - failhigh_reduction),
                     false,
                 );
                 if (self.stop or evaluation.isMateScore(score)) {
@@ -848,7 +848,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                             self.writeInfo(score, depth, .lower);
                         }
                     }
-                    failhigh_reduction = @min(reduction_limit + 1, 3);
+                    failhigh_reduction = @min(failhigh_reduction + 1, reduction_limit);
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
