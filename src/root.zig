@@ -141,7 +141,11 @@ pub const Square = enum(u8) {
     }
 
     pub fn flipRank(self: Square) Square {
-        return fromInt(self.toInt() ^ 56);
+        return fromInt(self.toInt() ^ 0b111000);
+    }
+
+    pub fn flipFile(self: Square) Square {
+        return fromInt(self.toInt() ^ 0b000111);
     }
 };
 

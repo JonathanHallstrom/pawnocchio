@@ -45,16 +45,23 @@ fn mullo(
 }
 
 const Weights = struct {
-    hidden_layer_weights: [HIDDEN_SIZE * INPUT_SIZE]i16 align(std.atomic.cache_line) = .{0} ** (HIDDEN_SIZE * INPUT_SIZE),
-    hidden_layer_biases: [HIDDEN_SIZE]i16 align(std.atomic.cache_line) = .{0} ** HIDDEN_SIZE,
-    output_weights: [HIDDEN_SIZE * 2 * BUCKET_COUNT]i16 align(std.atomic.cache_line) = .{0} ** (HIDDEN_SIZE * 2 * BUCKET_COUNT),
-    output_biases: [BUCKET_COUNT]i16 align(std.atomic.cache_line) = .{0} ** BUCKET_COUNT,
+    hidden_layer_weights: [HIDDEN_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
+    hidden_layer_biases: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
+    output_weights: [HIDDEN_SIZE * 2 * OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
+    output_biases: [OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
 };
 
-fn whichOutputBucket(board: *const Board) usize {
+inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
+    if (INPUT_BUCKET_COUNT == 1) {
+        return 0;
+    }
+    return INPUT_BUCKET_LAYOUT[(if (stm == .white) king_square else king_square.flipRank()).toInt()];
+}
+
+inline fn whichOutputBucket(board: *const Board) usize {
     const max_piece_count = 32;
-    const divisor = (max_piece_count + BUCKET_COUNT - 1) / BUCKET_COUNT;
-    return @min(BUCKET_COUNT - 1, (@popCount(board.white | board.black) - 2) / divisor);
+    const divisor = (max_piece_count + OUTPUT_BUCKET_COUNT - 1) / OUTPUT_BUCKET_COUNT;
+    return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.white | board.black) - 2) / divisor);
 }
 
 var weights: Weights = undefined;
@@ -102,11 +109,12 @@ const Accumulator = struct {
         pub fn flip(_: anytype) void {}
     };
 
-    fn idx(comptime perspective: Colour, comptime side: Colour, tp: PieceType, sq: Square, mirror: MirroringType) usize {
+    fn idx(comptime perspective: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square, mirror: MirroringType) usize {
+        const bucket_offs = whichInputBucket(perspective, king_sq) * INPUT_SIZE;
         const side_offs: usize = if (perspective == side) 0 else 1;
         const sq_offs: usize = (if (perspective == .black) sq.flipRank().toInt() else sq.toInt()) ^ 7 * @as(usize, @intFromBool(mirror.read()));
         const tp_offs: usize = tp.toInt();
-        return side_offs * 64 * 6 + tp_offs * 64 + sq_offs;
+        return bucket_offs + side_offs * 64 * 6 + tp_offs * 64 + sq_offs;
     }
 
     pub fn default() Accumulator {
@@ -123,22 +131,20 @@ const Accumulator = struct {
         self.white_mirrored.write(Square.fromBitboard(board.kingFor(.white)).getFile().toInt() >= 4);
         self.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
         self.dirty_piece = .{};
-        // std.debug.print("init {}\n", .{acc.white_mirrored.read()});
-        // std.debug.print("init {}\n", .{acc.black_mirrored.read()});
 
+        const white_king_sq = Square.fromBitboard(board.kingFor(.white));
+        const black_king_sq = Square.fromBitboard(board.kingFor(.black));
         for (PieceType.all) |tp| {
             {
                 var iter = Bitboard.iterator(board.pieceFor(.white, tp));
                 while (iter.next()) |sq| {
-                    // std.debug.print("{} {}\n", .{ tp, sq });
-                    self.doAdd(.white, tp, sq);
+                    self.doAdd(.white, white_king_sq, black_king_sq, tp, sq);
                 }
             }
             {
                 var iter = Bitboard.iterator(board.pieceFor(.black, tp));
                 while (iter.next()) |sq| {
-                    // std.debug.print("{} {}\n", .{ tp, sq });
-                    self.doAdd(.black, tp, sq);
+                    self.doAdd(.black, white_king_sq, black_king_sq, tp, sq);
                 }
             }
         }
@@ -158,9 +164,9 @@ const Accumulator = struct {
         return acc;
     }
 
-    fn doAdd(self: *Accumulator, comptime side: Colour, tp: PieceType, sq: Square) void {
-        const white_idx = idx(.white, side, tp, sq, self.white_mirrored);
-        const black_idx = idx(.black, side, tp, sq, self.black_mirrored);
+    fn doAdd(self: *Accumulator, comptime side: Colour, white_king_sq: Square, black_king_sq: Square, tp: PieceType, sq: Square) void {
+        const white_idx = idx(.white, side, white_king_sq, tp, sq, self.white_mirrored);
+        const black_idx = idx(.black, side, black_king_sq, tp, sq, self.black_mirrored);
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] += weights.hidden_layer_weights[white_idx * HIDDEN_SIZE + i];
         }
@@ -169,11 +175,11 @@ const Accumulator = struct {
         }
     }
 
-    fn doAddSub(noalias self: *Accumulator, comptime side: Colour, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
-        const add_white_idx = idx(.white, side, add_tp, add_sq, self.white_mirrored);
-        const add_black_idx = idx(.black, side, add_tp, add_sq, self.black_mirrored);
-        const sub_white_idx = idx(.white, side, sub_tp, sub_sq, self.white_mirrored);
-        const sub_black_idx = idx(.black, side, sub_tp, sub_sq, self.black_mirrored);
+    fn doAddSub(noalias self: *Accumulator, comptime side: Colour, white_king_sq: Square, black_king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
+        const add_white_idx = idx(.white, side, white_king_sq, add_tp, add_sq, self.white_mirrored);
+        const add_black_idx = idx(.black, side, black_king_sq, add_tp, add_sq, self.black_mirrored);
+        const sub_white_idx = idx(.white, side, white_king_sq, sub_tp, sub_sq, self.white_mirrored);
+        const sub_black_idx = idx(.black, side, black_king_sq, sub_tp, sub_sq, self.black_mirrored);
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] += weights.hidden_layer_weights[add_white_idx * HIDDEN_SIZE + i] - weights.hidden_layer_weights[sub_white_idx * HIDDEN_SIZE + i];
         }
@@ -182,13 +188,13 @@ const Accumulator = struct {
         }
     }
 
-    fn doAddSubSub(noalias self: *Accumulator, comptime side: Colour, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
-        const add_white_idx = idx(.white, side, add_tp, add_sq, self.white_mirrored);
-        const add_black_idx = idx(.black, side, add_tp, add_sq, self.black_mirrored);
-        const sub_white_idx = idx(.white, side, sub_tp, sub_sq, self.white_mirrored);
-        const sub_black_idx = idx(.black, side, sub_tp, sub_sq, self.black_mirrored);
-        const opp_sub_white_idx = idx(.white, side.flipped(), opp_sub_tp, opp_sub_sq, self.white_mirrored);
-        const opp_sub_black_idx = idx(.black, side.flipped(), opp_sub_tp, opp_sub_sq, self.black_mirrored);
+    fn doAddSubSub(noalias self: *Accumulator, comptime side: Colour, white_king_sq: Square, black_king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
+        const add_white_idx = idx(.white, side, white_king_sq, add_tp, add_sq, self.white_mirrored);
+        const add_black_idx = idx(.black, side, black_king_sq, add_tp, add_sq, self.black_mirrored);
+        const sub_white_idx = idx(.white, side, white_king_sq, sub_tp, sub_sq, self.white_mirrored);
+        const sub_black_idx = idx(.black, side, black_king_sq, sub_tp, sub_sq, self.black_mirrored);
+        const opp_sub_white_idx = idx(.white, side.flipped(), white_king_sq, opp_sub_tp, opp_sub_sq, self.white_mirrored);
+        const opp_sub_black_idx = idx(.black, side.flipped(), black_king_sq, opp_sub_tp, opp_sub_sq, self.black_mirrored);
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] +=
                 weights.hidden_layer_weights[add_white_idx * HIDDEN_SIZE + i] -
@@ -203,16 +209,16 @@ const Accumulator = struct {
         }
     }
 
-    fn doAddAddSubSub(noalias self: *Accumulator, comptime side: Colour, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
-        const add1_white_idx = idx(.white, side, add1_tp, add1_sq, self.white_mirrored);
-        const add1_black_idx = idx(.black, side, add1_tp, add1_sq, self.black_mirrored);
-        const sub1_white_idx = idx(.white, side, sub1_tp, sub1_sq, self.white_mirrored);
-        const sub1_black_idx = idx(.black, side, sub1_tp, sub1_sq, self.black_mirrored);
+    fn doAddAddSubSub(noalias self: *Accumulator, comptime side: Colour, white_king_sq: Square, black_king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
+        const add1_white_idx = idx(.white, side, white_king_sq, add1_tp, add1_sq, self.white_mirrored);
+        const add1_black_idx = idx(.black, side, black_king_sq, add1_tp, add1_sq, self.black_mirrored);
+        const sub1_white_idx = idx(.white, side, white_king_sq, sub1_tp, sub1_sq, self.white_mirrored);
+        const sub1_black_idx = idx(.black, side, black_king_sq, sub1_tp, sub1_sq, self.black_mirrored);
 
-        const add2_white_idx = idx(.white, side, add2_tp, add2_sq, self.white_mirrored);
-        const add2_black_idx = idx(.black, side, add2_tp, add2_sq, self.black_mirrored);
-        const sub2_white_idx = idx(.white, side, sub2_tp, sub2_sq, self.white_mirrored);
-        const sub2_black_idx = idx(.black, side, sub2_tp, sub2_sq, self.black_mirrored);
+        const add2_white_idx = idx(.white, side, white_king_sq, add2_tp, add2_sq, self.white_mirrored);
+        const add2_black_idx = idx(.black, side, black_king_sq, add2_tp, add2_sq, self.black_mirrored);
+        const sub2_white_idx = idx(.white, side, white_king_sq, sub2_tp, sub2_sq, self.white_mirrored);
+        const sub2_black_idx = idx(.black, side, black_king_sq, sub2_tp, sub2_sq, self.black_mirrored);
 
         for (0..HIDDEN_SIZE) |i| {
             self.white[i] +=
@@ -291,106 +297,16 @@ const Accumulator = struct {
     }
 
     fn refresh(noalias self: *Accumulator, comptime side: Colour, board: *const Board) void {
-        if (side == .white) {
-            self.white_mirrored.flip();
-        } else {
-            self.black_mirrored.flip();
-        }
-        {
-            self.initInPlace(board);
-            return;
-        }
-        const us_mirror = if (side == .white)
-            self.white_mirrored
-        else
-            self.black_mirrored;
-
-        const them_mirror = if (side == .white)
-            self.black_mirrored
-        else
-            self.white_mirrored;
-
-        const from = self.dirty_piece.subs.slice()[0];
-        const to = self.dirty_piece.adds.slice()[0];
-
-        const us_arr = if (side == .white) &self.white else &self.black;
-        const them_arr = if (side == .white) &self.black else &self.white;
-        var dont_add_mask: u64 = to.sq.toBitboard();
-        if (self.dirty_piece.adds.len == 2) {
-            const king_from_sq: Square = from.sq;
-            const king_to_sq: Square = to.sq;
-            const rook_from_sq: Square = self.dirty_piece.subs.slice()[1].sq;
-            const rook_to_sq: Square = self.dirty_piece.adds.slice()[1].sq;
-            dont_add_mask |= rook_from_sq.toBitboard();
-
-            const us_add_king_idx = idx(side, side, .king, king_to_sq, us_mirror);
-            const them_add_king_idx = idx(side.flipped(), side, .king, king_to_sq, them_mirror);
-            const them_sub_king_idx = idx(side.flipped(), side, .king, king_from_sq, them_mirror);
-
-            const us_add_rook_idx = idx(side, side, .rook, rook_to_sq, us_mirror);
-            const them_add_rook_idx = idx(side.flipped(), side, .rook, rook_to_sq, them_mirror);
-            const them_sub_rook_idx = idx(side.flipped(), side, .rook, rook_from_sq, them_mirror);
-
-            for (0..HIDDEN_SIZE) |i| {
-                us_arr[i] =
-                    weights.hidden_layer_biases[i] +
-                    weights.hidden_layer_weights[us_add_king_idx * HIDDEN_SIZE + i] +
-                    weights.hidden_layer_weights[us_add_rook_idx * HIDDEN_SIZE + i];
-                them_arr[i] +=
-                    weights.hidden_layer_weights[them_add_king_idx * HIDDEN_SIZE + i] -
-                    weights.hidden_layer_weights[them_sub_king_idx * HIDDEN_SIZE + i] +
-                    weights.hidden_layer_weights[them_add_rook_idx * HIDDEN_SIZE + i] -
-                    weights.hidden_layer_weights[them_sub_rook_idx * HIDDEN_SIZE + i];
-            }
-        } else {
-            const king_from_sq = self.dirty_piece.subs.slice()[0].sq;
-            const king_to_sq = self.dirty_piece.adds.slice()[0].sq;
-            const us_add_king_idx = idx(side, side, .king, king_to_sq, us_mirror);
-            const them_add_king_idx = idx(side.flipped(), side, .king, king_to_sq, them_mirror);
-            const them_sub_king_idx = idx(side.flipped(), side, .king, king_from_sq, them_mirror);
-            for (0..HIDDEN_SIZE) |i| {
-                us_arr[i] =
-                    weights.hidden_layer_biases[i] +
-                    weights.hidden_layer_weights[us_add_king_idx * HIDDEN_SIZE + i];
-                them_arr[i] +=
-                    weights.hidden_layer_weights[them_add_king_idx * HIDDEN_SIZE + i] -
-                    weights.hidden_layer_weights[them_sub_king_idx * HIDDEN_SIZE + i];
-            }
-            if (self.dirty_piece.subs.len == 2) {
-                const captured_tp = self.dirty_piece.subs.slice()[1].pt;
-                const sub_idx = idx(side.flipped(), side.flipped(), captured_tp, king_to_sq, them_mirror);
-                for (0..HIDDEN_SIZE) |i| {
-                    them_arr[i] -= weights.hidden_layer_weights[sub_idx * HIDDEN_SIZE + i];
-                }
-            }
-        }
-        for (PieceType.all) |tp| {
-            {
-                var iter = Bitboard.iterator(board.pieceFor(side.flipped(), tp));
-                while (iter.next()) |sq| {
-                    const add_idx = idx(side, side.flipped(), tp, sq, us_mirror);
-                    for (0..HIDDEN_SIZE) |i| {
-                        us_arr[i] += weights.hidden_layer_weights[add_idx * HIDDEN_SIZE + i];
-                    }
-                }
-            }
-            {
-                var iter = Bitboard.iterator(board.pieceFor(side, tp) & ~dont_add_mask);
-                while (iter.next()) |sq| {
-                    const add_idx = idx(side, side, tp, sq, us_mirror);
-
-                    for (0..HIDDEN_SIZE) |i| {
-                        us_arr[i] += weights.hidden_layer_weights[add_idx * HIDDEN_SIZE + i];
-                    }
-                }
-            }
-        }
+        _ = side;
+        self.initInPlace(board);
+        return;
     }
 
-    fn needsRefresh(from: Square, to: Square) bool {
-        if (!HORIZONTAL_MIRRORING) return false;
-        // std.debug.print("{} {}\n", .{from.getFile(), to.getFile()});
-        return (from.getFile().toInt() >= 4) != (to.getFile().toInt() >= 4);
+    fn needsRefresh(stm: Colour, from: Square, to: Square) bool {
+        if (HORIZONTAL_MIRRORING and (from.getFile().toInt() >= 4) != (to.getFile().toInt() >= 4)) {
+            return true;
+        }
+        return whichInputBucket(stm, from) != whichInputBucket(stm, to);
     }
 
     fn applyUpdate(noalias self: *Accumulator, comptime stm: Colour, board: *const Board) void {
@@ -398,30 +314,38 @@ const Accumulator = struct {
             return;
         }
         defer self.dirty_piece = .{};
-        const correct = if (@import("builtin").mode == .Debug) Accumulator.init(board) else void{};
-        defer if (@import("builtin").mode == .Debug and !(std.meta.eql(correct.white, self.white) and std.meta.eql(correct.black, self.black))) {
-            unreachable;
+        defer if (@import("builtin").mode == .Debug) {
+            const correct = Accumulator.init(board);
+            if (!std.meta.eql(correct.white, self.white) or
+                !std.meta.eql(correct.black, self.black))
+            {
+                unreachable;
+            }
         };
         // {
         //     self.initInPlace(board);
         //     return;
         // }
+        const white_king_sq = Square.fromBitboard(board.kingFor(.white));
+        const black_king_sq = Square.fromBitboard(board.kingFor(.black));
         if (self.dirty_piece.adds.len == 1 and self.dirty_piece.subs.len == 1) {
             const add1 = self.dirty_piece.adds.slice()[0];
             const sub1 = self.dirty_piece.subs.slice()[0];
-            if (add1.pt == .king and needsRefresh(add1.sq, sub1.sq)) {
+            // std.debug.print("{} {}\n", .{ add1, sub1 });
+            if (add1.pt == .king and needsRefresh(stm.flipped(), add1.sq, sub1.sq)) {
+                // std.debug.print("refresh\n", .{});
                 self.refresh(stm.flipped(), board);
             } else {
-                self.doAddSub(stm.flipped(), add1.pt, add1.sq, sub1.pt, sub1.sq);
+                self.doAddSub(stm.flipped(), white_king_sq, black_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq);
             }
         } else if (self.dirty_piece.adds.len == 1 and self.dirty_piece.subs.len == 2) {
             const add1 = self.dirty_piece.adds.slice()[0];
             const sub1 = self.dirty_piece.subs.slice()[0];
             const sub2 = self.dirty_piece.subs.slice()[1];
-            if (add1.pt == .king and needsRefresh(add1.sq, sub1.sq)) {
+            if (add1.pt == .king and needsRefresh(stm.flipped(), add1.sq, sub1.sq)) {
                 self.refresh(stm.flipped(), board);
             } else {
-                self.doAddSubSub(stm.flipped(), add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
+                self.doAddSubSub(stm.flipped(), white_king_sq, black_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             }
         } else if (self.dirty_piece.adds.len == 2 and self.dirty_piece.subs.len == 2) {
             const add1 = self.dirty_piece.adds.slice()[0];
@@ -429,11 +353,11 @@ const Accumulator = struct {
             const sub1 = self.dirty_piece.subs.slice()[0];
             const sub2 = self.dirty_piece.subs.slice()[1];
             // std.debug.print("{} {}\n", .{ add1.sq, sub1.sq });
-            if (needsRefresh(add1.sq, sub1.sq)) {
+            if (needsRefresh(stm.flipped(), add1.sq, sub1.sq)) {
                 // std.debug.print("castling refresh\n", .{});
                 self.refresh(stm.flipped(), board);
             } else {
-                self.doAddAddSubSub(stm.flipped(), add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
+                self.doAddAddSubSub(stm.flipped(), white_king_sq, black_king_sq, add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             }
         } else {
             unreachable;
@@ -535,9 +459,21 @@ pub fn nnEval(board: *const Board) i16 {
 const vec_size = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
 
 pub const HORIZONTAL_MIRRORING = true;
-pub const BUCKET_COUNT: usize = 8;
+pub const INPUT_BUCKET_COUNT: usize = 4;
+pub const OUTPUT_BUCKET_COUNT: usize = 1;
 pub const INPUT_SIZE: usize = 768;
 pub const HIDDEN_SIZE: usize = 1024;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
+
+pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
+    0, 0, 1, 1, 1, 1, 0, 0,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+};
