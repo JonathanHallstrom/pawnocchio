@@ -842,21 +842,21 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 if (score >= aspiration_upper) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
+                    failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
                         if (!quiet) {
                             self.writeInfo(score, depth, .lower);
                         }
                     }
-                    failhigh_reduction = 3;
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
+                    failhigh_reduction >>= 1;
                     if (should_print) {
                         if (!quiet) {
                             self.writeInfo(score, depth, .upper);
                         }
                     }
-                    failhigh_reduction = 0;
                 } else {
                     break;
                 }
