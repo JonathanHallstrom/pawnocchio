@@ -459,7 +459,7 @@ const vec_size = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLe
 
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 4;
-pub const OUTPUT_BUCKET_COUNT: usize = 1;
+pub const OUTPUT_BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
 pub const HIDDEN_SIZE: usize = 1024;
 pub const SCALE = 400;
