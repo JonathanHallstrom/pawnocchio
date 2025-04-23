@@ -49,7 +49,7 @@ fn ttIndex(hash: u64) usize {
     return @intCast(@as(u128, hash) * tt.len >> 64);
 }
 
-pub fn writeTT(hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
+pub fn writeTT(hash: u64, move: root.Move, score: i16, raw_static_eval: i16, score_type: root.ScoreType, depth: i32) void {
     if (disable_tt) return;
     tt[ttIndex(hash)] = root.TTEntry{
         .score = score,
@@ -57,6 +57,7 @@ pub fn writeTT(hash: u64, move: root.Move, score: i16, score_type: root.ScoreTyp
         .move = move,
         .hash = hash,
         .depth = @intCast(depth),
+        .raw_static_eval = raw_static_eval,
     };
 }
 
