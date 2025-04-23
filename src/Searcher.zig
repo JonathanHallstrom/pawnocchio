@@ -822,7 +822,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         }
         var aspiration_lower = @max(previous_score - window, -evaluation.inf_score);
         var aspiration_upper = @min(previous_score + window, evaluation.inf_score);
-
+        var failhigh_reduction: i32 = 0;
+        const reduction_limit = @min(depth - 1, 3);
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
             inline else => |stm| while (true) : (window = (window * tunable_constants.aspiration_multiplier) >> 10) {
@@ -832,7 +833,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     stm,
                     aspiration_lower,
                     aspiration_upper,
-                    depth,
+                    depth - failhigh_reduction,
                     false,
                 );
                 if (self.stop or evaluation.isMateScore(score)) {
@@ -847,6 +848,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                             self.writeInfo(score, depth, .lower);
                         }
                     }
+                    failhigh_reduction = @min(reduction_limit + 1, 3);
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
@@ -855,6 +857,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                             self.writeInfo(score, depth, .upper);
                         }
                     }
+                    failhigh_reduction = 0;
                 } else {
                     break;
                 }
