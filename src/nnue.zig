@@ -286,8 +286,7 @@ const Accumulator = struct {
         res += weights.output_biases[which_bucket];
         const scaled = @divTrunc(res * SCALE, QA * QB);
 
-        const fifty_move_rule_scaled = @divTrunc(scaled * (200 - board.halfmove), 200);
-        return evaluation.clampScore(fifty_move_rule_scaled);
+        return evaluation.clampScore(scaled);
     }
 
     fn refresh(noalias self: *Accumulator, comptime side: Colour, board: *const Board) void {
