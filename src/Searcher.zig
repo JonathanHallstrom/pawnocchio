@@ -314,11 +314,12 @@ fn search(
     alpha_original: i32,
     beta_original: i32,
     depth_: i32,
-    cutnode: bool,
+    cutnode_original: bool,
 ) i16 {
     var depth = depth_;
     var alpha = alpha_original;
     var beta = beta_original;
+    var cutnode = cutnode_original;
 
     self.nodes += 1;
     if (self.stop or (!is_root and self.limits.checkSearch(self.nodes))) {
@@ -569,6 +570,7 @@ fn search(
                 extension -= 1;
             }
         }
+        cutnode = cutnode or extension < 0;
         num_legal += 1;
 
         if (std.debug.runtime_safety) {
