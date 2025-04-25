@@ -77,7 +77,7 @@ const tunable_defaults = struct {
     pub const singular_beta_mult: i32 = 17;
     pub const singular_depth_mult: i32 = 17;
     pub const singular_dext_margin: i32 = 14;
-    pub const singular_text_margin: i32 = 100;
+    pub const singular_text_margin: i32 = 150;
 };
 
 pub const tunables = [_]Tunable{
