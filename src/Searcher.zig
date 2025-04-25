@@ -567,6 +567,8 @@ fn search(
                         extension += 1;
                     }
                 }
+            } else if (s_beta >= beta) {
+                return @intCast(s_beta);
             } else if (tt_entry.score >= beta) {
                 extension -= 1;
             }
