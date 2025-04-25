@@ -563,6 +563,8 @@ fn search(
                 if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
                     extension += 1;
                 }
+            } else if (tt_entry.score >= beta) {
+                extension -= 1;
             }
         }
         num_legal += 1;
