@@ -470,7 +470,7 @@ pub fn nnEval(board: *const Board) i16 {
 threadlocal var refresh_cache: root.NNCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT) = undefined;
 pub const vec_size = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
 pub const HORIZONTAL_MIRRORING = true;
-pub const INPUT_BUCKET_COUNT: usize = 4;
+pub const INPUT_BUCKET_COUNT: usize = 8;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
 pub const HIDDEN_SIZE: usize = 1024;
@@ -478,12 +478,12 @@ pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
-    0, 0, 1, 1, 1, 1, 0, 0,
-    2, 2, 2, 2, 2, 2, 2, 2,
-    3, 3, 3, 3, 3, 3, 3, 3,
-    3, 3, 3, 3, 3, 3, 3, 3,
-    3, 3, 3, 3, 3, 3, 3, 3,
-    3, 3, 3, 3, 3, 3, 3, 3,
-    3, 3, 3, 3, 3, 3, 3, 3,
-    3, 3, 3, 3, 3, 3, 3, 3,
+    0, 0, 1, 2, 2, 1, 0, 0,
+    3, 3, 4, 4, 4, 4, 3, 3,
+    5, 5, 5, 5, 5, 5, 5, 5,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    7, 7, 7, 7, 7, 7, 7, 7,
+    7, 7, 7, 7, 7, 7, 7, 7,
+    7, 7, 7, 7, 7, 7, 7, 7,
 };
