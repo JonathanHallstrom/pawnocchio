@@ -41,6 +41,10 @@ const NNCacheEntry = struct {
         // if (@reduce(.Or, @as(@Vector(6, u64), self.pieces)) != 0) {
         //     std.debug.print("actual refresh\n", .{});
         // }
+        var adds: [64]usize = undefined;
+        var num_adds: usize = 0;
+        var subs: [64]usize = undefined;
+        var num_subs: usize = 0;
         for (PieceType.all) |pt| {
             inline for ([2]Colour{ .white, .black }) |col| {
                 const current = board.pieceFor(col, pt);
@@ -51,9 +55,11 @@ const NNCacheEntry = struct {
                     while (iter.next()) |sq| {
                         const add_idx = nnue.idx(stm, col, us_king, pt, sq, mirror);
                         // std.debug.print("refresh add {} {}\n", .{ add_idx, nnue.weights.hidden_layer_weights[add_idx * nnue.HIDDEN_SIZE] });
-                        for (0..nnue.HIDDEN_SIZE) |i| {
-                            acc[i] += nnue.weights.hidden_layer_weights[add_idx * nnue.HIDDEN_SIZE + i];
-                        }
+                        adds[num_adds] = add_idx;
+                        num_adds += 1;
+                        // for (0..nnue.HIDDEN_SIZE) |i| {
+                        //     acc[i] += nnue.weights.hidden_layer_weights[add_idx * nnue.HIDDEN_SIZE + i];
+                        // }
                     }
                 }
                 {
@@ -61,11 +67,43 @@ const NNCacheEntry = struct {
                     while (iter.next()) |sq| {
                         const sub_idx = nnue.idx(stm, col, us_king, pt, sq, mirror);
                         // std.debug.print("refresh sub {}\n", .{sub_idx});
-                        for (0..nnue.HIDDEN_SIZE) |i| {
-                            acc[i] -= nnue.weights.hidden_layer_weights[sub_idx * nnue.HIDDEN_SIZE + i];
-                        }
+                        subs[num_subs] = sub_idx;
+                        num_subs += 1;
+                        // for (0..nnue.HIDDEN_SIZE) |i| {
+                        //     acc[i] -= nnue.weights.hidden_layer_weights[sub_idx * nnue.HIDDEN_SIZE + i];
+                        // }
                     }
                 }
+            }
+        }
+        while (num_adds >= 4) : (num_adds -= 4) {
+            for (0..nnue.HIDDEN_SIZE) |i| {
+                acc[i] +=
+                    nnue.weights.hidden_layer_weights[adds[num_adds - 4] * nnue.HIDDEN_SIZE + i] +
+                    nnue.weights.hidden_layer_weights[adds[num_adds - 3] * nnue.HIDDEN_SIZE + i] +
+                    nnue.weights.hidden_layer_weights[adds[num_adds - 2] * nnue.HIDDEN_SIZE + i] +
+                    nnue.weights.hidden_layer_weights[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
+            }
+        }
+        while (num_adds >= 1) : (num_adds -= 1) {
+            for (0..nnue.HIDDEN_SIZE) |i| {
+                acc[i] +=
+                    nnue.weights.hidden_layer_weights[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
+            }
+        }
+        while (num_subs >= 4) : (num_subs -= 4) {
+            for (0..nnue.HIDDEN_SIZE) |i| {
+                acc[i] -=
+                    nnue.weights.hidden_layer_weights[subs[num_subs - 4] * nnue.HIDDEN_SIZE + i] +
+                    nnue.weights.hidden_layer_weights[subs[num_subs - 3] * nnue.HIDDEN_SIZE + i] +
+                    nnue.weights.hidden_layer_weights[subs[num_subs - 2] * nnue.HIDDEN_SIZE + i] +
+                    nnue.weights.hidden_layer_weights[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
+            }
+        }
+        while (num_subs >= 1) : (num_subs -= 1) {
+            for (0..nnue.HIDDEN_SIZE) |i| {
+                acc[i] -=
+                    nnue.weights.hidden_layer_weights[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
             }
         }
     }
