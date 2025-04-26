@@ -428,7 +428,7 @@ fn search(
         !is_singular_search)
     {
         if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
-            return static_eval;
+            return @intCast(beta + @as(u16, @intCast(static_eval - beta)) / 3);
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
