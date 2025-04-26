@@ -356,7 +356,7 @@ pub const State = struct {
         self.* = init(board);
     }
 
-    pub fn update(_: State, _: *const Board) void {}
+    pub fn update(_: State, _: *const Board, _: *const Board) void {}
 
     pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
         self.state = self.state.add(readPieceSquareTable(col, pt, square));

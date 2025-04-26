@@ -29,8 +29,14 @@ pub fn init() void {
     }
 }
 
+pub fn initThreadLocals() void {
+    if (@hasDecl(impl, "initThreadLocals")) {
+        impl.initThreadLocals();
+    }
+}
+
 pub const State = impl.State;
-pub const evaluate: fn (comptime root.Colour, *const Board, *State) i16 = impl.evaluate;
+pub const evaluate: fn (comptime root.Colour, *const Board, *const Board, *State) i16 = impl.evaluate;
 
 pub const checkmate_score: i16 = 16000;
 pub const win_score: i16 = checkmate_score - root.Searcher.MAX_PLY;
