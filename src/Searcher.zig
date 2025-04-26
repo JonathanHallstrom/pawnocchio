@@ -110,7 +110,7 @@ fn curStackEntry(self: *Searcher) *StackEntry {
 }
 
 fn prevStackEntry(self: *Searcher) *StackEntry {
-    return &self.searchStackRoot()[self.ply - 1];
+    return &(&self.search_stack)[STACK_PADDING + self.ply - 1];
 }
 
 fn curEvalState(self: *Searcher) *evaluation.State {
@@ -118,7 +118,7 @@ fn curEvalState(self: *Searcher) *evaluation.State {
 }
 
 fn searchStackRoot(self: *Searcher) [*]StackEntry {
-    return (&self.search_stack)[1..];
+    return (&self.search_stack)[STACK_PADDING..];
 }
 
 fn evalStateRoot(self: *Searcher) [*]evaluation.State {
@@ -132,6 +132,7 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
+    const old_stack_entry = self.prevStackEntry();
     const prev_stack_entry = self.curStackEntry();
     const prev_eval_state = self.curEvalState();
     self.ply += 1;
@@ -140,7 +141,11 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const board = &prev_stack_entry.board;
 
     new_eval_state.* = prev_eval_state.*;
-    new_eval_state.update(board);
+    if (self.ply == 0) {
+        new_eval_state.initInPlace(board);
+    } else {
+        new_eval_state.update(board, &old_stack_entry.board);
+    }
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
@@ -158,6 +163,7 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
 }
 
 fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
+    const old_stack_entry = self.prevStackEntry();
     const prev_stack_entry = self.curStackEntry();
     const prev_eval_state = self.curEvalState();
     self.ply += 1;
@@ -166,7 +172,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const board = &prev_stack_entry.board;
 
     new_eval_state.* = prev_eval_state.*;
-    new_eval_state.update(board);
+    new_eval_state.update(board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
         TypedMove.init(),
@@ -208,6 +214,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         self.stop = true;
         return 0;
     }
+    const par = self.prevStackEntry();
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
@@ -227,7 +234,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = evaluate(stm, board, self.curEvalState());
+        raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -329,12 +336,13 @@ fn search(
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
 
+    const par = self.prevStackEntry();
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
     if (self.ply >= MAX_PLY - 1) {
-        return evaluate(stm, board, self.curEvalState());
+        return evaluate(stm, board, &par.board, self.curEvalState());
     }
 
     if (!is_root) {
@@ -409,7 +417,7 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = evaluate(stm, board, self.curEvalState());
+        raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
@@ -805,12 +813,14 @@ fn init(self: *Searcher, params: Params) void {
 
     self.root_move = Move.init();
     self.root_score = 0;
+    self.search_stack[0].board = Board{};
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
         self.histories.reset();
     }
     self.limits.resetNodeCounts();
+    evaluation.initThreadLocals();
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {

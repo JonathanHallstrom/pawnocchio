@@ -37,6 +37,7 @@ pub const history = @import("history.zig");
 pub const tuning = @import("tuning.zig");
 pub const tunable_constants = tuning.tunable_constants;
 pub const SEE = @import("SEE.zig");
+pub const NNCache = @import("refresh_cache.zig").NNCache;
 
 pub const is_0_14_0 = @import("builtin").zig_version.minor >= 14;
 
@@ -141,7 +142,11 @@ pub const Square = enum(u8) {
     }
 
     pub fn flipRank(self: Square) Square {
-        return fromInt(self.toInt() ^ 56);
+        return fromInt(self.toInt() ^ 0b111000);
+    }
+
+    pub fn flipFile(self: Square) Square {
+        return fromInt(self.toInt() ^ 0b000111);
     }
 };
 
