@@ -571,6 +571,10 @@ fn search(
                 if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
                     extension += 1;
                 }
+            } else if (s_beta >= beta) {
+                return @intCast(s_beta);
+            } else if (tt_entry.score >= beta) {
+                extension -= 1;
             }
         }
         num_legal += 1;
@@ -832,7 +836,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         }
         var aspiration_lower = @max(previous_score - window, -evaluation.inf_score);
         var aspiration_upper = @min(previous_score + window, evaluation.inf_score);
-
+        var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
             inline else => |stm| while (true) : (window = (window * tunable_constants.aspiration_multiplier) >> 10) {
@@ -842,7 +846,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     stm,
                     aspiration_lower,
                     aspiration_upper,
-                    depth,
+                    @max(1, depth - failhigh_reduction),
                     false,
                 );
                 if (self.stop or evaluation.isMateScore(score)) {
@@ -852,6 +856,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 if (score >= aspiration_upper) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
+                    failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
                         if (!quiet) {
                             self.writeInfo(score, depth, .lower);
@@ -860,6 +865,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @max(score - window, -evaluation.inf_score);
                     aspiration_upper = @min(score + window, evaluation.inf_score);
+                    failhigh_reduction >>= 1;
                     if (should_print) {
                         if (!quiet) {
                             self.writeInfo(score, depth, .upper);
