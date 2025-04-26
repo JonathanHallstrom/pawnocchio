@@ -329,9 +329,9 @@ const Accumulator = struct {
             if (add1.pt == .king and needsRefresh(stm, add1.sq, sub1.sq)) {
                 // std.debug.print("refresh\n", .{});
                 // self.mirrorFor(col: Colour)
-                inputs_cache.store(stm, old_board, self.accFor(stm));
+                refresh_cache.store(stm, old_board, self.accFor(stm));
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                inputs_cache.refresh(stm, board, self.accFor(stm));
+                refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
                 self.doAddSub(stm, stm, us_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq);
             }
@@ -341,9 +341,9 @@ const Accumulator = struct {
             const sub2 = self.dirty_piece.subs.slice()[1];
             self.doAddSubSub(stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             if (add1.pt == .king and needsRefresh(stm, add1.sq, sub1.sq)) {
-                inputs_cache.store(stm, old_board, self.accFor(stm));
+                refresh_cache.store(stm, old_board, self.accFor(stm));
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                inputs_cache.refresh(stm, board, self.accFor(stm));
+                refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
                 self.doAddSubSub(stm, stm, us_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             }
@@ -357,9 +357,9 @@ const Accumulator = struct {
             if (needsRefresh(stm, add1.sq, sub1.sq)) {
                 // std.debug.print("castling refresh\n", .{});
                 // std.debug.print("{} {s}\n", .{stm, old_board.toFen().slice()});
-                inputs_cache.store(stm, old_board, self.accFor(stm));
+                refresh_cache.store(stm, old_board, self.accFor(stm));
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                inputs_cache.refresh(stm, board, self.accFor(stm));
+                refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
                 self.doAddAddSubSub(stm, stm, us_king_sq, add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             }
@@ -455,7 +455,7 @@ pub fn init() void {
 }
 
 pub fn initThreadLocals() void {
-    inputs_cache.initInPlace();
+    refresh_cache.initInPlace();
 }
 
 pub fn nnEval(board: *const Board) i16 {
@@ -467,7 +467,7 @@ pub fn nnEval(board: *const Board) i16 {
     }
 }
 
-threadlocal var inputs_cache: root.NNCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT) = undefined;
+threadlocal var refresh_cache: root.NNCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT) = undefined;
 pub const vec_size = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 4;
