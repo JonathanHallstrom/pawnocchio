@@ -41,6 +41,7 @@ const tunable_defaults = struct {
     pub const history_penalty_offs: i32 = 263;
     pub const history_penalty_max: i32 = 2028;
     pub const rfp_margin: i32 = 59;
+    pub const rfp_cutnode_margin: i32 = 20;
     pub const aspiration_initial: i32 = 20;
     pub const aspiration_multiplier: i32 = 2091;
     pub const lmr_base: i32 = 2226;
@@ -87,6 +88,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "history_penalty_offs", .default = tunable_defaults.history_penalty_offs },
     .{ .name = "history_penalty_max", .default = tunable_defaults.history_penalty_max },
     .{ .name = "rfp_margin", .default = tunable_defaults.rfp_margin },
+    .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier },
     .{ .name = "lmr_base", .default = tunable_defaults.lmr_base },
@@ -133,6 +135,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var history_penalty_offs = tunable_defaults.history_penalty_offs;
     pub var history_penalty_max = tunable_defaults.history_penalty_max;
     pub var rfp_margin = tunable_defaults.rfp_margin;
+    pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
     pub var lmr_base = tunable_defaults.lmr_base;
