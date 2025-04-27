@@ -435,7 +435,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
+        if (depth <= 6 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
             return static_eval;
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
