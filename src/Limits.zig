@@ -36,7 +36,7 @@ pub fn initStandard(remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limi
     var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
     const start_time = t.read();
     return Limits{
-        .hard_time = start_time + (remaining_ns - overhead_ns) / 5,
+        .hard_time = start_time + (remaining_ns - overhead_ns) * 4 / 5,
         .soft_time = start_time + (remaining_ns - overhead_ns) / 20 + increment_ns / 2,
         .timer = t,
     };
