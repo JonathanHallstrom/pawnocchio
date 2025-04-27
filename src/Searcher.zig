@@ -271,13 +271,32 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             continue;
         }
 
+        if (std.debug.runtime_safety and
+            (mp.stage == .good_noisies or mp.stage == .bad_noisies))
+        {
+            std.debug.assert(board.isNoisy(move));
+        }
+        if (std.debug.runtime_safety and
+            mp.stage == .good_noisies)
+        {
+            std.debug.assert(SEE.scoreMove(board, move, 0));
+        }
+        if (std.debug.runtime_safety and
+            mp.stage == .bad_noisies)
+        {
+            std.debug.assert(!SEE.scoreMove(board, move, 0));
+        }
+        const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             if (!is_in_check and futility <= alpha and !SEE.scoreMove(board, move, 1)) {
                 best_score = @intCast(@max(best_score, futility));
                 continue;
             }
 
-            if (!is_in_check and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold)) {
+            if (!is_in_check and
+                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold)))
+            {
+                std.debug.assert(mp.stage != .good_noisies);
                 continue;
             }
         }
@@ -508,6 +527,22 @@ fn search(
         }
 
         const is_quiet = board.isQuiet(move);
+        if (std.debug.runtime_safety and
+            (mp.stage == .good_noisies or mp.stage == .bad_noisies))
+        {
+            std.debug.assert(!is_quiet);
+        }
+        if (std.debug.runtime_safety and
+            mp.stage == .good_noisies)
+        {
+            std.debug.assert(SEE.scoreMove(board, move, 0));
+        }
+        if (std.debug.runtime_safety and
+            mp.stage == .bad_noisies)
+        {
+            std.debug.assert(!SEE.scoreMove(board, move, 0));
+        }
+        const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             if (is_quiet) {
@@ -537,7 +572,10 @@ fn search(
             else
                 tunable_constants.see_noisy_pruning_mult * depth * depth;
 
-            if (!SEE.scoreMove(board, move, see_pruning_thresh)) {
+            if (!skip_see_pruning and
+                !SEE.scoreMove(board, move, see_pruning_thresh))
+            {
+                std.debug.assert(mp.stage != .good_noisies);
                 continue;
             }
         }
