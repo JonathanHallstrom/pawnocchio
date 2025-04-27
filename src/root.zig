@@ -261,6 +261,31 @@ pub const PieceType = enum {
     }
 };
 
+pub const NullableColouredPieceType = struct {
+    data: u8 = null_bit,
+    const null_bit = 128;
+
+    pub inline fn isNull(self: NullableColouredPieceType) bool {
+        return self.data & null_bit != 0;
+    }
+
+    pub inline fn from(ocpt: ?ColouredPieceType) NullableColouredPieceType {
+        return if (ocpt) |cpt| fromColouredPieceType(cpt) else .{};
+    }
+
+    pub inline fn opt(self: NullableColouredPieceType) ?ColouredPieceType {
+        return if (self.isNull()) null else self.toColouredPieceType();
+    }
+
+    pub inline fn fromColouredPieceType(cpt: ColouredPieceType) NullableColouredPieceType {
+        return .{ .data = @intCast(cpt.toInt()) };
+    }
+
+    pub inline fn toColouredPieceType(self: NullableColouredPieceType) ColouredPieceType {
+        return @enumFromInt(self.data);
+    }
+};
+
 pub const ColouredPieceType = enum(u4) {
     white_pawn = 0,
     black_pawn = 1,
@@ -280,39 +305,43 @@ pub const ColouredPieceType = enum(u4) {
     white_king = 10,
     black_king = 11,
 
-    pub fn fromInt(i: u8) ColouredPieceType {
+    pub inline fn nullable(self: ColouredPieceType) NullableColouredPieceType {
+        return NullableColouredPieceType.fromColouredPieceType(self);
+    }
+
+    pub inline fn fromInt(i: u8) ColouredPieceType {
         return @enumFromInt(i);
     }
 
-    pub fn toInt(self: ColouredPieceType) u8 {
+    pub inline fn toInt(self: ColouredPieceType) u8 {
         return @intFromEnum(self);
     }
 
-    pub fn fromPieceType(pt: PieceType, col: Colour) ColouredPieceType {
+    pub inline fn fromPieceType(pt: PieceType, col: Colour) ColouredPieceType {
         return fromInt(pt.toInt() << 1 | col.toInt());
     }
 
-    pub fn toPieceType(self: ColouredPieceType) PieceType {
+    pub inline fn toPieceType(self: ColouredPieceType) PieceType {
         return PieceType.fromInt(self.toInt() >> 1);
     }
 
-    pub fn isWhite(self: ColouredPieceType) bool {
+    pub inline fn isWhite(self: ColouredPieceType) bool {
         return self.toColour() == .white;
     }
 
-    pub fn isBlack(self: ColouredPieceType) bool {
+    pub inline fn isBlack(self: ColouredPieceType) bool {
         return self.toColour() == .black;
     }
 
-    pub fn toColour(self: ColouredPieceType) Colour {
+    pub inline fn toColour(self: ColouredPieceType) Colour {
         return Colour.fromInt(self.toInt() & 1);
     }
 
-    pub fn fromAsciiLetter(char: u8) ?ColouredPieceType {
+    pub inline fn fromAsciiLetter(char: u8) ?ColouredPieceType {
         return fromPieceType(PieceType.fromAsciiLetter(char) orelse return null, if (std.ascii.isUpper(char)) .white else .black);
     }
 
-    pub fn toAsciiLetter(self: ColouredPieceType) u8 {
+    pub inline fn toAsciiLetter(self: ColouredPieceType) u8 {
         const pt_char = self.toPieceType().toAsciiLetter();
         return if (self.toColour() == .white) std.ascii.toUpper(pt_char) else std.ascii.toLower(pt_char);
     }

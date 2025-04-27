@@ -43,7 +43,7 @@ pub const TypedMove = struct {
         }
         return .{
             .move = move_,
-            .tp = (&board.mailbox)[move_.from().toInt()].?.toPieceType(),
+            .tp = (&board.mailbox)[move_.from().toInt()].toColouredPieceType().toPieceType(),
         };
     }
 };
@@ -101,7 +101,7 @@ pub const NoisyHistory = struct {
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
         const captured = (&board.mailbox)[to_offs];
-        const captured_offs = if (captured) |capt| capt.toInt() else 12;
+        const captured_offs = if (captured.opt()) |capt| capt.toInt() else 12;
         return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
     }
 
