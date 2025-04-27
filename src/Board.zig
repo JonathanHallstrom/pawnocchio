@@ -1144,9 +1144,8 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
 pub fn roughHashAfter(self: *const Board, move: Move) u64 {
     var res: u64 = self.hash;
 
-    const captured = (&self.mailbox)[move.to().toInt()];
-    if (!captured.isNull()) {
-        res ^= root.zobrist.piece(captured.toColouredPieceType().toColour(), captured.toColouredPieceType().toPieceType(), move.to());
+    if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
     }
 
     const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();

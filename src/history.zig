@@ -101,7 +101,7 @@ pub const NoisyHistory = struct {
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
         const captured = (&board.mailbox)[to_offs];
-        const captured_offs = if (captured.isNull()) 12 else captured.toColouredPieceType().toPieceType().toInt();
+        const captured_offs = if (captured.opt()) |capt| capt.toInt() else 12;
         return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
     }
 
