@@ -46,14 +46,14 @@ pub fn value(pt: PieceType) i16 {
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
     const from = move.from();
     const to = move.to();
-    const from_type = (&board.mailbox)[from.toInt()].?.toPieceType();
+    const from_type = (&board.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
     var captured_type: ?PieceType = null;
     var captured_value: i16 = 0;
     if (board.isEnPassant(move)) {
         captured_type = .pawn;
         captured_value = value(.pawn);
     } else if (board.isCapture(move)) {
-        captured_type = (&board.mailbox)[to.toInt()].?.toPieceType();
+        captured_type = (&board.mailbox)[to.toInt()].toColouredPieceType().toPieceType();
         captured_value = value(captured_type.?);
     }
 
