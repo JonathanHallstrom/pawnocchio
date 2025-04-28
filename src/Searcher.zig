@@ -220,11 +220,14 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     const is_in_check = board.checkers != 0;
 
     const tt_hash = board.hash;
-    var tt_entry = engine.readTT(tt_hash);
-    const tt_hit = tt_entry.hash == tt_hash;
-    if (!tt_hit) {
-        tt_entry = .{};
+    var tt_entry: root.TTEntry = .{};
+    const old_tt_entry = engine.readTT(tt_hash);
+    const tt_hash_hit = old_tt_entry.hash == tt_hash;
+    if (tt_hash_hit) {
+        tt_entry = old_tt_entry;
     }
+    const tt_hit = tt_hash_hit and tt_entry.score_type != .none;
+
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
         return tt_score;
@@ -234,7 +237,17 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
+        raw_static_eval = if (tt_hash_hit) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
+        if (old_tt_entry.score_type == .none and !tt_hash_hit) {
+            engine.writeTT(
+                tt_hash,
+                Move.init(),
+                0,
+                raw_static_eval,
+                .none,
+                0,
+            );
+        }
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -267,6 +280,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
+        engine.prefetchTT(board.roughHashAfter(move));
         if (!board.isLegal(stm, move)) {
             continue;
         }
@@ -404,15 +418,17 @@ fn search(
     const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.hash;
     var tt_entry: root.TTEntry = .{};
-    var tt_hit = false;
+    var tt_hash_hit = false;
+    var old_tt_entry = tt_entry;
     if (!is_singular_search) {
-        tt_entry = engine.readTT(tt_hash);
-
-        tt_hit = tt_entry.hash == tt_hash;
-        if (!tt_hit) {
-            tt_entry = .{};
+        old_tt_entry = engine.readTT(tt_hash);
+        tt_hash_hit = old_tt_entry.hash == tt_hash;
+        if (tt_hash_hit) {
+            tt_entry = old_tt_entry;
         }
     }
+    const tt_hit = tt_hash_hit and tt_entry.score_type != .none;
+    const has_tt_move = tt_hit and !tt_entry.move.isNull();
 
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
@@ -427,7 +443,7 @@ fn search(
 
     if (depth >= 4 and
         (is_pv or cutnode) and
-        (tt_entry.move.isNull() or !tt_hit))
+        !has_tt_move)
     {
         depth -= 1;
     }
@@ -436,7 +452,17 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
+        raw_static_eval = if (tt_hash_hit) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
+        if (old_tt_entry.score_type == .none and !tt_hash_hit) {
+            engine.writeTT(
+                tt_hash,
+                Move.init(),
+                0,
+                raw_static_eval,
+                .none,
+                0,
+            );
+        }
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
@@ -519,6 +545,7 @@ fn search(
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
+            std.debug.assert(false);
             continue;
         }
         engine.prefetchTT(board.roughHashAfter(move));
@@ -756,13 +783,14 @@ fn search(
     }
 
     if (!is_singular_search) {
-        if (score_type == .upper and tt_hit) {
+        if (score_type == .upper and has_tt_move) {
             best_move = tt_entry.move;
         }
         engine.writeTT(
             tt_hash,
             best_move,
             evaluation.scoreToTt(best_score, self.ply),
+            raw_static_eval,
             score_type,
             depth,
         );

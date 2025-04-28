@@ -385,6 +385,7 @@ pub const TTEntry = struct {
     hash: u64 = 0,
     score: i16 = 0,
     score_type: ScoreType = .none,
+    raw_static_eval: i16 = 0,
     move: Move = Move.init(),
     depth: u8 = 0,
 };
