@@ -460,7 +460,7 @@ fn search(
         const no_tthit_cutnode = !tt_hit and cutnode;
         if (depth <= 5 and
             static_eval >= beta +
-                tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) +
+                tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
         {
             return static_eval;
