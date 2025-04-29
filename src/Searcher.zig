@@ -83,6 +83,29 @@ ply: u8,
 stop: bool,
 histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
+tt: []root.TTEntry,
+
+inline fn ttIndex(self: *const Searcher, hash: u64) usize {
+    return @intCast(@as(u128, hash) * self.tt.len >> 64);
+}
+
+pub fn writeTT(self: *Searcher, hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
+    self.tt[self.ttIndex(hash)] = root.TTEntry{
+        .score = score,
+        .score_type = score_type,
+        .move = move,
+        .hash = hash,
+        .depth = @intCast(depth),
+    };
+}
+
+pub fn prefetchTT(self: *const Searcher, hash: u64) void {
+    @prefetch(&self.tt[self.ttIndex(hash)], .{});
+}
+
+pub fn readTT(self: *const Searcher, hash: u64) root.TTEntry {
+    return self.tt[self.ttIndex(hash)];
+}
 
 pub const StackEntry = struct {
     board: Board,
@@ -220,7 +243,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     const is_in_check = board.checkers != 0;
 
     const tt_hash = board.hash;
-    var tt_entry = engine.readTT(tt_hash);
+    var tt_entry = self.readTT(tt_hash);
     const tt_hit = tt_entry.hash == tt_hash;
     if (!tt_hit) {
         tt_entry = .{};
@@ -406,7 +429,7 @@ fn search(
     var tt_entry: root.TTEntry = .{};
     var tt_hit = false;
     if (!is_singular_search) {
-        tt_entry = engine.readTT(tt_hash);
+        tt_entry = self.readTT(tt_hash);
 
         tt_hit = tt_entry.hash == tt_hash;
         if (!tt_hit) {
@@ -486,7 +509,7 @@ fn search(
             non_pk != 0 and
             !cur.prev.move.isNull())
         {
-            engine.prefetchTT(board.hash ^ root.zobrist.turn());
+            self.prefetchTT(board.hash ^ root.zobrist.turn());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale);
             nmp_reduction >>= 13;
@@ -529,7 +552,7 @@ fn search(
         if (move == cur.excluded) {
             continue;
         }
-        engine.prefetchTT(board.roughHashAfter(move));
+        self.prefetchTT(board.roughHashAfter(move));
         if (!board.isLegal(stm, move)) {
             continue;
         }
@@ -767,7 +790,7 @@ fn search(
         if (score_type == .upper and tt_hit) {
             best_move = tt_entry.move;
         }
-        engine.writeTT(
+        self.writeTT(
             tt_hash,
             best_move,
             evaluation.scoreToTt(best_score, self.ply),

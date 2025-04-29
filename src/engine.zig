@@ -32,44 +32,6 @@ var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
 var tt: []root.TTEntry = &.{};
 
-fn worker(i: usize, settings: Searcher.Params, quiet: bool) void {
-    searchers[i].startSearch(settings, i == 0, quiet);
-    _ = num_finished_threads.rmw(.Add, 1, .seq_cst);
-    if (num_finished_threads.load(.seq_cst) == current_num_threads) {
-        is_searching.store(false, .seq_cst);
-        done_searching_mutex.lock();
-        defer done_searching_mutex.unlock();
-        done_searching_cv.signal();
-    }
-}
-
-const disable_tt = false;
-
-fn ttIndex(hash: u64) usize {
-    return @intCast(@as(u128, hash) * tt.len >> 64);
-}
-
-pub fn writeTT(hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
-    if (disable_tt) return;
-    tt[ttIndex(hash)] = root.TTEntry{
-        .score = score,
-        .score_type = score_type,
-        .move = move,
-        .hash = hash,
-        .depth = @intCast(depth),
-    };
-}
-
-pub fn prefetchTT(hash: u64) void {
-    if (disable_tt) return;
-    @prefetch(&tt[ttIndex(hash)], .{});
-}
-
-pub fn readTT(hash: u64) root.TTEntry {
-    if (disable_tt) return .{};
-    return tt[ttIndex(hash)];
-}
-
 pub const SearchSettings = struct {
     search_params: Searcher.Params,
     quiet: bool = false,
@@ -125,6 +87,18 @@ pub fn deinit() void {
     std.heap.page_allocator.free(searchers);
 }
 
+fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {
+    searchers[i].tt = tt;
+    searchers[i].startSearch(settings, i == 0, quiet);
+    _ = num_finished_threads.rmw(.Add, 1, .seq_cst);
+    if (num_finished_threads.load(.seq_cst) == current_num_threads) {
+        is_searching.store(false, .seq_cst);
+        done_searching_mutex.lock();
+        defer done_searching_mutex.unlock();
+        done_searching_cv.signal();
+    }
+}
+
 pub fn startSearch(settings: SearchSettings) void {
     if (!std.debug.runtime_safety) {
         stopSearch();
@@ -136,9 +110,85 @@ pub fn startSearch(settings: SearchSettings) void {
     var search_params = settings.search_params;
     search_params.needs_full_reset = needs_full_reset;
     for (0..current_num_threads) |i| {
-        thread_pool.spawn(worker, .{ i, search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
+        thread_pool.spawn(searchWorker, .{ i, search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
     }
     needs_full_reset = false; // don't clear state unnecessarily
+}
+
+fn datagenWorker(i: usize, random_move_count: u8, node_count: u64, writer: anytype) void {
+    const viriformat = root.viriformat;
+    var seed: u64 = @bitCast(std.time.microTimestamp());
+    seed ^= i;
+    var rng = std.Random.DefaultPrng.init(seed);
+    var alloc_buffer: [4096]u8 = undefined;
+
+    var output_buffer: [4096]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&output_buffer);
+    defer writer.writeAll(fbs.getWritten()) catch @panic("failed to write buffered data");
+    datagen_loop: while (true) {
+        var board = root.Board.dfrcPosition(rng.random().int(u20));
+
+        var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
+        var hashes = std.ArrayList(u64).init(fba.allocator());
+        defer hashes.deinit();
+        {
+            for (0..random_move_count) |_| {
+                switch (board.stm) {
+                    inline else => |stm| {
+                        var rec = root.movegen.MoveListReceiver{};
+                        root.movegen.generateAllQuiets(stm, &board, &rec);
+                        const move = rec.vals.slice()[rng.random().uintLessThanBiased(usize, rec.vals.len)];
+                        board = board.makeMove(stm, move, root.Board.NullEvalState);
+                        hashes.append(board.hash) catch unreachable;
+                    },
+                }
+            }
+        }
+        var game: viriformat.Game = viriformat.Game.from(root.Board{}, fba.allocator());
+        game_loop: while (true) {
+            var limits = root.Limits.initFixedTime(std.time.ns_per_s);
+            limits.hard_nodes = node_count;
+            searchers[i].startSearch(
+                root.Searcher.Params{
+                    .board = board,
+                    .limits = limits,
+                    .needs_full_reset = game.moves.items.len == 0,
+                    .previous_hashes = hashes.items,
+                },
+                false,
+                true,
+            );
+            switch (board.stm) {
+                inline else => |stm| {
+                    board = board.makeMove(stm, searchers[i].root_move, root.Board.NullEvalState{});
+                },
+            }
+            hashes.append(board.hash) catch unreachable;
+            for (hashes.items) |prev_hash| {
+                if (prev_hash == board.hash) {
+                    break :game_loop;
+                }
+            }
+            if (root.evaluation.isMateScore(searchers[i].root_score)) {
+                break :game_loop;
+            }
+        }
+
+        if (game.moves.items.len == 0) {
+            continue :datagen_loop;
+        }
+
+        const remaining_capacity = @sizeOf(output_buffer) - fbs.getWritten().len;
+        if (game.bytesRequiredToSerialize() > remaining_capacity) {
+            writer.writeAll(fbs.getWritten()) catch @panic("failed to write buffered data");
+            fbs.reset();
+        }
+        game.serializeInto(fbs.writer());
+    }
+}
+
+pub fn datagen(num_nodes: u64) void {
+    _ = num_nodes;
 }
 
 pub fn querySearchedNodes() u64 {

@@ -109,7 +109,7 @@ const NNCacheEntry = struct {
     }
 };
 
-pub fn NNCache(comptime mirrored: bool, comptime bucket_count: usize) type {
+pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type {
     const empty = !mirrored and bucket_count < 2;
     return struct {
         const Self = @This();

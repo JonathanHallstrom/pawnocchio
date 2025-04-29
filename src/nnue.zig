@@ -467,7 +467,7 @@ pub fn nnEval(board: *const Board) i16 {
     }
 }
 
-threadlocal var refresh_cache: root.NNCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT) = undefined;
+threadlocal var refresh_cache: root.refreshCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT) = undefined;
 pub const vec_size = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 8;
