@@ -454,7 +454,15 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        if (depth <= 5 and static_eval >= beta + tunable_constants.rfp_margin * (depth + @intFromBool(!improving))) {
+        // cutnodes are expected to fail high
+        // if we are re-searching this then its likely because its important, so otherwise we reduce more
+        // basically we reduce more if this node is likely unimportant
+        const no_tthit_cutnode = !tt_hit and cutnode;
+        if (depth <= 5 and
+            static_eval >= beta +
+                tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) -
+                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
+        {
             return static_eval;
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {

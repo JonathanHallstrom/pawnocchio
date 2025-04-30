@@ -132,8 +132,8 @@ pub fn NNCache(comptime mirrored: bool, comptime bucket_count: usize) type {
         pub inline fn refresh(noalias self: *const Self, comptime stm: Colour, board: *const Board, acc: [*]i16) void {
             if (empty) return;
             const bucket = nnue.whichInputBucket(stm, Square.fromBitboard(board.kingFor(stm)));
-            const mirror = nnue.MirroringType{ .data = Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4 };
-
+            var mirror: nnue.MirroringType = undefined;
+            mirror.write(Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4);
             const mirror_idx = if (mirrored) @intFromBool(mirror.read()) else 0;
             return (&(&(&self.data)[stm.toInt()])[mirror_idx])[bucket].refresh(stm, board, acc, mirror);
         }
@@ -141,7 +141,8 @@ pub fn NNCache(comptime mirrored: bool, comptime bucket_count: usize) type {
         pub inline fn store(noalias self: *Self, comptime stm: Colour, board: *const Board, acc: [*]i16) void {
             if (empty) return;
             const bucket = nnue.whichInputBucket(stm, Square.fromBitboard(board.kingFor(stm)));
-            const mirror = nnue.MirroringType{ .data = Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4 };
+            var mirror: nnue.MirroringType = undefined;
+            mirror.write(Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4);
             const mirror_idx = if (mirrored) @intFromBool(mirror.read()) else 0;
             (&(&(&self.data)[stm.toInt()])[mirror_idx])[bucket].store(board, acc);
         }

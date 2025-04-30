@@ -304,7 +304,6 @@ pub fn main() !void {
 
                     mate_finding_depth = depth;
                 }
-
                 if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
                     const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(i32, depth_to_parse, 10) catch {
