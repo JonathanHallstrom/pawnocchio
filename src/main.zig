@@ -35,14 +35,34 @@ pub fn main() !void {
     {
         var do_bench = false;
         var bench_depth: i32 = 10;
+        var do_datagen = false;
+        var datagen_nodes: u64 = 5000;
+        var datagen_threads: usize = std.Thread.getCpuCount() catch 1;
         while (args.next()) |arg| {
             if (std.ascii.eqlIgnoreCase(arg, "bench")) {
                 do_bench = true;
-            } else {
-                if (std.fmt.parseInt(i32, arg, 10)) |depth| {
-                    bench_depth = depth;
+            }
+            if (std.fmt.parseInt(i32, arg, 10)) |depth| {
+                bench_depth = depth;
+            } else |_| {}
+            if (std.ascii.eqlIgnoreCase(arg, "datagen")) {
+                do_datagen = true;
+            }
+            if (std.mem.count(u8, arg, "threads=") > 0) {
+                if (std.fmt.parseInt(usize, arg["threads=".len..], 10)) |thread_count| {
+                    datagen_threads = thread_count;
                 } else |_| {}
             }
+            if (std.mem.count(u8, arg, "nodes=") > 0) {
+                if (std.fmt.parseInt(u64, arg["nodes=".len..], 10)) |node_count| {
+                    datagen_nodes = node_count;
+                } else |_| {}
+            }
+        }
+        if (do_datagen) {
+            std.debug.print("datagenning with {} threads\n", .{datagen_threads});
+            try root.engine.setThreadCount(datagen_threads);
+            try root.engine.datagen(datagen_nodes);
         }
         if (do_bench) {
             var total_nodes: u64 = 0;

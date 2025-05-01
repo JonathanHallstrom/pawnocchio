@@ -176,8 +176,10 @@ pub const Game = struct {
     moves: std.ArrayList(MoveEvalPair),
 
     pub fn serializeInto(self: Game, writer: anytype) !void {
+        // std.debug.print("{any}\n", .{std.mem.asBytes(&self.initial_position)});
         try writer.writeAll(std.mem.asBytes(&self.initial_position));
         for (self.moves.items) |move_eval_pair| {
+            // std.debug.print("{} {}\n", .{ Square.fromInt(@intCast(move_eval_pair.move.data % (1 << 6))), Square.fromInt(@intCast((move_eval_pair.move.data >> 6) % (1 << 6))) });
             try writer.writeAll(std.mem.asBytes(&std.mem.nativeToLittle(u16, move_eval_pair.move.data)));
             try writer.writeAll(std.mem.asBytes(&move_eval_pair.eval.val));
         }

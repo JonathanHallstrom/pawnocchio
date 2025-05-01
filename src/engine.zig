@@ -25,7 +25,7 @@ var stop_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.at
 pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
 var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
 var num_finished_threads: std.atomic.Value(usize) align(std.atomic.cache_line) = std.atomic.Value(usize).init(0);
-var current_num_threads: u32 align(std.atomic.cache_line) = 0; // 0 for uninitialized
+var current_num_threads: usize align(std.atomic.cache_line) = 0; // 0 for uninitialized
 pub var searchers: []Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
@@ -67,7 +67,7 @@ pub fn setTTSize(new_size: usize) !void {
     @memset(tt, .{});
 }
 
-pub fn setThreadCount(thread_count: u32) !void {
+pub fn setThreadCount(thread_count: usize) !void {
     if (current_num_threads != thread_count) { // need a new threadpool
         if (current_num_threads > 0) { // deinit old threadpool
             thread_pool.deinit();
@@ -115,39 +115,50 @@ pub fn startSearch(settings: SearchSettings) void {
     needs_full_reset = false; // don't clear state unnecessarily
 }
 
-fn datagenWorker(i: usize, random_move_count: u8, node_count: u64, writer: anytype) void {
+fn datagenWorker(i: usize, random_move_count: u8, node_count: u64, writer: anytype, writer_mutex: *std.Thread.Mutex, total_position_count: *std.atomic.Value(usize)) void {
     const viriformat = root.viriformat;
     var seed: u64 = @bitCast(std.time.microTimestamp());
-    seed ^= i;
+    seed = i + 2;
     var rng = std.Random.DefaultPrng.init(seed);
-    var alloc_buffer: [4096]u8 = undefined;
+    var alloc_buffer: [1 << 20]u8 = undefined;
 
-    var output_buffer: [4096]u8 = undefined;
+    var output_buffer: [64 << 10]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&output_buffer);
-    defer writer.writeAll(fbs.getWritten()) catch @panic("failed to write buffered data");
+    defer {
+        writer_mutex.lock();
+        defer writer_mutex.unlock();
+        writer.writeAll(fbs.getWritten()) catch @panic("failed to write buffered data");
+    }
     datagen_loop: while (true) {
-        var board = root.Board.dfrcPosition(rng.random().int(u20));
-
+        var board = root.Board.dfrcPosition(rng.random().uintLessThanBiased(u20, 960 * 960));
         var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
         var hashes = std.ArrayList(u64).init(fba.allocator());
         defer hashes.deinit();
-        {
-            for (0..random_move_count) |_| {
-                switch (board.stm) {
-                    inline else => |stm| {
-                        var rec = root.movegen.MoveListReceiver{};
-                        root.movegen.generateAllQuiets(stm, &board, &rec);
-                        const move = rec.vals.slice()[rng.random().uintLessThanBiased(usize, rec.vals.len)];
-                        board = board.makeMove(stm, move, root.Board.NullEvalState);
-                        hashes.append(board.hash) catch unreachable;
-                    },
-                }
+        random_move_loop: for (0..random_move_count) |_| {
+            switch (board.stm) {
+                inline else => |stm| {
+                    var rec = root.movegen.MoveListReceiver{};
+                    root.movegen.generateAllQuiets(stm, &board, &rec);
+
+                    rng.random().shuffle(root.Move, rec.vals.slice());
+                    for (rec.vals.slice()) |move| {
+                        if (board.isLegal(stm, move)) {
+                            board.makeMove(stm, move, root.Board.NullEvalState{});
+                            if (board.halfmove == 0) {
+                                hashes.clearRetainingCapacity();
+                            }
+                            hashes.append(board.hash) catch @panic("failed to append hash");
+                            continue :random_move_loop;
+                        }
+                    }
+                    continue :datagen_loop;
+                },
             }
         }
-        var game: viriformat.Game = viriformat.Game.from(root.Board{}, fba.allocator());
+        var game: viriformat.Game = viriformat.Game.from(board, fba.allocator());
         game_loop: while (true) {
             var limits = root.Limits.initFixedTime(std.time.ns_per_s);
-            limits.hard_nodes = node_count;
+            limits.soft_nodes = node_count;
             searchers[i].startSearch(
                 root.Searcher.Params{
                     .board = board,
@@ -160,15 +171,31 @@ fn datagenWorker(i: usize, random_move_count: u8, node_count: u64, writer: anyty
             );
             switch (board.stm) {
                 inline else => |stm| {
-                    board = board.makeMove(stm, searchers[i].root_move, root.Board.NullEvalState{});
+                    // std.debug.print("{s} {s}\n", .{
+                    //     board.toFen().slice(),
+                    //     searchers[i].root_move.toString(&board).slice(),
+                    // });
+                    if (searchers[i].root_move.isNull()) {
+                        break :game_loop;
+                    }
+                    board.makeMove(stm, searchers[i].root_move, root.Board.NullEvalState{});
                 },
             }
-            hashes.append(board.hash) catch unreachable;
             for (hashes.items) |prev_hash| {
                 if (prev_hash == board.hash) {
                     break :game_loop;
                 }
             }
+            if (board.halfmove >= 100) {
+                break :game_loop;
+            }
+            if (board.halfmove == 0) {
+                hashes.clearRetainingCapacity();
+            }
+            const adjusted = if (board.stm == .white) searchers[i].root_score else -searchers[i].root_score;
+            game.addMove(searchers[i].root_move, adjusted) catch unreachable;
+            // std.debug.print("added move\n", .{});
+            hashes.append(board.hash) catch unreachable;
             if (root.evaluation.isMateScore(searchers[i].root_score)) {
                 break :game_loop;
             }
@@ -178,17 +205,47 @@ fn datagenWorker(i: usize, random_move_count: u8, node_count: u64, writer: anyty
             continue :datagen_loop;
         }
 
-        const remaining_capacity = @sizeOf(output_buffer) - fbs.getWritten().len;
+        const remaining_capacity: usize = output_buffer.len - fbs.getWritten().len;
         if (game.bytesRequiredToSerialize() > remaining_capacity) {
+            if (game.bytesRequiredToSerialize() > output_buffer.len) {
+                @panic("game too long to fit the output buffer");
+            }
+            writer_mutex.lock();
             writer.writeAll(fbs.getWritten()) catch @panic("failed to write buffered data");
+            writer_mutex.unlock();
             fbs.reset();
         }
-        game.serializeInto(fbs.writer());
+        _ = total_position_count.fetchAdd(game.moves.items.len, .seq_cst);
+        // game.serializeInto(writer) catch unreachable;
+        game.serializeInto(fbs.writer()) catch @panic("failed to serialize position");
     }
 }
 
-pub fn datagen(num_nodes: u64) void {
-    _ = num_nodes;
+pub fn datagen(num_nodes: u64) !void {
+    var timer = try std.time.Timer.start();
+    var out_file = try std.fs.cwd().createFile("outfile.vf", .{});
+    const writer = out_file.writer();
+    var writer_mutex = std.Thread.Mutex{};
+    var total_position_count = std.atomic.Value(usize).init(0);
+    for (0..current_num_threads) |i| {
+        searchers[i].tt = try std.heap.page_allocator.alloc(root.TTEntry, (16 << 20) / @sizeOf(root.TTEntry));
+        // datagenWorker(0, 8, num_nodes, out_file.writer(), &writer_mutex, &total_position_count);
+        try thread_pool.spawn(datagenWorker, .{ i, 8, num_nodes, &writer, &writer_mutex, &total_position_count });
+    }
+
+    var prev_positions: usize = 0;
+    while (true) {
+        const positions = total_position_count.load(.seq_cst);
+        defer prev_positions = positions;
+        if (positions == prev_positions) {
+            continue;
+        }
+        std.debug.print("total positions:{} positions/s:{}\n", .{
+            positions,
+            @as(u128, positions) * std.time.ns_per_s / timer.read(),
+        });
+        std.Thread.sleep(std.time.ns_per_s);
+    }
 }
 
 pub fn querySearchedNodes() u64 {
