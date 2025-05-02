@@ -215,7 +215,7 @@ pub const HistoryTable = struct {
             tunable_constants.corrhist_nonpawn_weight * nonpawn_correction +
             tunable_constants.corrhist_countermove_weight * countermove_correction +
             tunable_constants.corrhist_major_weight * major_correction +
-            tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
+            tunable_constants.corrhist_minor_weight * minor_correction) >> 19;
 
         const fifty_move_rule_scaled = @divTrunc(@as(i32, static_eval) * (200 - board.halfmove), 200);
         return evaluation.clampScore(fifty_move_rule_scaled + correction);
