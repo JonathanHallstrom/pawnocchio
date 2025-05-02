@@ -125,7 +125,7 @@ fn datagenWorker(
 ) void {
     const viriformat = root.viriformat;
     var seed: u64 = @bitCast(std.time.microTimestamp());
-    seed = i + 2;
+    seed ^= i;
     var rng = std.Random.DefaultPrng.init(seed);
     var alloc_buffer: [1 << 20]u8 = undefined;
 
