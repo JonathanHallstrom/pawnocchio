@@ -76,7 +76,7 @@ pub fn setThreadCount(thread_count: usize) !void {
         current_num_threads = thread_count;
         try thread_pool.init(.{
             .allocator = std.heap.page_allocator,
-            .n_jobs = thread_count,
+            .n_jobs = @intCast(thread_count),
         });
         searchers = std.heap.page_allocator.realloc(searchers, thread_count) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
     }
@@ -251,7 +251,7 @@ pub fn datagen(num_nodes: u64) !void {
             positions,
             @as(u128, positions) * std.time.ns_per_s / timer.read(),
         });
-        std.Thread.sleep(std.time.ns_per_s);
+        std.time.sleep(std.time.ns_per_s);
     }
 }
 
