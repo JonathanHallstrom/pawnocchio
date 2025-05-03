@@ -239,3 +239,19 @@ test "viriformat moves" {
     try viriformatTest("8/6P1/8/8/1k6/4K3/8/8 w - - 0 1", Move.promo(.g7, .g8, .queen), 0xffb6);
     try viriformatTest("rnbqkbnr/2pppppp/p7/Pp6/8/8/1PPPPPPP/RNBQKBNR w KQkq b6 0 1", Move.enPassant(.a5, .b6), 0x4a60);
 }
+
+test "all edge cases i could think of in one position" {
+    var game = Game.from(try Board.parseFen("4k3/P4p2/8/6P1/8/8/8/R3K2R w Q - 0 1", false), std.testing.allocator);
+    defer game.deinit();
+    try game.addMove(Move.castlingQueenside(.white, .e1, .a1), 0);
+    try game.addMove(Move.quiet(.f7, .f5), 0);
+    try game.addMove(Move.enPassant(.g5, .f6), 0);
+    try game.addMove(Move.quiet(.e8, .f8), 0);
+    try game.addMove(Move.promo(.a7, .a8, .queen), 0);
+
+    var buf: [64]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    try game.serializeInto(fbs.writer());
+
+    try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.getWritten());
+}
