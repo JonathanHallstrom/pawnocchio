@@ -78,7 +78,7 @@ fn getBaseLmr(depth: i32, num_legal: anytype) i32 {
             for (0..256) |n| {
                 const depthf: f64 = @floatFromInt(d + 1);
                 const num_legalf: f64 = @floatFromInt(n + 1);
-                res[d][n] = @intFromFloat(std.math.log2(depthf) * std.math.log2(num_legalf) * tunable_constants.lmr_log_mult / 4);
+                res[d][n] = @intFromFloat(tunable_constants.lmr_log_mult * std.math.log2(depthf) * std.math.log2(num_legalf) / 5);
                 res[d][n] += tunable_constants.lmr_base;
             }
         }
@@ -689,7 +689,6 @@ fn search(
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 var reduction: i32 = getBaseLmr(depth, num_legal);
-                // lmr_table[@intCast(depth)][@intCast(num_legal)];
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
