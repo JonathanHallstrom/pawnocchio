@@ -65,7 +65,8 @@ const tunable_defaults = struct {
     pub const lmr_pv_mult: i32 = 1199;
     pub const lmr_cutnode_mult: i32 = 952;
     pub const lmr_improving_mult: i32 = 1042;
-    pub const lmr_history_mult: i32 = 987;
+    pub const lmr_quiet_history_mult: i32 = 787;
+    pub const lmr_noisy_history_mult: i32 = 1187;
     pub const nmp_base: i32 = 35893;
     pub const nmp_mult: i32 = 1076;
     pub const fp_base: i32 = 250;
@@ -112,7 +113,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult },
     .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult },
     .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult },
-    .{ .name = "lmr_history_mult", .default = tunable_defaults.lmr_history_mult },
+    .{ .name = "lmr_quiet_history_mult", .default = tunable_defaults.lmr_quiet_history_mult },
+    .{ .name = "lmr_noisy_history_mult", .default = tunable_defaults.lmr_noisy_history_mult },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
@@ -159,7 +161,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_pv_mult = tunable_defaults.lmr_pv_mult;
     pub var lmr_cutnode_mult = tunable_defaults.lmr_cutnode_mult;
     pub var lmr_improving_mult = tunable_defaults.lmr_improving_mult;
-    pub var lmr_history_mult = tunable_defaults.lmr_history_mult;
+    pub var lmr_quiet_history_mult = tunable_defaults.lmr_quiet_history_mult;
+    pub var lmr_noisy_history_mult = tunable_defaults.lmr_noisy_history_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var fp_base = tunable_defaults.fp_base;
