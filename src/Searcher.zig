@@ -70,6 +70,24 @@ const EvalPair = struct {
     }
 };
 
+fn getBaseLmr(depth: i32, num_legal: anytype) i32 {
+    const lmr_table = comptime blk: {
+        @setEvalBranchQuota(1 << 30);
+        var res: [256][256]i32 = undefined;
+        for (0..256) |d| {
+            for (0..256) |n| {
+                const depthf: f64 = @floatFromInt(d + 1);
+                const num_legalf: f64 = @floatFromInt(n + 1);
+                res[d][n] = @intFromFloat(std.math.log2(depthf) * std.math.log2(num_legalf) * tunable_constants.lmr_log_mult / 4);
+                res[d][n] += tunable_constants.lmr_base;
+            }
+        }
+        break :blk res;
+    };
+
+    return lmr_table[@intCast(depth - 1)][@intCast(num_legal - 1)];
+}
+
 const STACK_PADDING = 1;
 
 nodes: u64,
@@ -670,8 +688,8 @@ fn search(
             var s: i16 = 0;
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
-                var reduction: i32 = tunable_constants.lmr_base;
-                reduction += std.math.log2_int(u32, @intCast(depth)) * tunable_constants.lmr_log_mult * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
+                var reduction: i32 = getBaseLmr(depth, num_legal);
+                // lmr_table[@intCast(depth)][@intCast(num_legal)];
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
