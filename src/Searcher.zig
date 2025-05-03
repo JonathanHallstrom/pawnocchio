@@ -78,7 +78,7 @@ fn getBaseLmr(depth: i32, num_legal: anytype) i32 {
             for (0..256) |n| {
                 const depthf: f64 = @floatFromInt(d + 1);
                 const num_legalf: f64 = @floatFromInt(n + 1);
-                res[d][n] = @intFromFloat(tunable_constants.lmr_log_mult * std.math.log2(depthf) * std.math.log2(num_legalf) / 5);
+                res[d][n] = @intFromFloat(tunable_constants.lmr_log_mult * std.math.log2(depthf) * std.math.log2(num_legalf) / 4);
                 res[d][n] += tunable_constants.lmr_base;
             }
         }
