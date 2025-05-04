@@ -124,11 +124,19 @@ fn datagenWorker(
     total_position_count: *std.atomic.Value(usize),
 ) void {
     const viriformat = root.viriformat;
-    var seed: u64 = @bitCast(std.time.microTimestamp());
-    seed ^= i;
+    var seed: u64 = 0;
+    std.posix.getrandom(std.mem.asBytes(&seed)) catch {
+        const globals = struct {
+            var fallback_datagen_seed_counter = std.atomic.Value(u64).init(0);
+        };
+        var seed_prng = std.Random.DefaultCsprng.init(.{0} ** 32);
+        seed_prng.addEntropy(std.mem.asBytes(&globals.fallback_datagen_seed_counter.fetchAdd(1, .seq_cst)));
+        seed_prng.addEntropy(std.mem.asBytes(&std.time.nanoTimestamp()));
+        seed_prng.fill(std.mem.asBytes(&seed));
+    };
     var rng = std.Random.DefaultPrng.init(seed);
     var alloc_buffer: [1 << 20]u8 = undefined;
-
+    var num_positions_written: usize = 0;
     datagen_loop: while (true) {
         var board = root.Board.dfrcPosition(rng.random().uintLessThanBiased(u20, 960 * 960));
         var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
@@ -176,8 +184,13 @@ fn datagenWorker(
                 continue :datagen_loop;
             }
             // const fen = board.toFen();
-            // std.debug.print("{s} {}\n", .{ .slice(), adjusted });
-            // std.debug.print("added move\n", .{});
+            // var buf: [1024]u8 = undefined;
+            // const dbg_log = std.fmt.bufPrint(&buf, "{s} {} {s} {}\n", .{
+            //     fen.slice(),
+            //     adjusted,
+            //     search_move.toString(&board).slice(),
+            //     board.hash,
+            // }) catch unreachable;
 
             switch (board.stm) {
                 inline else => |stm| {
@@ -186,17 +199,28 @@ fn datagenWorker(
                     //     searchers[i].root_move.toString(&board).slice(),
                     // });
                     if (search_move.isNull()) {
+                        // std.debug.print("{s}", .{dbg_log});
+                        // std.debug.print("ended due to null move from search\n", .{});
                         break :game_loop;
                     }
                     board.makeMove(stm, search_move, root.Board.NullEvalState{});
                 },
             }
+            var repetitions: u8 = 0;
             for (hashes.items) |prev_hash| {
-                if (prev_hash == board.hash) {
-                    break :game_loop;
-                }
+                repetitions += @intFromBool(prev_hash == board.hash);
+            }
+            if (repetitions >= 3) {
+                // std.debug.print("{s}", .{dbg_log});
+                // std.debug.print("ended due to repetiton\n", .{});
+                // std.debug.print("hashes: {any}\n", .{hashes.items});
+
+                // std.debug.print("hash after move: {}\n", .{board.hash});
+                break :game_loop;
             }
             if (board.halfmove >= 100) {
+                // std.debug.print("{s}", .{dbg_log});
+                // std.debug.print("ended due to halfmove limit exceeded\n", .{});
                 break :game_loop;
             }
             if (board.halfmove == 0) {
@@ -204,6 +228,7 @@ fn datagenWorker(
             }
             game.addMove(search_move, adjusted) catch unreachable;
             hashes.append(board.hash) catch unreachable;
+            // std.debug.print("{s}", .{dbg_log});
             if (root.evaluation.isMateScore(search_score)) {
                 if (adjusted > 0) {
                     // std.debug.print("white {s}\n", .{fen.slice()});
@@ -221,6 +246,7 @@ fn datagenWorker(
         }
 
         _ = total_position_count.fetchAdd(game.moves.items.len, .seq_cst);
+        num_positions_written += game.moves.items.len;
         writer_mutex.lock();
         game.serializeInto(writer) catch @panic("failed to serialize position");
         writer_mutex.unlock();
@@ -241,17 +267,35 @@ pub fn datagen(num_nodes: u64) !void {
     }
 
     var prev_positions: usize = 0;
+    var prev_time = timer.read();
+    var pps_ema_opt: ?u64 = null;
     while (true) {
+        std.Thread.sleep(std.time.ns_per_s);
+        if (!writer_mutex.tryLock()) {
+            std.time.sleep(std.time.ns_per_ms);
+            continue;
+        }
+        try buf_writer.flush();
+        writer_mutex.unlock();
         const positions = total_position_count.load(.seq_cst);
-        defer prev_positions = positions;
+        const time = timer.read();
         if (positions == prev_positions) {
             continue;
         }
+        defer {
+            prev_positions = positions;
+            prev_time = time;
+        }
+        // u64 because if we're able to generate >2^64 positions per second then this program makes no sense
+        const pps: u64 = @intCast(@as(u128, positions - prev_positions) * std.time.ns_per_s / @max(1, time - prev_time));
+        const lower_bound = if (pps_ema_opt) |pps_ema| pps_ema / 2 -| 1000 else pps;
+        const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
+        const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
+        pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 4 + clamped_pps) / 5 else pps;
         std.debug.print("total positions:{} positions/s:{}\n", .{
             positions,
-            @as(u128, positions) * std.time.ns_per_s / timer.read(),
+            pps_ema_opt.?,
         });
-        std.Thread.sleep(std.time.ns_per_s);
     }
 }
 
