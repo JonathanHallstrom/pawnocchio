@@ -270,6 +270,7 @@ pub fn datagen(num_nodes: u64) !void {
     var prev_time = timer.read();
     var pps_ema_opt: ?u64 = null;
     while (true) {
+        std.Thread.sleep(std.time.ns_per_s);
         if (!writer_mutex.tryLock()) {
             std.time.sleep(std.time.ns_per_ms);
             continue;
@@ -278,24 +279,23 @@ pub fn datagen(num_nodes: u64) !void {
         writer_mutex.unlock();
         const positions = total_position_count.load(.seq_cst);
         const time = timer.read();
+        if (positions == prev_positions) {
+            continue;
+        }
         defer {
             prev_positions = positions;
             prev_time = time;
-        }
-        if (positions == prev_positions) {
-            continue;
         }
         // u64 because if we're able to generate >2^64 positions per second then this program makes no sense
         const pps: u64 = @intCast(@as(u128, positions - prev_positions) * std.time.ns_per_s / @max(1, time - prev_time));
         const lower_bound = if (pps_ema_opt) |pps_ema| pps_ema / 2 -| 1000 else pps;
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
-        pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 4 + clamped_pps) / 5 else clamped_pps;
+        pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 4 + clamped_pps) / 5 else pps;
         std.debug.print("total positions:{} positions/s:{}\n", .{
             positions,
             pps_ema_opt.?,
         });
-        std.Thread.sleep(std.time.ns_per_s);
     }
 }
 
