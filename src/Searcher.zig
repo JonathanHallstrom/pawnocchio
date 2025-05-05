@@ -593,11 +593,11 @@ fn search(
                     @abs(alpha) < 2000 and
                     static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
                 {
-                    if (static_eval + tunable_constants.fp_base * 3 / 2 + depth * tunable_constants.fp_mult <= alpha) {
-                        mp.skip_quiets = true;
-                        continue;
+                    if (static_eval + tunable_constants.fp_base * 2 + depth * tunable_constants.fp_mult <= alpha) {
+                        break;
                     }
-                    break;
+                    mp.skip_quiets = true;
+                    continue;
                 }
             }
 
