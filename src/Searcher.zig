@@ -594,7 +594,7 @@ fn search(
                     static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
                 {
                     // if its very futile, skip bad noisies too
-                    if (static_eval + tunable_constants.fp_base * 5 / 4 + depth * tunable_constants.fp_mult <= alpha) {
+                    if (static_eval + tunable_constants.fp_base * 3 / 2 + depth * tunable_constants.fp_mult <= alpha) {
                         break;
                     }
                     mp.skip_quiets = true;
