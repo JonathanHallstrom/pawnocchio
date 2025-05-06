@@ -440,9 +440,11 @@ fn search(
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
-            if (!is_pv) {
-                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+            if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+                if (!is_pv) {
                     return tt_score;
+                } else {
+                    depth -= 1;
                 }
             }
         }
