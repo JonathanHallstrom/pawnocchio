@@ -91,6 +91,9 @@ const tunable_defaults = struct {
     pub const lmp_improving_mult: i32 = 1020;
     pub const nodetm_base: i32 = 1672;
     pub const nodetm_mult: i32 = 812;
+    pub const soft_limit_base: i32 = 51;
+    pub const soft_limit_incr: i32 = 512;
+    pub const hard_limit_base: i32 = 204;
     pub const singular_depth_limit: i32 = 8;
     pub const singular_tt_depth_margin: i32 = 3;
     pub const singular_beta_mult: i32 = 17;
@@ -140,6 +143,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
+    .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base },
+    .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr },
+    .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base },
     .{ .name = "singular_depth_limit", .default = tunable_defaults.singular_depth_limit },
     .{ .name = "singular_tt_depth_margin", .default = tunable_defaults.singular_tt_depth_margin },
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult },
@@ -189,6 +195,9 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
+    pub var soft_limit_base = tunable_defaults.soft_limit_base;
+    pub var soft_limit_incr = tunable_defaults.soft_limit_incr;
+    pub var hard_limit_base = tunable_defaults.hard_limit_base;
     pub var singular_depth_limit = tunable_defaults.singular_depth_limit;
     pub var singular_tt_depth_margin = tunable_defaults.singular_tt_depth_margin;
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
