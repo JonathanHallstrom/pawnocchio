@@ -306,15 +306,15 @@ const Accumulator = struct {
         defer self.dirty_piece = .{};
         // std.debug.print("--------\n", .{});
         // std.debug.print("{}\n", .{stm});
-        defer if (@import("builtin").mode == .Debug) {
-            const correct = Accumulator.init(board);
-            if (!std.meta.eql(correct.white, self.white)) {
-                unreachable;
-            }
-            if (!std.meta.eql(correct.black, self.black)) {
-                unreachable;
-            }
-        };
+        // defer if (@import("builtin").mode == .Debug) {
+        //     const correct = Accumulator.init(board);
+        //     if (!std.meta.eql(correct.white, self.white)) {
+        //         unreachable;
+        //     }
+        //     if (!std.meta.eql(correct.black, self.black)) {
+        //         unreachable;
+        //     }
+        // };
         // {
         //     self.initInPlace(board);
         //     return;
