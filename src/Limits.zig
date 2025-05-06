@@ -32,12 +32,12 @@ node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
 
 const Limits = @This();
 
-pub fn initStandard(remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
+pub fn initStandard(board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
     var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
     const start_time = t.read();
     return Limits{
         .hard_time = start_time + (remaining_ns - overhead_ns) / 5,
-        .soft_time = start_time + (remaining_ns - overhead_ns) / 20 + increment_ns / 2,
+        .soft_time = start_time + (remaining_ns - overhead_ns) / @max(board.phase(), 4) + increment_ns / 2,
         .timer = t,
     };
 }

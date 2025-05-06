@@ -126,6 +126,15 @@ pub inline fn startingRankFor(self: Board, col: Colour) Rank {
     return self.castling_rights.startingRankFor(col);
 }
 
+pub fn phase(self: Board) u8 {
+    const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
+    var res: u8 = 0;
+    for (PieceType.all) |pt| {
+        res += gamephaseInc[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
+    }
+    return res;
+}
+
 pub fn parseFen(fen: []const u8, permissive: bool) !Board {
     if (std.ascii.eqlIgnoreCase(fen, "startpos")) return startpos();
     if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;
