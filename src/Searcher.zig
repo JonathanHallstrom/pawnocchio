@@ -398,7 +398,7 @@ fn search(
         }
     }
 
-    if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
+    if (!is_root and (board.halfmove >= 100 or board.isInsufficientMaterialDraw() or self.isRepetition())) {
         if (board.halfmove >= 100) {
             if (is_in_check) {
                 var rec: root.movegen.MoveListReceiver = .{};

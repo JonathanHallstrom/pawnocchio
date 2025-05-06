@@ -853,6 +853,36 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     // dont call updateMasks since there has been no change in the position, especially not checkers
 }
 
+pub fn isInsufficientMaterialDraw(self: *const Board) bool {
+    if (self.pawns() != 0) {
+        return false;
+    }
+    if (self.rooks() | self.queens() != 0) {
+        return false;
+    }
+    const light_squares: u64 = 0x55AA55AA55AA55AA;
+    const white_bishops = self.bishopsFor(.white);
+    const black_bishops = self.bishopsFor(.black);
+
+    const white_bishops_light = white_bishops & light_squares;
+    const white_bishops_dark = white_bishops & ~light_squares;
+    const black_bishops_light = black_bishops & light_squares;
+    const black_bishops_dark = black_bishops & ~light_squares;
+
+    if (white_bishops_light != 0 and white_bishops_dark != 0 or
+        black_bishops_light != 0 and black_bishops_dark != 0)
+    {
+        return false;
+    }
+
+    if (@popCount(white_bishops & -%white_bishops | self.knightsFor(.white)) > 1 or
+        @popCount(black_bishops & -%black_bishops | self.knightsFor(.black)) > 1)
+    {
+        return false;
+    }
+    return true;
+}
+
 pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;
