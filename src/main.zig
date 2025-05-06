@@ -34,7 +34,7 @@ pub fn main() !void {
 
     {
         var do_bench = false;
-        var bench_depth: i32 = 10;
+        var bench_depth: i32 = 3;
         var do_datagen = false;
         var datagen_nodes: u64 = 5000;
         var datagen_threads: usize = std.Thread.getCpuCount() catch 1;
