@@ -675,12 +675,13 @@ fn search(
             var s: i16 = 0;
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
+                const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction: i32 = tunable_constants.lmr_base;
                 reduction += std.math.log2_int(u32, @intCast(depth)) * tunable_constants.lmr_log_mult * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
-                reduction -= @intCast(@as(i64, tunable_constants.lmr_history_mult) * history_score >> 13);
+                reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction >>= 10;
 
