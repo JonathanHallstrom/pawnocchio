@@ -180,6 +180,10 @@ pub const Game = struct {
         try writer.writeAll(std.mem.asBytes(&self.initial_position));
         for (self.moves.items) |move_eval_pair| {
             // std.debug.print("{} {}\n", .{ Square.fromInt(@intCast(move_eval_pair.move.data % (1 << 6))), Square.fromInt(@intCast((move_eval_pair.move.data >> 6) % (1 << 6))) });
+            if (move_eval_pair.move.data == 0) {
+                @panic("NULL MOVE IN GAME");
+                // break;
+            }
             try writer.writeAll(std.mem.asBytes(&std.mem.nativeToLittle(u16, move_eval_pair.move.data)));
             try writer.writeAll(std.mem.asBytes(&move_eval_pair.eval.val));
         }
@@ -252,6 +256,10 @@ test "all edge cases i could think of in one position" {
     var buf: [64]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
     try game.serializeInto(fbs.writer());
+
+    // var file = try std.fs.cwd().createFile("tmp.bin", .{});
+    // defer file.close();
+    // try file.writeAll(fbs.getWritten());
 
     try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.getWritten());
 }

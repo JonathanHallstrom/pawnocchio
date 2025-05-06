@@ -667,6 +667,8 @@ fn search(
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
 
+            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
+
             var s: i16 = 0;
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
@@ -677,6 +679,7 @@ fn search(
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
+                reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
