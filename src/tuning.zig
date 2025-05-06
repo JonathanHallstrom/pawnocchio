@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -143,7 +143,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
-    .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base },
+    .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base, .c_end = 0.5 },
     .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr },
     .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base },
     .{ .name = "singular_depth_limit", .default = tunable_defaults.singular_depth_limit },
