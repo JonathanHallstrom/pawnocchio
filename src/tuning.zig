@@ -70,6 +70,7 @@ const tunable_defaults = struct {
     pub const lmr_corrhist_mult: i32 = 12288;
     pub const nmp_base: i32 = 35893;
     pub const nmp_mult: i32 = 1076;
+    pub const nmp_cutnode_margin: i32 = -50;
     pub const fp_base: i32 = 250;
     pub const fp_mult: i32 = 114;
     pub const qs_see_threshold: i32 = -101;
@@ -119,6 +120,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
+    .{ .name = "nmp_cutnode_margin", .default = tunable_defaults.nmp_cutnode_margin },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold },
@@ -168,6 +170,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
+    pub var nmp_cutnode_margin = tunable_defaults.nmp_cutnode_margin;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
