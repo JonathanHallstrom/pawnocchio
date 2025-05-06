@@ -644,6 +644,8 @@ fn search(
                 return @intCast(s_beta);
             } else if (tt_entry.score >= beta) {
                 extension -= 1;
+            } else if (cutnode) {
+                extension -= 2;
             }
         }
         num_legal += 1;
