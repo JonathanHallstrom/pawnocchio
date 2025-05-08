@@ -595,8 +595,11 @@ pub fn updateEPHash(self: *Board) void {
         self.hash ^= root.zobrist.ep(target);
 }
 
-pub fn getHashWithHalfmove(self: *Board) u64 {
-    return self.hash ^ root.zobrist.halfmove(self.halfmove);
+pub inline fn getHashWithHalfmove(self: Board) u64 {
+    const squared = @as(u16, self.halfmove) * self.halfmove;
+    const offset = squared + 384;
+    const scaled = offset / 512;
+    return self.hash ^ root.zobrist.halfmove(@intCast(scaled));
 }
 
 pub inline fn isEnPassant(_: Board, move: Move) bool {

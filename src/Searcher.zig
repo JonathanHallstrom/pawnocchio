@@ -242,7 +242,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
-    const tt_hash = board.hash;
+    const tt_hash = board.getHashWithHalfmove();
     var tt_entry = self.readTT(tt_hash);
     const tt_hit = tt_entry.hash == tt_hash;
     if (!tt_hit) {
@@ -425,7 +425,7 @@ fn search(
     }
 
     const is_singular_search = !cur.excluded.isNull();
-    const tt_hash = board.hash;
+    const tt_hash = board.getHashWithHalfmove();
     var tt_entry: root.TTEntry = .{};
     var tt_hit = false;
     if (!is_singular_search) {
