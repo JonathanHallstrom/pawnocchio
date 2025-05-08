@@ -112,6 +112,12 @@ const castling_entries: usize = 16;
 const en_passant_entries: usize = 8;
 const turn_entries: usize = 1;
 const halfmove_entries: usize = 128;
+const piece_offs = 0;
+const castling_offs = side_entries * 2;
+const ep_offs = castling_offs + castling_entries;
+const turn_offs = ep_offs + en_passant_entries;
+const halfmove_offs = turn_offs + turn_entries;
+
 const data = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [side_entries * 2 + castling_entries + en_passant_entries + turn_entries + halfmove_entries + @sizeOf(u64) - 1]u8 = undefined;
@@ -138,18 +144,19 @@ pub fn piece(col: Colour, pt: PieceType, sq: Square) u64 {
 }
 
 pub fn castling(rights: u8) u64 {
-    return std.mem.readInt(u64, data[side_entries * 2 ..][rights..][0..@sizeOf(u64)], native_endianness);
+    return std.mem.readInt(u64, data[castling_offs..][rights..][0..@sizeOf(u64)], native_endianness);
 }
 
 pub fn ep(where: Square) u64 {
     const file = where.toInt() % 8;
-    return std.mem.readInt(u64, data[side_entries * 2 + castling_entries ..][file..][0..@sizeOf(u64)], native_endianness);
+    return std.mem.readInt(u64, data[ep_offs..][file..][0..@sizeOf(u64)], native_endianness);
 }
 
 pub fn turn() u64 {
-    return std.mem.readInt(u64, data[side_entries * 2 + castling_entries + en_passant_entries ..][0..@sizeOf(u64)], native_endianness);
+    return std.mem.readInt(u64, data[turn_offs..][0..@sizeOf(u64)], native_endianness);
 }
 
 pub fn halfmove(clock: u8) u64 {
-    return std.mem.readInt(u64, data[side_entries * 2 + castling_entries + en_passant_entries + turn_entries ..][clock..][0..@sizeOf(u64)], native_endianness);
+    const zero_mask: u64 = @intFromBool(clock != 0);
+    return -%zero_mask & std.mem.readInt(u64, data[halfmove_offs..][clock..][0..@sizeOf(u64)], native_endianness);
 }
