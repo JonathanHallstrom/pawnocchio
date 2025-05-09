@@ -53,16 +53,16 @@ const CORRHIST_SIZE = 16384;
 const MAX_CORRHIST = 256 * 32;
 const SHIFT = @ctz(MAX_HISTORY);
 
-pub fn bonus(depth: i32) i16 {
+pub fn bonus(depth: i32, diff: i32) i16 {
     return @intCast(@min(
-        depth * tunable_constants.history_bonus_mult + tunable_constants.history_bonus_offs,
+        depth * tunable_constants.history_bonus_mult + tunable_constants.history_bonus_offs + @as(i32, 8) * std.math.log2_int(u32, @intCast(diff)),
         tunable_constants.history_bonus_max,
     ));
 }
 
-pub fn penalty(depth: i32) i16 {
+pub fn penalty(depth: i32, diff: i32) i16 {
     return @intCast(@min(
-        depth * tunable_constants.history_penalty_mult + tunable_constants.history_penalty_offs,
+        depth * tunable_constants.history_penalty_mult + tunable_constants.history_penalty_offs + @as(i32, 8) * std.math.log2_int(u32, @intCast(diff)),
         tunable_constants.history_penalty_max,
     ));
 }

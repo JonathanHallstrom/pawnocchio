@@ -767,8 +767,8 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
-                const bonus = root.history.bonus(depth);
-                const penalty = -root.history.penalty(depth);
+                const bonus = root.history.bonus(depth, score - beta);
+                const penalty = -root.history.penalty(depth, score - beta);
                 if (is_quiet) {
                     self.histories.updateQuiet(board, move, cur.prev, bonus);
                     for (searched_quiets.slice()) |searched_move| {
