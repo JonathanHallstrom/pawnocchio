@@ -127,7 +127,7 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     } else if (self.board.isEnPassant(move)) {
         res += SEE.value(.pawn);
     }
-    res *= 16384;
+    res *= 1024;
     res += self.histories.readNoisy(self.board, move);
 
     return res;
