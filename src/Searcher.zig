@@ -575,10 +575,10 @@ fn search(
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
-        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+        if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
-                if (num_legal * tunable_constants.lmp_legal_mult + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
+                if (!is_pv and num_legal * tunable_constants.lmp_legal_mult + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -588,7 +588,8 @@ fn search(
                     continue;
                 }
 
-                if (!is_in_check and
+                if (!is_pv and
+                    !is_in_check and
                     depth <= 6 and
                     @abs(alpha) < 2000 and
                     static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
@@ -603,7 +604,8 @@ fn search(
             else
                 tunable_constants.see_noisy_pruning_mult * depth * depth;
 
-            if (!skip_see_pruning and
+            if (!is_pv and
+                !skip_see_pruning and
                 !SEE.scoreMove(board, move, see_pruning_thresh))
             {
                 std.debug.assert(mp.stage != .good_noisies);
