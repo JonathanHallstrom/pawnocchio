@@ -486,7 +486,7 @@ fn search(
             static_eval >= beta +
                 tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (cur.history_score >> 9))
+                (cur.history_score >> 11))
         {
             return static_eval;
         }
@@ -661,9 +661,8 @@ fn search(
             }
         }
 
-        self.curStackEntry().history_score = history_score;
         self.makeMove(stm, move);
-        self.curStackEntry().history_score = 0;
+        self.curStackEntry().history_score = history_score;
         const gives_check = self.curStackEntry().board.checkers != 0;
         if (gives_check) {
             extension += 1;
@@ -746,6 +745,7 @@ fn search(
 
             break :blk s;
         };
+        self.curStackEntry().history_score = 0;
         self.unmakeMove(stm, move);
         if (self.stop) {
             return 0;
