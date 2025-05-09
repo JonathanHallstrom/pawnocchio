@@ -486,7 +486,7 @@ fn search(
             static_eval >= beta +
                 tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (cur.history_score >> 11))
+                (cur.history_score >> 9))
         {
             return static_eval;
         }
