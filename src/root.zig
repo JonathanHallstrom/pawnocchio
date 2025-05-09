@@ -388,6 +388,10 @@ pub const TTEntry = struct {
     score_type: ScoreType = .none,
     move: Move = Move.init(),
     depth: u8 = 0,
+
+    pub fn hashMatches(self: TTEntry, other_hash: u64) bool {
+        return self.hash == other_hash;
+    }
 };
 
 var stdout: std.fs.File = undefined;

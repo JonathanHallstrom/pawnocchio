@@ -244,7 +244,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     const tt_hash = board.hash;
     var tt_entry = self.readTT(tt_hash);
-    const tt_hit = tt_entry.hash == tt_hash;
+    const tt_hit = tt_entry.hashMatches(tt_hash);
     if (!tt_hit) {
         tt_entry = .{};
     }
@@ -298,6 +298,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             (mp.stage == .good_noisies or mp.stage == .bad_noisies))
         {
             std.debug.assert(board.isNoisy(move));
+        }
+        if (std.debug.runtime_safety and
+            mp.stage == .quiets)
+        {
+            std.debug.assert(board.isQuiet(move));
         }
         if (std.debug.runtime_safety and
             mp.stage == .good_noisies)
@@ -412,15 +417,15 @@ fn search(
                     }
                 }
                 if (has_legal) {
-                    return 0;
+                    return self.drawScore(stm);
                 } else {
                     return evaluation.matedIn(self.ply);
                 }
             } else {
-                return 0;
+                return self.drawScore(stm);
             }
         } else {
-            return 0;
+            return self.drawScore(stm);
         }
     }
 
@@ -431,7 +436,7 @@ fn search(
     if (!is_singular_search) {
         tt_entry = self.readTT(tt_hash);
 
-        tt_hit = tt_entry.hash == tt_hash;
+        tt_hit = tt_entry.hashMatches(tt_hash);
         if (!tt_hit) {
             tt_entry = .{};
         }
@@ -767,23 +772,25 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
-                const bonus = root.history.bonus(depth);
-                const penalty = -root.history.penalty(depth);
-                if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, bonus);
-                    for (searched_quiets.slice()) |searched_move| {
-                        if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, penalty);
-                    }
-                } else {
-                    self.histories.updateNoisy(board, move, bonus);
-                }
-                for (searched_noisies.slice()) |searched_move| {
-                    if (searched_move == move) break;
-                    self.histories.updateNoisy(board, searched_move, penalty);
-                }
                 break;
             }
+        }
+    }
+    if (score_type != .upper) {
+        const bonus = root.history.bonus(depth);
+        const penalty = -root.history.penalty(depth);
+        if (board.isQuiet(best_move)) {
+            self.histories.updateQuiet(board, best_move, cur.prev, bonus);
+            for (searched_quiets.slice()) |searched_move| {
+                if (searched_move == best_move) break;
+                self.histories.updateQuiet(board, searched_move, cur.prev, penalty);
+            }
+        } else {
+            self.histories.updateNoisy(board, best_move, bonus);
+        }
+        for (searched_noisies.slice()) |searched_move| {
+            if (searched_move == best_move) break;
+            self.histories.updateNoisy(board, searched_move, penalty);
         }
     }
 
