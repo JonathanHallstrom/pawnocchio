@@ -36,8 +36,8 @@ pub fn initStandard(remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limi
     var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
     const start_time = t.read();
     return Limits{
-        .hard_time = start_time + ((remaining_ns - overhead_ns) * tunable_constants.hard_limit_base >> 10),
-        .soft_time = start_time + ((remaining_ns - overhead_ns) * tunable_constants.soft_limit_base >> 10) + (increment_ns * tunable_constants.soft_limit_incr >> 10),
+        .hard_time = @intCast(start_time + ((remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.hard_limit_base)) >> 10)),
+        .soft_time = @intCast(start_time + ((remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.soft_limit_base)) >> 10) + (increment_ns * @as(u128, @intCast(tunable_constants.soft_limit_incr)) >> 10)),
         .timer = t,
     };
 }
@@ -118,7 +118,7 @@ pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move) bool {
 
 pub fn shouldPrintInfoInAspiration(self: *Limits) bool {
     const cur_time = self.timer.read();
-    if (cur_time - self.last_aspiration_print > std.time.ns_per_ms * 50) {
+    if (cur_time - self.last_aspiration_print > std.time.ns_per_s) {
         self.last_aspiration_print = cur_time;
         return true;
     }

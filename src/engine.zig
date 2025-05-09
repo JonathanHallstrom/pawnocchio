@@ -37,7 +37,7 @@ pub const SearchSettings = struct {
     quiet: bool = false,
 };
 
-pub fn reset() void {
+fn resetTT() void {
     const reset_worker = struct {
         fn impl(start: usize, end: usize) void {
             @memset(tt[start..end], .{});
@@ -58,13 +58,17 @@ pub fn reset() void {
         }
         thread_pool.waitAndWork(&wg);
     }
+}
+
+pub fn reset() void {
+    resetTT();
     @memset(std.mem.sliceAsBytes(searchers), 0);
     needs_full_reset = true;
 }
 
 pub fn setTTSize(new_size: usize) !void {
-    tt = try std.heap.page_allocator.realloc(tt, (new_size * 1000000) / @sizeOf(root.TTEntry));
-    @memset(tt, .{});
+    tt = try std.heap.page_allocator.realloc(tt, new_size * ((1 << 20) / @sizeOf(root.TTEntry)));
+    resetTT();
 }
 
 pub fn setThreadCount(thread_count: usize) !void {
@@ -90,7 +94,8 @@ pub fn deinit() void {
 fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {
     searchers[i].tt = tt;
     searchers[i].startSearch(settings, i == 0, quiet);
-    _ = num_finished_threads.rmw(.Add, 1, .seq_cst);
+    // _ = num_finished_threads.rmw(.Add, 1, .seq_cst);
+    _ = num_finished_threads.fetchAdd(1, .seq_cst);
     if (num_finished_threads.load(.seq_cst) == current_num_threads) {
         is_searching.store(false, .seq_cst);
         done_searching_mutex.lock();
