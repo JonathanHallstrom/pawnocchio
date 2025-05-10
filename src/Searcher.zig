@@ -84,6 +84,7 @@ stop: bool,
 histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
 tt: []root.TTEntry,
+pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -115,7 +116,6 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
-    pv: std.BoundedArray(Move, 256),
 
     pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
@@ -124,23 +124,22 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
-        self.pv.len = 0;
     }
 };
 
 const Searcher = @This();
 
 fn updatePv(self: *Searcher, move: Move) void {
-    const cur = self.curStackEntry();
-    cur.pv.len = self.ply + 1;
-    cur.pv.slice()[self.ply] = move;
+    const cur = &self.pvs[self.ply];
+    cur.len = self.ply + 1;
+    cur.slice()[self.ply] = move;
     if (self.ply + 1 < MAX_PLY) {
-        const next = &self.nextStackEntry().pv;
-        const new_len = @max(cur.pv.len, next.len);
-        for (cur.pv.len..new_len) |i| {
-            cur.pv.buffer[i] = next.buffer[i];
+        const next = &self.pvs[self.ply + 1];
+        const new_len = @max(cur.len, next.len);
+        for (cur.len..new_len) |i| {
+            cur.buffer[i] = next.buffer[i];
         }
-        cur.pv.len = new_len;
+        cur.len = new_len;
     }
 }
 
@@ -195,6 +194,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
         prev_stack_entry.move,
         prev_stack_entry.evals,
     );
+    self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
@@ -222,6 +222,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
         TypedMove.init(),
         prev_stack_entry.evals,
     );
+    self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
@@ -860,7 +861,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     var fixed_buffer_pv_writer = std.io.fixedBufferStream(&pv_buf);
     {
         var board = self.searchStackRoot()[0].board;
-        for (self.searchStackRoot()[0].pv.slice()) |pv_move| {
+        for (self.pvs[0].slice()) |pv_move| {
             fixed_buffer_pv_writer.writer().print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
             board.stm = board.stm.flipped();
         }
@@ -921,6 +922,7 @@ fn init(self: *Searcher, params: Params) void {
     self.root_move = Move.init();
     self.root_score = 0;
     self.search_stack[0].board = Board{};
+    self.pvs[0].len = 0;
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
