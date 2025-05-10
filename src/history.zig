@@ -237,8 +237,15 @@ pub const HistoryTable = struct {
             tunable_constants.corrhist_major_weight * major_correction +
             tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
 
-        const fifty_move_rule_scaled = @divTrunc(@as(i32, static_eval) * (200 - board.halfmove), 200);
-        return evaluation.clampScore(fifty_move_rule_scaled + correction);
+        comptime var divisor = 1;
+        const fifty_move_rule_scaled = @as(i64, static_eval) * (200 - board.halfmove);
+        divisor *= 200;
+        const material_scaled = fifty_move_rule_scaled * (@as(i64, 224) + board.phase());
+        divisor *= 256;
+
+        const scaled = @divTrunc(material_scaled, divisor);
+
+        return evaluation.clampScore(scaled + correction);
     }
 };
 

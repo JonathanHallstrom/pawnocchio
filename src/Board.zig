@@ -32,8 +32,6 @@ const CastlingRights = root.CastlingRights;
 const attacks = root.attacks;
 const Board = @This();
 
-comptime {}
-
 white: u64 = 0,
 black: u64 = 0,
 pieces: [6]u64 = .{0} ** 6,
@@ -124,6 +122,15 @@ pub inline fn kings(self: Board) u64 {
 
 pub inline fn startingRankFor(self: Board, col: Colour) Rank {
     return self.castling_rights.startingRankFor(col);
+}
+
+pub fn phase(self: Board) u8 {
+    const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
+    var res: u8 = 0;
+    for (PieceType.all) |pt| {
+        res += gamephaseInc[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
+    }
+    return res;
 }
 
 pub fn parseFen(fen: []const u8, permissive: bool) !Board {
