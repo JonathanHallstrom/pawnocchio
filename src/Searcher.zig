@@ -135,7 +135,7 @@ fn updatePv(self: *Searcher, move: Move) void {
     cur.pv.len = self.ply + 1;
     cur.pv.slice()[self.ply] = move;
     if (self.ply + 1 < MAX_PLY) {
-        const next = self.nextStackEntry().pv;
+        const next = &self.nextStackEntry().pv;
         const new_len = @max(cur.pv.len, next.len);
         for (cur.pv.len..new_len) |i| {
             cur.pv.buffer[i] = next.buffer[i];
