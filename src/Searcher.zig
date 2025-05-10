@@ -115,6 +115,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    pv: std.BoundedArray(Move, 256),
 
     pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
@@ -123,13 +124,32 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
+        self.pv.len = 0;
     }
 };
 
 const Searcher = @This();
 
+fn updatePv(self: *Searcher, move: Move) void {
+    const cur = self.curStackEntry();
+    cur.pv.len = self.ply + 1;
+    cur.pv.slice()[self.ply] = move;
+    if (self.ply + 1 < MAX_PLY) {
+        const next = self.nextStackEntry().pv;
+        const new_len = @max(cur.pv.len, next.len);
+        for (cur.pv.len..new_len) |i| {
+            cur.pv.buffer[i] = next.buffer[i];
+        }
+        cur.pv.len = new_len;
+    }
+}
+
 fn curStackEntry(self: *Searcher) *StackEntry {
     return &self.searchStackRoot()[self.ply];
+}
+
+fn nextStackEntry(self: *Searcher) *StackEntry {
+    return &self.searchStackRoot()[self.ply + 1];
 }
 
 fn prevStackEntry(self: *Searcher) *StackEntry {
@@ -763,6 +783,9 @@ fn search(
                 self.root_move = move;
                 self.root_score = best_score;
             }
+            if (is_pv) {
+                self.updatePv(move);
+            }
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
@@ -833,6 +856,15 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     for (engine.searchers) |searcher| {
         nodes += searcher.nodes;
     }
+    var pv_buf: [6 * 256 + 32]u8 = undefined;
+    var fixed_buffer_pv_writer = std.io.fixedBufferStream(&pv_buf);
+    {
+        var board = self.searchStackRoot()[0].board;
+        for (self.searchStackRoot()[0].pv.slice()) |pv_move| {
+            fixed_buffer_pv_writer.writer().print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
+            board.stm = board.stm.flipped();
+        }
+    }
     write("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
         depth,
         evaluation.formatScore(score).slice(),
@@ -840,7 +872,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
         (elapsed + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
-        self.root_move.toString(&self.searchStackRoot()[0].board).slice(),
+        std.mem.trim(u8, fixed_buffer_pv_writer.getWritten(), &std.ascii.whitespace),
     });
 }
 
