@@ -457,6 +457,7 @@ fn search(
             tt_entry = .{};
         }
     }
+    const has_tt_move = tt_hit and !tt_entry.move.isNull();
 
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
@@ -471,7 +472,7 @@ fn search(
 
     if (depth >= 4 and
         (is_pv or cutnode) and
-        (tt_entry.move.isNull() or !tt_hit))
+        !has_tt_move)
     {
         depth -= 1;
     }
