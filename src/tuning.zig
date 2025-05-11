@@ -70,6 +70,8 @@ const tunable_defaults = struct {
     pub const lmr_corrhist_mult: i32 = 11942;
     pub const nmp_base: i32 = 38851;
     pub const nmp_mult: i32 = 1125;
+    pub const nmp_eval_reduction_scale: i32 = 30;
+    pub const nmp_eval_reduction_max: i32 = 24292;
     pub const fp_base: i32 = 247;
     pub const fp_mult: i32 = 115;
     pub const qs_see_threshold: i32 = -101;
@@ -77,8 +79,6 @@ const tunable_defaults = struct {
     pub const see_noisy_pruning_mult: i32 = -48;
     pub const razoring_margin: i32 = 190;
     pub const history_pruning_mult: i32 = -2300;
-    pub const nmp_eval_reduction_scale: i32 = 30;
-    pub const nmp_eval_reduction_max: i32 = 24292;
     pub const qs_futility_margin: i32 = 97;
     pub const corrhist_pawn_weight: i32 = 1062;
     pub const corrhist_nonpawn_weight: i32 = 526;
@@ -122,6 +122,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
+    .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
+    .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold },
@@ -129,8 +131,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult },
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult },
-    .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
-    .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin },
     .{ .name = "corrhist_pawn_weight", .default = tunable_defaults.corrhist_pawn_weight },
     .{ .name = "corrhist_nonpawn_weight", .default = tunable_defaults.corrhist_nonpawn_weight },
@@ -174,6 +174,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
+    pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
+    pub var nmp_eval_reduction_max = tunable_defaults.nmp_eval_reduction_max;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
@@ -181,8 +183,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
     pub var razoring_margin = tunable_defaults.razoring_margin;
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
-    pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
-    pub var nmp_eval_reduction_max = tunable_defaults.nmp_eval_reduction_max;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
     pub var corrhist_pawn_weight = tunable_defaults.corrhist_pawn_weight;
     pub var corrhist_nonpawn_weight = tunable_defaults.corrhist_nonpawn_weight;
