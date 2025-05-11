@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
-    const net = b.option([]const u8, "net", "Change the net to be used") orelse "pawnocchio-nets/networks/net21_05_1024_400_8_8_mirrored_pre.nnue";
+    const net = b.option([]const u8, "net", "Change the net to be used") orelse "pawnocchio-nets/networks/net21_dyn_1024_400_8_8_mirrored_pre_undertrained.nnue";
     const omit_frame_ptr = switch (optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
