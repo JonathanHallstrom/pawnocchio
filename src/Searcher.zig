@@ -464,6 +464,15 @@ fn search(
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+                    if (tt_score >= beta and
+                        has_tt_move and
+                        board.isPseudoLegal(stm, tt_entry.move) and
+                        board.isQuiet(tt_entry.move))
+                    {
+                        const bonus = root.history.bonus(depth);
+                        self.histories.updateQuiet(board, tt_entry.move, cur.prev, bonus);
+                    }
+
                     return tt_score;
                 }
             }
