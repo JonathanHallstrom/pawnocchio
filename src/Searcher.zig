@@ -704,6 +704,7 @@ fn search(
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
