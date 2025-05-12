@@ -180,12 +180,6 @@ const Accumulator = struct {
 
     fn doAdd(self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
         const add_idx = idx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
-        if (acc == .black) {
-            // std.debug.print("init bucket {}\n", .{whichInputBucket(side, king_sq)});
-            // std.debug.print("init tp {} sq {}\n", .{ tp, sq });
-            // std.debug.print("init add {} {}\n", .{ add_idx, weights.hidden_layer_weights[add_idx * HIDDEN_SIZE] });
-        }
-
         for (0..HIDDEN_SIZE) |i| {
             self.accFor(acc)[i] += weights.hidden_layer_weights[add_idx * HIDDEN_SIZE + i];
         }
@@ -194,13 +188,6 @@ const Accumulator = struct {
     fn doAddSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
         const add_idx = idx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
         const sub_idx = idx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
-        if (acc == .black) {
-            // std.debug.print("update bucket {}\n", .{whichInputBucket(side, king_sq)});
-            // std.debug.print("update add tp {} sq {}\n", .{ add_tp, add_sq });
-            // std.debug.print("update sub tp {} sq {}\n", .{ sub_tp, sub_sq });
-            // std.debug.print("update add {} {}\n", .{ add_idx, weights.hidden_layer_weights[add_idx * HIDDEN_SIZE] });
-            // std.debug.print("update sub {} {}\n", .{ sub_idx, weights.hidden_layer_weights[sub_idx * HIDDEN_SIZE] });
-        }
         for (0..HIDDEN_SIZE) |i| {
             self.accFor(acc)[i] += weights.hidden_layer_weights[add_idx * HIDDEN_SIZE + i] - weights.hidden_layer_weights[sub_idx * HIDDEN_SIZE + i];
         }
