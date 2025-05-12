@@ -116,6 +116,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    history_score: i32 = 0,
 
     pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
@@ -534,6 +535,7 @@ fn search(
             self.prefetchTT(board.hash ^ root.zobrist.turn());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale);
+            nmp_reduction += cur.history_score;
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
@@ -682,7 +684,7 @@ fn search(
         }
 
         self.makeMove(stm, move);
-
+        self.curStackEntry().history_score = history_score;
         const gives_check = self.curStackEntry().board.checkers != 0;
         if (gives_check) {
             extension += 1;
@@ -766,6 +768,7 @@ fn search(
 
             break :blk s;
         };
+        self.curStackEntry().history_score = history_score;
         self.unmakeMove(stm, move);
         if (self.stop) {
             return 0;
