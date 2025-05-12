@@ -535,7 +535,7 @@ fn search(
             self.prefetchTT(board.hash ^ root.zobrist.turn());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale);
-            nmp_reduction -= cur.history_score;
+            nmp_reduction -= cur.history_score >> 1;
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
