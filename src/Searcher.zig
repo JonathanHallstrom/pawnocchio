@@ -732,7 +732,7 @@ fn search(
                         -alpha - 1,
                         -alpha,
                         new_depth,
-                        !cutnode,
+                        false,
                     );
                     if (self.stop) {
                         break :blk 0;
@@ -815,6 +815,36 @@ fn search(
             }
         }
     }
+    // const globals = struct {
+    //     var wrong_cutnode: usize = 0;
+    //     var total_cutnode: usize = 0;
+    //     var wrong_allnode: usize = 0;
+    //     var total_allnode: usize = 0;
+    // };
+    // if (depth >= 1) {
+    //     if (cutnode) {
+    //         globals.total_cutnode += 1;
+    //         if (score_type != .lower) {
+    //             globals.wrong_cutnode += 1;
+    //         }
+    //     } else if (!is_pv) {
+    //         globals.total_allnode += 1;
+    //         if (score_type == .lower) {
+    //             globals.wrong_allnode += 1;
+    //         }
+    //     }
+    //     if (self.nodes % (1 << 16) == 1) {
+    //         std.debug.print("{}/{} incorrect cutnodes ({d:.1}%)     {}/{} incorrect allnodes ({d:.1}%)\n", .{
+    //             globals.wrong_cutnode,
+    //             globals.total_cutnode,
+    //             @as(f64, @floatFromInt(globals.wrong_cutnode)) * @as(f64, 100) / @as(f64, @floatFromInt(globals.total_cutnode)),
+
+    //             globals.wrong_allnode,
+    //             globals.total_allnode,
+    //             @as(f64, @floatFromInt(globals.wrong_allnode)) * @as(f64, 100) / @as(f64, @floatFromInt(globals.total_allnode)),
+    //         });
+    //     }
+    // }
 
     if (best_move.isNull()) {
         const mated_score = evaluation.matedIn(self.ply);
