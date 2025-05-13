@@ -309,6 +309,8 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     const futility = static_eval + tunable_constants.qs_futility_margin;
 
+    var searched_noisies: std.BoundedArray(Move, 15) = .{};
+
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (!board.isLegal(stm, move)) {
@@ -352,6 +354,12 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             return 0;
         }
 
+        if (best_score > evaluation.matedIn(self.ply)) {
+            if (board.isNoisy(move)) {
+                searched_noisies.append(move) catch {};
+            }
+        }
+
         if (score > best_score) {
             best_score = score;
             best_move = move;
@@ -363,6 +371,13 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         if (score > alpha) {
             alpha = score;
             if (score >= beta) {
+                const bonus = history.bonus(0);
+                const penalty = history.penalty(0);
+                for (searched_noisies.slice()) |searched_move| {
+                    if (searched_move == move) break;
+                    self.histories.updateNoisy(board, searched_move, penalty);
+                }
+                self.histories.updateNoisy(board, move, bonus);
                 break;
             }
         }
