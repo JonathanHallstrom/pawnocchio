@@ -111,7 +111,7 @@ pub const NoisyHistory = struct {
 
     inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, adjustment: i16) void {
         gravityUpdate(self.entry(board, move, false), adjustment);
-        // gravityUpdate(self.entry(board, move, true), adjustment >> 1);
+        gravityUpdate(self.entry(board, move, true), adjustment >> 1);
         // some insane shit to test if it doesnt pass without it
     }
 
