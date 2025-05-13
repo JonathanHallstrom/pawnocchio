@@ -68,7 +68,7 @@ pub fn penalty(depth: i32) i16 {
 }
 
 pub const QuietHistory = struct {
-    vals: [2 * 64 * 64]i16,
+    vals: [2 * 6 * 64]i16,
 
     inline fn reset(self: *QuietHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
@@ -77,8 +77,10 @@ pub const QuietHistory = struct {
     inline fn entry(self: anytype, col: Colour, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = col.toInt();
         const from_offs: usize = move.move.from().toInt();
-        const to_offs: usize = move.move.to().toInt();
-        return &(&self.vals)[col_offs * 64 * 64 + from_offs * 64 + to_offs];
+        // const to_offs: usize = move.move.to().toInt();
+        const tp_offs: usize = move.tp.toInt();
+
+        return &(&self.vals)[col_offs * 6 * 64 + from_offs * 6 + tp_offs];
     }
 
     inline fn update(self: *QuietHistory, col: Colour, move: TypedMove, adjustment: i16) void {
