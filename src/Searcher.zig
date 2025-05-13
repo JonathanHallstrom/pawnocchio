@@ -458,6 +458,7 @@ fn search(
         }
     }
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
+    const tt_move_noisy = has_tt_move and board.isNoisy(tt_entry.move);
 
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
@@ -662,7 +663,7 @@ fn search(
                 if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
                     extension += 1;
 
-                    if (s_score < s_beta - tunable_constants.singular_text_margin) {
+                    if (!tt_move_noisy and s_score < s_beta - tunable_constants.singular_text_margin) {
                         extension += 1;
                     }
                 }
