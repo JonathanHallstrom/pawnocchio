@@ -661,6 +661,10 @@ fn search(
 
                 if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
                     extension += 1;
+
+                    if (s_score < s_beta - tunable_constants.singular_text_margin) {
+                        extension += 1;
+                    }
                 }
             } else if (s_beta >= beta) {
                 return @intCast(s_beta);
