@@ -90,27 +90,33 @@ pub const QuietHistory = struct {
     }
 };
 
+var pinned: usize = 0;
+var total: usize = 0;
+
 pub const NoisyHistory = struct {
-    vals: [64 * 64 * 13]i16,
+    vals: [64 * 64 * 13 * 2]i16,
 
     inline fn reset(self: *NoisyHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove, flip_pinned: bool) root.inheritConstness(@TypeOf(self), *i16) {
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
         const captured = (&board.mailbox)[to_offs];
         const captured_offs = if (captured.opt()) |capt| capt.toInt() else 12;
-        return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
+        const pinned_offs: usize = @intFromBool(board.pinned[board.stm.toInt()] & move.move.from().toBitboard() != 0);
+        return &(&self.vals)[from_offs * 64 * 13 * 2 + to_offs * 13 * 2 + captured_offs * 2 + pinned_offs ^ @intFromBool(flip_pinned)];
     }
 
     inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, adjustment: i16) void {
-        gravityUpdate(self.entry(board, move), adjustment);
+        gravityUpdate(self.entry(board, move, false), adjustment);
+        // gravityUpdate(self.entry(board, move, true), adjustment >> 1);
+        // some insane shit to test if it doesnt pass without it
     }
 
     inline fn read(self: *const NoisyHistory, board: *const Board, move: TypedMove) i16 {
-        return self.entry(board, move).*;
+        return self.entry(board, move, false).*;
     }
 };
 
