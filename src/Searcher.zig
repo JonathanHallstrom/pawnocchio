@@ -345,7 +345,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
                 continue;
             }
 
-            if (num_legal > 2) {
+            if (num_legal > 1) {
                 break;
             }
         }
