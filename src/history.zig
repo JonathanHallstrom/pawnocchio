@@ -68,26 +68,36 @@ pub fn penalty(depth: i32) i16 {
 }
 
 pub const QuietHistory = struct {
-    vals: [2 * 64 * 64 * 6]i16,
+    butterfly_vals: [2 * 64 * 64]i16,
+    piece_to_vals: [2 * 6 * 64]i16,
 
     inline fn reset(self: *QuietHistory) void {
-        @memset(std.mem.asBytes(&self.vals), 0);
+        @memset(std.mem.asBytes(&self.butterfly_vals), 0);
+        @memset(std.mem.asBytes(&self.piece_to_vals), 0);
     }
 
-    inline fn entry(self: anytype, col: Colour, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+    inline fn butterfly_entry(self: anytype, col: Colour, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = col.toInt();
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
+        return &(&self.butterfly_vals)[col_offs * 64 * 64 + from_offs * 64 + to_offs];
+    }
+
+    inline fn piece_to_entry(self: anytype, col: Colour, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = col.toInt();
+        const from_offs: usize = move.move.from().toInt();
         const tp_offs: usize = move.tp.toInt();
-        return &(&self.vals)[col_offs * 64 * 64 * 6 + from_offs * 64 * 6 + to_offs * 6 + tp_offs];
+        return &(&self.piece_to_vals)[col_offs * 64 * 6 + from_offs * 6 + tp_offs];
     }
 
     inline fn update(self: *QuietHistory, col: Colour, move: TypedMove, adjustment: i16) void {
-        gravityUpdate(self.entry(col, move), adjustment);
+        gravityUpdate(self.butterfly_entry(col, move), adjustment);
+        gravityUpdate(self.piece_to_entry(col, move), adjustment);
     }
 
     inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {
-        return self.entry(col, move).*;
+        return self.butterfly_entry(col, move).* +
+            self.piece_to_entry(col, move).* >> 1;
     }
 };
 
