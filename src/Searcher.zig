@@ -309,6 +309,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     const futility = static_eval + tunable_constants.qs_futility_margin;
 
+    var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (!board.isLegal(stm, move)) {
@@ -343,7 +344,13 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
                 std.debug.assert(mp.stage != .good_noisies);
                 continue;
             }
+
+            if (num_legal > 2) {
+                break;
+            }
         }
+
+        num_legal += 1;
 
         self.makeMove(stm, move);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
