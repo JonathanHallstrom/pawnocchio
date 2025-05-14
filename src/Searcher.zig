@@ -90,10 +90,10 @@ inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
 }
 
-pub fn writeTT(self: *Searcher, hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
+pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
     self.tt[self.ttIndex(hash)] = root.TTEntry{
         .score = score,
-        .score_type = score_type,
+        .flags = .{ .score_type = score_type, .is_pv = tt_pv },
         .move = move,
         .hash = hash,
         .depth = @intCast(depth),
@@ -252,7 +252,6 @@ fn isRepetition(self: *Searcher) bool {
 
 fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
     var alpha = alpha_;
-
     self.nodes += 1;
     if (self.stop or self.limits.checkSearch(self.nodes)) {
         self.stop = true;
@@ -270,7 +269,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         tt_entry = .{};
     }
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+    if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
         return tt_score;
     }
 
@@ -282,7 +281,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
-        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
+        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
             static_eval = tt_score;
         }
 
@@ -458,12 +457,12 @@ fn search(
         }
     }
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
-
+    const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
-                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
                     return tt_score;
                 }
             }
@@ -486,7 +485,7 @@ fn search(
         improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
 
-        if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.score_type)) {
+        if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.flags.score_type)) {
             cur.static_eval = tt_score;
         } else {
             cur.static_eval = corrected_static_eval;
@@ -503,7 +502,8 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        if (depth <= 5 and
+        if (!tt_pv and
+            depth <= 5 and
             static_eval >= beta +
                 tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
@@ -639,7 +639,7 @@ fn search(
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
-            tt_entry.score_type != .upper)
+            tt_entry.flags.score_type != .upper)
         {
             const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 5));
             const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
@@ -826,6 +826,7 @@ fn search(
             best_move = tt_entry.move;
         }
         self.writeTT(
+            tt_pv,
             tt_hash,
             best_move,
             evaluation.scoreToTt(best_score, self.ply),
