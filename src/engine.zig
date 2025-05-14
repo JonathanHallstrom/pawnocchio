@@ -144,6 +144,9 @@ fn datagenWorker(
     var num_positions_written: usize = 0;
     datagen_loop: while (true) {
         var board = root.Board.dfrcPosition(rng.random().uintLessThanBiased(u20, 960 * 960));
+        if (rng.random().boolean()) {
+            board = root.Board.startpos();
+        }
         var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
         var hashes = std.ArrayList(u64).init(fba.allocator());
         defer hashes.deinit();
