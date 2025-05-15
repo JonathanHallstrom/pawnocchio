@@ -375,17 +375,22 @@ pub const FilteringScoredMoveReceiver = struct {
     }
 };
 
-pub const ScoreType = enum(u8) {
-    none,
-    lower,
-    upper,
-    exact,
+pub const ScoreType = enum(u2) {
+    none = 0,
+    lower = 1,
+    upper = 2,
+    exact = 3,
+};
+
+pub const TTFlags = packed struct {
+    score_type: ScoreType = .none,
+    is_pv: bool = false,
 };
 
 pub const TTEntry = struct {
     hash: u64 = 0,
     score: i16 = 0,
-    score_type: ScoreType = .none,
+    flags: TTFlags = .{},
     move: Move = Move.init(),
     depth: u8 = 0,
 };
