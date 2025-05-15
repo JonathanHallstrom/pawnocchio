@@ -49,24 +49,45 @@ pub const Params = struct {
 const EvalPair = struct {
     white: ?i16 = null,
     black: ?i16 = null,
+    prev_white: ?i16 = null,
+    prev_black: ?i16 = null,
 
     pub fn updateWith(self: EvalPair, comptime col: Colour, val: i16) EvalPair {
         if (col == .white) {
             return .{
                 .white = val,
                 .black = self.black,
+                .prev_white = self.white,
+                .prev_black = self.prev_black,
             };
         } else {
             return .{
                 .white = self.white,
                 .black = val,
+                .prev_white = self.prev_white,
+                .prev_black = self.black,
             };
         }
     }
 
-    pub fn isImprovement(self: EvalPair, comptime col: Colour, val: i16) bool {
-        const prev_opt = if (col == .white) self.white else self.black;
-        return if (prev_opt) |prev| val > prev else false;
+    inline fn curFor(self: EvalPair, col: Colour) ?i16 {
+        return if (col == .white) self.white else self.black;
+    }
+
+    inline fn prevFor(self: EvalPair, col: Colour) ?i16 {
+        return if (col == .white) self.prev_white else self.prev_black;
+    }
+
+    pub fn improving(self: EvalPair, col: Colour) bool {
+        const prev = self.prevFor(col) orelse return false;
+        const cur = self.curFor(col) orelse return false;
+        return cur > prev;
+    }
+
+    pub fn worsening(self: EvalPair, col: Colour) bool {
+        const prev = self.prevFor(col) orelse return false;
+        const cur = self.curFor(col) orelse return false;
+        return cur < prev;
     }
 };
 
@@ -478,13 +499,15 @@ fn search(
     }
 
     var improving = false;
+    var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
-        improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+        improving = cur.evals.improving(stm);
+        opponent_worsening = cur.evals.worsening(stm.flipped());
 
         if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.score_type)) {
             cur.static_eval = tt_score;
