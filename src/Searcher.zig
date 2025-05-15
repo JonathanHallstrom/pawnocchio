@@ -36,6 +36,7 @@ const SEE = root.SEE;
 const tunable_constants = root.tunable_constants;
 const write = root.write;
 const evaluate = evaluation.evaluate;
+const TTEntry = root.TTEntry;
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -104,15 +105,15 @@ ply: u8,
 stop: bool,
 histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
-tt: []root.TTEntry,
+tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
 }
 
-pub fn writeTT(self: *Searcher, hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
-    self.tt[self.ttIndex(hash)] = root.TTEntry{
+pub fn writeTT(self: *Searcher, hash: u64, move: Move, score: i16, score_type: ScoreType, depth: i32) void {
+    self.tt[self.ttIndex(hash)] = TTEntry{
         .score = score,
         .score_type = score_type,
         .move = move,
@@ -125,7 +126,7 @@ pub fn prefetchTT(self: *const Searcher, hash: u64) void {
     @prefetch(&self.tt[self.ttIndex(hash)], .{});
 }
 
-pub fn readTT(self: *const Searcher, hash: u64) root.TTEntry {
+pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
     return self.tt[self.ttIndex(hash)];
 }
 
@@ -443,7 +444,7 @@ fn search(
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
         if (board.halfmove >= 100) {
             if (is_in_check) {
-                var rec: root.movegen.MoveListReceiver = .{};
+                var rec: movegen.MoveListReceiver = .{};
                 movegen.generateAllQuiets(stm, board, &rec);
                 movegen.generateAllNoisies(stm, board, &rec);
                 var has_legal = false;
@@ -468,7 +469,7 @@ fn search(
 
     const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.getHashWithHalfmove();
-    var tt_entry: root.TTEntry = .{};
+    var tt_entry: TTEntry = .{};
     var tt_hit = false;
     if (!is_singular_search) {
         tt_entry = self.readTT(tt_hash);
@@ -816,8 +817,8 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
-                const bonus = root.history.bonus(depth);
-                const penalty = -root.history.penalty(depth);
+                const bonus = history.bonus(depth);
+                const penalty = -history.penalty(depth);
                 if (is_quiet) {
                     self.histories.updateQuiet(board, move, cur.prev, bonus);
                     for (searched_quiets.slice()) |searched_move| {
