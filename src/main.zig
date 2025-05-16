@@ -509,6 +509,8 @@ pub fn main() !void {
             root.engine.stopSearch();
         } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
             return;
+        } else if (std.ascii.eqlIgnoreCase(command, "wait")) {
+            root.engine.waitUntilDoneSearching();
         } else if (std.ascii.eqlIgnoreCase(command, "nneval")) {
             write("{}\n", .{@import("nnue.zig").nnEval(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
@@ -529,8 +531,11 @@ pub fn main() !void {
                 write("EVAL: {}\n", .{@import("nnue.zig").nnEval(&try Board.parseFen(fen, false))});
             }
         } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
-            const hce = @import("material_eval.zig");
-            write("{}\n", .{hce.evaluate(&board, hce.State.init(&board))});
+            const hce = @import("hce.zig");
+            var state = hce.State.init(&board);
+            switch (board.stm) {
+                inline else => |stm| write("{}\n", .{hce.evaluate(stm, &board, &state)}),
+            }
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
             const sub_command = parts.next() orelse "";
