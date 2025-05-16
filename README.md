@@ -4,16 +4,17 @@ Strongest UCI Chess engine written in zig
 
 ## Strength
 
-|         Version         | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] |
-|:-----------------------:|:------------------------:|:-------------------------:
-| [1.6][v1.6]             |           3500*          |           3600*          |
-| [1.5][v1.5]             |           3450*          |           3500           |
-| [1.4.1][v1.4.1]         |           3425           |           3450*          |
-| [1.3.1415][v1.3.1415]   |           3365           |           3401           |
-| [1.3][v1.3]             |           3201           |           3230*          |
-| [1.2][v1.2]             |           3120           |           3150*          |
-| [1.1][v1.1]             |           2432           |           2450*          |
-| [1.0][v1.0]             |           2100*          |           2150*          |
+|         Version         | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][ccrl Blitz] |
+|:-----------------------:|:------------------------:|:------------------------:|:------------------------:|
+| [1.6.1][v1.6.1]         |           3500*          |           3610*          |           3440*          |
+| [1.6][v1.6]             |           3490           |           3600*          |           3430*          |
+| [1.5][v1.5]             |           3450*          |           3500           |           3350           |
+| [1.4.1][v1.4.1]         |           3425           |           3450*          |           3300*          |
+| [1.3.1415][v1.3.1415]   |           3365           |           3401           |           3250*          |
+| [1.3][v1.3]             |           3201           |           3230*          |           3100*          |
+| [1.2][v1.2]             |           3120           |           3150*          |           3000*          |
+| [1.1][v1.1]             |           2432           |           2450*          |           2400*          |
+| [1.0][v1.0]             |           2100*          |           2150*          |           2100*          |
 
 *estimated
 
@@ -59,6 +60,8 @@ The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 [v1.4.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.4.1
 [v1.5]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.5
 [v1.6]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.6
+[v1.6.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.6.1
 
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
 [ccrl Blitz]:https://www.computerchess.org.uk/ccrl/404/cgi/compare_engines.cgi?family=pawnocchio
+[cegt 40/20]:http://www.cegt.net/40_40%20Rating%20List/40_40%20SingleVersion/rangliste.html
