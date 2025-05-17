@@ -36,6 +36,7 @@ const SEE = root.SEE;
 const tunable_constants = root.tunable_constants;
 const write = root.write;
 const evaluate = evaluation.evaluate;
+const TTEntry = root.TTEntry;
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -49,24 +50,45 @@ pub const Params = struct {
 const EvalPair = struct {
     white: ?i16 = null,
     black: ?i16 = null,
+    prev_white: ?i16 = null,
+    prev_black: ?i16 = null,
 
     pub fn updateWith(self: EvalPair, comptime col: Colour, val: i16) EvalPair {
         if (col == .white) {
             return .{
                 .white = val,
                 .black = self.black,
+                .prev_white = self.white,
+                .prev_black = self.prev_black,
             };
         } else {
             return .{
                 .white = self.white,
                 .black = val,
+                .prev_white = self.prev_white,
+                .prev_black = self.black,
             };
         }
     }
 
-    pub fn isImprovement(self: EvalPair, comptime col: Colour, val: i16) bool {
-        const prev_opt = if (col == .white) self.white else self.black;
-        return if (prev_opt) |prev| val > prev else false;
+    inline fn curFor(self: EvalPair, col: Colour) ?i16 {
+        return if (col == .white) self.white else self.black;
+    }
+
+    inline fn prevFor(self: EvalPair, col: Colour) ?i16 {
+        return if (col == .white) self.prev_white else self.prev_black;
+    }
+
+    pub fn improving(self: EvalPair, col: Colour) bool {
+        const prev = self.prevFor(col) orelse return false;
+        const cur = self.curFor(col) orelse return false;
+        return cur > prev;
+    }
+
+    pub fn worsening(self: EvalPair, col: Colour) bool {
+        const prev = self.prevFor(col) orelse return false;
+        const cur = self.curFor(col) orelse return false;
+        return cur < prev;
     }
 };
 
@@ -82,16 +104,16 @@ limits: Limits,
 ply: u8,
 stop: bool,
 histories: history.HistoryTable,
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
-tt: []root.TTEntry,
+previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
+tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
 }
 
-pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
-    self.tt[self.ttIndex(hash)] = root.TTEntry{
+pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: Move, score: i16, score_type: ScoreType, depth: i32) void {
+    self.tt[self.ttIndex(hash)] = TTEntry{
         .score = score,
         .flags = .{ .score_type = score_type, .is_pv = tt_pv },
         .move = move,
@@ -104,7 +126,7 @@ pub fn prefetchTT(self: *const Searcher, hash: u64) void {
     @prefetch(&self.tt[self.ttIndex(hash)], .{});
 }
 
-pub fn readTT(self: *const Searcher, hash: u64) root.TTEntry {
+pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
     return self.tt[self.ttIndex(hash)];
 }
 
@@ -421,7 +443,7 @@ fn search(
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
         if (board.halfmove >= 100) {
             if (is_in_check) {
-                var rec: root.movegen.MoveListReceiver = .{};
+                var rec: movegen.MoveListReceiver = .{};
                 movegen.generateAllQuiets(stm, board, &rec);
                 movegen.generateAllNoisies(stm, board, &rec);
                 var has_legal = false;
@@ -446,7 +468,7 @@ fn search(
 
     const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.getHashWithHalfmove();
-    var tt_entry: root.TTEntry = .{};
+    var tt_entry: TTEntry = .{};
     var tt_hit = false;
     if (!is_singular_search) {
         tt_entry = self.readTT(tt_hash);
@@ -477,13 +499,15 @@ fn search(
     }
 
     var improving = false;
+    var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
-        improving = cur.evals.isImprovement(stm, corrected_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+        improving = cur.evals.improving(stm);
+        opponent_worsening = cur.evals.worsening(stm.flipped());
 
         if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.flags.score_type)) {
             cur.static_eval = tt_score;
@@ -793,8 +817,8 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
-                const bonus = root.history.bonus(depth);
-                const penalty = -root.history.penalty(depth);
+                const bonus = history.bonus(depth);
+                const penalty = -history.penalty(depth);
                 if (is_quiet) {
                     self.histories.updateQuiet(board, move, cur.prev, bonus);
                     for (searched_quiets.slice()) |searched_move| {
