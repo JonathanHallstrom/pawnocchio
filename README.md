@@ -48,8 +48,9 @@ The evaluation is done using a neural net trained entirely on self play games fr
 The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 
 ## Build instructions
-1. Install zig (0.14.0)
-2. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
+1. Get the network with `git submodule update --init --depth 1`
+2. Install zig (0.14.0)
+3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
 
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1
