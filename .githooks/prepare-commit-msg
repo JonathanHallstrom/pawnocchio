@@ -1,8 +1,8 @@
 #!/bin/sh
 
-echo "Running benchmark to append onto commit message"
-make EXE=bench_tmp
-BENCH_OUTPUT=$(./bench_tmp bench | awk '/nodes/ {print $1}')
-rm bench_tmp
-echo "\nbench: $BENCH_OUTPUT" >> "$1"
-echo "Benchmark complete: $BENCH_OUTPUT"
+# echo "Running benchmark to append onto commit message"
+# make EXE=bench_tmp
+# BENCH_OUTPUT=$(./bench_tmp bench | awk '/nodes/ {print $1}')
+# rm bench_tmp
+# echo "\nbench: $BENCH_OUTPUT" >> "$1"
+# echo "Benchmark complete: $BENCH_OUTPUT"
