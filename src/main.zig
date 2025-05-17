@@ -208,7 +208,7 @@ pub fn main() !void {
         };
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
-            write("id name pawnocchio 1.6\n", .{});
+            write("id name pawnocchio 1.6.1\n", .{});
             write("id author Jonathan Hallström\n", .{});
             write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
