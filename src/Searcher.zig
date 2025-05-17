@@ -303,7 +303,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
-        if (!tt_hit and old_tt_entry.depth < 2) {
+        if (!tt_hit and old_tt_entry.depth == 0) {
             self.writeTT(tt_hash, Move.init(), 0, .none, 0, raw_static_eval);
         }
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
@@ -511,7 +511,7 @@ fn search(
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
-        if (!tt_hit and old_tt_entry.depth < 2) {
+        if (!tt_hit and old_tt_entry.depth == 0) {
             self.writeTT(tt_hash, Move.init(), 0, .none, 0, raw_static_eval);
         }
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
