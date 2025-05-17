@@ -104,7 +104,7 @@ limits: Limits,
 ply: u8,
 stop: bool,
 histories: history.HistoryTable,
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
+previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 
