@@ -729,6 +729,11 @@ fn search(
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
+                reduction += std.math.clamp(
+                    (alpha - static_eval) * tunable_constants.lmr_eval_diff >> 6,
+                    0,
+                    tunable_constants.lmr_eval_diff_max,
+                );
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
