@@ -48,10 +48,10 @@ pub const Params = struct {
 };
 
 const EvalPair = struct {
-    white: ?i16 = null,
-    black: ?i16 = null,
-    prev_white: ?i16 = null,
-    prev_black: ?i16 = null,
+    white: i16 = -evaluation.inf_score,
+    black: i16 = -evaluation.inf_score,
+    prev_white: i16 = -evaluation.inf_score,
+    prev_black: i16 = -evaluation.inf_score,
 
     pub fn updateWith(self: EvalPair, comptime col: Colour, val: i16) EvalPair {
         if (col == .white) {
@@ -71,24 +71,20 @@ const EvalPair = struct {
         }
     }
 
-    inline fn curFor(self: EvalPair, col: Colour) ?i16 {
+    inline fn curFor(self: EvalPair, col: Colour) i16 {
         return if (col == .white) self.white else self.black;
     }
 
-    inline fn prevFor(self: EvalPair, col: Colour) ?i16 {
+    inline fn prevFor(self: EvalPair, col: Colour) i16 {
         return if (col == .white) self.prev_white else self.prev_black;
     }
 
     pub fn improving(self: EvalPair, col: Colour) bool {
-        const prev = self.prevFor(col) orelse return false;
-        const cur = self.curFor(col) orelse return false;
-        return cur > prev;
+        return self.curFor(col) > self.prevFor(col);
     }
 
     pub fn worsening(self: EvalPair, col: Colour) bool {
-        const prev = self.prevFor(col) orelse return false;
-        const cur = self.curFor(col) orelse return false;
-        return cur < prev;
+        return self.curFor(col) < self.prevFor(col);
     }
 };
 
@@ -301,17 +297,19 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     if (!is_in_check) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
-        cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
             static_eval = tt_score;
         }
 
-        if (static_eval >= beta)
+        if (static_eval >= beta) {
             return static_eval;
-        if (static_eval > alpha)
+        }
+        if (static_eval > alpha) {
             alpha = static_eval;
+        }
     }
+    cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
 
     if (self.ply >= MAX_PLY - 1) {
         return static_eval;
@@ -498,15 +496,12 @@ fn search(
         depth -= 1;
     }
 
-    var improving = false;
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
-        cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
-        improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
         if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.flags.score_type)) {
@@ -515,6 +510,8 @@ fn search(
             cur.static_eval = corrected_static_eval;
         }
     }
+    cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+    const improving = cur.evals.improving(stm);
     const static_eval = cur.static_eval;
 
     if (!is_pv and
