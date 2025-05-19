@@ -253,7 +253,7 @@ const Accumulator = struct {
 
         //                  vvvvvvvv annotation to help zls
         const Vec = @as(type, @Vector(VEC_SIZE, i16));
-        var accs = std.mem.zeroes([8]@Vector(VEC_SIZE / 2, i32));
+        var accs = std.mem.zeroes([4]@Vector(VEC_SIZE / 2, i32));
         const ZERO: Vec = @splat(0);
         const ONE: Vec = @splat(QA);
         var i: usize = 0;
@@ -475,7 +475,7 @@ pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 8;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
-pub const HIDDEN_SIZE: usize = 1024;
+pub const HIDDEN_SIZE: usize = 1280;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
