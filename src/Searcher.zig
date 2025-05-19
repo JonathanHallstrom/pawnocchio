@@ -688,7 +688,11 @@ fn search(
             } else if (s_beta >= beta) {
                 return @intCast(s_beta);
             } else if (tt_entry.score >= beta) {
-                extension -= 2;
+                extension -= 1;
+
+                if (!is_pv and tt_entry.score >= beta + tunable_constants.singular_dnegext_margin) {
+                    extension -= 1;
+                }
             } else if (cutnode) {
                 extension -= 2;
             }
