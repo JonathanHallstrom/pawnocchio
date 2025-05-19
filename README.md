@@ -7,7 +7,7 @@ Strongest UCI Chess engine written in zig
 |         Version         | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][ccrl Blitz] |
 |:-----------------------:|:------------------------:|:------------------------:|:------------------------:|
 | [1.6.1][v1.6.1]         |           3500*          |           3610*          |           3440*          |
-| [1.6][v1.6]             |           3490           |           3600*          |           3430*          |
+| [1.6][v1.6]             |           3490           |           3600*          |           3433           |
 | [1.5][v1.5]             |           3450*          |           3500           |           3350           |
 | [1.4.1][v1.4.1]         |           3425           |           3450*          |           3300*          |
 | [1.3.1415][v1.3.1415]   |           3365           |           3401           |           3250*          |
@@ -51,6 +51,7 @@ The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 1. Get the network with `git submodule update --init --depth 1`
 2. Install zig (0.14.0)
 3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
+Alternatively you can build the engine using the Makefile, with `make`
 
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1
