@@ -48,10 +48,9 @@ pub const TypedMove = struct {
     }
 };
 
-pub const MAX_HISTORY: i16 = 1 << 14;
-const CORRHIST_SIZE = 16384;
-const MAX_CORRHIST = 256 * 32;
-const SHIFT = @ctz(MAX_HISTORY);
+const CORRHIST_SIZE = 1 << 14;
+const MAX_HISTORY = 1 << 14;
+const MAX_CORRHIST = 1 << 14;
 
 pub fn bonus(depth: i32) i16 {
     return @intCast(@min(
@@ -82,7 +81,7 @@ pub const QuietHistory = struct {
     }
 
     inline fn update(self: *QuietHistory, col: Colour, move: TypedMove, adjustment: i16) void {
-        gravityUpdate(self.entry(col, move), adjustment);
+        gravityUpdate(self.entry(col, move), adjustment, MAX_HISTORY);
     }
 
     inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {
@@ -106,7 +105,7 @@ pub const NoisyHistory = struct {
     }
 
     inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, adjustment: i16) void {
-        gravityUpdate(self.entry(board, move), adjustment);
+        gravityUpdate(self.entry(board, move), adjustment, MAX_HISTORY);
     }
 
     inline fn read(self: *const NoisyHistory, board: *const Board, move: TypedMove) i16 {
@@ -129,7 +128,7 @@ pub const ContHistory = struct {
     }
 
     inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev: TypedMove, adjustment: i16) void {
-        gravityUpdate(self.entry(col, move, prev), adjustment);
+        gravityUpdate(self.entry(col, move, prev), adjustment, MAX_HISTORY);
     }
 
     inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev: TypedMove) i16 {
@@ -187,7 +186,7 @@ pub const HistoryTable = struct {
     }
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {
-        const err = (score - corrected_static_eval) * 256;
+        const err = score - corrected_static_eval;
         const weight = @min(depth, 15) + 1;
 
         self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
@@ -249,19 +248,23 @@ pub const HistoryTable = struct {
     }
 };
 
-fn gravityUpdate(entry: *i16, adjustment: anytype) void {
-    const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));
+fn gravityUpdate(entry: *i16, adjustment: anytype, comptime MAX: comptime_int) void {
+    const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX, MAX));
     const magnitude: i32 = @abs(clamped);
-    entry.* += @intCast(clamped - ((magnitude * entry.*) >> SHIFT));
+    const shift = comptime blk: {
+        var res = 0;
+        while (1 << res < MAX) {
+            res += 1;
+        }
+        break :blk res;
+    };
+    entry.* += @intCast(clamped - ((magnitude * entry.*) >> shift));
 }
 
 const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        const val = self.val;
-        const lerped = (val * (256 - weight) + err * weight) >> 8;
-        const clamped = std.math.clamp(lerped, -MAX_CORRHIST, MAX_CORRHIST);
-        self.val = @intCast(clamped);
+        gravityUpdate(&self.val, err * weight, MAX_CORRHIST);
     }
 };
