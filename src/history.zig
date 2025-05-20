@@ -50,7 +50,7 @@ pub const TypedMove = struct {
 
 const CORRHIST_SIZE = 1 << 14;
 const MAX_HISTORY = 1 << 14;
-const MAX_CORRHIST = 1 << 14;
+const MAX_CORRHIST = 1 << 13;
 
 pub fn bonus(depth: i32) i16 {
     return @intCast(@min(
