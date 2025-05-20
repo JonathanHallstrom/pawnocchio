@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.6.2";
+const VERSION_STRING = "1.6.3";
 
 pub fn main() !void {
     root.init();
@@ -33,9 +33,6 @@ pub fn main() !void {
     defer args.deinit();
 
     _ = args.next();
-
-    std.debug.print("{s}\n", .{banner});
-    std.debug.print("pawnocchio {s}\n", .{VERSION_STRING});
 
     {
         var do_bench = false;
@@ -183,6 +180,9 @@ pub fn main() !void {
             return;
         }
     }
+
+    std.debug.print("{s}\n", .{banner});
+    std.debug.print("pawnocchio {s}\n", .{VERSION_STRING});
 
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);
