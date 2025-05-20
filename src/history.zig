@@ -265,6 +265,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        gravityUpdate(&self.val, err * weight, MAX_CORRHIST);
+        gravityUpdate(&self.val, err * weight >> 1, MAX_CORRHIST);
     }
 };
