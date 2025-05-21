@@ -195,6 +195,12 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
     return 0;
 }
 
+fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
+    // TODO: actually make it configurable
+    const contempt = 0;
+    return if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt;
+}
+
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const old_stack_entry = self.prevStackEntry();
     const prev_stack_entry = self.curStackEntry();
@@ -300,7 +306,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
-        corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -504,7 +510,7 @@ fn search(
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
-        corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
