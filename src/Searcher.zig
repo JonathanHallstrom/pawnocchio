@@ -85,10 +85,10 @@ const EvalPair = struct {
         return cur > prev;
     }
 
-    pub fn worsening(self: EvalPair, col: Colour) bool {
-        const prev = self.prevFor(col) orelse return false;
+    pub fn opponentWorsening(self: EvalPair, col: Colour) bool {
+        const prev = self.curFor(col.flipped()) orelse return false;
         const cur = self.curFor(col) orelse return false;
-        return cur < prev;
+        return cur > -prev;
     }
 };
 
@@ -507,7 +507,7 @@ fn search(
         corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
-        opponent_worsening = cur.evals.worsening(stm.flipped());
+        opponent_worsening = cur.evals.opponentWorsening(stm);
 
         if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.flags.score_type)) {
             cur.static_eval = tt_score;
@@ -529,7 +529,8 @@ fn search(
         if (depth <= 5 and
             static_eval >= beta +
                 tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) -
-                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
+                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) -
+                tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening))
         {
             return static_eval;
         }
