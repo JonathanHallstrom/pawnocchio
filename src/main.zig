@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.6.3";
+const VERSION_STRING = "1.6.6";
 
 pub fn main() !void {
     root.init();
@@ -538,8 +538,9 @@ pub fn main() !void {
         } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
             const hce = @import("hce.zig");
             var state = hce.State.init(&board);
+
             switch (board.stm) {
-                inline else => |stm| write("{}\n", .{hce.evaluate(stm, &board, &state)}),
+                inline else => |stm| write("{}\n", .{hce.evaluate(stm, &board, &board, &state)}),
             }
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
