@@ -235,6 +235,14 @@ pub const HistoryTable = struct {
             tunable_constants.corrhist_countermove_weight * countermove_correction +
             tunable_constants.corrhist_major_weight * major_correction +
             tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
+        // const globals = struct {
+        //     var sum: u64 = 0;
+        //     var count: usize = 0;
+        // };
+        // globals.sum += @abs(correction);
+        // globals.count += 1;
+        // if (globals.count % (1 << 20) == 0)
+        //     std.debug.print("{}\n", .{1000 * globals.sum / globals.count});
 
         comptime var divisor = 1;
         const fifty_move_rule_scaled = @as(i64, static_eval) * (200 - board.halfmove);
@@ -265,6 +273,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        gravityUpdate(&self.val, err * weight >> 2, MAX_CORRHIST);
+        gravityUpdate(&self.val, err * weight * 1536 >> 10, MAX_CORRHIST);
     }
 };
