@@ -48,7 +48,7 @@ pub const TypedMove = struct {
     }
 };
 
-const CORRHIST_SIZE = 1 << 14;
+const CORRHIST_SIZE = 1 << 17;
 const MAX_HISTORY = 1 << 14;
 const MAX_CORRHIST = 1 << 13;
 
@@ -140,10 +140,10 @@ pub const HistoryTable = struct {
     quiet: QuietHistory,
     noisy: NoisyHistory,
     countermove: ContHistory,
-    pawn_corrhist: [16384][2]CorrhistEntry,
-    major_corrhist: [16384][2]CorrhistEntry,
-    minor_corrhist: [16384][2]CorrhistEntry,
-    nonpawn_corrhist: [16384][2][2]CorrhistEntry,
+    pawn_corrhist: [CORRHIST_SIZE][2]CorrhistEntry,
+    major_corrhist: [CORRHIST_SIZE][2]CorrhistEntry,
+    minor_corrhist: [CORRHIST_SIZE][2]CorrhistEntry,
+    nonpawn_corrhist: [CORRHIST_SIZE][2][2]CorrhistEntry,
     countermove_corrhist: [6 * 64][2]CorrhistEntry,
 
     pub fn reset(self: *HistoryTable) void {
