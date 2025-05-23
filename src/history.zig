@@ -234,7 +234,7 @@ pub const HistoryTable = struct {
             tunable_constants.corrhist_nonpawn_weight * nonpawn_correction +
             tunable_constants.corrhist_countermove_weight * countermove_correction +
             tunable_constants.corrhist_major_weight * major_correction +
-            tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
+            tunable_constants.corrhist_minor_weight * minor_correction) >> 19;
 
         comptime var divisor = 1;
         const fifty_move_rule_scaled = @as(i64, static_eval) * (200 - board.halfmove);
@@ -265,6 +265,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        gravityUpdate(&self.val, err * weight >> 1, MAX_CORRHIST);
+        gravityUpdate(&self.val, err * weight, MAX_CORRHIST);
     }
 };
