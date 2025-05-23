@@ -66,7 +66,7 @@ pub inline fn whichOutputBucket(board: *const Board) usize {
 
 pub var weights: Weights = undefined;
 inline fn hiddenLayerWeightsVector() []const @Vector(VEC_SIZE, i16) {
-    return @as([*]const @Vector(VEC_SIZE, i16), @ptrCast(&weights.hidden_layer_weights))[0 .. weights.hidden_layer_weights.len / VEC_SIZE];
+    comptime return @as([*]const @Vector(VEC_SIZE, i16), @ptrCast(&weights.hidden_layer_weights))[0 .. (&weights.hidden_layer_weights).len / VEC_SIZE];
 }
 
 const SquarePieceType = struct {
