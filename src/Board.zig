@@ -53,7 +53,7 @@ nonpawn_hash: [2]u64 = .{0} ** 2,
 castling_rights: CastlingRights = CastlingRights.init(),
 
 pinned: [2]u64 = .{0} ** 2,
-pinner: [2]u64 = .{0} ** 2,
+// pinner: [2]u64 = .{0} ** 2,
 checkers: u64 = 0,
 
 pub inline fn occupancyFor(self: Board, col: Colour) u64 {
@@ -787,7 +787,7 @@ pub inline fn updatePins(self: *Board, comptime col: Colour) void {
     const rook_sliders = (self.rooks() | self.queens()) & self.occupancyFor(col.flipped());
     const bishop_sliders = (self.bishops() | self.queens()) & self.occupancyFor(col.flipped());
     var pinned: u64 = 0;
-    var pinner: u64 = 0;
+    // var pinner: u64 = 0;
     for ([_]u64{
         king_as_rook_attacks & rook_sliders,
         king_as_bishop_attacks & bishop_sliders,
@@ -799,20 +799,25 @@ pub inline fn updatePins(self: *Board, comptime col: Colour) void {
             if (@popCount(pieces_between) == 1) {
                 if (pieces_between & us_occ != 0) {
                     pinned |= pieces_between;
-                    pinner |= potential_pinner.toBitboard();
+                    // pinner |= potential_pinner.toBitboard();
                 }
             }
         }
     }
     self.pinned[col.toInt()] = pinned;
-    self.pinner[col.flipped().toInt()] = pinner;
+    // self.pinner[col.flipped().toInt()] = pinner;
 }
 
 pub fn updateMasks(self: *Board, col: Colour) void {
     self.updatePins(.white);
     self.updatePins(.black);
     self.checkers = switch (col) {
-        inline else => |col_comptime| movegen.attackersFor(col_comptime.flipped(), self, Square.fromBitboard(self.kingFor(col)), self.occupancy()),
+        inline else => |col_comptime| movegen.attackersFor(
+            col_comptime.flipped(),
+            self,
+            Square.fromBitboard(self.kingFor(col)),
+            self.occupancy(),
+        ),
     };
 }
 

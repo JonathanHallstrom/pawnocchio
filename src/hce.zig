@@ -394,8 +394,8 @@ pub const State = struct {
     }
 };
 
-pub fn evaluate(comptime _: Colour, board: *const Board, state: *State) i16 {
+pub fn evaluate(comptime stm: Colour, _: *const Board, _: *const Board, state: *State) i16 {
     var res = evaluation.clampScore(state.eval());
-    if (board.stm == .black) res = -res;
+    if (stm == .black) res = -res;
     return res;
 }
