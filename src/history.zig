@@ -234,7 +234,7 @@ pub const HistoryTable = struct {
             tunable_constants.corrhist_nonpawn_weight * nonpawn_correction +
             tunable_constants.corrhist_countermove_weight * countermove_correction +
             tunable_constants.corrhist_major_weight * major_correction +
-            tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
+            tunable_constants.corrhist_minor_weight * minor_correction) >> 21;
         // const globals = struct {
         //     var sum: u64 = 0;
         //     var count: usize = 0;
@@ -273,6 +273,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        gravityUpdate(&self.val, err * weight * 1536 >> 10, MAX_CORRHIST);
+        gravityUpdate(&self.val, err * weight * 1536 >> 7, MAX_CORRHIST);
     }
 };
