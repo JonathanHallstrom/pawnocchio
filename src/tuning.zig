@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -60,8 +60,14 @@ const tunable_defaults = struct {
     pub const rfp_cutnode_margin: i32 = 19;
     pub const aspiration_initial: i32 = 19;
     pub const aspiration_multiplier: i32 = 2141;
-    pub const lmr_base: i32 = 2290;
-    pub const lmr_log_mult: i32 = 922;
+    pub const lmr_quiet_base: i32 = 2546;
+    pub const lmr_noisy_base: i32 = 2290;
+    pub const lmr_quiet_log_mult: i32 = 231;
+    pub const lmr_noisy_log_mult: i32 = 231;
+    pub const lmr_quiet_depth_mult: i32 = 1024;
+    pub const lmr_noisy_depth_mult: i32 = 1024;
+    pub const lmr_quiet_legal_mult: i32 = 1024;
+    pub const lmr_noisy_legal_mult: i32 = 1024;
     pub const lmr_pv_mult: i32 = 1198;
     pub const lmr_cutnode_mult: i32 = 955;
     pub const lmr_improving_mult: i32 = 1017;
@@ -86,10 +92,9 @@ const tunable_defaults = struct {
     pub const corrhist_countermove_weight: i32 = 987;
     pub const corrhist_major_weight: i32 = 1027;
     pub const corrhist_minor_weight: i32 = 967;
-    pub const lmp_legal_base: i32 = -3050;
-    pub const lmp_legal_mult: i32 = 978;
-    pub const lmp_standard_mult: i32 = 1021;
-    pub const lmp_improving_mult: i32 = 1007;
+    pub const lmp_legal_base: i32 = -3194;
+    pub const lmp_standard_mult: i32 = 1069;
+    pub const lmp_improving_mult: i32 = 1054;
     pub const nodetm_base: i32 = 1741;
     pub const nodetm_mult: i32 = 861;
     pub const soft_limit_base: i32 = 51;
@@ -113,8 +118,14 @@ pub const tunables = [_]Tunable{
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier },
-    .{ .name = "lmr_base", .default = tunable_defaults.lmr_base },
-    .{ .name = "lmr_log_mult", .default = tunable_defaults.lmr_log_mult },
+    .{ .name = "lmr_quiet_base", .default = tunable_defaults.lmr_quiet_base },
+    .{ .name = "lmr_noisy_base", .default = tunable_defaults.lmr_noisy_base },
+    .{ .name = "lmr_quiet_log_mult", .default = tunable_defaults.lmr_quiet_log_mult },
+    .{ .name = "lmr_noisy_log_mult", .default = tunable_defaults.lmr_noisy_log_mult },
+    .{ .name = "lmr_quiet_depth_mult", .default = tunable_defaults.lmr_quiet_depth_mult },
+    .{ .name = "lmr_noisy_depth_mult", .default = tunable_defaults.lmr_noisy_depth_mult },
+    .{ .name = "lmr_quiet_legal_mult", .default = tunable_defaults.lmr_quiet_legal_mult },
+    .{ .name = "lmr_noisy_legal_mult", .default = tunable_defaults.lmr_noisy_legal_mult },
     .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult },
     .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult },
     .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult },
@@ -140,7 +151,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "corrhist_major_weight", .default = tunable_defaults.corrhist_major_weight },
     .{ .name = "corrhist_minor_weight", .default = tunable_defaults.corrhist_minor_weight },
     .{ .name = "lmp_legal_base", .default = tunable_defaults.lmp_legal_base },
-    .{ .name = "lmp_legal_mult", .default = tunable_defaults.lmp_legal_mult },
     .{ .name = "lmp_standard_mult", .default = tunable_defaults.lmp_standard_mult },
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
@@ -166,8 +176,14 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
-    pub var lmr_base = tunable_defaults.lmr_base;
-    pub var lmr_log_mult = tunable_defaults.lmr_log_mult;
+    pub var lmr_quiet_base = tunable_defaults.lmr_quiet_base;
+    pub var lmr_noisy_base = tunable_defaults.lmr_noisy_base;
+    pub var lmr_quiet_log_mult = tunable_defaults.lmr_quiet_log_mult;
+    pub var lmr_noisy_log_mult = tunable_defaults.lmr_noisy_log_mult;
+    pub var lmr_quiet_depth_mult = tunable_defaults.lmr_quiet_depth_mult;
+    pub var lmr_noisy_depth_mult = tunable_defaults.lmr_noisy_depth_mult;
+    pub var lmr_quiet_legal_mult = tunable_defaults.lmr_quiet_legal_mult;
+    pub var lmr_noisy_legal_mult = tunable_defaults.lmr_noisy_legal_mult;
     pub var lmr_pv_mult = tunable_defaults.lmr_pv_mult;
     pub var lmr_cutnode_mult = tunable_defaults.lmr_cutnode_mult;
     pub var lmr_improving_mult = tunable_defaults.lmr_improving_mult;
@@ -193,7 +209,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var corrhist_major_weight = tunable_defaults.corrhist_major_weight;
     pub var corrhist_minor_weight = tunable_defaults.corrhist_minor_weight;
     pub var lmp_legal_base = tunable_defaults.lmp_legal_base;
-    pub var lmp_legal_mult = tunable_defaults.lmp_legal_mult;
     pub var lmp_standard_mult = tunable_defaults.lmp_standard_mult;
     pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
     pub var nodetm_base = tunable_defaults.nodetm_base;

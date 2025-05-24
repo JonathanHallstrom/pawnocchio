@@ -403,6 +403,21 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     return best_score;
 }
 
+fn calculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
+    const base = if (is_quiet) tunable_constants.lmr_quiet_base else tunable_constants.lmr_noisy_base;
+    const log_mult = if (is_quiet) tunable_constants.lmr_quiet_log_mult else tunable_constants.lmr_noisy_log_mult;
+    const depth_mult = if (is_quiet) tunable_constants.lmr_quiet_depth_mult else tunable_constants.lmr_noisy_depth_mult;
+    const legal_mult = if (is_quiet) tunable_constants.lmr_quiet_legal_mult else tunable_constants.lmr_noisy_legal_mult;
+
+    var reduction: i32 = base;
+
+    const depth_factor: i64 = @intFromFloat(std.math.log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)));
+    const legal_factor: i64 = @intFromFloat(std.math.log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)));
+    reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
+
+    return reduction;
+}
+
 fn search(
     self: *Searcher,
     comptime is_root: bool,
@@ -629,7 +644,8 @@ fn search(
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
-                if (num_legal * tunable_constants.lmp_legal_mult + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
+                const granularity: i32 = 978;
+                if (num_legal * granularity + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -726,8 +742,7 @@ fn search(
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-                var reduction: i32 = tunable_constants.lmr_base;
-                reduction += std.math.log2_int(u32, @intCast(depth)) * tunable_constants.lmr_log_mult * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
+                var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
