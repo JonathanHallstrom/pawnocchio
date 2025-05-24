@@ -50,12 +50,24 @@ pub const Tunable = struct {
 };
 
 const tunable_defaults = struct {
-    pub const history_bonus_mult: i32 = 418;
-    pub const history_bonus_offs: i32 = 326;
-    pub const history_bonus_max: i32 = 2596;
-    pub const history_penalty_mult: i32 = 228;
-    pub const history_penalty_offs: i32 = 264;
-    pub const history_penalty_max: i32 = 2018;
+    pub const quiet_history_bonus_mult: i32 = 418;
+    pub const quiet_history_bonus_offs: i32 = 326;
+    pub const quiet_history_bonus_max: i32 = 2596;
+    pub const quiet_history_penalty_mult: i32 = 228;
+    pub const quiet_history_penalty_offs: i32 = 264;
+    pub const quiet_history_penalty_max: i32 = 2018;
+    pub const cont_history_bonus_mult: i32 = 418;
+    pub const cont_history_bonus_offs: i32 = 326;
+    pub const cont_history_bonus_max: i32 = 2596;
+    pub const cont_history_penalty_mult: i32 = 228;
+    pub const cont_history_penalty_offs: i32 = 264;
+    pub const cont_history_penalty_max: i32 = 2018;
+    pub const noisy_history_bonus_mult: i32 = 418;
+    pub const noisy_history_bonus_offs: i32 = 326;
+    pub const noisy_history_bonus_max: i32 = 2596;
+    pub const noisy_history_penalty_mult: i32 = 228;
+    pub const noisy_history_penalty_offs: i32 = 264;
+    pub const noisy_history_penalty_max: i32 = 2018;
     pub const rfp_margin: i32 = 55;
     pub const rfp_cutnode_margin: i32 = 19;
     pub const aspiration_initial: i32 = 19;
@@ -108,12 +120,24 @@ const tunable_defaults = struct {
 };
 
 pub const tunables = [_]Tunable{
-    .{ .name = "history_bonus_mult", .default = tunable_defaults.history_bonus_mult },
-    .{ .name = "history_bonus_offs", .default = tunable_defaults.history_bonus_offs },
-    .{ .name = "history_bonus_max", .default = tunable_defaults.history_bonus_max },
-    .{ .name = "history_penalty_mult", .default = tunable_defaults.history_penalty_mult },
-    .{ .name = "history_penalty_offs", .default = tunable_defaults.history_penalty_offs },
-    .{ .name = "history_penalty_max", .default = tunable_defaults.history_penalty_max },
+    .{ .name = "quiet_history_bonus_mult", .default = tunable_defaults.quiet_history_bonus_mult },
+    .{ .name = "quiet_history_bonus_offs", .default = tunable_defaults.quiet_history_bonus_offs },
+    .{ .name = "quiet_history_bonus_max", .default = tunable_defaults.quiet_history_bonus_max },
+    .{ .name = "quiet_history_penalty_mult", .default = tunable_defaults.quiet_history_penalty_mult },
+    .{ .name = "quiet_history_penalty_offs", .default = tunable_defaults.quiet_history_penalty_offs },
+    .{ .name = "quiet_history_penalty_max", .default = tunable_defaults.quiet_history_penalty_max },
+    .{ .name = "cont_history_bonus_mult", .default = tunable_defaults.cont_history_bonus_mult },
+    .{ .name = "cont_history_bonus_offs", .default = tunable_defaults.cont_history_bonus_offs },
+    .{ .name = "cont_history_bonus_max", .default = tunable_defaults.cont_history_bonus_max },
+    .{ .name = "cont_history_penalty_mult", .default = tunable_defaults.cont_history_penalty_mult },
+    .{ .name = "cont_history_penalty_offs", .default = tunable_defaults.cont_history_penalty_offs },
+    .{ .name = "cont_history_penalty_max", .default = tunable_defaults.cont_history_penalty_max },
+    .{ .name = "noisy_history_bonus_mult", .default = tunable_defaults.noisy_history_bonus_mult },
+    .{ .name = "noisy_history_bonus_offs", .default = tunable_defaults.noisy_history_bonus_offs },
+    .{ .name = "noisy_history_bonus_max", .default = tunable_defaults.noisy_history_bonus_max },
+    .{ .name = "noisy_history_penalty_mult", .default = tunable_defaults.noisy_history_penalty_mult },
+    .{ .name = "noisy_history_penalty_offs", .default = tunable_defaults.noisy_history_penalty_offs },
+    .{ .name = "noisy_history_penalty_max", .default = tunable_defaults.noisy_history_penalty_max },
     .{ .name = "rfp_margin", .default = tunable_defaults.rfp_margin },
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial },
@@ -166,12 +190,24 @@ pub const tunables = [_]Tunable{
 };
 
 pub const tunable_constants = if (do_tuning) struct {
-    pub var history_bonus_mult = tunable_defaults.history_bonus_mult;
-    pub var history_bonus_offs = tunable_defaults.history_bonus_offs;
-    pub var history_bonus_max = tunable_defaults.history_bonus_max;
-    pub var history_penalty_mult = tunable_defaults.history_penalty_mult;
-    pub var history_penalty_offs = tunable_defaults.history_penalty_offs;
-    pub var history_penalty_max = tunable_defaults.history_penalty_max;
+    pub var quiet_history_bonus_mult = tunable_defaults.quiet_history_bonus_mult;
+    pub var quiet_history_bonus_offs = tunable_defaults.quiet_history_bonus_offs;
+    pub var quiet_history_bonus_max = tunable_defaults.quiet_history_bonus_max;
+    pub var quiet_history_penalty_mult = tunable_defaults.quiet_history_penalty_mult;
+    pub var quiet_history_penalty_offs = tunable_defaults.quiet_history_penalty_offs;
+    pub var quiet_history_penalty_max = tunable_defaults.quiet_history_penalty_max;
+    pub var cont_history_bonus_mult = tunable_defaults.cont_history_bonus_mult;
+    pub var cont_history_bonus_offs = tunable_defaults.cont_history_bonus_offs;
+    pub var cont_history_bonus_max = tunable_defaults.cont_history_bonus_max;
+    pub var cont_history_penalty_mult = tunable_defaults.cont_history_penalty_mult;
+    pub var cont_history_penalty_offs = tunable_defaults.cont_history_penalty_offs;
+    pub var cont_history_penalty_max = tunable_defaults.cont_history_penalty_max;
+    pub var noisy_history_bonus_mult = tunable_defaults.noisy_history_bonus_mult;
+    pub var noisy_history_bonus_offs = tunable_defaults.noisy_history_bonus_offs;
+    pub var noisy_history_bonus_max = tunable_defaults.noisy_history_bonus_max;
+    pub var noisy_history_penalty_mult = tunable_defaults.noisy_history_penalty_mult;
+    pub var noisy_history_penalty_offs = tunable_defaults.noisy_history_penalty_offs;
+    pub var noisy_history_penalty_max = tunable_defaults.noisy_history_penalty_max;
     pub var rfp_margin = tunable_defaults.rfp_margin;
     pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;

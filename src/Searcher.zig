@@ -837,20 +837,18 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
-                const bonus = history.bonus(depth);
-                const penalty = -history.penalty(depth);
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, bonus);
+                    self.histories.updateQuiet(board, move, cur.prev, depth, true);
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, penalty);
+                        self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
                     }
                 } else {
-                    self.histories.updateNoisy(board, move, bonus);
+                    self.histories.updateNoisy(board, move, depth, true);
                 }
                 for (searched_noisies.slice()) |searched_move| {
                     if (searched_move == move) break;
-                    self.histories.updateNoisy(board, searched_move, penalty);
+                    self.histories.updateNoisy(board, searched_move, depth, false);
                 }
                 break;
             }
