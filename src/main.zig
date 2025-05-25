@@ -62,7 +62,7 @@ pub fn main() !void {
                 } else |_| {}
             }
             if (std.mem.count(u8, arg, "file=") > 0) {
-                datagen_file = arg;
+                datagen_file = arg["file=".len..];
             }
         }
         if (do_datagen) {
