@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.6.7";
+const VERSION_STRING = "1.6.8";
 
 pub fn main() !void {
     root.init();
@@ -40,6 +40,7 @@ pub fn main() !void {
         var do_datagen = false;
         var datagen_nodes: u64 = 5000;
         var datagen_threads: usize = std.Thread.getCpuCount() catch 1;
+        var datagen_file: []const u8 = "outfile.vf";
         while (args.next()) |arg| {
             if (std.ascii.eqlIgnoreCase(arg, "bench")) {
                 do_bench = true;
@@ -60,11 +61,14 @@ pub fn main() !void {
                     datagen_nodes = node_count;
                 } else |_| {}
             }
+            if (std.mem.count(u8, arg, "file=") > 0) {
+                datagen_file = arg;
+            }
         }
         if (do_datagen) {
             std.debug.print("datagenning with {} threads\n", .{datagen_threads});
             try root.engine.setThreadCount(datagen_threads);
-            try root.engine.datagen(datagen_nodes);
+            try root.engine.datagen(datagen_nodes, datagen_file);
         }
         if (do_bench) {
             var total_nodes: u64 = 0;

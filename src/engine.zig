@@ -261,9 +261,9 @@ fn datagenWorker(
     }
 }
 
-pub fn datagen(num_nodes: u64) !void {
+pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     var timer = try std.time.Timer.start();
-    var out_file = try std.fs.cwd().createFile("outfile.vf", .{});
+    var out_file = try std.fs.cwd().createFile(filename, .{});
     var buf_writer = std.io.bufferedWriter(out_file.writer());
     const writer = buf_writer.writer();
     var writer_mutex = std.Thread.Mutex{};
