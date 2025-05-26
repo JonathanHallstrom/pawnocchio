@@ -403,7 +403,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     return best_score;
 }
 
-fn calculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
+fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
     const base = if (is_quiet) tunable_constants.lmr_quiet_base else tunable_constants.lmr_noisy_base;
     const log_mult = if (is_quiet) tunable_constants.lmr_quiet_log_mult else tunable_constants.lmr_noisy_log_mult;
     const depth_mult = if (is_quiet) tunable_constants.lmr_quiet_depth_mult else tunable_constants.lmr_noisy_depth_mult;
@@ -416,6 +416,26 @@ fn calculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
     reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
 
     return reduction;
+}
+
+fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
+    if (root.tuning.do_tuning) {
+        return preCalculateBaseLMR(depth, legal, is_quiet);
+    } else {
+        const table = comptime blk: {
+            @setEvalBranchQuota(1 << 30);
+            var res: [256][256][2]u16 = undefined;
+            for (1..256) |d| {
+                for (1..256) |l| {
+                    for (0..2) |q| {
+                        res[d][l][q] = preCalculateBaseLMR(d, l, q == 1);
+                    }
+                }
+            }
+            break :blk res;
+        };
+        return (&(&(&table)[@intCast(depth)])[legal])[@intFromBool(is_quiet)];
+    }
 }
 
 fn search(
