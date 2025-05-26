@@ -687,7 +687,7 @@ fn search(
                     continue;
                 }
             } else {
-                const bnfp_futility_value = static_eval + depth * 200;
+                const bnfp_futility_value = static_eval + 200 + depth * 100;
                 if (mp.stage == .bad_noisies and depth <= 6 and !is_in_check and bnfp_futility_value <= alpha) {
                     if (!evaluation.isMateScore(best_score)) {
                         best_score = @intCast(@max(best_score, bnfp_futility_value));
