@@ -403,6 +403,41 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     return best_score;
 }
 
+fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
+    const base = if (is_quiet) tunable_constants.lmr_quiet_base else tunable_constants.lmr_noisy_base;
+    const log_mult = if (is_quiet) tunable_constants.lmr_quiet_log_mult else tunable_constants.lmr_noisy_log_mult;
+    const depth_mult = if (is_quiet) tunable_constants.lmr_quiet_depth_mult else tunable_constants.lmr_noisy_depth_mult;
+    const legal_mult = if (is_quiet) tunable_constants.lmr_quiet_legal_mult else tunable_constants.lmr_noisy_legal_mult;
+
+    var reduction: i32 = base;
+
+    const depth_factor: i64 = @intFromFloat(std.math.log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)));
+    const legal_factor: i64 = @intFromFloat(std.math.log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)));
+    reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
+
+    return reduction;
+}
+
+fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
+    if (root.tuning.do_tuning) {
+        return preCalculateBaseLMR(depth, legal, is_quiet);
+    } else {
+        const table = comptime blk: {
+            @setEvalBranchQuota(1 << 30);
+            var res: [256][256][2]u16 = undefined;
+            for (1..256) |d| {
+                for (1..256) |l| {
+                    for (0..2) |q| {
+                        res[d][l][q] = preCalculateBaseLMR(d, l, q == 1);
+                    }
+                }
+            }
+            break :blk res;
+        };
+        return (&(&(&table)[@intCast(depth)])[legal])[@intFromBool(is_quiet)];
+    }
+}
+
 fn search(
     self: *Searcher,
     comptime is_root: bool,
@@ -534,7 +569,10 @@ fn search(
         const no_tthit_cutnode = !tt_hit and cutnode;
         if (depth <= 5 and
             static_eval >= beta +
-                tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) -
+                tunable_constants.rfp_base +
+                tunable_constants.rfp_mult * depth -
+                tunable_constants.rfp_improving_margin * @intFromBool(improving) -
+                tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
         {
             return static_eval;
@@ -629,7 +667,8 @@ fn search(
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
-                if (num_legal * tunable_constants.lmp_legal_mult + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
+                const granularity: i32 = 978;
+                if (num_legal * granularity + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -726,8 +765,7 @@ fn search(
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-                var reduction: i32 = tunable_constants.lmr_base;
-                reduction += std.math.log2_int(u32, @intCast(depth)) * tunable_constants.lmr_log_mult * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
+                var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
@@ -822,20 +860,18 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
-                const bonus = history.bonus(depth);
-                const penalty = -history.penalty(depth);
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, bonus);
+                    self.histories.updateQuiet(board, move, cur.prev, depth, true);
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, penalty);
+                        self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
                     }
                 } else {
-                    self.histories.updateNoisy(board, move, bonus);
+                    self.histories.updateNoisy(board, move, depth, true);
                 }
                 for (searched_noisies.slice()) |searched_move| {
                     if (searched_move == move) break;
-                    self.histories.updateNoisy(board, searched_move, penalty);
+                    self.histories.updateNoisy(board, searched_move, depth, false);
                 }
                 break;
             }

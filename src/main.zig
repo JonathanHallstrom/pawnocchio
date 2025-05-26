@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.6.8";
+const VERSION_STRING = "1.6.9";
 
 pub fn main() !void {
     root.init();
@@ -235,7 +235,7 @@ pub fn main() !void {
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             for (root.tuning.tunables) |tunable| {
                 write(
-                    "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                    "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.008\n",
                     .{
                         tunable.name,
                         @as(f64, @floatFromInt(tunable.default)),
