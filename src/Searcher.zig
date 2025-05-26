@@ -575,7 +575,7 @@ fn search(
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
         {
-            return static_eval;
+            return @intCast(static_eval + beta >> 1);
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
