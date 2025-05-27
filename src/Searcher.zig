@@ -678,14 +678,28 @@ fn search(
                     continue;
                 }
 
-                const futility_base = tunable_constants.fp_base + @divTrunc(history_score, 150);
-                if (!is_in_check and
-                    depth <= 6 and
-                    @abs(alpha) < 2000 and
-                    static_eval + futility_base + depth * tunable_constants.fp_mult <= alpha)
-                {
-                    mp.skip_quiets = true;
-                    continue;
+                // const globals = struct {
+                //     var min: i32 = 0;
+                //     var max: i32 = 0;
+                // };
+                // globals.min = @min(history_score, globals.min);
+                // globals.max = @max(history_score, globals.max);
+                // if (self.nodes % (1 << 20) == 0) {
+                //     std.debug.print("{} {}\n", .{ globals.min, globals.max });
+                // }
+                // const hist_sqr = @as(i64, history_score) * @abs(history_score);
+                // const futility_base = tunable_constants.fp_base + @divTrunc(hist_sqr, 3 << 21);
+                if (depth <= 6) {
+                    const futility_base = tunable_constants.fp_base + @divTrunc(history_score, 100
+                        // + depth * depth
+                        );
+                    if (!is_in_check and
+                        @abs(alpha) < 2000 and
+                        static_eval + futility_base + depth * tunable_constants.fp_mult <= alpha)
+                    {
+                        mp.skip_quiets = true;
+                        continue;
+                    }
                 }
             }
 
