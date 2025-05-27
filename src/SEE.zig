@@ -96,8 +96,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {
     var attackers =
         (getAttacks(undefined, .king, to, occ) & kings) |
         (getAttacks(undefined, .knight, to, occ) & knights) |
-        (getAttacks(undefined, .bishop, to, occ) & bishops) |
-        (getAttacks(undefined, .rook, to, occ) & rooks) |
+        (getAttacks(undefined, .bishop, to, occ & ~bishops) & bishops) |
+        (getAttacks(undefined, .rook, to, occ & ~rooks) & rooks) |
         (getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.black)) |
         (getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.white));
 
