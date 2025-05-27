@@ -690,7 +690,7 @@ fn search(
                 // const hist_sqr = @as(i64, history_score) * @abs(history_score);
                 // const futility_base = tunable_constants.fp_base + @divTrunc(hist_sqr, 3 << 21);
                 if (depth <= 6) {
-                    const futility_base = tunable_constants.fp_base + @divTrunc(history_score, 100
+                    const futility_base = tunable_constants.fp_base + @divTrunc(history_score, 125
                         // + depth * depth
                         );
                     if (!is_in_check and
