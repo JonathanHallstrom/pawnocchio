@@ -665,13 +665,12 @@ fn search(
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
 
-        const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
-        const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-        var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
-        base_lmr -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-
-        const lmr_depth = @max(0, depth - (base_lmr >> 10));
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+            const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
+            var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
+            base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
+
+            const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
                 const granularity: i32 = 978;
@@ -765,17 +764,24 @@ fn search(
         const score = blk: {
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
+
+            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
+
             var s: i16 = 0;
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
-                var reduction = base_lmr;
+                const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
+                var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
+                reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
                 reduction >>= 10;
+
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
+
                 const reduced_depth = depth + extension - clamped_reduction;
                 s = -self.search(
                     false,
