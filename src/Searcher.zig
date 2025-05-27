@@ -593,8 +593,9 @@ fn search(
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
+        const nmp_margin = tunable_constants.nmp_non_improving_margin * @intFromBool(!improving);
         if (depth >= 4 and
-            static_eval >= beta and
+            static_eval + nmp_margin >= beta and
             non_pk != 0 and
             !cur.prev.move.isNull())
         {

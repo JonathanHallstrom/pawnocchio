@@ -94,6 +94,7 @@ const tunable_defaults = struct {
     pub const nmp_mult: i32 = 1110;
     pub const nmp_eval_reduction_scale: i32 = 32;
     pub const nmp_eval_reduction_max: i32 = 23564;
+    pub const nmp_non_improving_margin: i32 = 5;
     pub const fp_base: i32 = 269;
     pub const fp_mult: i32 = 107;
     pub const qs_see_threshold: i32 = -92;
@@ -167,6 +168,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
     .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max },
+    .{ .name = "nmp_non_improving_margin", .default = tunable_defaults.nmp_non_improving_margin },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold },
@@ -240,6 +242,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
     pub var nmp_eval_reduction_max = tunable_defaults.nmp_eval_reduction_max;
+    pub var nmp_non_improving_margin = tunable_defaults.nmp_non_improving_margin;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
