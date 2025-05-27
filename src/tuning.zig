@@ -110,6 +110,11 @@ const tunable_defaults = struct {
     pub const lmp_legal_base: i32 = -3396;
     pub const lmp_standard_mult: i32 = 989;
     pub const lmp_improving_mult: i32 = 969;
+    pub const see_pawn: i32 = 93;
+    pub const see_knight: i32 = 308;
+    pub const see_bishop: i32 = 346;
+    pub const see_rook: i32 = 521;
+    pub const see_queen: i32 = 994;
     pub const nodetm_base: i32 = 1713;
     pub const nodetm_mult: i32 = 950;
     pub const soft_limit_base: i32 = 53;
@@ -183,6 +188,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmp_legal_base", .default = tunable_defaults.lmp_legal_base },
     .{ .name = "lmp_standard_mult", .default = tunable_defaults.lmp_standard_mult },
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult },
+    .{ .name = "see_pawn", .default = tunable_defaults.see_pawn },
+    .{ .name = "see_knight", .default = tunable_defaults.see_knight },
+    .{ .name = "see_bishop", .default = tunable_defaults.see_bishop },
+    .{ .name = "see_rook", .default = tunable_defaults.see_rook },
+    .{ .name = "see_queen", .default = tunable_defaults.see_queen },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
     .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base },
@@ -256,6 +266,11 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmp_legal_base = tunable_defaults.lmp_legal_base;
     pub var lmp_standard_mult = tunable_defaults.lmp_standard_mult;
     pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
+    pub var see_pawn = tunable_defaults.see_pawn;
+    pub var see_knight = tunable_defaults.see_knight;
+    pub var see_bishop = tunable_defaults.see_bishop;
+    pub var see_rook = tunable_defaults.see_rook;
+    pub var see_queen = tunable_defaults.see_queen;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var soft_limit_base = tunable_defaults.soft_limit_base;

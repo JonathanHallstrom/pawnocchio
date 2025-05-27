@@ -411,8 +411,8 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
 
     var reduction: i32 = base;
 
-    const depth_factor: i64 = @intFromFloat(std.math.log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)));
-    const legal_factor: i64 = @intFromFloat(std.math.log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)));
+    const depth_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)));
+    const legal_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)));
     reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
 
     return reduction;
