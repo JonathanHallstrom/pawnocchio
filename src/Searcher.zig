@@ -667,7 +667,8 @@ fn search(
 
         const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
         const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-        const base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
+        var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
+        base_lmr -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
 
         const lmr_depth = @max(0, depth - (base_lmr >> 10));
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
@@ -772,7 +773,6 @@ fn search(
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
-                reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
                 reduction >>= 10;
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
