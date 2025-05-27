@@ -678,7 +678,7 @@ fn search(
                     continue;
                 }
 
-                const futility_base = tunable_constants.fp_base + @divTrunc(history_score, 200);
+                const futility_base = tunable_constants.fp_base + @divTrunc(history_score, 150);
                 if (!is_in_check and
                     depth <= 6 and
                     @abs(alpha) < 2000 and
