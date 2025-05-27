@@ -678,10 +678,11 @@ fn search(
                     continue;
                 }
 
+                const futility_base = tunable_constants.fp_base + @divTrunc(history_score, 200);
                 if (!is_in_check and
                     depth <= 6 and
                     @abs(alpha) < 2000 and
-                    static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+                    static_eval + futility_base + depth * tunable_constants.fp_mult <= alpha)
                 {
                     mp.skip_quiets = true;
                     continue;
