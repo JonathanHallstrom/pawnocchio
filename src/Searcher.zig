@@ -411,8 +411,8 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
 
     var reduction: i32 = base;
 
-    const depth_factor: i64 = @intFromFloat(std.math.log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)));
-    const legal_factor: i64 = @intFromFloat(std.math.log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)));
+    const depth_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)));
+    const legal_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)));
     reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
 
     return reduction;
@@ -664,7 +664,13 @@ fn search(
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
+
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+            const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
+            var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
+            base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
+
+            const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
                 const granularity: i32 = 978;
@@ -679,9 +685,9 @@ fn search(
                 }
 
                 if (!is_in_check and
-                    depth <= 6 and
+                    lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
-                    static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+                    static_eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult <= alpha)
                 {
                     mp.skip_quiets = true;
                     continue;
@@ -785,7 +791,6 @@ fn search(
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
 
                 const reduced_depth = depth + extension - clamped_reduction;
-
                 s = -self.search(
                     false,
                     false,
