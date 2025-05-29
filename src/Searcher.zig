@@ -769,7 +769,7 @@ fn search(
 
             var s: i16 = 0;
             const new_depth = depth + extension - 1;
-            if (depth >= 3 and num_legal > 1) {
+            if (depth >= 2 and num_legal > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
