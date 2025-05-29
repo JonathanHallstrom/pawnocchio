@@ -670,6 +670,7 @@ fn search(
             var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
 
+            const lmr_depth_quantized: i64 = @max(0, (depth << 10) - base_lmr);
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
@@ -694,13 +695,14 @@ fn search(
                 }
             }
 
+            // std.debug.print("{} {} {}\n", .{ 62 * depth, 20 * lmr_depth * lmr_depth, 20 * @as(i64, lmr_depth_quantized) * lmr_depth_quantized >> 20 });
             const see_pruning_thresh = if (is_quiet)
-                tunable_constants.see_quiet_pruning_mult * lmr_depth * lmr_depth
+                tunable_constants.see_quiet_pruning_mult * lmr_depth_quantized * lmr_depth_quantized >> 20
             else
                 tunable_constants.see_noisy_pruning_mult * depth * depth;
 
             if (!skip_see_pruning and
-                !SEE.scoreMove(board, move, see_pruning_thresh))
+                !SEE.scoreMove(board, move, @intCast(see_pruning_thresh)))
             {
                 std.debug.assert(mp.stage != .good_noisies);
                 continue;
