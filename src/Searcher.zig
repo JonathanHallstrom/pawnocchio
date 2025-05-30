@@ -778,7 +778,8 @@ fn search(
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(is_tt_move_noisy);
+                reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
+                reduction += tunable_constants.lmr_ttmove_noisy_mult * @intFromBool(is_tt_move_noisy);
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);

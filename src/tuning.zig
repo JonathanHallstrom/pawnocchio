@@ -90,6 +90,7 @@ const tunable_defaults = struct {
     pub const lmr_noisy_history_mult: i32 = 1079;
     pub const lmr_corrhist_mult: i32 = 12362;
     pub const lmr_ttmove_mult: i32 = 534;
+    pub const lmr_ttmove_noisy_mult: i32 = 512;
     pub const nmp_base: i32 = 45963;
     pub const nmp_mult: i32 = 1110;
     pub const nmp_eval_reduction_scale: i32 = 32;
@@ -168,6 +169,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_noisy_history_mult", .default = tunable_defaults.lmr_noisy_history_mult },
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult },
     .{ .name = "lmr_ttmove_mult", .default = tunable_defaults.lmr_ttmove_mult },
+    .{ .name = "lmr_ttmove_noisy_mult", .default = tunable_defaults.lmr_ttmove_noisy_mult },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
@@ -246,6 +248,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_noisy_history_mult = tunable_defaults.lmr_noisy_history_mult;
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var lmr_ttmove_mult = tunable_defaults.lmr_ttmove_mult;
+    pub var lmr_ttmove_noisy_mult = tunable_defaults.lmr_ttmove_noisy_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
