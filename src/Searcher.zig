@@ -107,6 +107,7 @@ histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
+is_main_thread: bool = true,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -281,7 +282,7 @@ fn isRepetition(self: *Searcher) bool {
 fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
     var alpha = alpha_;
     self.nodes += 1;
-    if (self.stop or self.limits.checkSearch(self.nodes)) {
+    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop = true;
         return 0;
     }
@@ -453,7 +454,7 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (self.stop or (!is_root and self.limits.checkSearch(self.nodes))) {
+    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop = true;
         return 0;
     }
@@ -983,8 +984,9 @@ fn fixupPreviousHashes(self: *Searcher) void {
     self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
 }
 
-fn init(self: *Searcher, params: Params) void {
+fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.limits = params.limits;
+    self.is_main_thread = is_main_thread;
     self.ply = 0;
     self.stop = false;
     self.nodes = 0;
@@ -1009,7 +1011,7 @@ fn init(self: *Searcher, params: Params) void {
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
-    self.init(params);
+    self.init(params, is_main_thread);
     var previous_score: i32 = 0;
     var completed_depth: i32 = 0;
     for (1..MAX_PLY) |d| {
