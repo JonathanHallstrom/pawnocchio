@@ -393,6 +393,7 @@ pub const TTEntry = struct {
     flags: TTFlags = .{},
     move: Move = Move.init(),
     depth: u8 = 0,
+    raw_static_eval: i16 = 0,
 };
 
 var stdout: std.fs.File = undefined;

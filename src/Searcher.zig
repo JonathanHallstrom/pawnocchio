@@ -113,13 +113,14 @@ inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
 }
 
-pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: Move, score: i16, score_type: ScoreType, depth: i32) void {
+pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: Move, score: i16, score_type: ScoreType, depth: i32, raw_static_eval: i16) void {
     self.tt[self.ttIndex(hash)] = TTEntry{
         .score = score,
         .flags = .{ .score_type = score_type, .is_pv = tt_pv },
         .move = move,
         .hash = hash,
         .depth = @intCast(depth),
+        .raw_static_eval = raw_static_eval,
     };
 }
 
@@ -293,10 +294,12 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     const tt_hash = board.getHashWithHalfmove();
     var tt_entry = self.readTT(tt_hash);
-    const tt_hit = tt_entry.hash == tt_hash;
+    const tt_hit = tt_entry.hash == tt_hash and tt_entry.flags.score_type != .none;
+    const old_entry_empty = tt_entry.flags.score_type == .none;
     if (!tt_hit) {
         tt_entry = .{};
     }
+    const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
         return tt_score;
@@ -306,7 +309,10 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
+        raw_static_eval = if (tt_entry.hash == tt_hash) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
+        if (!tt_hit and old_entry_empty) {
+            self.writeTT(tt_pv, tt_hash, Move.init(), 0, .none, 0, raw_static_eval);
+        }
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -511,11 +517,13 @@ fn search(
     const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.getHashWithHalfmove();
     var tt_entry: TTEntry = .{};
+    var old_entry_empty: bool = false;
     var tt_hit = false;
     if (!is_singular_search) {
         tt_entry = self.readTT(tt_hash);
 
-        tt_hit = tt_entry.hash == tt_hash;
+        tt_hit = tt_entry.hash == tt_hash and tt_entry.flags.score_type != .none;
+        old_entry_empty = tt_entry.flags.score_type == .none;
         if (!tt_hit) {
             tt_entry = .{};
         }
@@ -545,7 +553,10 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
+        raw_static_eval = if (tt_entry.hash == tt_hash) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
+        if (!tt_hit and old_entry_empty) {
+            self.writeTT(tt_pv, tt_hash, Move.init(), 0, .none, 0, raw_static_eval);
+        }
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
@@ -903,6 +914,7 @@ fn search(
             evaluation.scoreToTt(best_score, self.ply),
             score_type,
             depth,
+            raw_static_eval,
         );
 
         if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
