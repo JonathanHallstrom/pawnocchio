@@ -520,6 +520,7 @@ fn search(
         }
     }
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
+    const is_tt_move_noisy = has_tt_move and board.isNoisy(tt_entry.move);
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
@@ -777,7 +778,7 @@ fn search(
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
+                reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(is_tt_move_noisy);
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
