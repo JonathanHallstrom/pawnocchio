@@ -567,7 +567,7 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        if (depth <= 5 and
+        if (depth <= 8 and
             static_eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth -
