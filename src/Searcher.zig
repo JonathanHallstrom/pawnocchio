@@ -335,7 +335,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     );
     defer mp.deinit();
 
-    const futility = static_eval + tunable_constants.qs_futility_margin;
+    const futility_value = static_eval + tunable_constants.qs_futility_margin;
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
@@ -360,8 +360,8 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
-            if (!is_in_check and futility <= alpha and !SEE.scoreMove(board, move, 1)) {
-                best_score = @intCast(@max(best_score, futility));
+            if (!is_in_check and futility_value <= alpha and !SEE.scoreMove(board, move, 1)) {
+                best_score = @intCast(@max(best_score, futility_value));
                 continue;
             }
 
@@ -692,6 +692,19 @@ fn search(
                 {
                     mp.skip_quiets = true;
                     continue;
+                }
+            } else {
+                const bnfp_futility_value = static_eval + @as(i32, lmr_depth * 120);
+                if (mp.stage == .bad_noisies and
+                    !is_in_check and
+                    lmr_depth <= 6 and
+                    @abs(alpha) < 2000 and
+                    bnfp_futility_value <= alpha)
+                {
+                    if (!evaluation.isMateScore(best_score)) {
+                        best_score = @intCast(@max(best_score, bnfp_futility_value));
+                    }
+                    break;
                 }
             }
 
