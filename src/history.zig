@@ -53,22 +53,22 @@ const CORRHIST_SIZE = 16384;
 const MAX_CORRHIST = 256 * 32;
 const SHIFT = @ctz(MAX_HISTORY);
 
-pub fn bonus(depth: i32) i16 {
-    return @intCast(@min(
-        depth * tunable_constants.history_bonus_mult + tunable_constants.history_bonus_offs,
-        tunable_constants.history_bonus_max,
-    ));
-}
-
-pub fn penalty(depth: i32) i16 {
-    return @intCast(@min(
-        depth * tunable_constants.history_penalty_mult + tunable_constants.history_penalty_offs,
-        tunable_constants.history_penalty_max,
-    ));
-}
-
 pub const QuietHistory = struct {
     vals: [2 * 64 * 64]i16,
+
+    fn bonus(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.quiet_history_bonus_mult + tunable_constants.quiet_history_bonus_offs,
+            tunable_constants.quiet_history_bonus_max,
+        ));
+    }
+
+    fn penalty(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.quiet_history_penalty_mult + tunable_constants.quiet_history_penalty_offs,
+            tunable_constants.quiet_history_penalty_max,
+        ));
+    }
 
     inline fn reset(self: *QuietHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
@@ -81,8 +81,8 @@ pub const QuietHistory = struct {
         return &(&self.vals)[col_offs * 64 * 64 + from_offs * 64 + to_offs];
     }
 
-    inline fn update(self: *QuietHistory, col: Colour, move: TypedMove, adjustment: i16) void {
-        gravityUpdate(self.entry(col, move), adjustment);
+    inline fn update(self: *QuietHistory, col: Colour, move: TypedMove, depth: i32, is_bonus: bool) void {
+        gravityUpdate(self.entry(col, move), if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {
@@ -92,6 +92,20 @@ pub const QuietHistory = struct {
 
 pub const NoisyHistory = struct {
     vals: [64 * 64 * 13]i16,
+
+    fn bonus(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.noisy_history_bonus_mult + tunable_constants.noisy_history_bonus_offs,
+            tunable_constants.noisy_history_bonus_max,
+        ));
+    }
+
+    fn penalty(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.noisy_history_penalty_mult + tunable_constants.noisy_history_penalty_offs,
+            tunable_constants.noisy_history_penalty_max,
+        ));
+    }
 
     inline fn reset(self: *NoisyHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
@@ -105,8 +119,8 @@ pub const NoisyHistory = struct {
         return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
     }
 
-    inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, adjustment: i16) void {
-        gravityUpdate(self.entry(board, move), adjustment);
+    inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
+        gravityUpdate(self.entry(board, move), if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const NoisyHistory, board: *const Board, move: TypedMove) i16 {
@@ -116,6 +130,20 @@ pub const NoisyHistory = struct {
 
 pub const ContHistory = struct {
     vals: [2 * 6 * 64 * 6 * 64]i16,
+
+    fn bonus(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.cont_history_bonus_mult + tunable_constants.cont_history_bonus_offs,
+            tunable_constants.cont_history_bonus_max,
+        ));
+    }
+
+    fn penalty(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.cont_history_penalty_mult + tunable_constants.cont_history_penalty_offs,
+            tunable_constants.cont_history_penalty_max,
+        ));
+    }
 
     inline fn reset(self: *ContHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
@@ -128,8 +156,8 @@ pub const ContHistory = struct {
         return &(&self.vals)[col_offs * 6 * 64 * 6 * 64 + prev_offs * 6 * 64 + move_offs];
     }
 
-    inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev: TypedMove, adjustment: i16) void {
-        gravityUpdate(self.entry(col, move, prev), adjustment);
+    inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev: TypedMove, depth: i32, is_bonus: bool) void {
+        gravityUpdate(self.entry(col, move, prev), if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev: TypedMove) i16 {
@@ -167,10 +195,10 @@ pub const HistoryTable = struct {
         return res;
     }
 
-    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, prev: TypedMove, adjustment: i16) void {
+    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, prev: TypedMove, depth: i32, is_bonus: bool) void {
         const typed = TypedMove.fromBoard(board, move);
-        self.quiet.update(board.stm, typed, adjustment);
-        self.countermove.update(board.stm, typed, prev, adjustment);
+        self.quiet.update(board.stm, typed, depth, is_bonus);
+        self.countermove.update(board.stm, typed, prev, depth, is_bonus);
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
@@ -181,9 +209,9 @@ pub const HistoryTable = struct {
         return res;
     }
 
-    pub fn updateNoisy(self: *HistoryTable, board: *const Board, move: Move, adjustment: i16) void {
+    pub fn updateNoisy(self: *HistoryTable, board: *const Board, move: Move, depth: i32, is_bonus: bool) void {
         const typed = TypedMove.fromBoard(board, move);
-        self.noisy.update(board, typed, adjustment);
+        self.noisy.update(board, typed, depth, is_bonus);
     }
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {

@@ -54,24 +54,16 @@ const NNCacheEntry = struct {
                     var iter = Bitboard.iterator(current & ~cached);
                     while (iter.next()) |sq| {
                         const add_idx = nnue.idx(stm, col, us_king, pt, sq, mirror);
-                        // std.debug.print("refresh add {} {}\n", .{ add_idx, nnue.weights.hidden_layer_weights[add_idx * nnue.HIDDEN_SIZE] });
                         adds[num_adds] = add_idx;
                         num_adds += 1;
-                        // for (0..nnue.HIDDEN_SIZE) |i| {
-                        //     acc[i] += nnue.weights.hidden_layer_weights[add_idx * nnue.HIDDEN_SIZE + i];
-                        // }
                     }
                 }
                 {
                     var iter = Bitboard.iterator(~current & cached);
                     while (iter.next()) |sq| {
                         const sub_idx = nnue.idx(stm, col, us_king, pt, sq, mirror);
-                        // std.debug.print("refresh sub {}\n", .{sub_idx});
                         subs[num_subs] = sub_idx;
                         num_subs += 1;
-                        // for (0..nnue.HIDDEN_SIZE) |i| {
-                        //     acc[i] -= nnue.weights.hidden_layer_weights[sub_idx * nnue.HIDDEN_SIZE + i];
-                        // }
                     }
                 }
             }
@@ -79,31 +71,31 @@ const NNCacheEntry = struct {
         while (num_adds >= 4) : (num_adds -= 4) {
             for (0..nnue.HIDDEN_SIZE) |i| {
                 acc[i] +=
-                    nnue.weights.hidden_layer_weights[adds[num_adds - 4] * nnue.HIDDEN_SIZE + i] +
-                    nnue.weights.hidden_layer_weights[adds[num_adds - 3] * nnue.HIDDEN_SIZE + i] +
-                    nnue.weights.hidden_layer_weights[adds[num_adds - 2] * nnue.HIDDEN_SIZE + i] +
-                    nnue.weights.hidden_layer_weights[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
+                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 4] * nnue.HIDDEN_SIZE + i] +
+                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 3] * nnue.HIDDEN_SIZE + i] +
+                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 2] * nnue.HIDDEN_SIZE + i] +
+                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
             }
         }
         while (num_adds >= 1) : (num_adds -= 1) {
             for (0..nnue.HIDDEN_SIZE) |i| {
                 acc[i] +=
-                    nnue.weights.hidden_layer_weights[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
+                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
             }
         }
         while (num_subs >= 4) : (num_subs -= 4) {
             for (0..nnue.HIDDEN_SIZE) |i| {
                 acc[i] -=
-                    nnue.weights.hidden_layer_weights[subs[num_subs - 4] * nnue.HIDDEN_SIZE + i] +
-                    nnue.weights.hidden_layer_weights[subs[num_subs - 3] * nnue.HIDDEN_SIZE + i] +
-                    nnue.weights.hidden_layer_weights[subs[num_subs - 2] * nnue.HIDDEN_SIZE + i] +
-                    nnue.weights.hidden_layer_weights[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
+                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 4] * nnue.HIDDEN_SIZE + i] +
+                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 3] * nnue.HIDDEN_SIZE + i] +
+                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 2] * nnue.HIDDEN_SIZE + i] +
+                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
             }
         }
         while (num_subs >= 1) : (num_subs -= 1) {
             for (0..nnue.HIDDEN_SIZE) |i| {
                 acc[i] -=
-                    nnue.weights.hidden_layer_weights[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
+                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
             }
         }
     }
@@ -120,7 +112,6 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             for (&self.data) |*stm| {
                 for (stm) |*subarray| {
                     for (subarray) |*e| {
-                        std.debug.assert(nnue.weights.hidden_layer_biases[0] != 0);
                         @memcpy(&e.accumulator, &nnue.weights.hidden_layer_biases);
                         @memset(&e.pieces, 0);
                         @memset(&e.sides, 0);

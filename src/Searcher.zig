@@ -36,6 +36,7 @@ const SEE = root.SEE;
 const tunable_constants = root.tunable_constants;
 const write = root.write;
 const evaluate = evaluation.evaluate;
+const TTEntry = root.TTEntry;
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -49,24 +50,45 @@ pub const Params = struct {
 const EvalPair = struct {
     white: ?i16 = null,
     black: ?i16 = null,
+    prev_white: ?i16 = null,
+    prev_black: ?i16 = null,
 
     pub fn updateWith(self: EvalPair, comptime col: Colour, val: i16) EvalPair {
         if (col == .white) {
             return .{
                 .white = val,
                 .black = self.black,
+                .prev_white = self.white,
+                .prev_black = self.prev_black,
             };
         } else {
             return .{
                 .white = self.white,
                 .black = val,
+                .prev_white = self.prev_white,
+                .prev_black = self.black,
             };
         }
     }
 
-    pub fn isImprovement(self: EvalPair, comptime col: Colour, val: i16) bool {
-        const prev_opt = if (col == .white) self.white else self.black;
-        return if (prev_opt) |prev| val > prev else false;
+    inline fn curFor(self: EvalPair, col: Colour) ?i16 {
+        return if (col == .white) self.white else self.black;
+    }
+
+    inline fn prevFor(self: EvalPair, col: Colour) ?i16 {
+        return if (col == .white) self.prev_white else self.prev_black;
+    }
+
+    pub fn improving(self: EvalPair, col: Colour) bool {
+        const prev = self.prevFor(col) orelse return false;
+        const cur = self.curFor(col) orelse return false;
+        return cur > prev;
+    }
+
+    pub fn worsening(self: EvalPair, col: Colour) bool {
+        const prev = self.prevFor(col) orelse return false;
+        const cur = self.curFor(col) orelse return false;
+        return cur < prev;
     }
 };
 
@@ -82,18 +104,19 @@ limits: Limits,
 ply: u8,
 stop: bool,
 histories: history.HistoryTable,
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE),
-tt: []root.TTEntry,
+previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
+tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
+is_main_thread: bool = true,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
 }
 
-pub fn writeTT(self: *Searcher, hash: u64, move: root.Move, score: i16, score_type: root.ScoreType, depth: i32) void {
-    self.tt[self.ttIndex(hash)] = root.TTEntry{
+pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: Move, score: i16, score_type: ScoreType, depth: i32) void {
+    self.tt[self.ttIndex(hash)] = TTEntry{
         .score = score,
-        .score_type = score_type,
+        .flags = .{ .score_type = score_type, .is_pv = tt_pv },
         .move = move,
         .hash = hash,
         .depth = @intCast(depth),
@@ -104,7 +127,7 @@ pub fn prefetchTT(self: *const Searcher, hash: u64) void {
     @prefetch(&self.tt[self.ttIndex(hash)], .{});
 }
 
-pub fn readTT(self: *const Searcher, hash: u64) root.TTEntry {
+pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
     return self.tt[self.ttIndex(hash)];
 }
 
@@ -171,6 +194,12 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
     _ = stm;
     _ = self;
     return 0;
+}
+
+fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
+    // TODO: actually make it configurable
+    const contempt = 0;
+    return if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt;
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
@@ -252,9 +281,8 @@ fn isRepetition(self: *Searcher) bool {
 
 fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
     var alpha = alpha_;
-
     self.nodes += 1;
-    if (self.stop or self.limits.checkSearch(self.nodes)) {
+    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop = true;
         return 0;
     }
@@ -270,7 +298,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         tt_entry = .{};
     }
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+    if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
         return tt_score;
     }
 
@@ -279,10 +307,10 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
-        corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
+        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
-        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.score_type)) {
+        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
             static_eval = tt_score;
         }
 
@@ -376,6 +404,41 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     return best_score;
 }
 
+fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
+    const base = if (is_quiet) tunable_constants.lmr_quiet_base else tunable_constants.lmr_noisy_base;
+    const log_mult = if (is_quiet) tunable_constants.lmr_quiet_log_mult else tunable_constants.lmr_noisy_log_mult;
+    const depth_mult = if (is_quiet) tunable_constants.lmr_quiet_depth_mult else tunable_constants.lmr_noisy_depth_mult;
+    const legal_mult = if (is_quiet) tunable_constants.lmr_quiet_legal_mult else tunable_constants.lmr_noisy_legal_mult;
+
+    var reduction: i32 = base;
+
+    const depth_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)));
+    const legal_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)));
+    reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
+
+    return reduction;
+}
+
+fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
+    if (root.tuning.do_tuning) {
+        return preCalculateBaseLMR(depth, legal, is_quiet);
+    } else {
+        const table = comptime blk: {
+            @setEvalBranchQuota(1 << 30);
+            var res: [64][64][2]u16 = undefined;
+            for (1..65) |d| {
+                for (1..65) |l| {
+                    for (0..2) |q| {
+                        res[d - 1][l - 1][q] = preCalculateBaseLMR(d, l, q == 1);
+                    }
+                }
+            }
+            break :blk res;
+        };
+        return (&(&(&table)[@intCast(@min(63, depth - 1))])[@min(63, legal - 1)])[@intFromBool(is_quiet)];
+    }
+}
+
 fn search(
     self: *Searcher,
     comptime is_root: bool,
@@ -391,7 +454,7 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (self.stop or (!is_root and self.limits.checkSearch(self.nodes))) {
+    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop = true;
         return 0;
     }
@@ -422,7 +485,7 @@ fn search(
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
         if (board.halfmove >= 100) {
             if (is_in_check) {
-                var rec: root.movegen.MoveListReceiver = .{};
+                var rec: movegen.MoveListReceiver = .{};
                 movegen.generateAllQuiets(stm, board, &rec);
                 movegen.generateAllNoisies(stm, board, &rec);
                 var has_legal = false;
@@ -447,7 +510,7 @@ fn search(
 
     const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.getHashWithHalfmove();
-    var tt_entry: root.TTEntry = .{};
+    var tt_entry: TTEntry = .{};
     var tt_hit = false;
     if (!is_singular_search) {
         tt_entry = self.readTT(tt_hash);
@@ -458,12 +521,12 @@ fn search(
         }
     }
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
-
+    const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
-                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.score_type)) {
+                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
                     return tt_score;
                 }
             }
@@ -478,15 +541,17 @@ fn search(
     }
 
     var improving = false;
+    var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
-        corrected_static_eval = self.histories.correct(board, cur.prev, raw_static_eval);
-        improving = cur.evals.isImprovement(stm, corrected_static_eval);
+        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+        improving = cur.evals.improving(stm);
+        opponent_worsening = cur.evals.worsening(stm.flipped());
 
-        if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.score_type)) {
+        if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.flags.score_type)) {
             cur.static_eval = tt_score;
         } else {
             cur.static_eval = corrected_static_eval;
@@ -505,10 +570,13 @@ fn search(
         const no_tthit_cutnode = !tt_hit and cutnode;
         if (depth <= 5 and
             static_eval >= beta +
-                tunable_constants.rfp_margin * (depth + @intFromBool(!improving)) -
+                tunable_constants.rfp_base +
+                tunable_constants.rfp_mult * depth -
+                tunable_constants.rfp_improving_margin * @intFromBool(improving) -
+                tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
         {
-            return static_eval;
+            return @intCast(static_eval + beta >> 1);
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
@@ -597,10 +665,17 @@ fn search(
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
+
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+            const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
+            var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
+            base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
+
+            const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
-                if (num_legal * tunable_constants.lmp_legal_mult + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
+                const granularity: i32 = 978;
+                if (num_legal * granularity + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -611,9 +686,9 @@ fn search(
                 }
 
                 if (!is_in_check and
-                    depth <= 6 and
+                    lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
-                    static_eval + tunable_constants.fp_base + depth * tunable_constants.fp_mult <= alpha)
+                    static_eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult <= alpha)
                 {
                     mp.skip_quiets = true;
                     continue;
@@ -639,7 +714,7 @@ fn search(
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
-            tt_entry.score_type != .upper)
+            tt_entry.flags.score_type != .upper)
         {
             const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 5));
             const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
@@ -697,8 +772,7 @@ fn search(
             const new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-                var reduction: i32 = tunable_constants.lmr_base;
-                reduction += std.math.log2_int(u32, @intCast(depth)) * tunable_constants.lmr_log_mult * @as(i32, std.math.log2_int(u32, num_legal)) >> 2;
+                var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
                 reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
@@ -710,7 +784,6 @@ fn search(
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
 
                 const reduced_depth = depth + extension - clamped_reduction;
-
                 s = -self.search(
                     false,
                     false,
@@ -793,20 +866,18 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
-                const bonus = root.history.bonus(depth);
-                const penalty = -root.history.penalty(depth);
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, bonus);
+                    self.histories.updateQuiet(board, move, cur.prev, depth, true);
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, penalty);
+                        self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
                     }
                 } else {
-                    self.histories.updateNoisy(board, move, bonus);
+                    self.histories.updateNoisy(board, move, depth, true);
                 }
                 for (searched_noisies.slice()) |searched_move| {
                     if (searched_move == move) break;
-                    self.histories.updateNoisy(board, searched_move, penalty);
+                    self.histories.updateNoisy(board, searched_move, depth, false);
                 }
                 break;
             }
@@ -826,6 +897,7 @@ fn search(
             best_move = tt_entry.move;
         }
         self.writeTT(
+            tt_pv,
             tt_hash,
             best_move,
             evaluation.scoreToTt(best_score, self.ply),
@@ -864,16 +936,18 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     }
     var pv_buf: [6 * 256 + 32]u8 = undefined;
     var fixed_buffer_pv_writer = std.io.fixedBufferStream(&pv_buf);
+    const root_board = self.searchStackRoot()[0].board;
     {
-        var board = self.searchStackRoot()[0].board;
+        var board = root_board;
         for (self.pvs[0].slice()) |pv_move| {
             fixed_buffer_pv_writer.writer().print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
             board.stm = board.stm.flipped();
         }
     }
+    const normalized_score = root.wdl.normalize(score, root_board.classicalMaterial());
     write("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
         depth,
-        evaluation.formatScore(score).slice(),
+        evaluation.formatScore(normalized_score).slice(),
         type_str,
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
@@ -912,8 +986,9 @@ fn fixupPreviousHashes(self: *Searcher) void {
     self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
 }
 
-fn init(self: *Searcher, params: Params) void {
+fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.limits = params.limits;
+    self.is_main_thread = is_main_thread;
     self.ply = 0;
     self.stop = false;
     self.nodes = 0;
@@ -938,18 +1013,21 @@ fn init(self: *Searcher, params: Params) void {
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
-    self.init(params);
+    self.init(params, is_main_thread);
     var previous_score: i32 = 0;
     var completed_depth: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
 
         var window = tunable_constants.aspiration_initial;
+        const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
             window = evaluation.inf_score;
         }
-        var aspiration_lower = @max(previous_score - window, -evaluation.inf_score);
-        var aspiration_upper = @min(previous_score + window, evaluation.inf_score);
+        comptime std.debug.assert(!evaluation.isMateScore(highest_non_mate_score));
+        comptime std.debug.assert(evaluation.isMateScore(highest_non_mate_score + 1));
+        var aspiration_lower = @max(previous_score - window, -highest_non_mate_score);
+        var aspiration_upper = @min(previous_score + window, highest_non_mate_score);
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
@@ -963,7 +1041,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
-                if (self.stop or evaluation.isMateScore(score)) {
+                if (self.stop) {
                     break;
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
@@ -972,7 +1050,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
-                        if (!quiet) {
+                        if (!quiet and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .lower);
                         }
                     }
@@ -981,7 +1059,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     failhigh_reduction >>= 1;
                     if (should_print) {
-                        if (!quiet) {
+                        if (!quiet and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .upper);
                         }
                     }

@@ -13,8 +13,7 @@ MV=mv ./zig-out/bin/pawnocchio $(EXE)
 endif
 
 net:
-	@echo "Preparing neural network"
-	-git submodule update --init --recursive
+	-git submodule update --init --recursive --depth 1
 
 ifdef EVALFILE
 NET_SPECIFIER=-Dnet=$(EVALFILE)
