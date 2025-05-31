@@ -936,16 +936,18 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     }
     var pv_buf: [6 * 256 + 32]u8 = undefined;
     var fixed_buffer_pv_writer = std.io.fixedBufferStream(&pv_buf);
+    const root_board = self.searchStackRoot()[0].board;
     {
-        var board = self.searchStackRoot()[0].board;
+        var board = root_board;
         for (self.pvs[0].slice()) |pv_move| {
             fixed_buffer_pv_writer.writer().print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
             board.stm = board.stm.flipped();
         }
     }
+    const normalized_score = root.wdl.normalize(score, root_board.classicalMaterial());
     write("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
         depth,
-        evaluation.formatScore(score).slice(),
+        evaluation.formatScore(normalized_score).slice(),
         type_str,
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
@@ -1018,11 +1020,14 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         const depth: i32 = @intCast(d);
 
         var window = tunable_constants.aspiration_initial;
+        const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
             window = evaluation.inf_score;
         }
-        var aspiration_lower = @max(previous_score - window, -evaluation.inf_score);
-        var aspiration_upper = @min(previous_score + window, evaluation.inf_score);
+        comptime std.debug.assert(!evaluation.isMateScore(highest_non_mate_score));
+        comptime std.debug.assert(evaluation.isMateScore(highest_non_mate_score + 1));
+        var aspiration_lower = @max(previous_score - window, -highest_non_mate_score);
+        var aspiration_upper = @min(previous_score + window, highest_non_mate_score);
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
@@ -1036,7 +1041,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
-                if (self.stop or evaluation.isMateScore(score)) {
+                if (self.stop) {
                     break;
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
@@ -1045,7 +1050,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
-                        if (!quiet) {
+                        if (!quiet and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .lower);
                         }
                     }
@@ -1054,7 +1059,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     failhigh_reduction >>= 1;
                     if (should_print) {
-                        if (!quiet) {
+                        if (!quiet and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .upper);
                         }
                     }
