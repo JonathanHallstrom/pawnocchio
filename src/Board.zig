@@ -133,6 +133,15 @@ pub fn phase(self: Board) u8 {
     return res;
 }
 
+pub fn classicalMaterial(self: Board) u8 {
+    const value: [6]u8 = .{ 1, 3, 3, 5, 9, 0 };
+    var res: u8 = 0;
+    for (PieceType.all) |pt| {
+        res += value[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
+    }
+    return res;
+}
+
 pub fn parseFen(fen: []const u8, permissive: bool) !Board {
     if (std.ascii.eqlIgnoreCase(fen, "startpos")) return startpos();
     if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;

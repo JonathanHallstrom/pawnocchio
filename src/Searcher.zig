@@ -107,6 +107,7 @@ histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
+is_main_thread: bool = true,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -281,7 +282,7 @@ fn isRepetition(self: *Searcher) bool {
 fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
     var alpha = alpha_;
     self.nodes += 1;
-    if (self.stop or self.limits.checkSearch(self.nodes)) {
+    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop = true;
         return 0;
     }
@@ -424,17 +425,17 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
     } else {
         const table = comptime blk: {
             @setEvalBranchQuota(1 << 30);
-            var res: [256][256][2]u16 = undefined;
-            for (1..256) |d| {
-                for (1..256) |l| {
+            var res: [64][64][2]u16 = undefined;
+            for (1..65) |d| {
+                for (1..65) |l| {
                     for (0..2) |q| {
-                        res[d][l][q] = preCalculateBaseLMR(d, l, q == 1);
+                        res[d - 1][l - 1][q] = preCalculateBaseLMR(d, l, q == 1);
                     }
                 }
             }
             break :blk res;
         };
-        return (&(&(&table)[@intCast(depth)])[legal])[@intFromBool(is_quiet)];
+        return (&(&(&table)[@intCast(@min(63, depth - 1))])[@min(63, legal - 1)])[@intFromBool(is_quiet)];
     }
 }
 
@@ -453,7 +454,7 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (self.stop or (!is_root and self.limits.checkSearch(self.nodes))) {
+    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop = true;
         return 0;
     }
@@ -935,16 +936,18 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     }
     var pv_buf: [6 * 256 + 32]u8 = undefined;
     var fixed_buffer_pv_writer = std.io.fixedBufferStream(&pv_buf);
+    const root_board = self.searchStackRoot()[0].board;
     {
-        var board = self.searchStackRoot()[0].board;
+        var board = root_board;
         for (self.pvs[0].slice()) |pv_move| {
             fixed_buffer_pv_writer.writer().print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
             board.stm = board.stm.flipped();
         }
     }
+    const normalized_score = root.wdl.normalize(score, root_board.classicalMaterial());
     write("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
         depth,
-        evaluation.formatScore(score).slice(),
+        evaluation.formatScore(normalized_score).slice(),
         type_str,
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
@@ -983,8 +986,9 @@ fn fixupPreviousHashes(self: *Searcher) void {
     self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
 }
 
-fn init(self: *Searcher, params: Params) void {
+fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.limits = params.limits;
+    self.is_main_thread = is_main_thread;
     self.ply = 0;
     self.stop = false;
     self.nodes = 0;
@@ -1009,18 +1013,21 @@ fn init(self: *Searcher, params: Params) void {
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
-    self.init(params);
+    self.init(params, is_main_thread);
     var previous_score: i32 = 0;
     var completed_depth: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
 
         var window = tunable_constants.aspiration_initial;
+        const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
             window = evaluation.inf_score;
         }
-        var aspiration_lower = @max(previous_score - window, -evaluation.inf_score);
-        var aspiration_upper = @min(previous_score + window, evaluation.inf_score);
+        comptime std.debug.assert(!evaluation.isMateScore(highest_non_mate_score));
+        comptime std.debug.assert(evaluation.isMateScore(highest_non_mate_score + 1));
+        var aspiration_lower = @max(previous_score - window, -highest_non_mate_score);
+        var aspiration_upper = @min(previous_score + window, highest_non_mate_score);
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
@@ -1034,7 +1041,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
-                if (self.stop or evaluation.isMateScore(score)) {
+                if (self.stop) {
                     break;
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
@@ -1043,7 +1050,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
-                        if (!quiet) {
+                        if (!quiet and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .lower);
                         }
                     }
@@ -1052,7 +1059,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @min(score + window, evaluation.inf_score);
                     failhigh_reduction >>= 1;
                     if (should_print) {
-                        if (!quiet) {
+                        if (!quiet and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .upper);
                         }
                     }

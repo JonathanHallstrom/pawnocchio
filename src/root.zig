@@ -39,6 +39,7 @@ pub const tunable_constants = tuning.tunable_constants;
 pub const SEE = @import("SEE.zig");
 pub const refreshCache = @import("refresh_cache.zig").refreshCache;
 pub const viriformat = @import("viriformat.zig");
+pub const wdl = @import("wdl.zig");
 
 pub const is_0_14_0 = @import("builtin").zig_version.minor >= 14;
 
