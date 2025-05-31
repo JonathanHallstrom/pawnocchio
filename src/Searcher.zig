@@ -680,7 +680,7 @@ fn search(
                     continue;
                 }
 
-                if (depth <= 3 and history_score < depth * tunable_constants.history_pruning_mult) {
+                if (depth <= 4 and history_score < depth * tunable_constants.history_pruning_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
