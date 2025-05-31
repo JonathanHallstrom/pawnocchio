@@ -1,6 +1,6 @@
 import os
 
-VERSION = "1.6.1"
+VERSION = "1.7.0"
 
 
 builds = [
@@ -45,9 +45,9 @@ for arch, os_name, zig_arch, cpu in builds:
     move_cmd = f"cp zig-out/bin/{output_name} builds/{output_name}"
     commands.append(build_cmd + " && " + move_cmd)
 
-# for command in commands:
-#     os.system(command + "&")
-# os.system("wait")
+for command in commands:
+    os.system(command + "&")
+os.system("wait")
 
 
 for command in commands:
