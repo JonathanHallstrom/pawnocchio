@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.6.16";
+const VERSION_STRING = "1.6.17";
 
 pub fn main() !void {
     root.init();
@@ -32,16 +32,71 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
-    _ = args.next();
+    _ = args.next() orelse "pawnocchio";
 
     {
+        const bench_depth_default: i32 = 10;
+        const datagen_nodes_default: u64 = 7000;
+        const datagen_threads_default: usize = std.Thread.getCpuCount() catch 1;
+        const datagen_file_default: []const u8 = "outfile.vf";
         var do_bench = false;
-        var bench_depth: i32 = 10;
+        var bench_depth = bench_depth_default;
         var do_datagen = false;
-        var datagen_nodes: u64 = 5000;
-        var datagen_threads: usize = std.Thread.getCpuCount() catch 1;
-        var datagen_file: []const u8 = "outfile.vf";
+        var datagen_nodes = datagen_nodes_default;
+        var datagen_threads = datagen_threads_default;
+        var datagen_file = datagen_file_default;
         while (args.next()) |arg| {
+            if (std.mem.count(u8, arg, "help") != 0) {
+                std.debug.print(
+                    \\pawnocchio {s} - UCI Chess Engine
+                    \\Usage: pawnocchio [COMMAND] [OPTIONS]
+                    \\
+                    \\COMMAND-LINE ARGUMENTS:
+                    \\  (Processed first. If none are matched, engine enters UCI mode.)
+                    \\
+                    \\  bench [BENCH_DEPTH]
+                    \\      Run benchmark for OB.
+                    \\      Defaults: BENCH_DEPTH={d}
+                    \\      Example: pawnocchio bench 12
+                    \\
+                    \\  datagen [threads=<COUNT>] [nodes=<NODE_COUNT>] [file=<FILEPATH>]
+                    \\      Generate training data.
+                    \\      Defaults: threads={d} (all CPU cores), nodes={d}, file="{s}"
+                    \\      Example: pawnocchio datagen threads=4 nodes=100000
+                    \\
+                    \\  help
+                    \\      Show this help message and exit.
+                    \\
+                    \\UCI MODE COMMANDS:
+                    \\  (Used when engine is run without specific command-line arguments above.)
+                    \\
+                    \\  uci                 - Display engine info, list options. Responds with 'uciok'.
+                    \\  spsa_inputs         - Display SPSA inputs.
+                    \\  isready             - Check if ready. Responds with 'readyok'.
+                    \\  ucinewgame          - Reset engine for a new game.
+                    \\  setoption name <NAME> value <VALUE>
+                    \\                      - Set option (e.g., Hash, Threads, UCI_Chess960,
+                    \\                        Move Overhead, tunable parameters).
+                    \\                        Example: setoption name Hash value 128
+                    \\  position (fen <FEN> | startpos) [moves <MOVES...>]
+                    \\                      - Set board position.
+                    \\                        Example: position startpos moves e2e4 e7e5
+                    \\  go [PARAMS...]      - Start search. Parameters include:
+                    \\                          depth <PLY>, nodes <NODE_COUNT>, movetime <MS>,
+                    \\                          wtime <MS>, btime <MS>, [winc <MS>], [binc <MS>],
+                    \\                          mate <DEPTH>, perft <DEPTH> (current pos),
+                    \\                          perft_file <FILEPATH> (from EPD).
+                    \\  stop                - Stop current search.
+                    \\  quit                - Exit engine.
+                    \\  wait                - Wait for search to complete.
+                    \\  d                   - Display Zobrist hash and FEN for current board.
+                    \\  nneval              - Display NNUE evaluation for current position.
+                    \\  bullet_evals        - Display NNUE evaluations for predefined FENs.
+                    \\  hceval              - Display HCE evaluation for current position.
+                    \\
+                , .{ VERSION_STRING, bench_depth_default, datagen_threads_default, datagen_nodes_default, datagen_file_default });
+                return;
+            }
             if (std.ascii.eqlIgnoreCase(arg, "bench")) {
                 do_bench = true;
             }
@@ -250,17 +305,17 @@ pub fn main() !void {
             board = Board.startpos();
         } else if (std.ascii.eqlIgnoreCase(command, "setoption")) {
             if (!std.ascii.eqlIgnoreCase("name", parts.next() orelse "")) continue;
-            var name = parts.next() orelse "";
+            var option_name = parts.next() orelse "";
             var value_part = parts.next() orelse "";
             if (!std.ascii.eqlIgnoreCase("value", value_part)) {
                 // yes this is cursed
-                while (name.ptr[name.len..] != value_part.ptr[value_part.len..])
-                    name.len += 1;
+                while (option_name.ptr[option_name.len..] != value_part.ptr[value_part.len..])
+                    option_name.len += 1;
                 value_part = parts.next() orelse "";
             }
             const value = parts.next() orelse "";
 
-            if (std.ascii.eqlIgnoreCase("Hash", name)) {
+            if (std.ascii.eqlIgnoreCase("Hash", option_name)) {
                 const size = std.fmt.parseInt(u16, value, 10) catch {
                     writeLog("invalid hash size: '{s}'\n", .{value});
                     continue;
@@ -268,7 +323,7 @@ pub fn main() !void {
                 try root.engine.setTTSize(size);
             }
 
-            if (std.ascii.eqlIgnoreCase("Threads", name)) {
+            if (std.ascii.eqlIgnoreCase("Threads", option_name)) {
                 const count = std.fmt.parseInt(u16, value, 10) catch {
                     writeLog("invalid thread count: '{s}'\n", .{value});
                     continue;
@@ -276,7 +331,7 @@ pub fn main() !void {
                 try root.engine.setThreadCount(count);
             }
 
-            if (std.ascii.eqlIgnoreCase("UCI_Chess960", name)) {
+            if (std.ascii.eqlIgnoreCase("UCI_Chess960", option_name)) {
                 if (std.ascii.eqlIgnoreCase("true", value)) {
                     board.frc = true;
                 }
@@ -285,7 +340,7 @@ pub fn main() !void {
                 }
             }
 
-            if (std.ascii.eqlIgnoreCase("Move Overhead", name)) {
+            if (std.ascii.eqlIgnoreCase("Move Overhead", option_name)) {
                 overhead = std.time.ns_per_ms * (std.fmt.parseInt(u64, value, 10) catch {
                     writeLog("invalid overhead: '{s}'\n", .{value});
                     continue;
@@ -293,7 +348,7 @@ pub fn main() !void {
             }
             if (root.tuning.do_tuning) {
                 inline for (root.tuning.tunables) |tunable| {
-                    if (std.ascii.eqlIgnoreCase(tunable.name, name)) {
+                    if (std.ascii.eqlIgnoreCase(tunable.name, option_name)) {
                         @field(root.tuning.tunable_constants, tunable.name) = std.fmt.parseInt(i32, value, 10) catch {
                             writeLog("invalid constant: '{s}'\n", .{value});
                             continue :loop;
