@@ -425,17 +425,17 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
     } else {
         const table = comptime blk: {
             @setEvalBranchQuota(1 << 30);
-            var res: [256][256][2]u16 = undefined;
-            for (1..256) |d| {
-                for (1..256) |l| {
+            var res: [64][64][2]u16 = undefined;
+            for (1..65) |d| {
+                for (1..65) |l| {
                     for (0..2) |q| {
-                        res[d][l][q] = preCalculateBaseLMR(d, l, q == 1);
+                        res[d - 1][l - 1][q] = preCalculateBaseLMR(d, l, q == 1);
                     }
                 }
             }
             break :blk res;
         };
-        return (&(&(&table)[@intCast(depth)])[legal])[@intFromBool(is_quiet)];
+        return (&(&(&table)[@intCast(@min(63, depth - 1))])[@min(63, legal - 1)])[@intFromBool(is_quiet)];
     }
 }
 
