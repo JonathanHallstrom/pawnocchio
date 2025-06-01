@@ -139,6 +139,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    history_score: i32,
 
     pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
@@ -147,6 +148,7 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
+        self.history_score = 0;
     }
 };
 
@@ -574,7 +576,8 @@ fn search(
                 tunable_constants.rfp_mult * depth -
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
+                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
+                @divTrunc(cur.history_score, 400))
         {
             return @intCast(static_eval + beta >> 1);
         }
@@ -757,7 +760,7 @@ fn search(
         }
 
         self.makeMove(stm, move);
-
+        self.curStackEntry().history_score = history_score;
         const gives_check = self.curStackEntry().board.checkers != 0;
         if (gives_check) {
             extension += 1;
