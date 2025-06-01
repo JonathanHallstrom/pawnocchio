@@ -337,6 +337,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     const futility = static_eval + tunable_constants.qs_futility_margin;
 
+    const previous_move_was_capture = self.ply >= 1 and self.prevStackEntry().board.isNoisy(cur.move.move);
     const previous_move_destination = cur.move.move.to();
 
     while (mp.next()) |scored_move| {
@@ -361,7 +362,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             std.debug.assert(!SEE.scoreMove(board, move, 0));
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
-        const is_recapture = move.to() == previous_move_destination;
+        const is_recapture = move.to() == previous_move_destination and previous_move_was_capture;
         if (best_score > evaluation.matedIn(MAX_PLY) and !is_recapture) {
             if (!is_in_check and futility <= alpha and !SEE.scoreMove(board, move, 1)) {
                 best_score = @intCast(@max(best_score, futility));
