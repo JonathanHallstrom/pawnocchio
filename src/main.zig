@@ -240,7 +240,9 @@ pub fn main() !void {
         }
     }
 
-    std.debug.print("{s}\n", .{banner});
+    if (@import("builtin").os.tag != .windows) {
+        std.debug.print("{s}\n", .{banner});
+    }
     std.debug.print("pawnocchio {s}\n", .{VERSION_STRING});
 
     const line_buf = try allocator.alloc(u8, 1 << 20);
