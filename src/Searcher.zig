@@ -198,8 +198,8 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
 
 fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
     // TODO: actually make it configurable
-    const contempt = 0;
-    return if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt;
+    const contempt: i32 = 0;
+    return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
@@ -710,10 +710,10 @@ fn search(
 
         var extension: i32 = 0;
         if (!is_root and
-            depth >= tunable_constants.singular_depth_limit and
+            depth >= 7 and
             move == tt_entry.move and
             !is_singular_search and
-            tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
+            tt_entry.depth + 3 >= depth and
             tt_entry.flags.score_type != .upper)
         {
             const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 5));
