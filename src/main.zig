@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.7.0";
+const VERSION_STRING = "1.7.2";
 
 pub fn main() !void {
     root.init();
