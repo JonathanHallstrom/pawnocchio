@@ -89,7 +89,7 @@ pub const QuietHistory = struct {
         self.updateWithAdjustment(col, move, if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
-    inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {
+    pub inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {
         return self.entry(col, move).*;
     }
 };

@@ -562,18 +562,17 @@ fn search(
             cur.static_eval = corrected_static_eval;
         }
         if (prev_eval_opt) |prev_eval| {
-            if (!cur.move_noisy) {
+            if (!cur.move_noisy and !cur.move.move.isNull()) {
+                const hist_bonus = std.math.clamp(-10 * (cur.static_eval + prev_eval) + 900, -1000, 1000);
                 // const globals = struct {
                 //     var sum: i64 = 0;
                 //     var count: u32 = 0;
                 // };
-                // globals.sum += cur.static_eval + prev_eval;
+                // globals.sum += self.histories.quiet.read(stm.flipped(), cur.move);
+                // // globals.sum += hist_bonus;
                 // globals.count += 1;
                 // if (globals.count % (1 << 20) == 0)
                 //     std.debug.print("{}\n", .{@divTrunc(globals.sum, globals.count)});
-
-                const hist_bonus = std.math.clamp(-10 * (cur.static_eval + prev_eval) + 600, -1000, 2000);
-
                 self.histories.quiet.updateWithAdjustment(stm.flipped(), cur.move, hist_bonus);
             }
         }
