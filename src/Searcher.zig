@@ -561,8 +561,9 @@ fn search(
             cur.static_eval = corrected_static_eval;
         }
         if (self.ply > 0 and !cur.move_noisy and !cur.move.move.isNull()) {
-            const hist_bonus = std.math.clamp(-1 * (cur.static_eval + self.prevStackEntry().static_eval) + 128, -100, 100);
-            _ = &hist_bonus;
+            const prev_eval = self.prevStackEntry().static_eval;
+            const hist_bonus = std.math.clamp(-1 * (cur.static_eval + prev_eval), -100, 100);
+            // _ = &hist_bonus;
             // const DIST_SIZE = 4097;
             // const globals = struct {
             //     var sum: i64 = 0;
@@ -571,9 +572,9 @@ fn search(
             //     var dist = std.mem.zeroes([DIST_SIZE]usize);
             // };
             // globals.dist[@intCast(std.math.clamp(cur.static_eval + prev_eval + DIST_SIZE / 2, 0, DIST_SIZE - 1))] += 1;
-            //
+            // //
             // globals.sum += self.histories.quiet.read(stm.flipped(), cur.move);
-            // // globals.sum += hist_bonus;
+            // // // globals.sum += hist_bonus;
             // globals.count += 1;
             // if (globals.count % (1 << 20) == 0) {
             //     std.debug.print("{}\n", .{@divTrunc(globals.sum, globals.count)});
