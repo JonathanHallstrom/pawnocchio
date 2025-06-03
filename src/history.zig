@@ -81,8 +81,12 @@ pub const QuietHistory = struct {
         return &(&self.vals)[col_offs * 64 * 64 + from_offs * 64 + to_offs];
     }
 
+    pub fn updateWithAdjustment(self: *QuietHistory, col: Colour, move: TypedMove, adjustment: i16) void {
+        gravityUpdate(self.entry(col, move), adjustment);
+    }
+
     inline fn update(self: *QuietHistory, col: Colour, move: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(col, move), if (is_bonus) bonus(depth) else -penalty(depth));
+        self.updateWithAdjustment(col, move, if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {

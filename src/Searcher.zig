@@ -135,14 +135,16 @@ pub const StackEntry = struct {
     board: Board,
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
+    move_noisy: bool,
     prev: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
 
-    pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
+    pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, move_noisy_: bool, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
         self.move = move_;
+        self.move_noisy = move_noisy_;
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
@@ -202,7 +204,7 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
     return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
 }
 
-fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
+fn makeMove(self: *Searcher, comptime stm: Colour, move: Move, move_noisy: bool) void {
     const old_stack_entry = self.prevStackEntry();
     const prev_stack_entry = self.curStackEntry();
     const prev_eval_state = self.curEvalState();
@@ -220,6 +222,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
+        move_noisy,
         prev_stack_entry.move,
         prev_stack_entry.evals,
     );
@@ -248,6 +251,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     new_stack_entry.init(
         board,
         TypedMove.init(),
+        false,
         TypedMove.init(),
         prev_stack_entry.evals,
     );
@@ -373,7 +377,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             }
         }
 
-        self.makeMove(stm, move);
+        self.makeMove(stm, move, board.isNoisy(move));
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
         if (self.stop) {
@@ -547,6 +551,7 @@ fn search(
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
+        const prev_eval_opt = cur.evals.curFor(stm.flipped());
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -555,6 +560,22 @@ fn search(
             cur.static_eval = tt_score;
         } else {
             cur.static_eval = corrected_static_eval;
+        }
+        if (prev_eval_opt) |prev_eval| {
+            if (!cur.move_noisy) {
+                // const globals = struct {
+                //     var sum: i64 = 0;
+                //     var count: u32 = 0;
+                // };
+                // globals.sum += cur.static_eval + prev_eval;
+                // globals.count += 1;
+                // if (globals.count % (1 << 20) == 0)
+                //     std.debug.print("{}\n", .{@divTrunc(globals.sum, globals.count)});
+
+                const hist_bonus = std.math.clamp(-10 * (cur.static_eval + prev_eval) + 600, -1000, 2000);
+
+                self.histories.quiet.updateWithAdjustment(stm.flipped(), cur.move, hist_bonus);
+            }
         }
     }
     const static_eval = cur.static_eval;
@@ -756,7 +777,7 @@ fn search(
             }
         }
 
-        self.makeMove(stm, move);
+        self.makeMove(stm, move, !is_quiet);
 
         const gives_check = self.curStackEntry().board.checkers != 0;
         if (gives_check) {
@@ -1003,7 +1024,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.root_score = 0;
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
-    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
+    self.searchStackRoot()[0].init(&board, TypedMove.init(), false, TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
         self.histories.reset();
