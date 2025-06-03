@@ -551,7 +551,6 @@ fn search(
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
-        const prev_eval_opt = cur.evals.curFor(stm.flipped());
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -561,20 +560,29 @@ fn search(
         } else {
             cur.static_eval = corrected_static_eval;
         }
-        if (prev_eval_opt) |prev_eval| {
-            if (!cur.move_noisy and !cur.move.move.isNull()) {
-                const hist_bonus = std.math.clamp(-10 * (cur.static_eval + prev_eval) + 900, -1000, 1000);
-                // const globals = struct {
-                //     var sum: i64 = 0;
-                //     var count: u32 = 0;
-                // };
-                // globals.sum += self.histories.quiet.read(stm.flipped(), cur.move);
-                // // globals.sum += hist_bonus;
-                // globals.count += 1;
-                // if (globals.count % (1 << 20) == 0)
-                //     std.debug.print("{}\n", .{@divTrunc(globals.sum, globals.count)});
-                self.histories.quiet.updateWithAdjustment(stm.flipped(), cur.move, hist_bonus);
-            }
+        if (self.ply > 0 and !cur.move_noisy and !cur.move.move.isNull()) {
+            const hist_bonus = std.math.clamp(-1 * (cur.static_eval + self.prevStackEntry().static_eval) + 128, -100, 100);
+            _ = &hist_bonus;
+            // const DIST_SIZE = 4097;
+            // const globals = struct {
+            //     var sum: i64 = 0;
+            //     var count: u32 = 0;
+            //
+            //     var dist = std.mem.zeroes([DIST_SIZE]usize);
+            // };
+            // globals.dist[@intCast(std.math.clamp(cur.static_eval + prev_eval + DIST_SIZE / 2, 0, DIST_SIZE - 1))] += 1;
+            //
+            // globals.sum += self.histories.quiet.read(stm.flipped(), cur.move);
+            // // globals.sum += hist_bonus;
+            // globals.count += 1;
+            // if (globals.count % (1 << 20) == 0) {
+            //     std.debug.print("{}\n", .{@divTrunc(globals.sum, globals.count)});
+            //
+            //     var dist_file = std.fs.cwd().createFile("tmp.txt", .{}) catch unreachable;
+            //     defer dist_file.close();
+            //     dist_file.writer().print("{any}\n", .{globals.dist}) catch unreachable;
+            // }
+            self.histories.quiet.updateWithAdjustment(stm.flipped(), cur.move, hist_bonus);
         }
     }
     const static_eval = cur.static_eval;
