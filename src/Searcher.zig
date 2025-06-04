@@ -108,6 +108,7 @@ previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
+seldepth: u8,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -280,6 +281,9 @@ fn isRepetition(self: *Searcher) bool {
 }
 
 fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
+    if (is_pv) {
+        self.seldepth = @max(self.seldepth, self.ply + 1);
+    }
     var alpha = alpha_;
     self.nodes += 1;
     if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
@@ -462,6 +466,9 @@ fn search(
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
 
+    if (is_pv) {
+        self.seldepth = @max(self.seldepth, self.ply + 1);
+    }
     const par = self.prevStackEntry();
     const cur = self.curStackEntry();
     const board = &cur.board;
@@ -945,8 +952,9 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         }
     }
     const normalized_score = root.wdl.normalize(score, root_board.classicalMaterial());
-    write("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
+    write("info depth {} seldepth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
         depth,
+        self.seldepth,
         evaluation.formatScore(normalized_score).slice(),
         type_str,
         nodes,
@@ -1032,6 +1040,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
             inline else => |stm| while (true) : (window = (window * tunable_constants.aspiration_multiplier) >> 10) {
+                self.seldepth = 0;
                 score = self.search(
                     true,
                     true,
