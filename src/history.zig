@@ -129,16 +129,16 @@ pub const NoisyHistory = struct {
 };
 
 pub const ContHistory = struct {
-    vals: [2 * 6 * 64 * 6 * 64]i16,
+    vals: [2 * 6 * 64][2 * 6 * 64]i16,
 
-    fn bonus(depth: i32) i16 {
+    pub fn bonus(depth: i32) i16 {
         return @intCast(@min(
             depth * tunable_constants.cont_history_bonus_mult + tunable_constants.cont_history_bonus_offs,
             tunable_constants.cont_history_bonus_max,
         ));
     }
 
-    fn penalty(depth: i32) i16 {
+    pub fn penalty(depth: i32) i16 {
         return @intCast(@min(
             depth * tunable_constants.cont_history_penalty_mult + tunable_constants.cont_history_penalty_offs,
             tunable_constants.cont_history_penalty_max,
@@ -149,19 +149,20 @@ pub const ContHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    inline fn entry(self: anytype, col: Colour, move: TypedMove, prev: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+    pub inline fn entry(self: anytype, col: Colour, move: TypedMove, prev_col: Colour, prev_move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = col.toInt();
         const move_offs: usize = @as(usize, move.tp.toInt()) * 64 + move.move.to().toInt();
-        const prev_offs: usize = @as(usize, prev.tp.toInt()) * 64 + prev.move.to().toInt();
-        return &(&self.vals)[col_offs * 6 * 64 * 6 * 64 + prev_offs * 6 * 64 + move_offs];
+        const prev_col_offs: usize = prev_col.toInt();
+        const prev_move_offs: usize = @as(usize, prev_move.tp.toInt()) * 64 + prev_move.move.to().toInt();
+        return &(&(&self.vals)[prev_col_offs * 6 * 64 + prev_move_offs])[col_offs * 6 * 64 + move_offs];
     }
 
-    inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(col, move, prev), if (is_bonus) bonus(depth) else -penalty(depth));
+    pub inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev_move: TypedMove, adjustment: i16) void {
+        gravityUpdate(self.entry(col, move, prev_col, prev_move), adjustment);
     }
 
-    inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev: TypedMove) i16 {
-        return self.entry(col, move, prev).*;
+    pub inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev_move: TypedMove) i16 {
+        return self.entry(col, move, prev_col, prev_move).*;
     }
 };
 
@@ -190,15 +191,14 @@ pub const HistoryTable = struct {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += self.quiet.read(board.stm, typed);
-        res += self.countermove.read(board.stm, typed, prev);
+        res += self.countermove.read(board.stm, typed, board.stm.flipped(), prev);
 
         return res;
     }
 
-    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, prev: TypedMove, depth: i32, is_bonus: bool) void {
+    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, depth: i32, is_bonus: bool) void {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board.stm, typed, depth, is_bonus);
-        self.countermove.update(board.stm, typed, prev, depth, is_bonus);
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {

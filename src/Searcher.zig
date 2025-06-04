@@ -166,6 +166,10 @@ fn updatePv(self: *Searcher, move: Move) void {
     }
 }
 
+inline fn stackEntry(self: *Searcher, offset: anytype) *StackEntry {
+    return &(&self.search_stack)[@intCast(@as(isize, @intCast(STACK_PADDING + self.ply)) + offset)];
+}
+
 fn curStackEntry(self: *Searcher) *StackEntry {
     return &self.searchStackRoot()[self.ply];
 }
@@ -200,6 +204,24 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
     // TODO: actually make it configurable
     const contempt: i32 = 0;
     return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
+}
+
+fn updateContHists(self: *Searcher, move: Move, comptime stm: Colour, adjustment: i16) void {
+    const board = &self.curStackEntry().board;
+    const typed = TypedMove.fromBoard(board, move);
+    if (self.ply >= 1) {
+        const stack_entry = self.stackEntry(-1);
+
+        if (!stack_entry.move.move.isNull()) {
+            self.histories.countermove.update(
+                stm,
+                typed,
+                stm.flipped(),
+                stack_entry.move,
+                adjustment,
+            );
+        }
+    }
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
@@ -867,10 +889,13 @@ fn search(
             if (score >= beta) {
                 score_type = .lower;
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, depth, true);
+                    self.histories.updateQuiet(board, move, depth, true);
+                    const ContHistory = root.history.ContHistory;
+                    self.updateContHists(move, stm, ContHistory.bonus(depth));
                     for (searched_quiets.slice()) |searched_move| {
                         if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
+                        self.histories.updateQuiet(board, searched_move, depth, false);
+                        self.updateContHists(searched_move, stm, -ContHistory.penalty(depth));
                     }
                 } else {
                     self.histories.updateNoisy(board, move, depth, true);
