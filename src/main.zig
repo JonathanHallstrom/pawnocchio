@@ -240,10 +240,13 @@ pub fn main() !void {
         }
     }
 
-    if (@import("builtin").os.tag != .windows) {
-        std.debug.print("{s}\n", .{banner});
+    if (@import("builtin").os.tag == .windows) {
+        const windows = @cImport(@cInclude("windows.h"));
+        _ = windows.SetConsoleCP(windows.CP_UTF8);
+        _ = windows.SetConsoleOutputCP(windows.CP_UTF8);
     }
-    std.debug.print("pawnocchio {s}\n", .{VERSION_STRING});
+    write("{s}\n", .{banner});
+    write("pawnocchio {s}\n", .{VERSION_STRING});
 
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);

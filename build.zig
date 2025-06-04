@@ -24,6 +24,9 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .omit_frame_pointer = omit_frame_ptr,
     });
+    if (target.result.os.tag == .windows) {
+        exe.linkLibC();
+    }
     exe.root_module.addImport("net", net_module);
     b.installArtifact(exe);
 
