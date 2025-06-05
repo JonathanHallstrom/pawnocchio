@@ -37,8 +37,9 @@ skip_quiets: bool,
 histories: *const root.history.HistoryTable,
 ttmove: Move,
 prev: root.history.TypedMove,
-first_bad_quiet: usize = 0,
 last_bad_noisy: usize = 0,
+good_quiet_margin: i32 = 0,
+first_bad_quiet: usize = 0,
 last_bad_quiet: usize = 0,
 
 pub const Stage = enum {
@@ -193,9 +194,14 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 switch (self.board.stm) {
                     inline else => |stm| {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
+                        var sum_history_scores: i64 = 0;
                         for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
                             scored_move.score = self.histories.readQuiet(self.board, scored_move.move, self.prev);
+                            sum_history_scores += scored_move.score;
                         }
+                        const num_moves: u8 = @intCast(self.movelist.vals.len);
+                        const average_history: i32 = @intCast(@divTrunc(sum_history_scores + num_moves - 1, @max(1, num_moves)));
+                        self.good_quiet_margin = average_history;
                     },
                 }
                 self.last = self.movelist.vals.len;
@@ -208,7 +214,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                     continue;
                 }
                 const res = self.movelist.vals.slice()[self.findBest()];
-                if (res.score >= 0) {
+                if (res.score >= self.good_quiet_margin) {
                     return res;
                 }
                 self.movelist.vals.slice()[self.last_bad_quiet] = res;
