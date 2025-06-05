@@ -159,7 +159,6 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 self.movelist.vals.len = 0;
                 switch (self.board.stm) {
                     inline else => |stm| {
-                        std.debug.assert(self.movelist.vals.len == 0);
                         movegen.generateAllNoisies(stm, self.board, self.movelist);
                         for (self.movelist.vals.slice()) |*scored_move| {
                             scored_move.score = self.noisyValue(scored_move.move);
@@ -185,28 +184,30 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             },
             .generate_quiets => {
                 if (self.skip_quiets) {
-                    self.stage = .bad_noisy_prep;
+                    self.stage = .good_quiets;
                     return null;
                 }
+
                 self.first = self.movelist.vals.len;
                 self.first_bad_quiet = self.movelist.vals.len;
                 self.last_bad_quiet = self.movelist.vals.len;
+                std.debug.assert(self.first_bad_quiet >= self.last_bad_noisy);
                 switch (self.board.stm) {
                     inline else => |stm| {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
-                        var sum_history_scores: i64 = 0;
-                        var min: i32 = 1000_000_000;
-                        var max: i32 = -min;
+                        // var sum_history_scores: i64 = 0;
+                        // var min: i32 = 1000_000_000;
+                        // var max: i32 = -min;
                         for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
                             scored_move.score = self.histories.readQuiet(self.board, scored_move.move, self.prev);
-                            sum_history_scores += scored_move.score;
-                            min = @min(min, scored_move.score);
-                            max = @max(max, scored_move.score);
+                            // sum_history_scores += scored_move.score;
+                            // min = @min(min, scored_move.score);
+                            // max = @max(max, scored_move.score);
                         }
-                        const num_moves: u8 = @intCast(self.movelist.vals.len);
-                        const average_history: i32 = @intCast(@divTrunc(sum_history_scores, @max(1, num_moves)));
-                        self.good_quiet_margin = average_history - 1;
-                        self.good_quiet_margin = @divTrunc(max + min, 2);
+                        // const num_moves: u8 = @intCast(self.movelist.vals.len);
+                        // const average_history: i32 = @intCast(@divTrunc(sum_history_scores, @max(1, num_moves)));
+                        // self.good_quiet_margin = average_history - @divTrunc(max - min, 4);
+                        // self.good_quiet_margin = average_history;
                     },
                 }
                 self.last = self.movelist.vals.len;
@@ -235,6 +236,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             .bad_noisies => {
                 if (self.first == self.last) {
                     self.stage = .bad_quiet_prep;
+                    continue;
                 }
                 return self.movelist.vals.slice()[self.findBest()];
             },
