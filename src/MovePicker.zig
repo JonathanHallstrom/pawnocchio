@@ -120,7 +120,7 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     var res: i32 = 0;
 
     if (self.board.isPromo(move)) {
-        res += SEE.value(move.promoType()) * 2;
+        res += SEE.value(move.promoType()) - SEE.value(.pawn);
     }
     if ((&self.board.mailbox)[move.to().toInt()].opt()) |captured_type| {
         res += SEE.value(captured_type.toPieceType());
