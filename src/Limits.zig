@@ -32,12 +32,14 @@ node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
 
 const Limits = @This();
 
-pub fn initStandard(remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
+pub fn initStandard(board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
     var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
     const start_time = t.read();
+    const hard_time = (remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.hard_limit_base + (tunable_constants.hard_limit_phase_mult * (32 - board.phase()) >> 6))) >> 10;
+    const soft_time = (remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.soft_limit_base)) + increment_ns * @as(u128, @intCast(tunable_constants.soft_limit_incr)) >> 10;
     return Limits{
-        .hard_time = @intCast(start_time + ((remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.hard_limit_base)) >> 10)),
-        .soft_time = @intCast(start_time + ((remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.soft_limit_base)) >> 10) + (increment_ns * @as(u128, @intCast(tunable_constants.soft_limit_incr)) >> 10)),
+        .hard_time = @intCast(start_time + hard_time),
+        .soft_time = @intCast(start_time + soft_time),
         .timer = t,
     };
 }

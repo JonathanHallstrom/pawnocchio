@@ -546,6 +546,7 @@ pub fn main() !void {
             const my_increment = if (board.stm == .white) white_increment else black_increment;
 
             var limits = root.Limits.initStandard(
+                &board,
                 my_time,
                 my_increment,
                 overhead,
