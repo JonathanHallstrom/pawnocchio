@@ -122,7 +122,7 @@ pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: Move, score: i16, 
         score_type == .exact or
         hash != entry.hash or
         self.ttage != entry.flags.age or
-        depth + 4 > entry.depth))
+        depth + 4 + @intFromBool(tt_pv) * @as(i32, 2) > entry.depth))
     {
         return;
     }
