@@ -776,7 +776,7 @@ fn search(
             const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
 
             var s: i16 = 0;
-            const new_depth = depth + extension - 1;
+            var new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
@@ -805,6 +805,12 @@ fn search(
                 }
 
                 if (s > alpha and clamped_reduction > 1) {
+                    const do_deeper_search = s > best_score + tunable_constants.lmr_dodeeper_margin + 2 * new_depth;
+                    const do_shallower_search = s < best_score + new_depth;
+
+                    new_depth += @intFromBool(do_deeper_search);
+                    new_depth -= @intFromBool(do_shallower_search);
+
                     s = -self.search(
                         false,
                         false,
