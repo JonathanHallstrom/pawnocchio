@@ -751,7 +751,7 @@ fn search(
             cur.excluded = Move.init();
 
             if (s_score < s_beta) {
-                extension += 1;
+                extension = 1;
 
                 if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
                     extension += 1;
@@ -759,9 +759,9 @@ fn search(
             } else if (s_beta >= beta) {
                 return @intCast(s_beta);
             } else if (tt_entry.score >= beta) {
-                extension -= 1;
+                extension = -1;
             } else if (cutnode) {
-                extension -= 2;
+                extension = -2;
             }
         }
         num_legal += 1;
