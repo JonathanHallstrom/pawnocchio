@@ -386,7 +386,12 @@ pub const ScoreType = enum(u2) {
 pub const TTFlags = packed struct {
     score_type: ScoreType = .none,
     is_pv: bool = false,
+    age: u5 = 0,
 };
+
+comptime {
+    assert(@sizeOf(TTFlags) == 1);
+}
 
 pub const TTEntry = struct {
     hash: u64 = 0,

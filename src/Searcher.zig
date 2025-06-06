@@ -109,15 +109,27 @@ tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
+ttage: u5 = 0,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
 }
 
 pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: Move, score: i16, score_type: ScoreType, depth: i32) void {
-    self.tt[self.ttIndex(hash)] = TTEntry{
+    const entry = &self.tt[self.ttIndex(hash)];
+
+    if (!(entry.flags.score_type == .none or
+        score_type == .exact or
+        hash != entry.hash or
+        self.ttage != entry.flags.age or
+        depth + 4 + @as(i32, 2) * @intFromBool(tt_pv) > entry.depth))
+    {
+        return;
+    }
+
+    entry.* = TTEntry{
         .score = score,
-        .flags = .{ .score_type = score_type, .is_pv = tt_pv },
+        .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = self.ttage },
         .move = move,
         .hash = hash,
         .depth = @intCast(depth),
@@ -1021,6 +1033,9 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
         self.histories.reset();
+        self.ttage = 0;
+    } else {
+        self.ttage +%= 1;
     }
     self.limits.resetNodeCounts();
     evaluation.initThreadLocals();
