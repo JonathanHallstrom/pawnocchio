@@ -788,7 +788,7 @@ fn search(
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
                 reduction >>= 10;
 
-                const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
+                const clamped_reduction = @min(reduction, depth - 1);
 
                 const reduced_depth = depth + extension - clamped_reduction;
                 s = -self.search(
