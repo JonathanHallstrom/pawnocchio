@@ -108,6 +108,7 @@ previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
+seldepth: u8,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -198,8 +199,8 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
 
 fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
     // TODO: actually make it configurable
-    const contempt = 0;
-    return if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt;
+    const contempt: i32 = 0;
+    return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
@@ -280,6 +281,9 @@ fn isRepetition(self: *Searcher) bool {
 }
 
 fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
+    if (is_pv) {
+        self.seldepth = @max(self.seldepth, self.ply + 1);
+    }
     var alpha = alpha_;
     self.nodes += 1;
     if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
@@ -462,6 +466,9 @@ fn search(
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
 
+    if (is_pv) {
+        self.seldepth = @max(self.seldepth, self.ply + 1);
+    }
     const par = self.prevStackEntry();
     const cur = self.curStackEntry();
     const board = &cur.board;
@@ -568,7 +575,7 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        if (depth <= 5 and
+        if (depth <= 6 and
             static_eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth -
@@ -723,10 +730,10 @@ fn search(
 
         var extension: i32 = 0;
         if (!is_root and
-            depth >= tunable_constants.singular_depth_limit and
+            depth >= 7 and
             move == tt_entry.move and
             !is_singular_search and
-            tt_entry.depth + tunable_constants.singular_tt_depth_margin >= depth and
+            tt_entry.depth + 3 >= depth and
             tt_entry.flags.score_type != .upper)
         {
             const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 5));
@@ -782,7 +789,7 @@ fn search(
             const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
 
             var s: i16 = 0;
-            const new_depth = depth + extension - 1;
+            var new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
@@ -811,6 +818,12 @@ fn search(
                 }
 
                 if (s > alpha and clamped_reduction > 1) {
+                    const do_deeper_search = s > best_score + tunable_constants.lmr_dodeeper_margin + 2 * new_depth;
+                    const do_shallower_search = s < best_score + new_depth;
+
+                    new_depth += @intFromBool(do_deeper_search);
+                    new_depth -= @intFromBool(do_shallower_search);
+
                     s = -self.search(
                         false,
                         false,
@@ -958,8 +971,9 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         }
     }
     const normalized_score = root.wdl.normalize(score, root_board.classicalMaterial());
-    write("info depth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
+    write("info depth {} seldepth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
         depth,
+        self.seldepth,
         evaluation.formatScore(normalized_score).slice(),
         type_str,
         nodes,
@@ -1045,6 +1059,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
             inline else => |stm| while (true) : (window = (window * tunable_constants.aspiration_multiplier) >> 10) {
+                self.seldepth = 0;
                 score = self.search(
                     true,
                     true,

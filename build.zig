@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
-    const net = b.option([]const u8, "net", "Change the net to be used") orelse "pawnocchio-nets/networks/net21_1280_take7.nnue";
+    const net = b.option([]const u8, "net", "Change the net to be used") orelse "pawnocchio-nets/networks/net22_1280_take3.nnue";
     const omit_frame_ptr = switch (optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
@@ -24,6 +24,9 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .omit_frame_pointer = omit_frame_ptr,
     });
+    if (target.result.os.tag == .windows) {
+        exe.linkLibC();
+    }
     exe.root_module.addImport("net", net_module);
     b.installArtifact(exe);
 

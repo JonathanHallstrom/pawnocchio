@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.7.0";
+const VERSION_STRING = "1.7.2";
 
 pub fn main() !void {
     root.init();
@@ -240,8 +240,13 @@ pub fn main() !void {
         }
     }
 
-    std.debug.print("{s}\n", .{banner});
-    std.debug.print("pawnocchio {s}\n", .{VERSION_STRING});
+    if (@import("builtin").os.tag == .windows) {
+        const windows = @cImport(@cInclude("windows.h"));
+        _ = windows.SetConsoleCP(windows.CP_UTF8);
+        _ = windows.SetConsoleOutputCP(windows.CP_UTF8);
+    }
+    write("{s}\n", .{banner});
+    write("pawnocchio {s}\n", .{VERSION_STRING});
 
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);
@@ -541,6 +546,7 @@ pub fn main() !void {
             const my_increment = if (board.stm == .white) white_increment else black_increment;
 
             var limits = root.Limits.initStandard(
+                &board,
                 my_time,
                 my_increment,
                 overhead,

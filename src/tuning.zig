@@ -45,7 +45,7 @@ pub const Tunable = struct {
         if (self.c_end) |m|
             return m;
         const d: f64 = @floatFromInt(@abs(self.default));
-        return @max(0.5, d / 20);
+        return @max(0.5, d / 10);
     }
 };
 
@@ -90,6 +90,7 @@ const tunable_defaults = struct {
     pub const lmr_noisy_history_mult: i32 = 1079;
     pub const lmr_corrhist_mult: i32 = 12362;
     pub const lmr_ttmove_mult: i32 = 534;
+    pub const lmr_dodeeper_margin: i32 = 60;
     pub const nmp_base: i32 = 45963;
     pub const nmp_mult: i32 = 1110;
     pub const nmp_eval_reduction_scale: i32 = 32;
@@ -119,9 +120,8 @@ const tunable_defaults = struct {
     pub const nodetm_mult: i32 = 950;
     pub const soft_limit_base: i32 = 53;
     pub const soft_limit_incr: i32 = 572;
+    pub const hard_limit_phase_mult: i32 = 128;
     pub const hard_limit_base: i32 = 190;
-    pub const singular_depth_limit: i32 = 7;
-    pub const singular_tt_depth_margin: i32 = 3;
     pub const singular_beta_mult: i32 = 16;
     pub const singular_depth_mult: i32 = 19;
     pub const singular_dext_margin: i32 = 13;
@@ -168,6 +168,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_noisy_history_mult", .default = tunable_defaults.lmr_noisy_history_mult },
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult },
     .{ .name = "lmr_ttmove_mult", .default = tunable_defaults.lmr_ttmove_mult },
+    .{ .name = "lmr_dodeeper_margin", .default = tunable_defaults.lmr_dodeeper_margin },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale },
@@ -193,13 +194,12 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_bishop", .default = tunable_defaults.see_bishop },
     .{ .name = "see_rook", .default = tunable_defaults.see_rook },
     .{ .name = "see_queen", .default = tunable_defaults.see_queen },
-    .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base },
-    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult },
-    .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base },
-    .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr },
-    .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base },
-    .{ .name = "singular_depth_limit", .default = tunable_defaults.singular_depth_limit },
-    .{ .name = "singular_tt_depth_margin", .default = tunable_defaults.singular_tt_depth_margin },
+    .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .c_end = 80 },
+    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
+    .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base, .c_end = 2 },
+    .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr, .c_end = 30 },
+    .{ .name = "hard_limit_phase_mult", .default = tunable_defaults.hard_limit_phase_mult, .c_end = 6 },
+    .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base, .c_end = 10 },
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult },
     .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin },
@@ -246,6 +246,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_noisy_history_mult = tunable_defaults.lmr_noisy_history_mult;
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var lmr_ttmove_mult = tunable_defaults.lmr_ttmove_mult;
+    pub var lmr_dodeeper_margin = tunable_defaults.lmr_dodeeper_margin;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
@@ -275,9 +276,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var soft_limit_base = tunable_defaults.soft_limit_base;
     pub var soft_limit_incr = tunable_defaults.soft_limit_incr;
+    pub var hard_limit_phase_mult = tunable_defaults.hard_limit_phase_mult;
     pub var hard_limit_base = tunable_defaults.hard_limit_base;
-    pub var singular_depth_limit = tunable_defaults.singular_depth_limit;
-    pub var singular_tt_depth_margin = tunable_defaults.singular_tt_depth_margin;
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
     pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
