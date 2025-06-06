@@ -701,7 +701,7 @@ fn search(
                     continue;
                 }
             } else {
-                const bnfp_futility_value = static_eval + @as(i32, lmr_depth * 120);
+                const bnfp_futility_value = static_eval + depth * 150;
                 if (mp.stage == .bad_noisies and
                     !is_in_check and
                     lmr_depth <= 6 and
