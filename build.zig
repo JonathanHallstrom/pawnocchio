@@ -1,8 +1,13 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
+    if (!std.ascii.eqlIgnoreCase(target.result.cpu.model.name, "znver1")) {
+        return error.WrongArchitecture; // this is meant specifically to debug crashes on znver1!
+
+    }
     const optimize = b.standardOptimizeOption(.{});
+
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
     const net = b.option([]const u8, "net", "Change the net to be used") orelse "pawnocchio-nets/networks/net22_1280_take3.nnue";
     const omit_frame_ptr = switch (optimize) {
@@ -20,7 +25,7 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = name,
         .target = target,
-        .optimize = optimize,
+        .optimize = .ReleaseSafe,
         .root_source_file = b.path("src/main.zig"),
         .omit_frame_pointer = omit_frame_ptr,
     });
