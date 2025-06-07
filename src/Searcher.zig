@@ -704,11 +704,15 @@ fn search(
                     continue;
                 }
 
+                const futility_value = static_eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult;
                 if (!is_in_check and
                     lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
-                    static_eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult <= alpha)
+                    futility_value <= alpha)
                 {
+                    if (!evaluation.isMateScore(best_score)) {
+                        best_score = @intCast(@max(best_score, futility_value));
+                    }
                     mp.skip_quiets = true;
                     continue;
                 }
