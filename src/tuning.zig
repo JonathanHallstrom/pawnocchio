@@ -90,6 +90,7 @@ const tunable_defaults = struct {
     pub const lmr_noisy_history_mult: i32 = 1079;
     pub const lmr_corrhist_mult: i32 = 12362;
     pub const lmr_ttmove_mult: i32 = 534;
+    pub const lmr_check_mult: i32 = 1024;
     pub const lmr_dodeeper_margin: i32 = 60;
     pub const nmp_base: i32 = 45963;
     pub const nmp_mult: i32 = 1110;
@@ -168,6 +169,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_noisy_history_mult", .default = tunable_defaults.lmr_noisy_history_mult },
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult },
     .{ .name = "lmr_ttmove_mult", .default = tunable_defaults.lmr_ttmove_mult },
+    .{ .name = "lmr_check_mult", .default = tunable_defaults.lmr_check_mult },
     .{ .name = "lmr_dodeeper_margin", .default = tunable_defaults.lmr_dodeeper_margin },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult },
@@ -246,6 +248,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_noisy_history_mult = tunable_defaults.lmr_noisy_history_mult;
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var lmr_ttmove_mult = tunable_defaults.lmr_ttmove_mult;
+    pub var lmr_check_mult = tunable_defaults.lmr_check_mult;
     pub var lmr_dodeeper_margin = tunable_defaults.lmr_dodeeper_margin;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
