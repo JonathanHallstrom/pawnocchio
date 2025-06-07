@@ -230,6 +230,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             .bad_noisies => {
                 if (self.first == self.last) {
                     self.stage = .bad_quiet_prep;
+                    continue;
                 }
                 return self.movelist.vals.slice()[self.findBest()];
             },
