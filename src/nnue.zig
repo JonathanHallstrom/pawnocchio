@@ -469,8 +469,23 @@ pub fn nnEval(board: *const Board) i16 {
     }
 }
 
+fn pickVectorSize() usize {
+    const cpu = @import("builtin").cpu;
+    // const name = cpu.model.llvm_name orelse "";
+
+    if (std.Target.x86.featureSetHas(cpu.model.features, .avx2) and !std.Target.x86.featureSetHas(cpu.model.features, .avx512f)) {
+        return 64;
+    }
+
+    // if (std.mem.eql(u8, name, "znver4")) {
+    //     return 64;
+    // }
+
+    return 2 * (std.simd.suggestVectorLength(i16) orelse 8);
+}
+
 threadlocal var refresh_cache: root.refreshCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT) = undefined;
-pub const VEC_SIZE = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
+pub const VEC_SIZE = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, pickVectorSize());
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 8;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
