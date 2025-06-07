@@ -317,6 +317,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
         return tt_score;
     }
+    const tt_pv = is_pv or tt_entry.flags.is_pv;
 
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval: i16 = raw_static_eval;
@@ -342,6 +343,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     var best_score = static_eval;
     var best_move = Move.init();
+    var score_type: ScoreType = .upper;
     var mp = MovePicker.initQs(
         board,
         &cur.movelist,
@@ -400,6 +402,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             best_score = score;
             best_move = move;
             if (score > evaluation.matedIn(MAX_PLY)) {
+                score_type = .lower;
                 mp.skip_quiets = true;
             }
         }
@@ -417,6 +420,14 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         self.root_score = best_score;
     }
 
+    self.writeTT(
+        tt_pv,
+        tt_hash,
+        best_move,
+        best_score,
+        score_type,
+        0,
+    );
     return best_score;
 }
 
