@@ -253,7 +253,9 @@ const Accumulator = struct {
 
         //                  vvvvvvvv annotation to help zls
         const Vec = @as(type, @Vector(VEC_SIZE, i16));
-        var accs = std.mem.zeroes([4]@Vector(VEC_SIZE / 2, i32));
+
+        const ACC_COUNT = comptime std.math.gcd(4, HIDDEN_SIZE / VEC_SIZE);
+        var accs = std.mem.zeroes([ACC_COUNT]@Vector(VEC_SIZE / 2, i32));
         const ZERO: Vec = @splat(0);
         const ONE: Vec = @splat(QA);
         var i: usize = 0;
