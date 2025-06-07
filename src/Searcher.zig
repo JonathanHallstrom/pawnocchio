@@ -778,7 +778,7 @@ fn search(
         self.makeMove(stm, move);
 
         const gives_check = self.curStackEntry().board.checkers != 0;
-        if (gives_check) {
+        if (is_in_check) {
             extension += 1;
         }
         const score = blk: {
@@ -798,6 +798,7 @@ fn search(
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
+                reduction -= tunable_constants.lmr_check_mult * @intFromBool(gives_check);
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
