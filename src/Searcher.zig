@@ -1078,7 +1078,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
 
-        var window = tunable_constants.aspiration_initial;
+        var window = tunable_constants.aspiration_initial + (previous_score * previous_score >> 14);
         const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
             window = evaluation.inf_score;
