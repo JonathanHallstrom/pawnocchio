@@ -202,7 +202,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                         const num_moves: u8 = @intCast(self.movelist.vals.len);
                         const average_history: i32 = @intCast(@divTrunc(sum_history_scores, @max(1, num_moves)));
                         var margin = average_history;
-                        margin -= @intCast(@abs(average_history) / 2);
+                        margin += @intCast(@abs(average_history) / 4);
                         self.good_quiet_margin = margin;
                     },
                 }
