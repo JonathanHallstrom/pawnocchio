@@ -38,15 +38,20 @@ histories: *const root.history.HistoryTable,
 ttmove: Move,
 prev: root.history.TypedMove,
 last_bad_noisy: usize = 0,
+good_quiet_margin: i32 = 0,
+first_bad_quiet: usize = 0,
+last_bad_quiet: usize = 0,
 
 pub const Stage = enum {
     tt,
     generate_noisies,
     good_noisies,
     generate_quiets,
-    quiets,
+    good_quiets,
     bad_noisy_prep,
     bad_noisies,
+    bad_quiet_prep,
+    bad_quiets,
 };
 
 pub fn init(
@@ -180,28 +185,43 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             },
             .generate_quiets => {
                 if (self.skip_quiets) {
-                    self.stage = .quiets;
+                    self.stage = .bad_noisy_prep;
                     return null;
                 }
                 self.first = self.movelist.vals.len;
+                self.first_bad_quiet = self.movelist.vals.len;
+                self.last_bad_quiet = self.movelist.vals.len;
                 switch (self.board.stm) {
                     inline else => |stm| {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
+                        var sum_history_scores: i64 = 0;
                         for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
                             scored_move.score = self.histories.readQuiet(self.board, scored_move.move, self.prev);
+                            sum_history_scores += scored_move.score;
                         }
+                        const num_moves: u8 = @intCast(self.movelist.vals.len);
+                        const average_history: i32 = @intCast(@divTrunc(sum_history_scores, @max(1, num_moves)));
+                        var margin = average_history;
+                        margin += @intCast(@abs(average_history) / 4);
+                        self.good_quiet_margin = margin;
                     },
                 }
                 self.last = self.movelist.vals.len;
-                self.stage = .quiets;
+                self.stage = .good_quiets;
                 continue;
             },
-            .quiets => {
+            .good_quiets => {
                 if (self.first == self.last or self.skip_quiets) {
                     self.stage = .bad_noisy_prep;
                     continue;
                 }
-                return self.movelist.vals.slice()[self.findBest()];
+                const res = self.movelist.vals.slice()[self.findBest()];
+                if (res.score >= self.good_quiet_margin) {
+                    return res;
+                }
+                self.movelist.vals.slice()[self.last_bad_quiet] = res;
+                self.last_bad_quiet += 1;
+                continue;
             },
             .bad_noisy_prep => {
                 self.first = 0;
@@ -211,6 +231,19 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             },
             .bad_noisies => {
                 if (self.first == self.last) {
+                    self.stage = .bad_quiet_prep;
+                    continue;
+                }
+                return self.movelist.vals.slice()[self.findBest()];
+            },
+            .bad_quiet_prep => {
+                self.first = self.first_bad_quiet;
+                self.last = self.last_bad_quiet;
+                self.stage = .bad_quiets;
+                continue;
+            },
+            .bad_quiets => {
+                if (self.first == self.last or self.skip_quiets) {
                     return null;
                 }
                 return self.movelist.vals.slice()[self.findBest()];
