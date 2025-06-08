@@ -114,7 +114,8 @@ pub fn startSearch(settings: SearchSettings) void {
     stop_searching.store(false, .seq_cst);
     var search_params = settings.search_params;
     search_params.needs_full_reset = needs_full_reset;
-    for (0..current_num_threads) |i| {
+    for (0..current_num_threads) |r| {
+        const i = current_num_threads - 1 - r;
         thread_pool.spawn(searchWorker, .{ i, search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
     }
     needs_full_reset = false; // don't clear state unnecessarily
