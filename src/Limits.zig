@@ -29,6 +29,8 @@ hard_nodes: u64 = std.math.maxInt(u64),
 timer: std.time.Timer,
 last_aspiration_print: u64 = 0,
 node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
+root_depth: i32 = 0,
+min_depth: i32 = 0,
 
 const Limits = @This();
 
@@ -68,6 +70,9 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
         return true;
     }
     if (nodes % 1024 == 0) {
+        if (self.root_depth < self.min_depth) {
+            return false;
+        }
         if (nodes >= self.hard_nodes) {
             return true;
         }
@@ -94,6 +99,9 @@ fn computeNodeCountFactor(self: *const Limits, move: Move) u128 {
 }
 
 pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move) bool {
+    if (self.root_depth < self.min_depth) {
+        return false;
+    }
     if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
         return true;
     }

@@ -115,7 +115,16 @@ inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
 }
 
-pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: Move, score: i16, score_type: ScoreType, depth: i32) void {
+pub fn writeTT(
+    self: *Searcher,
+    tt_pv: bool,
+    hash: u64,
+    move: Move,
+    score: i16,
+    score_type: ScoreType,
+    depth: i32,
+    raw_static_eval: i16,
+) void {
     const entry = &self.tt[self.ttIndex(hash)];
 
     if (!(entry.flags.score_type == .none or
@@ -133,6 +142,7 @@ pub fn writeTT(self: *Searcher, tt_pv: bool, hash: u64, move: Move, score: i16, 
         .move = move,
         .hash = hash,
         .depth = @intCast(depth),
+        .raw_static_eval = raw_static_eval,
     };
 }
 
@@ -317,12 +327,17 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
         return tt_score;
     }
+    const tt_pv = is_pv or tt_entry.flags.is_pv;
 
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
+        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
+        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
+        if (!tt_hit) {
+            self.writeTT(tt_pv, tt_hash, Move.init(), 0, .none, 0, raw_static_eval);
+        }
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -342,6 +357,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     var best_score = static_eval;
     var best_move = Move.init();
+    var score_type: ScoreType = .upper;
     var mp = MovePicker.initQs(
         board,
         &cur.movelist,
@@ -400,6 +416,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             best_score = score;
             best_move = move;
             if (score > evaluation.matedIn(MAX_PLY)) {
+                score_type = .lower;
                 mp.skip_quiets = true;
             }
         }
@@ -417,6 +434,15 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         self.root_score = best_score;
     }
 
+    self.writeTT(
+        tt_pv,
+        tt_hash,
+        best_move,
+        best_score,
+        score_type,
+        0,
+        raw_static_eval,
+    );
     return best_score;
 }
 
@@ -564,8 +590,11 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = evaluate(stm, board, &par.board, self.curEvalState());
+        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
+        if (!tt_hit) {
+            self.writeTT(tt_pv, tt_hash, Move.init(), 0, .none, 0, raw_static_eval);
+        }
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -928,6 +957,7 @@ fn search(
             evaluation.scoreToTt(best_score, self.ply),
             score_type,
             depth,
+            raw_static_eval,
         );
 
         if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
@@ -1047,20 +1077,24 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var completed_depth: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
-
-        var window = tunable_constants.aspiration_initial;
+        self.limits.root_depth = depth;
+        const assert = std.debug.assert;
+        _ = &assert;
+        var quantized_window: i64 = tunable_constants.aspiration_initial;
         const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
-            window = evaluation.inf_score;
+            quantized_window = @as(i32, evaluation.inf_score) << 10;
         }
         comptime std.debug.assert(!evaluation.isMateScore(highest_non_mate_score));
         comptime std.debug.assert(evaluation.isMateScore(highest_non_mate_score + 1));
-        var aspiration_lower = @max(previous_score - window, -highest_non_mate_score);
-        var aspiration_upper = @min(previous_score + window, highest_non_mate_score);
+        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -highest_non_mate_score));
+        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), highest_non_mate_score));
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
-            inline else => |stm| while (true) : (window = (window * tunable_constants.aspiration_multiplier) >> 10) {
+            inline else => |stm| while (true) {
+                defer quantized_window = quantized_window * tunable_constants.aspiration_multiplier >> 10;
+
                 self.seldepth = 0;
                 score = self.search(
                     true,
@@ -1076,8 +1110,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
                 if (score >= aspiration_upper) {
-                    aspiration_lower = @max(score - window, -evaluation.inf_score);
-                    aspiration_upper = @min(score + window, evaluation.inf_score);
+                    aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
+                    aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
                         if (!quiet and !evaluation.isMateScore(score)) {
@@ -1085,8 +1119,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         }
                     }
                 } else if (score <= aspiration_lower) {
-                    aspiration_lower = @max(score - window, -evaluation.inf_score);
-                    aspiration_upper = @min(score + window, evaluation.inf_score);
+                    aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
+                    aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction >>= 1;
                     if (should_print) {
                         if (!quiet and !evaluation.isMateScore(score)) {
