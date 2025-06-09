@@ -98,7 +98,11 @@ fn computeNodeCountFactor(self: *const Limits, move: Move) u128 {
     return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
 }
 
-pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move) bool {
+fn computeEvalStabilityFactor(_: *const Limits, stab: i32) u64 {
+    return @intCast(@max(1, tunable_constants.eval_stab_base - tunable_constants.eval_stab_offs * stab));
+}
+
+pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move, eval_stability: i32) bool {
     if (self.root_depth < self.min_depth) {
         return false;
     }
@@ -112,7 +116,8 @@ pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move) bool {
     }
     const curr_time = self.timer.read();
     if (self.soft_time) |st| {
-        const adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
+        var adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
+        adjusted_limit = adjusted_limit * self.computeEvalStabilityFactor(eval_stability) >> 10;
         if (curr_time >= adjusted_limit) {
             return true;
         }

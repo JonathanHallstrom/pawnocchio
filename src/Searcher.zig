@@ -1075,6 +1075,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     self.init(params, is_main_thread);
     var previous_score: i32 = 0;
     var completed_depth: i32 = 0;
+    var eval_stability: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
@@ -1132,6 +1133,11 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 }
             },
         }
+        if (@abs(previous_score - score) < 20) {
+            eval_stability = @min(eval_stability + 1, 8);
+        } else {
+            eval_stability = 0;
+        }
         previous_score = score;
 
         completed_depth = depth;
@@ -1140,7 +1146,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.root_score, depth, .completed);
             }
         }
-        if (self.stop or self.limits.checkRoot(self.nodes, depth, self.root_move)) {
+        if (self.stop or self.limits.checkRoot(self.nodes, depth, self.root_move, eval_stability)) {
             break;
         }
     }
