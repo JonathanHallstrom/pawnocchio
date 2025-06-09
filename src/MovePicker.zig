@@ -201,7 +201,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                         }
                         const num_moves: u8 = @intCast(self.movelist.vals.len);
                         const average_history: i32 = @intCast(@divTrunc(sum_history_scores, @max(1, num_moves)));
-                        self.good_quiet_margin = average_history;
+                        self.good_quiet_margin = average_history * root.tunable_constants.bad_quiet_thresh_mult >> 10;
                     },
                 }
                 self.last = self.movelist.vals.len;
