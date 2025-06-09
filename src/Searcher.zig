@@ -1077,20 +1077,23 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var completed_depth: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
-
-        var window = tunable_constants.aspiration_initial;
+        const assert = std.debug.assert;
+        _ = &assert;
+        var quantized_window: i64 = tunable_constants.aspiration_initial;
         const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
-            window = evaluation.inf_score;
+            quantized_window = @as(i32, evaluation.inf_score) << 10;
         }
         comptime std.debug.assert(!evaluation.isMateScore(highest_non_mate_score));
         comptime std.debug.assert(evaluation.isMateScore(highest_non_mate_score + 1));
-        var aspiration_lower = @max(previous_score - window, -highest_non_mate_score);
-        var aspiration_upper = @min(previous_score + window, highest_non_mate_score);
+        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -highest_non_mate_score));
+        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), highest_non_mate_score));
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
-            inline else => |stm| while (true) : (window = (window * tunable_constants.aspiration_multiplier) >> 10) {
+            inline else => |stm| while (true) {
+                defer quantized_window = quantized_window * tunable_constants.aspiration_multiplier >> 10;
+
                 self.seldepth = 0;
                 score = self.search(
                     true,
@@ -1106,8 +1109,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
                 if (score >= aspiration_upper) {
-                    aspiration_lower = @max(score - window, -evaluation.inf_score);
-                    aspiration_upper = @min(score + window, evaluation.inf_score);
+                    aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
+                    aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
                         if (!quiet and !evaluation.isMateScore(score)) {
@@ -1115,8 +1118,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         }
                     }
                 } else if (score <= aspiration_lower) {
-                    aspiration_lower = @max(score - window, -evaluation.inf_score);
-                    aspiration_upper = @min(score + window, evaluation.inf_score);
+                    aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
+                    aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction >>= 1;
                     if (should_print) {
                         if (!quiet and !evaluation.isMateScore(score)) {
