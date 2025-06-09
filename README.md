@@ -4,9 +4,9 @@ Strongest UCI Chess engine written in zig
 
 ## Strength
 
-|         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][ccrl Blitz] |
-|:-----------------------:|:------------:|:------------------------:|:------------------------:|:------------------------:|
-| [1.7][v1.7]             |  2025-05-31  |           3530*          |           3640*          |           3450*          |
+|         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][ccrl Blitz] | [ipman r9 list][ipman 10+1] |
+|:-----------------------:|:------------:|:------------------------:|:------------------------:|:------------------------:|:---------------------------:|
+| [1.7][v1.7]             |  2025-05-31  |           3530*          |           3640*          |           3450*          |             3448            |
 | [1.6.1][v1.6.1]         |  2025-05-15  |           3500*          |           3622           |           3440*          |
 | [1.6][v1.6]             |  2025-04-27  |           3490           |           3600*          |           3433           |
 | [1.5][v1.5]             |  2025-04-18  |           3450*          |           3500           |           3350           |
@@ -69,3 +69,4 @@ Alternatively you can build the engine using the Makefile, with `make`
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
 [ccrl Blitz]:https://www.computerchess.org.uk/ccrl/404/cgi/compare_engines.cgi?family=pawnocchio
 [cegt 40/20]:http://www.cegt.net/40_40%20Rating%20List/40_40%20SingleVersion/rangliste.html
+[ipman 10+1]:https://ipmanchess.yolasite.com/r9-7945hx.php
