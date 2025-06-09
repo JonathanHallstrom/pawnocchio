@@ -117,6 +117,7 @@ const tunable_defaults = struct {
     pub const see_rook: i32 = 521;
     pub const see_queen: i32 = 994;
     pub const bad_quiet_thresh_mult: i32 = 1024;
+    pub const bad_quiet_abs_thresh_mult: i32 = 0;
     pub const nodetm_base: i32 = 1713;
     pub const nodetm_mult: i32 = 950;
     pub const soft_limit_base: i32 = 53;
@@ -196,6 +197,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_rook", .default = tunable_defaults.see_rook },
     .{ .name = "see_queen", .default = tunable_defaults.see_queen },
     .{ .name = "bad_quiet_thresh_mult", .default = tunable_defaults.bad_quiet_thresh_mult },
+    .{ .name = "bad_quiet_abs_thresh_mult", .default = tunable_defaults.bad_quiet_abs_thresh_mult },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .c_end = 80 },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
     .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base, .c_end = 2 },
@@ -275,6 +277,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_rook = tunable_defaults.see_rook;
     pub var see_queen = tunable_defaults.see_queen;
     pub var bad_quiet_thresh_mult = tunable_defaults.bad_quiet_thresh_mult;
+    pub var bad_quiet_abs_thresh_mult = tunable_defaults.bad_quiet_abs_thresh_mult;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var soft_limit_base = tunable_defaults.soft_limit_base;

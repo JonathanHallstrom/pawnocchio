@@ -200,8 +200,10 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                             sum_history_scores += scored_move.score;
                         }
                         const num_moves: u8 = @intCast(self.movelist.vals.len);
-                        const average_history: i32 = @intCast(@divTrunc(sum_history_scores, @max(1, num_moves)));
-                        self.good_quiet_margin = average_history * root.tunable_constants.bad_quiet_thresh_mult >> 10;
+                        const average_history = @divTrunc(sum_history_scores, @max(1, num_moves));
+                        const abs_history: i64 = @intCast(@abs(average_history));
+                        self.good_quiet_margin = @intCast(average_history * root.tunable_constants.bad_quiet_thresh_mult +
+                            abs_history * root.tunable_constants.bad_quiet_abs_thresh_mult >> 10);
                     },
                 }
                 self.last = self.movelist.vals.len;
