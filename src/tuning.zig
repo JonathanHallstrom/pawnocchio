@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = true;
+pub const do_tuning = false;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -116,8 +116,8 @@ const tunable_defaults = struct {
     pub const see_bishop: i32 = 346;
     pub const see_rook: i32 = 521;
     pub const see_queen: i32 = 994;
-    pub const bad_quiet_thresh_mult: i32 = 1032;
-    pub const bad_quiet_abs_thresh_mult: i32 = 17;
+    pub const bad_quiet_thresh_mult: i32 = 977;
+    pub const bad_quiet_abs_thresh_mult: i32 = 98;
     pub const nodetm_base: i32 = 1713;
     pub const nodetm_mult: i32 = 950;
     pub const soft_limit_base: i32 = 53;
