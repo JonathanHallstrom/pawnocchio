@@ -102,7 +102,11 @@ fn computeEvalStabilityFactor(_: *const Limits, stab: i32) u64 {
     return @intCast(@max(1, tunable_constants.eval_stab_base - tunable_constants.eval_stab_offs * stab));
 }
 
-pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move, eval_stability: i32) bool {
+fn computeMoveStabilityFactor(_: *const Limits, stab: i32) u64 {
+    return @intCast(@max(1, tunable_constants.move_stab_base - tunable_constants.move_stab_offs * stab));
+}
+
+pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move, eval_stability: i32, move_stability: i32) bool {
     if (self.root_depth < self.min_depth) {
         return false;
     }
@@ -118,6 +122,7 @@ pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move, eval_stabili
     if (self.soft_time) |st| {
         var adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
         adjusted_limit = adjusted_limit * self.computeEvalStabilityFactor(eval_stability) >> 10;
+        adjusted_limit = adjusted_limit * self.computeMoveStabilityFactor(move_stability) >> 10;
         if (curr_time >= adjusted_limit) {
             return true;
         }

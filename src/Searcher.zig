@@ -1074,8 +1074,10 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
     self.init(params, is_main_thread);
     var previous_score: i32 = 0;
+    var previous_move: Move = Move.init();
     var completed_depth: i32 = 0;
     var eval_stability: i32 = 0;
+    var move_stability: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
@@ -1138,7 +1140,13 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         } else {
             eval_stability = 0;
         }
+        if (previous_move == self.root_move) {
+            move_stability = @min(move_stability + 1, 8);
+        } else {
+            move_stability = 0;
+        }
         previous_score = score;
+        previous_move = self.root_move;
 
         completed_depth = depth;
         if (is_main_thread) {
@@ -1146,7 +1154,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.root_score, depth, .completed);
             }
         }
-        if (self.stop or self.limits.checkRoot(self.nodes, depth, self.root_move, eval_stability)) {
+        if (self.stop or self.limits.checkRoot(self.nodes, depth, self.root_move, eval_stability, move_stability)) {
             break;
         }
     }

@@ -120,6 +120,8 @@ const tunable_defaults = struct {
     pub const nodetm_mult: i32 = 950;
     pub const eval_stab_base: i32 = 1200;
     pub const eval_stab_offs: i32 = 50;
+    pub const move_stab_base: i32 = 1200;
+    pub const move_stab_offs: i32 = 50;
     pub const soft_limit_base: i32 = 53;
     pub const soft_limit_incr: i32 = 572;
     pub const hard_limit_phase_mult: i32 = 128;
@@ -200,6 +202,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
     .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .c_end = 60 },
     .{ .name = "eval_stab_offs", .default = tunable_defaults.eval_stab_offs, .c_end = 2 },
+    .{ .name = "move_stab_base", .default = tunable_defaults.move_stab_base, .c_end = 60 },
+    .{ .name = "move_stab_offs", .default = tunable_defaults.move_stab_offs, .c_end = 2 },
     .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base, .c_end = 2 },
     .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr, .c_end = 30 },
     .{ .name = "hard_limit_phase_mult", .default = tunable_defaults.hard_limit_phase_mult, .c_end = 6 },
@@ -280,6 +284,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var eval_stab_base = tunable_defaults.eval_stab_base;
     pub var eval_stab_offs = tunable_defaults.eval_stab_offs;
+    pub var move_stab_base = tunable_defaults.move_stab_base;
+    pub var move_stab_offs = tunable_defaults.move_stab_offs;
     pub var soft_limit_base = tunable_defaults.soft_limit_base;
     pub var soft_limit_incr = tunable_defaults.soft_limit_incr;
     pub var hard_limit_phase_mult = tunable_defaults.hard_limit_phase_mult;
