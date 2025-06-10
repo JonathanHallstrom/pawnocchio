@@ -81,8 +81,12 @@ const tunable_defaults = struct {
     pub const lmr_noisy_log_mult: i32 = 230;
     pub const lmr_quiet_depth_mult: i32 = 847;
     pub const lmr_noisy_depth_mult: i32 = 909;
+    pub const lmr_quiet_depth_offs: i32 = 0;
+    pub const lmr_noisy_depth_offs: i32 = 0;
     pub const lmr_quiet_legal_mult: i32 = 938;
     pub const lmr_noisy_legal_mult: i32 = 901;
+    pub const lmr_quiet_legal_offs: i32 = 0;
+    pub const lmr_noisy_legal_offs: i32 = 0;
     pub const lmr_pv_mult: i32 = 1319;
     pub const lmr_cutnode_mult: i32 = 1019;
     pub const lmr_improving_mult: i32 = 1022;
@@ -163,8 +167,12 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_noisy_log_mult", .default = tunable_defaults.lmr_noisy_log_mult },
     .{ .name = "lmr_quiet_depth_mult", .default = tunable_defaults.lmr_quiet_depth_mult },
     .{ .name = "lmr_noisy_depth_mult", .default = tunable_defaults.lmr_noisy_depth_mult },
+    .{ .name = "lmr_quiet_depth_offs", .default = tunable_defaults.lmr_quiet_depth_offs, .min = -1024, .max = 1024, .c_end = 128 },
+    .{ .name = "lmr_noisy_depth_offs", .default = tunable_defaults.lmr_noisy_depth_offs, .min = -1024, .max = 1024, .c_end = 128 },
     .{ .name = "lmr_quiet_legal_mult", .default = tunable_defaults.lmr_quiet_legal_mult },
     .{ .name = "lmr_noisy_legal_mult", .default = tunable_defaults.lmr_noisy_legal_mult },
+    .{ .name = "lmr_quiet_legal_offs", .default = tunable_defaults.lmr_quiet_legal_offs, .min = -1024, .max = 1024, .c_end = 128 },
+    .{ .name = "lmr_noisy_legal_offs", .default = tunable_defaults.lmr_noisy_legal_offs, .min = -1024, .max = 1024, .c_end = 128 },
     .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult },
     .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult },
     .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult },
@@ -245,8 +253,12 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_noisy_log_mult = tunable_defaults.lmr_noisy_log_mult;
     pub var lmr_quiet_depth_mult = tunable_defaults.lmr_quiet_depth_mult;
     pub var lmr_noisy_depth_mult = tunable_defaults.lmr_noisy_depth_mult;
+    pub var lmr_quiet_depth_offs = tunable_defaults.lmr_quiet_depth_offs;
+    pub var lmr_noisy_depth_offs = tunable_defaults.lmr_noisy_depth_offs;
     pub var lmr_quiet_legal_mult = tunable_defaults.lmr_quiet_legal_mult;
     pub var lmr_noisy_legal_mult = tunable_defaults.lmr_noisy_legal_mult;
+    pub var lmr_quiet_legal_offs = tunable_defaults.lmr_quiet_legal_offs;
+    pub var lmr_noisy_legal_offs = tunable_defaults.lmr_noisy_legal_offs;
     pub var lmr_pv_mult = tunable_defaults.lmr_pv_mult;
     pub var lmr_cutnode_mult = tunable_defaults.lmr_cutnode_mult;
     pub var lmr_improving_mult = tunable_defaults.lmr_improving_mult;
