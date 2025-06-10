@@ -130,7 +130,6 @@ pub fn writeTT(
     if (!(entry.flags.score_type == .none or
         score_type == .exact or
         hash != entry.hash or
-        self.ttage != entry.flags.age or
         depth + 4 > entry.depth))
     {
         return;
