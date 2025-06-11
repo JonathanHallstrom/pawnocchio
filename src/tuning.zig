@@ -136,8 +136,9 @@ const tunable_defaults = struct {
     pub const soft_limit_incr: i32 = 572;
     pub const hard_limit_phase_mult: i32 = 128;
     pub const hard_limit_base: i32 = 190;
-    pub const singular_beta_mult: i32 = 16;
-    pub const singular_depth_mult: i32 = 19;
+    pub const singular_beta_mult: i32 = 512;
+    pub const singular_depth_mult: i32 = 608;
+    pub const singular_depth_offs: i32 = 608;
     pub const singular_dext_margin: i32 = 13;
 };
 
@@ -230,6 +231,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base, .c_end = 10 },
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult },
+    .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs },
     .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin },
 };
 
@@ -322,6 +324,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var hard_limit_base = tunable_defaults.hard_limit_base;
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
+    pub var singular_depth_offs = tunable_defaults.singular_depth_offs;
     pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
 } else tunable_defaults;
 
