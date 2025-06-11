@@ -573,7 +573,11 @@ fn search(
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
-                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
+                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type) and
+                    (tt_entry.flags.score_type == .exact or
+                        tt_entry.flags.score_type == .lower and (cutnode or depth > 5) or
+                        tt_entry.flags.score_type == .upper and (!cutnode or depth > 5)))
+                {
                     return tt_score;
                 }
             }
