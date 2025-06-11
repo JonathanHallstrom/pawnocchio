@@ -268,8 +268,10 @@ pub const HistoryTable = struct {
         comptime var divisor = 1;
         const fifty_move_rule_scaled = @as(i64, static_eval) * (200 - board.halfmove);
         divisor *= 200;
-        const material_scaled = fifty_move_rule_scaled * (@as(i64, 224) + board.phase());
-        divisor *= 256;
+        @setEvalBranchQuota(1 << 30);
+        const base_amount = comptime Board.startpos().nonPawnSEEMaterial();
+        const material_scaled = fifty_move_rule_scaled * (@as(i64, 16384 - base_amount) + board.nonPawnSEEMaterial());
+        divisor *= 16384;
 
         const scaled = @divTrunc(material_scaled, divisor);
 

@@ -124,22 +124,30 @@ pub inline fn startingRankFor(self: Board, col: Colour) Rank {
     return self.castling_rights.startingRankFor(col);
 }
 
-pub fn phase(self: Board) u8 {
-    const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
-    var res: u8 = 0;
+pub fn sumPieces(self: Board, values: anytype) std.meta.Child(@TypeOf(values)) {
+    var res: std.meta.Child(@TypeOf(values)) = 0;
     for (PieceType.all) |pt| {
-        res += gamephaseInc[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
+        res += values[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
     }
     return res;
 }
 
+pub fn phase(self: Board) u8 {
+    return self.sumPieces([_]u8{ 0, 1, 1, 3, 6, 0 });
+}
+
 pub fn classicalMaterial(self: Board) u8 {
-    const value: [6]u8 = .{ 1, 3, 3, 5, 9, 0 };
-    var res: u8 = 0;
-    for (PieceType.all) |pt| {
-        res += value[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
-    }
-    return res;
+    return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
+}
+
+pub fn SEEMaterial(self: Board) i32 {
+    const value = root.SEE.value;
+    return self.sumPieces([_]i32{ value(.pawn), value(.knight), value(.bishop), value(.rook), value(.queen), 0 });
+}
+
+pub fn nonPawnSEEMaterial(self: Board) i32 {
+    const value = root.SEE.value;
+    return self.sumPieces([_]i32{ 0, value(.knight), value(.bishop), value(.rook), value(.queen), 0 });
 }
 
 pub fn parseFen(fen: []const u8, permissive: bool) !Board {
