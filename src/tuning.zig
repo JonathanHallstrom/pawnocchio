@@ -121,6 +121,11 @@ const tunable_defaults = struct {
     pub const see_bishop: i32 = 346;
     pub const see_rook: i32 = 521;
     pub const see_queen: i32 = 994;
+    pub const material_scaling_pawn: i32 = 0;
+    pub const material_scaling_knight: i32 = 308;
+    pub const material_scaling_bishop: i32 = 346;
+    pub const material_scaling_rook: i32 = 521;
+    pub const material_scaling_queen: i32 = 994;
     pub const nodetm_base: i32 = 1713;
     pub const nodetm_mult: i32 = 950;
     pub const eval_stab_base: i32 = 1200;
@@ -208,6 +213,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_bishop", .default = tunable_defaults.see_bishop },
     .{ .name = "see_rook", .default = tunable_defaults.see_rook },
     .{ .name = "see_queen", .default = tunable_defaults.see_queen },
+    .{ .name = "material_scaling_pawn", .default = tunable_defaults.material_scaling_pawn },
+    .{ .name = "material_scaling_knight", .default = tunable_defaults.material_scaling_knight },
+    .{ .name = "material_scaling_bishop", .default = tunable_defaults.material_scaling_bishop },
+    .{ .name = "material_scaling_rook", .default = tunable_defaults.material_scaling_rook },
+    .{ .name = "material_scaling_queen", .default = tunable_defaults.material_scaling_queen },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .c_end = 80 },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
     .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .c_end = 60 },
@@ -295,6 +305,11 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_bishop = tunable_defaults.see_bishop;
     pub var see_rook = tunable_defaults.see_rook;
     pub var see_queen = tunable_defaults.see_queen;
+    pub var material_scaling_pawn = tunable_defaults.material_scaling_pawn;
+    pub var material_scaling_knight = tunable_defaults.material_scaling_knight;
+    pub var material_scaling_bishop = tunable_defaults.material_scaling_bishop;
+    pub var material_scaling_rook = tunable_defaults.material_scaling_rook;
+    pub var material_scaling_queen = tunable_defaults.material_scaling_queen;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var eval_stab_base = tunable_defaults.eval_stab_base;

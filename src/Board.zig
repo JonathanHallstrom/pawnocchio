@@ -140,16 +140,6 @@ pub fn classicalMaterial(self: Board) u8 {
     return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
 
-pub fn SEEMaterial(self: Board) i32 {
-    const value = root.SEE.value;
-    return self.sumPieces([_]i32{ value(.pawn), value(.knight), value(.bishop), value(.rook), value(.queen), 0 });
-}
-
-pub fn nonPawnSEEMaterial(self: Board) i32 {
-    const value = root.SEE.value;
-    return self.sumPieces([_]i32{ 0, value(.knight), value(.bishop), value(.rook), value(.queen), 0 });
-}
-
 pub fn parseFen(fen: []const u8, permissive: bool) !Board {
     if (std.ascii.eqlIgnoreCase(fen, "startpos")) return startpos();
     if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;
