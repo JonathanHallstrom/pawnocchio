@@ -112,7 +112,8 @@ const tunable_defaults = struct {
     pub const corrhist_countermove_weight: i32 = 1105;
     pub const corrhist_major_weight: i32 = 1087;
     pub const corrhist_minor_weight: i32 = 980;
-    pub const lmp_legal_base: i32 = -3396;
+    pub const lmp_standard_base: i32 = -3396;
+    pub const lmp_improving_base: i32 = -3396;
     pub const lmp_standard_mult: i32 = 989;
     pub const lmp_improving_mult: i32 = 969;
     pub const see_pawn: i32 = 93;
@@ -198,7 +199,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "corrhist_countermove_weight", .default = tunable_defaults.corrhist_countermove_weight },
     .{ .name = "corrhist_major_weight", .default = tunable_defaults.corrhist_major_weight },
     .{ .name = "corrhist_minor_weight", .default = tunable_defaults.corrhist_minor_weight },
-    .{ .name = "lmp_legal_base", .default = tunable_defaults.lmp_legal_base },
+    .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base },
+    .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base },
     .{ .name = "lmp_standard_mult", .default = tunable_defaults.lmp_standard_mult },
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult },
     .{ .name = "see_pawn", .default = tunable_defaults.see_pawn },
@@ -284,7 +286,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var corrhist_countermove_weight = tunable_defaults.corrhist_countermove_weight;
     pub var corrhist_major_weight = tunable_defaults.corrhist_major_weight;
     pub var corrhist_minor_weight = tunable_defaults.corrhist_minor_weight;
-    pub var lmp_legal_base = tunable_defaults.lmp_legal_base;
+    pub var lmp_standard_base = tunable_defaults.lmp_standard_base;
+    pub var lmp_improving_base = tunable_defaults.lmp_improving_base;
     pub var lmp_standard_mult = tunable_defaults.lmp_standard_mult;
     pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
     pub var see_pawn = tunable_defaults.see_pawn;

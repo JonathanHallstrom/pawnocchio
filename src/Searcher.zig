@@ -601,7 +601,12 @@ fn search(
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
-        if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.flags.score_type)) {
+        if (tt_hit and evaluation.checkTTBound(
+            tt_score,
+            corrected_static_eval,
+            corrected_static_eval,
+            tt_entry.flags.score_type,
+        )) {
             cur.static_eval = tt_score;
         } else {
             cur.static_eval = corrected_static_eval;
@@ -724,8 +729,9 @@ fn search(
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
+                const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 const granularity: i32 = 978;
-                if (num_legal * granularity + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
+                if (num_legal * granularity + lmp_base >= depth * depth * lmp_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
