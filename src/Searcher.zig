@@ -394,8 +394,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
-        if (best_score > evaluation.matedIn(MAX_PLY) and !is_recapture) {
-            if (!is_in_check and futility <= alpha and !SEE.scoreMove(board, move, 1)) {
+        if (best_score > evaluation.matedIn(MAX_PLY)) {
+            if (!is_in_check and futility <= alpha and
+                !SEE.scoreMove(board, move, 1) and
+                !is_recapture)
+            {
                 best_score = @intCast(@max(best_score, futility));
                 continue;
             }
