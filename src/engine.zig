@@ -122,7 +122,9 @@ pub fn startSearch(settings: SearchSettings) void {
 
 fn datagenWorker(
     i: usize,
-    random_move_count: u8,
+    random_move_count_low: u8,
+    random_move_count_high: u8,
+    min_depth: i32,
     node_count: u64,
     writer: anytype,
     writer_mutex: *std.Thread.Mutex,
@@ -150,6 +152,7 @@ fn datagenWorker(
         var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
         var hashes = std.ArrayList(u64).init(fba.allocator());
         defer hashes.deinit();
+        const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
         random_move_loop: for (0..random_move_count) |_| {
             switch (board.stm) {
                 inline else => |stm| {
@@ -175,6 +178,7 @@ fn datagenWorker(
         game_loop: for (0..2000) |move_idx| {
             var limits = root.Limits.initFixedTime(std.time.ns_per_s);
             limits.soft_nodes = node_count;
+            limits.min_depth = min_depth;
             searchers[i].startSearch(
                 root.Searcher.Params{
                     .board = board,
@@ -261,9 +265,9 @@ fn datagenWorker(
     }
 }
 
-pub fn datagen(num_nodes: u64) !void {
+pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     var timer = try std.time.Timer.start();
-    var out_file = try std.fs.cwd().createFile("outfile.vf", .{});
+    var out_file = try std.fs.cwd().createFile(filename, .{});
     var buf_writer = std.io.bufferedWriter(out_file.writer());
     const writer = buf_writer.writer();
     var writer_mutex = std.Thread.Mutex{};
@@ -271,7 +275,7 @@ pub fn datagen(num_nodes: u64) !void {
     for (0..current_num_threads) |i| {
         searchers[i].tt = try std.heap.page_allocator.alloc(root.TTEntry, (16 << 20) / @sizeOf(root.TTEntry));
         // datagenWorker(0, 8, num_nodes, out_file.writer(), &writer_mutex, &total_position_count);
-        try thread_pool.spawn(datagenWorker, .{ i, 8, num_nodes, &writer, &writer_mutex, &total_position_count });
+        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 9, num_nodes, &writer, &writer_mutex, &total_position_count });
     }
 
     var prev_positions: usize = 0;

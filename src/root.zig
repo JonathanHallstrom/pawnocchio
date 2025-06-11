@@ -39,6 +39,7 @@ pub const tunable_constants = tuning.tunable_constants;
 pub const SEE = @import("SEE.zig");
 pub const refreshCache = @import("refresh_cache.zig").refreshCache;
 pub const viriformat = @import("viriformat.zig");
+pub const wdl = @import("wdl.zig");
 
 pub const is_0_14_0 = @import("builtin").zig_version.minor >= 14;
 
@@ -385,7 +386,12 @@ pub const ScoreType = enum(u2) {
 pub const TTFlags = packed struct {
     score_type: ScoreType = .none,
     is_pv: bool = false,
+    age: u5 = 0,
 };
+
+comptime {
+    assert(@sizeOf(TTFlags) == 1);
+}
 
 pub const TTEntry = struct {
     hash: u64 = 0,
@@ -393,6 +399,7 @@ pub const TTEntry = struct {
     flags: TTFlags = .{},
     move: Move = Move.init(),
     depth: u8 = 0,
+    raw_static_eval: i16 = 0,
 };
 
 var stdout: std.fs.File = undefined;

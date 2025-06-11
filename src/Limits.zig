@@ -29,15 +29,19 @@ hard_nodes: u64 = std.math.maxInt(u64),
 timer: std.time.Timer,
 last_aspiration_print: u64 = 0,
 node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
+root_depth: i32 = 0,
+min_depth: i32 = 0,
 
 const Limits = @This();
 
-pub fn initStandard(remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
+pub fn initStandard(board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
     var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
     const start_time = t.read();
+    const hard_time = (remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.hard_limit_base + (tunable_constants.hard_limit_phase_mult * (32 - board.phase()) >> 6))) >> 10;
+    const soft_time = (remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.soft_limit_base)) + increment_ns * @as(u128, @intCast(tunable_constants.soft_limit_incr)) >> 10;
     return Limits{
-        .hard_time = @intCast(start_time + ((remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.hard_limit_base)) >> 10)),
-        .soft_time = @intCast(start_time + ((remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.soft_limit_base)) >> 10) + (increment_ns * @as(u128, @intCast(tunable_constants.soft_limit_incr)) >> 10)),
+        .hard_time = @intCast(start_time + hard_time),
+        .soft_time = @intCast(start_time + soft_time),
         .timer = t,
     };
 }
@@ -66,6 +70,9 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
         return true;
     }
     if (nodes % 1024 == 0) {
+        if (self.root_depth < self.min_depth) {
+            return false;
+        }
         if (nodes >= self.hard_nodes) {
             return true;
         }
@@ -91,7 +98,18 @@ fn computeNodeCountFactor(self: *const Limits, move: Move) u128 {
     return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
 }
 
-pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move) bool {
+fn computeEvalStabilityFactor(_: *const Limits, stab: i32) u64 {
+    return @intCast(@max(1, tunable_constants.eval_stab_base - tunable_constants.eval_stab_offs * stab));
+}
+
+fn computeMoveStabilityFactor(_: *const Limits, stab: i32) u64 {
+    return @intCast(@max(1, tunable_constants.move_stab_base - tunable_constants.move_stab_offs * stab));
+}
+
+pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move, eval_stability: i32, move_stability: i32) bool {
+    if (self.root_depth < self.min_depth) {
+        return false;
+    }
     if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
         return true;
     }
@@ -102,7 +120,9 @@ pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move) bool {
     }
     const curr_time = self.timer.read();
     if (self.soft_time) |st| {
-        const adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
+        var adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
+        adjusted_limit = adjusted_limit * self.computeEvalStabilityFactor(eval_stability) >> 10;
+        adjusted_limit = adjusted_limit * self.computeMoveStabilityFactor(move_stability) >> 10;
         if (curr_time >= adjusted_limit) {
             return true;
         }

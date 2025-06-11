@@ -26,8 +26,6 @@ const Board = root.Board;
 const Move = root.Move;
 const Colour = root.Colour;
 
-const SEE_weight = [_]i16{ 93, 308, 346, 521, 994, 0 };
-
 inline fn getAttacks(comptime stm: Colour, comptime tp: PieceType, sq: Square, occ: u64) u64 {
     return switch (tp) {
         .pawn => Bitboard.pawnAttacks(sq, stm),
@@ -40,7 +38,15 @@ inline fn getAttacks(comptime stm: Colour, comptime tp: PieceType, sq: Square, o
 }
 
 pub fn value(pt: PieceType) i16 {
-    return SEE_weight[pt.toInt()];
+    const SEE_weight = [_]i16{
+        @intCast(root.tunable_constants.see_pawn),
+        @intCast(root.tunable_constants.see_knight),
+        @intCast(root.tunable_constants.see_bishop),
+        @intCast(root.tunable_constants.see_rook),
+        @intCast(root.tunable_constants.see_queen),
+        0,
+    };
+    return (if (root.tuning.do_tuning) SEE_weight else comptime SEE_weight)[pt.toInt()];
 }
 
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32) bool {

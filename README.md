@@ -4,16 +4,18 @@ Strongest UCI Chess engine written in zig
 
 ## Strength
 
-|         Version         | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] |
-|:-----------------------:|:------------------------:|:-------------------------:
-| [1.6][v1.6]             |           3500*          |           3600*          |
-| [1.5][v1.5]             |           3450*          |           3500           |
-| [1.4.1][v1.4.1]         |           3425           |           3450*          |
-| [1.3.1415][v1.3.1415]   |           3365           |           3401           |
-| [1.3][v1.3]             |           3201           |           3230*          |
-| [1.2][v1.2]             |           3120           |           3150*          |
-| [1.1][v1.1]             |           2432           |           2450*          |
-| [1.0][v1.0]             |           2100*          |           2150*          |
+|         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][ccrl Blitz] |
+|:-----------------------:|:------------:|:------------------------:|:------------------------:|:------------------------:|
+| [1.7][v1.7]             |  2025-05-31  |           3530*          |           3640*          |           3450*          |
+| [1.6.1][v1.6.1]         |  2025-05-15  |           3500*          |           3622           |           3440*          |
+| [1.6][v1.6]             |  2025-04-27  |           3490           |           3600*          |           3433           |
+| [1.5][v1.5]             |  2025-04-18  |           3450*          |           3500           |           3350           |
+| [1.4.1][v1.4.1]         |  2025-04-05  |           3425           |           3450*          |           3300*          |
+| [1.3.1415][v1.3.1415]   |  2025-03-14  |           3365           |           3401           |           3250*          |
+| [1.3][v1.3]             |  2025-03-07  |           3201           |           3230*          |           3100*          |
+| [1.2][v1.2]             |  2025-02-21  |           3120           |           3150*          |           3000*          |
+| [1.1][v1.1]             |  2025-01-24  |           2432           |           2450*          |           2400*          |
+| [1.0][v1.0]             |  2025-01-20  |           2100*          |           2150*          |           2100*          |
 
 *estimated
 
@@ -47,8 +49,10 @@ The evaluation is done using a neural net trained entirely on self play games fr
 The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 
 ## Build instructions
-1. Install zig (0.14.0)
-2. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
+1. Get the network with `git submodule update --init --depth 1`
+2. Install zig (0.14.0)
+3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
+Alternatively you can build the engine using the Makefile, with `make`
 
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1
@@ -59,6 +63,9 @@ The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 [v1.4.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.4.1
 [v1.5]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.5
 [v1.6]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.6
+[v1.6.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.6.1
+[v1.7]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7
 
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
 [ccrl Blitz]:https://www.computerchess.org.uk/ccrl/404/cgi/compare_engines.cgi?family=pawnocchio
+[cegt 40/20]:http://www.cegt.net/40_40%20Rating%20List/40_40%20SingleVersion/rangliste.html
