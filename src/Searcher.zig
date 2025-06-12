@@ -778,8 +778,8 @@ fn search(
             tt_entry.depth + 3 >= depth and
             tt_entry.flags.score_type != .upper)
         {
-            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 5));
-            const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
+            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 10));
+            const s_depth = depth * tunable_constants.singular_depth_mult - tunable_constants.singular_depth_offs >> 10;
 
             cur.excluded = move;
             const s_score = self.search(
@@ -841,6 +841,8 @@ fn search(
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
+                reduction -= @as(i32, 512) * @intFromBool(tt_pv);
+
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
