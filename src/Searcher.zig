@@ -367,7 +367,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     );
     defer mp.deinit();
 
-    const futility = static_eval + tunable_constants.qs_futility_margin;
+    const futility_value = static_eval + tunable_constants.qs_futility_margin;
 
     const previous_move_destination = cur.move.move.to();
 
@@ -395,11 +395,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
-            if (!is_in_check and futility <= alpha and
+            if (!is_in_check and futility_value <= alpha and
                 !SEE.scoreMove(board, move, 1) and
                 !is_recapture)
             {
-                best_score = @intCast(@max(best_score, futility));
+                best_score = @intCast(@max(best_score, futility_value));
                 continue;
             }
 
@@ -754,6 +754,16 @@ fn search(
                 {
                     mp.skip_quiets = true;
                     continue;
+                }
+            } else {
+                const bnfp_futility_value = static_eval + 200 + depth * 100;
+                if (mp.stage == .bad_noisies and
+                    !is_in_check and
+                    depth <= 6 and
+                    @abs(alpha) < 2000 and
+                    bnfp_futility_value <= alpha)
+                {
+                    break;
                 }
             }
 
