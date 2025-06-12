@@ -772,7 +772,7 @@ fn search(
 
         var extension: i32 = 0;
         if (!is_root and
-            depth >= 7 and
+            depth >= 6 and
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + 3 >= depth and
