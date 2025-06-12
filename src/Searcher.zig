@@ -806,6 +806,12 @@ fn search(
             } else if (cutnode) {
                 extension -= 2;
             }
+        } else if (depth < 6 and
+            !is_in_check and
+            static_eval <= alpha - 30 and
+            tt_entry.flags.score_type == .lower)
+        {
+            extension += 1;
         }
         num_legal += 1;
 
