@@ -756,10 +756,10 @@ fn search(
                     continue;
                 }
             } else {
-                const bnfp_futility_value = static_eval + depth * 150;
+                const bnfp_futility_value = static_eval + 100 + depth * 150;
                 if (mp.stage == .bad_noisies and
                     !is_in_check and
-                    lmr_depth <= 6 and
+                    depth <= 6 and
                     @abs(alpha) < 2000 and
                     bnfp_futility_value <= alpha)
                 {
