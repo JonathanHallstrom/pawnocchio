@@ -102,7 +102,7 @@ root_move: Move,
 root_score: i16,
 limits: Limits,
 ply: u8,
-stop: bool,
+stop: std.atomic.Value(bool),
 histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTEntry,
@@ -282,8 +282,8 @@ fn isRepetition(self: *Searcher) bool {
 fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
     var alpha = alpha_;
     self.nodes += 1;
-    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
-        self.stop = true;
+    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+        self.stop.store(true, .release);
         return 0;
     }
     const par = self.prevStackEntry();
@@ -376,7 +376,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         self.makeMove(stm, move);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
-        if (self.stop) {
+        if (self.stop.load(.acquire)) {
             return 0;
         }
 
@@ -454,8 +454,8 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
-        self.stop = true;
+    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+        self.stop.store(true, .release);
         return 0;
     }
     if (depth <= 0) {
@@ -793,7 +793,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
-                if (self.stop) {
+                if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
 
@@ -807,7 +807,7 @@ fn search(
                         new_depth,
                         !cutnode,
                     );
-                    if (self.stop) {
+                    if (self.stop.load(.acquire)) {
                         break :blk 0;
                     }
                 }
@@ -821,7 +821,7 @@ fn search(
                     new_depth,
                     !cutnode,
                 );
-                if (self.stop) {
+                if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
             }
@@ -840,7 +840,7 @@ fn search(
             break :blk s;
         };
         self.unmakeMove(stm, move);
-        if (self.stop) {
+        if (self.stop.load(.acquire)) {
             return 0;
         }
 
@@ -990,7 +990,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.limits = params.limits;
     self.is_main_thread = is_main_thread;
     self.ply = 0;
-    self.stop = false;
+    self.stop.store(false, .release);
     self.nodes = 0;
     const board = params.board;
     self.previous_hashes.len = 0;
@@ -1041,7 +1041,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
-                if (self.stop) {
+                if (self.stop.load(.acquire)) {
                     break;
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
@@ -1076,7 +1076,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.root_score, depth, .completed);
             }
         }
-        if (self.stop or self.limits.checkRoot(self.nodes, depth, self.root_move)) {
+        if (self.stop.load(.acquire) or self.limits.checkRoot(self.nodes, depth, self.root_move)) {
             break;
         }
     }
