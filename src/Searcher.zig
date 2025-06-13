@@ -163,9 +163,10 @@ fn rawEval(self: *Searcher, comptime stm: Colour, board: *const Board) i16 {
     }
 }
 
-pub fn prefetchTT(self: *const Searcher, hash: u64) void {
-    @prefetch(&self.tt[self.ttIndex(hash)], .{});
-    @prefetch(&self.eval_cache[hash % self.eval_cache.len], .{});
+pub fn prefetch(self: *const Searcher, move: Move) void {
+    const board = &self.curStackEntry().board;
+    @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
+    @prefetch(&self.eval_cache[board.roughHashAfter(move, false) % self.eval_cache.len], .{});
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
@@ -207,7 +208,7 @@ fn updatePv(self: *Searcher, move: Move) void {
     }
 }
 
-fn curStackEntry(self: *Searcher) *StackEntry {
+fn curStackEntry(self: anytype) root.inheritConstness(@TypeOf(self), *StackEntry) {
     return &self.searchStackRoot()[self.ply];
 }
 
@@ -223,7 +224,7 @@ fn curEvalState(self: *Searcher) *evaluation.State {
     return &self.evalStateRoot()[self.ply];
 }
 
-fn searchStackRoot(self: *Searcher) [*]StackEntry {
+fn searchStackRoot(self: anytype) root.inheritConstness(@TypeOf(self), [*]StackEntry) {
     return (&self.search_stack)[STACK_PADDING..];
 }
 
@@ -386,6 +387,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
+        self.prefetch(move);
         if (!board.isLegal(stm, move)) {
             continue;
         }
@@ -668,7 +670,7 @@ fn search(
             non_pk != 0 and
             !cur.prev.move.isNull())
         {
-            self.prefetchTT(board.hash ^ root.zobrist.turn());
+            self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale);
             nmp_reduction >>= 13;
@@ -711,7 +713,7 @@ fn search(
         if (move == cur.excluded) {
             continue;
         }
-        self.prefetchTT(board.roughHashAfter(move));
+        self.prefetch(move);
         if (!board.isLegal(stm, move)) {
             continue;
         }

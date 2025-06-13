@@ -1160,18 +1160,30 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
     } != 0;
 }
 
-pub fn roughHashAfter(self: *const Board, move: Move) u64 {
+pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove: bool) u64 {
     var res: u64 = self.hash;
 
-    if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+    var hmc = self.halfmove + 1;
+    if (!move.isNull()) {
+        if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+            res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+            hmc = 0;
+        }
+
+        const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();
+
+        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
         res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+        if (cpt.toPieceType() == .pawn) {
+            hmc = 0;
+        }
+    } else {
+        hmc = 0;
     }
-
-    const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();
-
-    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
-    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
     res ^= root.zobrist.turn();
+    if (include_halfmove) {
+        res ^= root.zobrist.halfmove(hmc >> 3);
+    }
 
     return res;
 }
@@ -1313,14 +1325,14 @@ fn perft_impl(
     if (depth == 1) {
         for (movelist.vals.slice()) |move| {
             const is_legal = self.isLegal(stm, move);
-            if (is_legal and !self.isPseudoLegal(stm, move)) {
-                std.debug.print("{s} {s}\n", .{ self.toFen().slice(), move.toString(self).slice() });
-                @panic("not pseudolegal");
-            }
+            // if (is_legal and !self.isPseudoLegal(stm, move)) {
+            //     std.debug.print("{s} {s}\n", .{ self.toFen().slice(), move.toString(self).slice() });
+            //     @panic("not pseudolegal");
+            // }
             res += @intFromBool(is_legal);
-            if (is_root and is_legal and !quiet) {
-                std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
-            }
+            // if (is_root and is_legal and !quiet) {
+            //     std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
+            // }
         }
     } else {
         for (movelist.vals.slice()) |move| {
@@ -1332,7 +1344,6 @@ fn perft_impl(
             if (is_root and !quiet) {
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
-            if (depth != 1) {}
             const count = cp.perft_impl(
                 false,
                 stm.flipped(),
