@@ -129,7 +129,7 @@ pub fn writeTT(
 
     if (!(entry.flags.score_type == .none or
         score_type == .exact or
-        hash != entry.hash or
+        !entry.hashEql(hash) or
         self.ttage != entry.flags.age or
         depth + 4 > entry.depth))
     {
@@ -140,7 +140,7 @@ pub fn writeTT(
         .score = score,
         .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = self.ttage },
         .move = move,
-        .hash = hash,
+        .hash = TTEntry.compress(hash),
         .depth = @intCast(depth),
         .raw_static_eval = raw_static_eval,
     };
@@ -319,7 +319,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     const tt_hash = board.getHashWithHalfmove();
     var tt_entry = self.readTT(tt_hash);
-    const tt_hit = tt_entry.hash == tt_hash;
+    const tt_hit = tt_entry.hashEql(tt_hash);
     if (!tt_hit) {
         tt_entry = .{};
     }
@@ -568,7 +568,7 @@ fn search(
     if (!is_singular_search) {
         tt_entry = self.readTT(tt_hash);
 
-        tt_hit = tt_entry.hash == tt_hash;
+        tt_hit = tt_entry.hashEql(tt_hash);
         if (!tt_hit) {
             tt_entry = .{};
         }
