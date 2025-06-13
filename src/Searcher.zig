@@ -110,7 +110,6 @@ pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
-eval_cache: [1 << 15]u32,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -124,6 +123,7 @@ pub fn writeTT(
     score: i16,
     score_type: ScoreType,
     depth: i32,
+    raw_static_eval: i16,
 ) void {
     const entry = &self.tt[self.ttIndex(hash)];
 
@@ -142,31 +142,28 @@ pub fn writeTT(
         .move = move,
         .hash = TTEntry.compress(hash),
         .depth = @intCast(depth),
+        .raw_static_eval = raw_static_eval,
     };
 }
 
-fn rawEval(self: *Searcher, comptime stm: Colour, board: *const Board) i16 {
-    const entry = (&self.eval_cache)[board.hash % self.eval_cache.len];
-    const entry_hash = entry >> 16;
-    const board_hash = (board.hash >> 32) % (1 << 16);
-
-    if (board_hash == entry_hash) {
-        const unsigned_eval: u16 = @intCast(entry % (1 << 16));
-        const eval: i16 = @bitCast(unsigned_eval);
-        return eval;
-    } else {
-        const eval = evaluate(stm, board, &self.prevStackEntry().board, self.curEvalState());
-        const unsigned_eval: u16 = @bitCast(eval);
-        self.eval_cache[board.hash % self.eval_cache.len] = @truncate(board_hash << 16 | unsigned_eval);
-
-        return eval;
-    }
+fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
+    const hash = self.curStackEntry().board.getHashWithHalfmove();
+    const eval = evaluate(stm, &self.curStackEntry().board, &self.prevStackEntry().board, self.curEvalState());
+    self.writeTT(
+        false,
+        hash,
+        Move.init(),
+        0,
+        .none,
+        0,
+        eval,
+    );
+    return eval;
 }
 
 pub fn prefetch(self: *const Searcher, move: Move) void {
     const board = &self.curStackEntry().board;
     @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
-    @prefetch(&self.eval_cache[board.roughHashAfter(move, false) % self.eval_cache.len], .{});
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
@@ -351,7 +348,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = self.rawEval(stm, board);
+        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -462,6 +459,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         best_score,
         score_type,
         0,
+        raw_static_eval,
     );
     return best_score;
 }
@@ -534,7 +532,7 @@ fn search(
     const is_in_check = board.checkers != 0;
 
     if (self.ply >= MAX_PLY - 1) {
-        return self.rawEval(stm, board);
+        return self.rawEval(stm);
     }
 
     if (!is_root) {
@@ -611,7 +609,7 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = self.rawEval(stm, board);
+        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
@@ -983,6 +981,7 @@ fn search(
             evaluation.scoreToTt(best_score, self.ply),
             score_type,
             depth,
+            raw_static_eval,
         );
 
         if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
