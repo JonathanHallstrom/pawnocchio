@@ -110,7 +110,7 @@ pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
-eval_cache: [1 << 16]u64,
+eval_cache: [1 << 15]u32,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -148,16 +148,17 @@ pub fn writeTT(
 fn rawEval(self: *Searcher, comptime stm: Colour, board: *const Board) i16 {
     const entry = (&self.eval_cache)[board.hash % self.eval_cache.len];
     const entry_hash = entry >> 16;
-    const board_hash = board.hash >> 16;
+    const board_hash = (board.hash >> 32) % (1 << 16);
 
-    if (board_hash >> 16 == entry_hash) {
+    if (board_hash == entry_hash) {
         const unsigned_eval: u16 = @intCast(entry % (1 << 16));
         const eval: i16 = @bitCast(unsigned_eval);
         return eval;
     } else {
         const eval = evaluate(stm, board, &self.prevStackEntry().board, self.curEvalState());
         const unsigned_eval: u16 = @bitCast(eval);
-        self.eval_cache[board.hash % self.eval_cache.len] = board_hash << 16 | unsigned_eval;
+        self.eval_cache[board.hash % self.eval_cache.len] = @truncate(board_hash << 16 | unsigned_eval);
+
         return eval;
     }
 }
