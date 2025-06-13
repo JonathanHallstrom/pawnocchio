@@ -402,7 +402,7 @@ pub const TTEntry = struct {
     raw_static_eval: i16 = 0,
 
     pub fn compress(h: u64) u16 {
-        return @intCast(h >> 48);
+        return @intCast(h & 0xffff);
     }
 
     pub fn hashEql(self: TTEntry, other_hash: u64) bool {
