@@ -950,7 +950,7 @@ fn search(
                 score_type = .lower;
 
                 if (is_quiet) {
-                    if (depth > 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
+                    if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
                         self.histories.updateQuiet(board, move, cur.prev, depth, true);
                         for (searched_quiets.slice()) |searched_move| {
                             if (searched_move == move) break;
