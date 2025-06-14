@@ -133,7 +133,7 @@ const Accumulator = struct {
     white: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
     black: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
 
-    dirty_piece: DirtyPiece = .{},
+    dirty_piece: DirtyPiece,
 
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
@@ -144,6 +144,7 @@ const Accumulator = struct {
             .black = weights.hidden_layer_biases,
             .white_mirrored = .{},
             .black_mirrored = .{},
+            .dirty_piece = .{},
         };
     }
 
