@@ -463,6 +463,22 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     return best_score;
 }
 
+fn float(x: anytype) f64 {
+    return switch (@typeInfo(@TypeOf(x))) {
+        .int, .comptime_int => @floatFromInt(x),
+        .float, .comptime_float => @floatCast(x),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
+    };
+}
+
+fn int(comptime T: type, x: anytype) T {
+    return switch (@typeInfo(@TypeOf(x))) {
+        .int, .comptime_int => @intCast(x),
+        .float, .comptime_float => @intFromFloat(x),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
+    };
+}
+
 fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
     const base = if (is_quiet) tunable_constants.lmr_quiet_base else tunable_constants.lmr_noisy_base;
     const log_mult = if (is_quiet) tunable_constants.lmr_quiet_log_mult else tunable_constants.lmr_noisy_log_mult;
@@ -473,8 +489,8 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
 
     var reduction: i32 = base;
 
-    const depth_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)) + @as(f64, @floatFromInt(depth_offs)));
-    const legal_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)) + @as(f64, @floatFromInt(legal_offs)));
+    const depth_factor = int(i64, @log2(float(depth)) * float(depth_mult) + float(depth_offs));
+    const legal_factor = int(i64, @log2(float(legal)) * float(legal_mult) + float(legal_offs));
     reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
 
     return reduction;
@@ -486,9 +502,9 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
     } else {
         const table = comptime blk: {
             @setEvalBranchQuota(1 << 30);
-            var res: [64][64][2]u16 = undefined;
-            for (1..65) |d| {
-                for (1..65) |l| {
+            var res: [32][32][2]u16 = undefined;
+            for (1..33) |d| {
+                for (1..33) |l| {
                     for (0..2) |q| {
                         res[d - 1][l - 1][q] = preCalculateBaseLMR(d, l, q == 1);
                     }
@@ -496,7 +512,7 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
             }
             break :blk res;
         };
-        return (&(&(&table)[@intCast(@min(63, depth - 1))])[@min(63, legal - 1)])[@intFromBool(is_quiet)];
+        return (&(&(&table)[@intCast(@min(31, depth - 1))])[@min(31, legal - 1)])[@intFromBool(is_quiet)];
     }
 }
 
