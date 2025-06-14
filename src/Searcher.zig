@@ -127,8 +127,7 @@ pub fn writeTT(
 ) void {
     const entry = &self.tt[self.ttIndex(hash)];
 
-    if (!(entry.flags.score_type == .none or
-        score_type == .exact or
+    if (!(score_type == .exact or
         !entry.hashEql(hash) or
         self.ttage != entry.flags.age or
         depth + 4 > entry.depth))
