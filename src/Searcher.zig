@@ -102,7 +102,7 @@ root_move: Move,
 root_score: i16,
 limits: Limits,
 ply: u8,
-stop: bool,
+stop: std.atomic.Value(bool),
 histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTEntry,
@@ -110,6 +110,7 @@ pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
+eval_cache: [1 << 15]u32,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -123,13 +124,12 @@ pub fn writeTT(
     score: i16,
     score_type: ScoreType,
     depth: i32,
-    raw_static_eval: i16,
 ) void {
     const entry = &self.tt[self.ttIndex(hash)];
 
     if (!(entry.flags.score_type == .none or
         score_type == .exact or
-        hash != entry.hash or
+        !entry.hashEql(hash) or
         self.ttage != entry.flags.age or
         depth + 4 > entry.depth))
     {
@@ -140,14 +140,33 @@ pub fn writeTT(
         .score = score,
         .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = self.ttage },
         .move = move,
-        .hash = hash,
+        .hash = TTEntry.compress(hash),
         .depth = @intCast(depth),
-        .raw_static_eval = raw_static_eval,
     };
 }
 
-pub fn prefetchTT(self: *const Searcher, hash: u64) void {
-    @prefetch(&self.tt[self.ttIndex(hash)], .{});
+fn rawEval(self: *Searcher, comptime stm: Colour, board: *const Board) i16 {
+    const entry = (&self.eval_cache)[board.hash % self.eval_cache.len];
+    const entry_hash = entry >> 16;
+    const board_hash = (board.hash >> 32) % (1 << 16);
+
+    if (board_hash == entry_hash) {
+        const unsigned_eval: u16 = @intCast(entry % (1 << 16));
+        const eval: i16 = @bitCast(unsigned_eval);
+        return eval;
+    } else {
+        const eval = evaluate(stm, board, &self.prevStackEntry().board, self.curEvalState());
+        const unsigned_eval: u16 = @bitCast(eval);
+        self.eval_cache[board.hash % self.eval_cache.len] = @truncate(board_hash << 16 | unsigned_eval);
+
+        return eval;
+    }
+}
+
+pub fn prefetch(self: *const Searcher, move: Move) void {
+    const board = &self.curStackEntry().board;
+    @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
+    @prefetch(&self.eval_cache[board.roughHashAfter(move, false) % self.eval_cache.len], .{});
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
@@ -189,7 +208,7 @@ fn updatePv(self: *Searcher, move: Move) void {
     }
 }
 
-fn curStackEntry(self: *Searcher) *StackEntry {
+fn curStackEntry(self: anytype) root.inheritConstness(@TypeOf(self), *StackEntry) {
     return &self.searchStackRoot()[self.ply];
 }
 
@@ -205,7 +224,7 @@ fn curEvalState(self: *Searcher) *evaluation.State {
     return &self.evalStateRoot()[self.ply];
 }
 
-fn searchStackRoot(self: *Searcher) [*]StackEntry {
+fn searchStackRoot(self: anytype) root.inheritConstness(@TypeOf(self), [*]StackEntry) {
     return (&self.search_stack)[STACK_PADDING..];
 }
 
@@ -308,18 +327,17 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     }
     var alpha = alpha_;
     self.nodes += 1;
-    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
-        self.stop = true;
+    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+        self.stop.store(true, .release);
         return 0;
     }
-    const par = self.prevStackEntry();
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
     const tt_hash = board.getHashWithHalfmove();
     var tt_entry = self.readTT(tt_hash);
-    const tt_hit = tt_entry.hash == tt_hash;
+    const tt_hit = tt_entry.hashEql(tt_hash);
     if (!tt_hit) {
         tt_entry = .{};
     }
@@ -333,11 +351,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
-        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
-        if (!tt_hit) {
-            self.writeTT(tt_pv, tt_hash, Move.init(), 0, .none, 0, raw_static_eval);
-        }
+        raw_static_eval = self.rawEval(stm, board);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -369,8 +383,11 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
 
     const futility = static_eval + tunable_constants.qs_futility_margin;
 
+    const previous_move_destination = cur.move.move.to();
+
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
+        self.prefetch(move);
         if (!board.isLegal(stm, move)) {
             continue;
         }
@@ -391,8 +408,12 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             std.debug.assert(!SEE.scoreMove(board, move, 0));
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
+        const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
-            if (!is_in_check and futility <= alpha and !SEE.scoreMove(board, move, 1)) {
+            if (!is_in_check and futility <= alpha and
+                !SEE.scoreMove(board, move, 1) and
+                !is_recapture)
+            {
                 best_score = @intCast(@max(best_score, futility));
                 continue;
             }
@@ -408,7 +429,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         self.makeMove(stm, move);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
-        if (self.stop) {
+        if (self.stop.load(.acquire)) {
             return 0;
         }
 
@@ -441,7 +462,6 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         best_score,
         score_type,
         0,
-        raw_static_eval,
     );
     return best_score;
 }
@@ -451,11 +471,13 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
     const log_mult = if (is_quiet) tunable_constants.lmr_quiet_log_mult else tunable_constants.lmr_noisy_log_mult;
     const depth_mult = if (is_quiet) tunable_constants.lmr_quiet_depth_mult else tunable_constants.lmr_noisy_depth_mult;
     const legal_mult = if (is_quiet) tunable_constants.lmr_quiet_legal_mult else tunable_constants.lmr_noisy_legal_mult;
+    const depth_offs = if (is_quiet) tunable_constants.lmr_quiet_depth_offs else tunable_constants.lmr_noisy_depth_offs;
+    const legal_offs = if (is_quiet) tunable_constants.lmr_quiet_legal_offs else tunable_constants.lmr_noisy_legal_offs;
 
     var reduction: i32 = base;
 
-    const depth_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)));
-    const legal_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)));
+    const depth_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(depth_mult)) + @as(f64, @floatFromInt(depth_offs)));
+    const legal_factor: i64 = @intFromFloat(@log2(@as(f64, @floatFromInt(legal))) * @as(f64, @floatFromInt(legal_mult)) + @as(f64, @floatFromInt(legal_offs)));
     reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
 
     return reduction;
@@ -496,8 +518,8 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (self.stop or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
-        self.stop = true;
+    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+        self.stop.store(true, .release);
         return 0;
     }
     if (depth <= 0) {
@@ -507,13 +529,12 @@ fn search(
     if (is_pv) {
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
-    const par = self.prevStackEntry();
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
     if (self.ply >= MAX_PLY - 1) {
-        return evaluate(stm, board, &par.board, self.curEvalState());
+        return self.rawEval(stm, board);
     }
 
     if (!is_root) {
@@ -560,7 +581,7 @@ fn search(
     if (!is_singular_search) {
         tt_entry = self.readTT(tt_hash);
 
-        tt_hit = tt_entry.hash == tt_hash;
+        tt_hit = tt_entry.hashEql(tt_hash);
         if (!tt_hit) {
             tt_entry = .{};
         }
@@ -590,16 +611,18 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else evaluate(stm, board, &par.board, self.curEvalState());
+        raw_static_eval = self.rawEval(stm, board);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
-        if (!tt_hit) {
-            self.writeTT(tt_pv, tt_hash, Move.init(), 0, .none, 0, raw_static_eval);
-        }
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
-        if (tt_hit and evaluation.checkTTBound(tt_score, corrected_static_eval, corrected_static_eval, tt_entry.flags.score_type)) {
+        if (tt_hit and evaluation.checkTTBound(
+            tt_score,
+            corrected_static_eval,
+            corrected_static_eval,
+            tt_entry.flags.score_type,
+        )) {
             cur.static_eval = tt_score;
         } else {
             cur.static_eval = corrected_static_eval;
@@ -647,7 +670,7 @@ fn search(
             non_pk != 0 and
             !cur.prev.move.isNull())
         {
-            self.prefetchTT(board.hash ^ root.zobrist.turn());
+            self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale);
             nmp_reduction >>= 13;
@@ -690,7 +713,7 @@ fn search(
         if (move == cur.excluded) {
             continue;
         }
-        self.prefetchTT(board.roughHashAfter(move));
+        self.prefetch(move);
         if (!board.isLegal(stm, move)) {
             continue;
         }
@@ -722,8 +745,9 @@ fn search(
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
+                const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 const granularity: i32 = 978;
-                if (num_legal * granularity + tunable_constants.lmp_legal_base >= depth * depth * lmp_mult) {
+                if (num_legal * granularity + lmp_base >= depth * depth * lmp_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -758,14 +782,14 @@ fn search(
 
         var extension: i32 = 0;
         if (!is_root and
-            depth >= 7 and
+            depth >= 6 and
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + 3 >= depth and
             tt_entry.flags.score_type != .upper)
         {
-            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 5));
-            const s_depth = (depth - 1) * tunable_constants.singular_depth_mult >> 5;
+            const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 10));
+            const s_depth = depth * tunable_constants.singular_depth_mult - tunable_constants.singular_depth_offs >> 10;
 
             cur.excluded = move;
             const s_score = self.search(
@@ -827,6 +851,8 @@ fn search(
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
+                reduction -= @as(i32, 512) * @intFromBool(tt_pv);
+
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
@@ -841,7 +867,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
-                if (self.stop) {
+                if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
 
@@ -861,7 +887,7 @@ fn search(
                         new_depth,
                         !cutnode,
                     );
-                    if (self.stop) {
+                    if (self.stop.load(.acquire)) {
                         break :blk 0;
                     }
                 }
@@ -875,7 +901,7 @@ fn search(
                     new_depth,
                     !cutnode,
                 );
-                if (self.stop) {
+                if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
             }
@@ -894,7 +920,7 @@ fn search(
             break :blk s;
         };
         self.unmakeMove(stm, move);
-        if (self.stop) {
+        if (self.stop.load(.acquire)) {
             return 0;
         }
 
@@ -957,7 +983,6 @@ fn search(
             evaluation.scoreToTt(best_score, self.ply),
             score_type,
             depth,
-            raw_static_eval,
         );
 
         if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
@@ -1046,7 +1071,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.limits = params.limits;
     self.is_main_thread = is_main_thread;
     self.ply = 0;
-    self.stop = false;
+    self.stop.store(false, .release);
     self.nodes = 0;
     const board = params.board;
     self.previous_hashes.len = 0;
@@ -1108,7 +1133,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
-                if (self.stop) {
+                if (self.stop.load(.acquire)) {
                     break;
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
@@ -1154,7 +1179,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.root_score, depth, .completed);
             }
         }
-        if (self.stop or self.limits.checkRoot(self.nodes, depth, self.root_move, eval_stability, move_stability)) {
+        if (self.stop.load(.acquire) or self.limits.checkRoot(self.nodes, depth, self.root_move, eval_stability, move_stability)) {
             break;
         }
     }

@@ -394,12 +394,19 @@ comptime {
 }
 
 pub const TTEntry = struct {
-    hash: u64 = 0,
+    hash: u16 = 0,
     score: i16 = 0,
     flags: TTFlags = .{},
     move: Move = Move.init(),
     depth: u8 = 0,
-    raw_static_eval: i16 = 0,
+
+    pub fn compress(h: u64) u16 {
+        return @intCast(h & 0xffff);
+    }
+
+    pub fn hashEql(self: TTEntry, other_hash: u64) bool {
+        return self.hash == compress(other_hash);
+    }
 };
 
 var stdout: std.fs.File = undefined;

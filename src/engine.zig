@@ -67,7 +67,7 @@ pub fn reset() void {
 }
 
 pub fn setTTSize(new_size: usize) !void {
-    tt = try std.heap.page_allocator.realloc(tt, new_size * ((1 << 20) / @sizeOf(root.TTEntry)));
+    tt = try std.heap.page_allocator.realloc(tt, @intCast(new_size * @as(u128, 1 << 20) / @sizeOf(root.TTEntry)));
     resetTT();
 }
 
@@ -321,6 +321,9 @@ pub fn querySearchedNodes() u64 {
 
 pub fn stopSearch() void {
     stop_searching.store(true, .seq_cst);
+    for (searchers) |*searcher| {
+        searcher.stop.store(true, .release);
+    }
 }
 
 pub fn shouldStopSearching() bool {

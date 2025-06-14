@@ -82,8 +82,12 @@ const tunable_defaults = struct {
     pub const lmr_noisy_log_mult: i32 = 230;
     pub const lmr_quiet_depth_mult: i32 = 847;
     pub const lmr_noisy_depth_mult: i32 = 909;
+    pub const lmr_quiet_depth_offs: i32 = 0;
+    pub const lmr_noisy_depth_offs: i32 = 0;
     pub const lmr_quiet_legal_mult: i32 = 938;
     pub const lmr_noisy_legal_mult: i32 = 901;
+    pub const lmr_quiet_legal_offs: i32 = 0;
+    pub const lmr_noisy_legal_offs: i32 = 0;
     pub const lmr_pv_mult: i32 = 1319;
     pub const lmr_cutnode_mult: i32 = 1019;
     pub const lmr_improving_mult: i32 = 1022;
@@ -109,7 +113,8 @@ const tunable_defaults = struct {
     pub const corrhist_countermove_weight: i32 = 1105;
     pub const corrhist_major_weight: i32 = 1087;
     pub const corrhist_minor_weight: i32 = 980;
-    pub const lmp_legal_base: i32 = -3396;
+    pub const lmp_standard_base: i32 = -3396;
+    pub const lmp_improving_base: i32 = -3396;
     pub const lmp_standard_mult: i32 = 989;
     pub const lmp_improving_mult: i32 = 969;
     pub const see_pawn: i32 = 93;
@@ -119,6 +124,11 @@ const tunable_defaults = struct {
     pub const see_queen: i32 = 994;
     pub const bad_quiet_thresh_mult: i32 = 1092;
     pub const bad_quiet_abs_thresh_mult: i32 = -161;
+    pub const material_scaling_pawn: i32 = 0;
+    pub const material_scaling_knight: i32 = 308;
+    pub const material_scaling_bishop: i32 = 346;
+    pub const material_scaling_rook: i32 = 521;
+    pub const material_scaling_queen: i32 = 994;
     pub const nodetm_base: i32 = 1713;
     pub const nodetm_mult: i32 = 950;
     pub const eval_stab_base: i32 = 1200;
@@ -129,8 +139,9 @@ const tunable_defaults = struct {
     pub const soft_limit_incr: i32 = 572;
     pub const hard_limit_phase_mult: i32 = 128;
     pub const hard_limit_base: i32 = 190;
-    pub const singular_beta_mult: i32 = 16;
-    pub const singular_depth_mult: i32 = 19;
+    pub const singular_beta_mult: i32 = 512;
+    pub const singular_depth_mult: i32 = 608;
+    pub const singular_depth_offs: i32 = 608;
     pub const singular_dext_margin: i32 = 13;
 };
 
@@ -166,8 +177,12 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_noisy_log_mult", .default = tunable_defaults.lmr_noisy_log_mult },
     .{ .name = "lmr_quiet_depth_mult", .default = tunable_defaults.lmr_quiet_depth_mult },
     .{ .name = "lmr_noisy_depth_mult", .default = tunable_defaults.lmr_noisy_depth_mult },
+    .{ .name = "lmr_quiet_depth_offs", .default = tunable_defaults.lmr_quiet_depth_offs, .min = -1024, .max = 1024, .c_end = 128 },
+    .{ .name = "lmr_noisy_depth_offs", .default = tunable_defaults.lmr_noisy_depth_offs, .min = -1024, .max = 1024, .c_end = 128 },
     .{ .name = "lmr_quiet_legal_mult", .default = tunable_defaults.lmr_quiet_legal_mult },
     .{ .name = "lmr_noisy_legal_mult", .default = tunable_defaults.lmr_noisy_legal_mult },
+    .{ .name = "lmr_quiet_legal_offs", .default = tunable_defaults.lmr_quiet_legal_offs, .min = -1024, .max = 1024, .c_end = 128 },
+    .{ .name = "lmr_noisy_legal_offs", .default = tunable_defaults.lmr_noisy_legal_offs, .min = -1024, .max = 1024, .c_end = 128 },
     .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult },
     .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult },
     .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult },
@@ -193,7 +208,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "corrhist_countermove_weight", .default = tunable_defaults.corrhist_countermove_weight },
     .{ .name = "corrhist_major_weight", .default = tunable_defaults.corrhist_major_weight },
     .{ .name = "corrhist_minor_weight", .default = tunable_defaults.corrhist_minor_weight },
-    .{ .name = "lmp_legal_base", .default = tunable_defaults.lmp_legal_base },
+    .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base },
+    .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base },
     .{ .name = "lmp_standard_mult", .default = tunable_defaults.lmp_standard_mult },
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult },
     .{ .name = "see_pawn", .default = tunable_defaults.see_pawn },
@@ -203,6 +219,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_queen", .default = tunable_defaults.see_queen },
     .{ .name = "bad_quiet_thresh_mult", .default = tunable_defaults.bad_quiet_thresh_mult },
     .{ .name = "bad_quiet_abs_thresh_mult", .default = tunable_defaults.bad_quiet_abs_thresh_mult },
+    .{ .name = "material_scaling_pawn", .default = tunable_defaults.material_scaling_pawn },
+    .{ .name = "material_scaling_knight", .default = tunable_defaults.material_scaling_knight },
+    .{ .name = "material_scaling_bishop", .default = tunable_defaults.material_scaling_bishop },
+    .{ .name = "material_scaling_rook", .default = tunable_defaults.material_scaling_rook },
+    .{ .name = "material_scaling_queen", .default = tunable_defaults.material_scaling_queen },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .c_end = 80 },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
     .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .c_end = 60 },
@@ -215,6 +236,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base, .c_end = 10 },
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult },
+    .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs },
     .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin },
 };
 
@@ -250,8 +272,12 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_noisy_log_mult = tunable_defaults.lmr_noisy_log_mult;
     pub var lmr_quiet_depth_mult = tunable_defaults.lmr_quiet_depth_mult;
     pub var lmr_noisy_depth_mult = tunable_defaults.lmr_noisy_depth_mult;
+    pub var lmr_quiet_depth_offs = tunable_defaults.lmr_quiet_depth_offs;
+    pub var lmr_noisy_depth_offs = tunable_defaults.lmr_noisy_depth_offs;
     pub var lmr_quiet_legal_mult = tunable_defaults.lmr_quiet_legal_mult;
     pub var lmr_noisy_legal_mult = tunable_defaults.lmr_noisy_legal_mult;
+    pub var lmr_quiet_legal_offs = tunable_defaults.lmr_quiet_legal_offs;
+    pub var lmr_noisy_legal_offs = tunable_defaults.lmr_noisy_legal_offs;
     pub var lmr_pv_mult = tunable_defaults.lmr_pv_mult;
     pub var lmr_cutnode_mult = tunable_defaults.lmr_cutnode_mult;
     pub var lmr_improving_mult = tunable_defaults.lmr_improving_mult;
@@ -277,7 +303,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var corrhist_countermove_weight = tunable_defaults.corrhist_countermove_weight;
     pub var corrhist_major_weight = tunable_defaults.corrhist_major_weight;
     pub var corrhist_minor_weight = tunable_defaults.corrhist_minor_weight;
-    pub var lmp_legal_base = tunable_defaults.lmp_legal_base;
+    pub var lmp_standard_base = tunable_defaults.lmp_standard_base;
+    pub var lmp_improving_base = tunable_defaults.lmp_improving_base;
     pub var lmp_standard_mult = tunable_defaults.lmp_standard_mult;
     pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
     pub var see_pawn = tunable_defaults.see_pawn;
@@ -287,6 +314,11 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_queen = tunable_defaults.see_queen;
     pub var bad_quiet_thresh_mult = tunable_defaults.bad_quiet_thresh_mult;
     pub var bad_quiet_abs_thresh_mult = tunable_defaults.bad_quiet_abs_thresh_mult;
+    pub var material_scaling_pawn = tunable_defaults.material_scaling_pawn;
+    pub var material_scaling_knight = tunable_defaults.material_scaling_knight;
+    pub var material_scaling_bishop = tunable_defaults.material_scaling_bishop;
+    pub var material_scaling_rook = tunable_defaults.material_scaling_rook;
+    pub var material_scaling_queen = tunable_defaults.material_scaling_queen;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var eval_stab_base = tunable_defaults.eval_stab_base;
@@ -299,6 +331,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var hard_limit_base = tunable_defaults.hard_limit_base;
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
+    pub var singular_depth_offs = tunable_defaults.singular_depth_offs;
     pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
 } else tunable_defaults;
 
