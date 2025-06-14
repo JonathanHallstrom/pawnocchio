@@ -123,7 +123,6 @@ pub fn writeTT(
     score: i16,
     score_type: ScoreType,
     depth: i32,
-    raw_static_eval: i16,
 ) void {
     const entry = &self.tt[self.ttIndex(hash)];
 
@@ -142,22 +141,11 @@ pub fn writeTT(
         .move = move,
         .hash = TTEntry.compress(hash),
         .depth = @intCast(depth),
-        .raw_static_eval = raw_static_eval,
     };
 }
 
 fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
-    const hash = self.curStackEntry().board.getHashWithHalfmove();
     const eval = evaluate(stm, &self.curStackEntry().board, &self.prevStackEntry().board, self.curEvalState());
-    self.writeTT(
-        false,
-        hash,
-        Move.init(),
-        0,
-        .none,
-        0,
-        eval,
-    );
     return eval;
 }
 
@@ -348,7 +336,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else self.rawEval(stm);
+        raw_static_eval = self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -459,7 +447,6 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         best_score,
         score_type,
         0,
-        raw_static_eval,
     );
     return best_score;
 }
@@ -609,7 +596,7 @@ fn search(
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else self.rawEval(stm);
+        raw_static_eval = self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
@@ -981,7 +968,6 @@ fn search(
             evaluation.scoreToTt(best_score, self.ply),
             score_type,
             depth,
-            raw_static_eval,
         );
 
         if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {

@@ -399,7 +399,6 @@ pub const TTEntry = struct {
     flags: TTFlags = .{},
     move: Move = Move.init(),
     depth: u8 = 0,
-    raw_static_eval: i16 = 0,
 
     pub fn compress(h: u64) u16 {
         return @intCast(h & 0xffff);
