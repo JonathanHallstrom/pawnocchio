@@ -1117,12 +1117,13 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var completed_depth: i32 = 0;
     var eval_stability: i32 = 0;
     var move_stability: i32 = 0;
+    var average_score: ?i64 = null;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
         const assert = std.debug.assert;
         _ = &assert;
-        var quantized_window: i64 = tunable_constants.aspiration_initial;
+        var quantized_window: i64 = tunable_constants.aspiration_initial + if (average_score) |avg| avg * avg >> 5 else 0;
         const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
@@ -1136,7 +1137,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         switch (params.board.stm) {
             inline else => |stm| while (true) {
                 defer quantized_window = quantized_window * tunable_constants.aspiration_multiplier >> 10;
-
                 self.seldepth = 0;
                 score = self.search(
                     true,
@@ -1184,6 +1184,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         } else {
             move_stability = 0;
         }
+        average_score = if (average_score) |avg| @divTrunc(avg * 3 + score, 4) else score;
         previous_score = score;
         previous_move = self.root_move;
 

@@ -73,7 +73,7 @@ pub const Move = enum(u16) {
         return @enumFromInt(0);
     }
 
-    pub fn isNull(self: Move) bool {
+    pub inline fn isNull(self: Move) bool {
         return self == init();
     }
 
