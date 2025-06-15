@@ -43,7 +43,7 @@ pub const MAX_HALFMOVE = 100;
 pub const Params = struct {
     board: Board,
     limits: Limits,
-    previous_hashes: []u64,
+    previous_hashes: std.BoundedArray(u64, 200),
     needs_full_reset: bool = false,
 };
 
@@ -994,8 +994,8 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.nodes = 0;
     const board = params.board;
     self.previous_hashes.len = 0;
-    for (params.previous_hashes) |previous_hash| {
-        self.previous_hashes.appendAssumeCapacity(previous_hash);
+    for (params.previous_hashes.slice()) |previous_hash| {
+        self.previous_hashes.append(previous_hash) catch @panic("too many hashes!");
     }
     self.fixupPreviousHashes();
 
