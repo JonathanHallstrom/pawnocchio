@@ -706,11 +706,15 @@ fn search(
         }
     }
 
+    var tt_move = if (is_singular_search) cur.excluded else tt_entry.move;
+    if (!is_singular_search and !tt_hit and is_pv) {
+        tt_move = self.pvs[self.ply].slice()[0];
+    }
     var mp = MovePicker.init(
         board,
         &cur.movelist,
         &self.histories,
-        if (is_singular_search) cur.excluded else tt_entry.move,
+        tt_move,
         cur.prev,
         is_singular_search,
     );
