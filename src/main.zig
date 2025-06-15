@@ -225,7 +225,7 @@ pub fn main() !void {
                     .search_params = .{
                         .board = try Board.parseFen(fen, false),
                         .limits = root.Limits.initFixedDepth(bench_depth),
-                        .previous_hashes = &.{},
+                        .previous_hashes = .{},
                     },
                     .quiet = true,
                 });
@@ -251,8 +251,7 @@ pub fn main() !void {
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);
     const reader = std.io.getStdIn().reader();
-    var previous_hashes = std.ArrayList(u64).init(allocator);
-    defer previous_hashes.deinit();
+    var previous_hashes = std.BoundedArray(u64, 200){};
 
     var board = Board.startpos();
     try previous_hashes.append(board.hash);
@@ -572,7 +571,7 @@ pub fn main() !void {
                 .search_params = .{
                     .board = board,
                     .limits = limits,
-                    .previous_hashes = previous_hashes.items,
+                    .previous_hashes = previous_hashes,
                 },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
@@ -643,7 +642,7 @@ pub fn main() !void {
                 board = Board.startpos();
             }
 
-            previous_hashes.clearRetainingCapacity();
+            previous_hashes.clear();
             try previous_hashes.append(board.hash);
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
             while (move_iter.next()) |played_move| {
@@ -653,7 +652,7 @@ pub fn main() !void {
                     continue;
                 };
                 if (board.halfmove == 0) {
-                    previous_hashes.clearRetainingCapacity();
+                    previous_hashes.clear();
                 }
                 try previous_hashes.append(board.hash);
             }
