@@ -1125,7 +1125,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         self.limits.root_depth = depth;
         const assert = std.debug.assert;
         _ = &assert;
-        var quantized_window: i64 = tunable_constants.aspiration_initial;
+        var quantized_window: i64 = tunable_constants.aspiration_initial + previous_score * previous_score >> 5;
         const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
