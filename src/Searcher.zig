@@ -671,9 +671,7 @@ fn search(
                 alpha + 1,
             );
 
-            if (razor_score <= alpha) {
-                return razor_score;
-            }
+            return razor_score;
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
