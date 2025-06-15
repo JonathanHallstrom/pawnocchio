@@ -717,6 +717,7 @@ fn search(
     var best_score = -evaluation.inf_score;
     var searched_quiets: std.BoundedArray(Move, 64) = .{};
     var searched_noisies: std.BoundedArray(Move, 64) = .{};
+    var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
@@ -937,6 +938,7 @@ fn search(
 
         if (is_quiet) {
             searched_quiets.append(move) catch {};
+            num_searched_quiets += 1;
         } else {
             searched_noisies.append(move) catch {};
         }
@@ -957,11 +959,14 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
+
                 if (is_quiet) {
-                    self.histories.updateQuiet(board, move, cur.prev, depth, true);
-                    for (searched_quiets.slice()) |searched_move| {
-                        if (searched_move == move) break;
-                        self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
+                    if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
+                        self.histories.updateQuiet(board, move, cur.prev, depth, true);
+                        for (searched_quiets.slice()) |searched_move| {
+                            if (searched_move == move) break;
+                            self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
+                        }
                     }
                 } else {
                     self.histories.updateNoisy(board, move, depth, true);
