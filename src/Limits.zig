@@ -31,6 +31,8 @@ last_aspiration_print: u64 = 0,
 node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
 root_depth: i32 = 0,
 min_depth: i32 = 0,
+max_score: i16 = std.math.maxInt(i16),
+min_score: i16 = std.math.minInt(i16),
 
 const Limits = @This();
 
@@ -106,11 +108,24 @@ fn computeMoveStabilityFactor(_: *const Limits, stab: i32) u64 {
     return @intCast(@max(1, tunable_constants.move_stab_base - tunable_constants.move_stab_offs * stab));
 }
 
-pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move, eval_stability: i32, move_stability: i32) bool {
+pub fn checkRoot(
+    self: *Limits,
+    nodes: u64,
+    depth: i32,
+    move: Move,
+    score: i16,
+    eval_stability: i32,
+    move_stability: i32,
+) bool {
     if (self.root_depth < self.min_depth) {
         return false;
     }
     if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
+        return true;
+    }
+    if (score >= self.max_score or
+        score <= self.min_score)
+    {
         return true;
     }
     if (self.max_depth) |md| {

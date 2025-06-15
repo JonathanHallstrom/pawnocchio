@@ -798,7 +798,7 @@ fn search(
             depth >= 6 and
             move == tt_entry.move and
             !is_singular_search and
-            tt_entry.depth + 3 >= depth and
+            tt_entry.depth + @as(i32, 3) >= depth and
             tt_entry.flags.score_type != .upper)
         {
             const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 10));
@@ -1193,7 +1193,14 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.root_score, depth, .completed);
             }
         }
-        if (self.stop.load(.acquire) or self.limits.checkRoot(self.nodes, depth, self.root_move, eval_stability, move_stability)) {
+        if (self.stop.load(.acquire) or self.limits.checkRoot(
+            self.nodes,
+            depth,
+            self.root_move,
+            score,
+            eval_stability,
+            move_stability,
+        )) {
             break;
         }
     }

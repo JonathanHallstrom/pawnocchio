@@ -379,18 +379,22 @@ pub fn main() !void {
             var black_time: u64 = 1000_000_000 * std.time.ns_per_s;
             var white_increment: u64 = 0 * std.time.ns_per_s;
             var black_increment: u64 = 0 * std.time.ns_per_s;
-            var mate_finding_depth: ?u8 = null;
+            var mate_score_opt: ?i16 = null;
             var move_time_opt: ?u64 = null;
 
             while (parts.next()) |command_part| {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    const depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
+                    const depth = std.fmt.parseInt(i16, depth_to_parse, 10) catch {
                         writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
 
-                    mate_finding_depth = depth;
+                    if (depth < 0) {
+                        mate_score_opt = root.evaluation.matedIn(@abs(depth) * 2);
+                    } else {
+                        mate_score_opt = -root.evaluation.matedIn(@abs(depth) * 2 - 1);
+                    }
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
                     const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
@@ -565,6 +569,14 @@ pub fn main() !void {
                 }
                 limits.soft_nodes = max_nodes;
                 limits.hard_nodes = max_nodes;
+            }
+
+            if (mate_score_opt) |mate_value| {
+                if (mate_value < 0) {
+                    limits.min_score = mate_value;
+                } else {
+                    limits.max_score = mate_value;
+                }
             }
 
             root.engine.startSearch(.{
