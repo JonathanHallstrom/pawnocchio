@@ -498,7 +498,7 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
 
 fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
     if (root.tuning.do_tuning) {
-        return preCalculateBaseLMR(depth, legal, is_quiet);
+        return preCalculateBaseLMR(@min(32, depth), @min(32, legal), is_quiet);
     } else {
         const table = comptime blk: {
             @setEvalBranchQuota(1 << 30);
