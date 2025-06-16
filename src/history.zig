@@ -285,8 +285,7 @@ pub const HistoryTable = struct {
             0,
         };
 
-        const base_amount = if (root.tuning.do_tuning) Board.startpos().sumPieces(vals) else comptime Board.startpos().sumPieces(vals);
-        const material_scaled = fifty_move_rule_scaled * (@as(i64, 16384 - base_amount) + board.sumPieces(vals));
+        const material_scaled = fifty_move_rule_scaled * (tunable_constants.material_scaling_base + board.sumPieces(vals));
         divisor *= 16384;
 
         const scaled = @divTrunc(material_scaled, divisor);

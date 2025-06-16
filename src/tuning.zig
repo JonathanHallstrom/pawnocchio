@@ -121,6 +121,7 @@ const tunable_defaults = struct {
     pub const see_bishop: i32 = 291;
     pub const see_rook: i32 = 538;
     pub const see_queen: i32 = 840;
+    pub const material_scaling_base: i32 = 9240;
     pub const material_scaling_pawn: i32 = 0;
     pub const material_scaling_knight: i32 = 350;
     pub const material_scaling_bishop: i32 = 399;
@@ -213,7 +214,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_bishop", .default = tunable_defaults.see_bishop },
     .{ .name = "see_rook", .default = tunable_defaults.see_rook },
     .{ .name = "see_queen", .default = tunable_defaults.see_queen },
-    .{ .name = "material_scaling_pawn", .default = tunable_defaults.material_scaling_pawn },
+    .{ .name = "material_scaling_base", .default = tunable_defaults.material_scaling_base },
+    .{ .name = "material_scaling_pawn", .default = tunable_defaults.material_scaling_pawn, .min = -100, .max = 200, .c_end = 15 },
     .{ .name = "material_scaling_knight", .default = tunable_defaults.material_scaling_knight },
     .{ .name = "material_scaling_bishop", .default = tunable_defaults.material_scaling_bishop },
     .{ .name = "material_scaling_rook", .default = tunable_defaults.material_scaling_rook },
@@ -306,6 +308,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_bishop = tunable_defaults.see_bishop;
     pub var see_rook = tunable_defaults.see_rook;
     pub var see_queen = tunable_defaults.see_queen;
+    pub var material_scaling_base = tunable_defaults.material_scaling_base;
     pub var material_scaling_pawn = tunable_defaults.material_scaling_pawn;
     pub var material_scaling_knight = tunable_defaults.material_scaling_knight;
     pub var material_scaling_bishop = tunable_defaults.material_scaling_bishop;
