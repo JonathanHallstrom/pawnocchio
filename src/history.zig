@@ -229,7 +229,7 @@ pub const HistoryTable = struct {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += self.quiet.read(board.stm, typed);
-        res += self.pawn.read(board, typed);
+        res += @divTrunc(self.pawn.read(board, typed), 2);
 
         res += self.countermove.read(board.stm, typed, prev);
 
