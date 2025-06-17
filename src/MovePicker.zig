@@ -188,7 +188,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                     inline else => |stm| {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
                         for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
-                            scored_move.score = self.histories.readQuiet(self.board, scored_move.move, self.prev);
+                            scored_move.score = self.histories.readQuietOrdering(self.board, scored_move.move, self.prev);
                         }
                     },
                 }
