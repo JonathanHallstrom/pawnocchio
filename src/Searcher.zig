@@ -655,13 +655,13 @@ fn search(
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         if (depth <= 6 and
-            static_eval >= beta +
+            static_eval >= @max(beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth -
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                std.math.clamp(@divTrunc(cur.history_score, 600), -80, 80))
+                @divTrunc(cur.history_score, 600), 0))
         {
             return @intCast(static_eval + beta >> 1);
         }
