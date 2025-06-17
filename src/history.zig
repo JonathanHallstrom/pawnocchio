@@ -270,11 +270,11 @@ pub const HistoryTable = struct {
         divisor *= 200;
         @setEvalBranchQuota(1 << 30);
         const vals: [6]i16 = if (root.tuning.do_tuning) .{
-            tunable_constants.material_scaling_pawn,
-            tunable_constants.material_scaling_knight,
-            tunable_constants.material_scaling_bishop,
-            tunable_constants.material_scaling_rook,
-            tunable_constants.material_scaling_queen,
+            @intCast(tunable_constants.material_scaling_pawn),
+            @intCast(tunable_constants.material_scaling_knight),
+            @intCast(tunable_constants.material_scaling_bishop),
+            @intCast(tunable_constants.material_scaling_rook),
+            @intCast(tunable_constants.material_scaling_queen),
             0,
         } else comptime .{
             tunable_constants.material_scaling_pawn,
