@@ -24,6 +24,9 @@ const Colour = root.Colour;
 const evaluation = root.evaluation;
 const Move = root.Move;
 
+const builtin = @import("builtin");
+const CAN_VERBATIM_NET = builtin.cpu.arch.endian() == .little and builtin.mode == .ReleaseFast;
+
 fn madd(
     comptime N: comptime_int,
     a: @Vector(N, i16),
@@ -44,11 +47,18 @@ fn mullo(
     return a *% b;
 }
 
-const Weights = struct {
+const Weights = extern struct {
     hidden_layer_weights: [HIDDEN_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
     hidden_layer_biases: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
     output_weights: [HIDDEN_SIZE * 2 * OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
     output_biases: [OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
+    const WEIGHT_COUNT = blk: {
+        var res = 0;
+        for (std.meta.fields(Weights)) |field| {
+            res += @typeInfo(field.type).array.len;
+        }
+        break :blk res;
+    };
 };
 
 pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
@@ -64,9 +74,17 @@ pub inline fn whichOutputBucket(board: *const Board) usize {
     return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.white | board.black) - 2) / divisor);
 }
 
-pub var weights: Weights = undefined;
+pub const weights = if (CAN_VERBATIM_NET)
+blk: {
+    var res: Weights = undefined;
+    @memcpy(std.mem.asBytes(&res)[0 .. Weights.WEIGHT_COUNT * @sizeOf(i16)], @embedFile("net")[0 .. Weights.WEIGHT_COUNT * @sizeOf(i16)]);
+    break :blk res;
+} else &(struct {
+    var backing: Weights = undefined;
+}).backing;
+// @ptrCast(@alignCast(@as(*const anyopaque, @ptrCast(@embedFile("net")))));
 inline fn hiddenLayerWeightsVector() []const @Vector(VEC_SIZE, i16) {
-    comptime return @as([*]const @Vector(VEC_SIZE, i16), @ptrCast(&weights.hidden_layer_weights))[0 .. (&weights.hidden_layer_weights).len / VEC_SIZE];
+    comptime return @as([*]const @Vector(VEC_SIZE, i16), @ptrCast(&weights.hidden_layer_weights))[0 .. weights.hidden_layer_weights.len / VEC_SIZE];
 }
 
 const SquarePieceType = struct {
@@ -115,17 +133,18 @@ const Accumulator = struct {
     white: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
     black: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
 
-    dirty_piece: DirtyPiece = .{},
+    dirty_piece: DirtyPiece,
 
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
 
-    pub fn default() Accumulator {
+    pub inline fn default() Accumulator {
         return .{
             .white = weights.hidden_layer_biases,
             .black = weights.hidden_layer_biases,
             .white_mirrored = .{},
             .black_mirrored = .{},
+            .dirty_piece = .{},
         };
     }
 
@@ -231,8 +250,8 @@ const Accumulator = struct {
     }
 
     pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, old_board: *const Board) i16 {
-        // std.debug.print("{any}\n", .{weights.hidden_layer_biases[0..10]});
-        // std.debug.print("{any}\n", .{weights.output_biases[0..BUCKET_COUNT]});
+        // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)[0..10]});
+        // std.debug.print("{any}\n", .{(&weights.output_biases)[0..BUCKET_COUNT]});
         self.applyUpdate(stm.flipped(), board, old_board);
         // std.debug.print("{any}\n", .{self.white[0..10]});
         // std.debug.print("{any}\n", .{self.black[0..10]});
@@ -269,8 +288,8 @@ const Accumulator = struct {
                 const them: Vec = them_acc[i..][0..VEC_SIZE].*;
                 const them_clamped: Vec = @max(@min(them, ONE), ZERO);
 
-                const us_weights: Vec = weights.output_weights[bucket_offset..][i..][0..VEC_SIZE].*;
-                const them_weights: Vec = weights.output_weights[bucket_offset..][i + HIDDEN_SIZE ..][0..VEC_SIZE].*;
+                const us_weights: Vec = (&weights.output_weights)[bucket_offset..][i..][0..VEC_SIZE].*;
+                const them_weights: Vec = (&weights.output_weights)[bucket_offset..][i + HIDDEN_SIZE ..][0..VEC_SIZE].*;
 
                 acc.* +=
                     madd(VEC_SIZE, mullo(VEC_SIZE, us_weights, us_clamped), us_clamped) +
@@ -283,14 +302,14 @@ const Accumulator = struct {
         if (@import("builtin").mode == .Debug) {
             var verify_res: i32 = 0;
             for (0..HIDDEN_SIZE) |j| {
-                verify_res += screlu(us_acc[j]) * weights.output_weights[bucket_offset..][j];
-                verify_res += screlu(them_acc[j]) * weights.output_weights[bucket_offset..][j + HIDDEN_SIZE];
+                verify_res += screlu(us_acc[j]) * (&weights.output_weights)[bucket_offset..][j];
+                verify_res += screlu(them_acc[j]) * (&weights.output_weights)[bucket_offset..][j + HIDDEN_SIZE];
             }
             std.debug.assert(res == verify_res);
         }
         res = @divTrunc(res, QA); // res /= QA
 
-        res += weights.output_biases[which_bucket];
+        res += (&weights.output_biases)[which_bucket];
         const scaled = @divTrunc(res * SCALE, QA * QB);
 
         return evaluation.clampScore(scaled);
@@ -310,15 +329,15 @@ const Accumulator = struct {
         defer self.dirty_piece = .{};
         // std.debug.print("--------\n", .{});
         // std.debug.print("{}\n", .{stm});
-        defer if (@import("builtin").mode == .Debug) {
-            const correct = Accumulator.init(board);
-            if (!std.meta.eql(correct.white, self.white)) {
-                unreachable;
-            }
-            if (!std.meta.eql(correct.black, self.black)) {
-                unreachable;
-            }
-        };
+        // defer if (@import("builtin").mode == .Debug) {
+        //     const correct = Accumulator.init(board);
+        //     if (!std.meta.eql(correct.white, self.white)) {
+        //         unreachable;
+        //     }
+        //     if (!std.meta.eql(correct.black, self.black)) {
+        //         unreachable;
+        //     }
+        // };
         // {
         //     self.initInPlace(board);
         //     return;
@@ -433,29 +452,30 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("net"));
+    if (!CAN_VERBATIM_NET) {
+        var fbs = std.io.fixedBufferStream(@embedFile("net"));
 
-    // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
-    for (0..weights.hidden_layer_weights.len) |i| {
-        weights.hidden_layer_weights[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
+        for (0..(&weights.hidden_layer_weights).len) |i| {
+            (&weights.hidden_layer_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        }
+
+        // then the biases for the first layer (there should be HIDDEN_SIZE of them)
+        for (0..(&weights.hidden_layer_biases).len) |i| {
+            (&weights.hidden_layer_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        }
+
+        // then the weights for the second layer (there should be HIDDEN_SIZE * 2 of them)
+        for (0..(&weights.output_weights).len) |i| {
+            (&weights.output_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        }
+
+        // then finally the bias(es)
+        for (0..(&weights.output_biases).len) |i| {
+            (&weights.output_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        }
     }
-
-    // then the biases for the first layer (there should be HIDDEN_SIZE of them)
-    for (0..weights.hidden_layer_biases.len) |i| {
-        weights.hidden_layer_biases[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-    }
-
-    // then the weights for the second layer (there should be HIDDEN_SIZE * 2 of them)
-    for (0..weights.output_weights.len) |i| {
-        weights.output_weights[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-    }
-
-    // then finally the bias(es)
-    for (0..weights.output_biases.len) |i| {
-        weights.output_biases[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-    }
-
-    // std.debug.print("{any}\n", .{weights.hidden_layer_biases});
+    // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)});
 }
 
 pub fn initThreadLocals() void {

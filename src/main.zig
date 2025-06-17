@@ -225,7 +225,7 @@ pub fn main() !void {
                     .search_params = .{
                         .board = try Board.parseFen(fen, false),
                         .limits = root.Limits.initFixedDepth(bench_depth),
-                        .previous_hashes = &.{},
+                        .previous_hashes = .{},
                     },
                     .quiet = true,
                 });
@@ -251,8 +251,7 @@ pub fn main() !void {
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);
     const reader = std.io.getStdIn().reader();
-    var previous_hashes = std.ArrayList(u64).init(allocator);
-    defer previous_hashes.deinit();
+    var previous_hashes = std.BoundedArray(u64, 200){};
 
     var board = Board.startpos();
     try previous_hashes.append(board.hash);
@@ -380,18 +379,22 @@ pub fn main() !void {
             var black_time: u64 = 1000_000_000 * std.time.ns_per_s;
             var white_increment: u64 = 0 * std.time.ns_per_s;
             var black_increment: u64 = 0 * std.time.ns_per_s;
-            var mate_finding_depth: ?u8 = null;
+            var mate_score_opt: ?i16 = null;
             var move_time_opt: ?u64 = null;
 
             while (parts.next()) |command_part| {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
                     const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    const depth = std.fmt.parseInt(u8, depth_to_parse, 10) catch {
+                    const depth = std.fmt.parseInt(i16, depth_to_parse, 10) catch {
                         writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
 
-                    mate_finding_depth = depth;
+                    if (depth < 0) {
+                        mate_score_opt = root.evaluation.matedIn(@abs(depth) * 2);
+                    } else {
+                        mate_score_opt = -root.evaluation.matedIn(@abs(depth) * 2 - 1);
+                    }
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
                     const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
@@ -568,11 +571,19 @@ pub fn main() !void {
                 limits.hard_nodes = max_nodes;
             }
 
+            if (mate_score_opt) |mate_value| {
+                if (mate_value < 0) {
+                    limits.min_score = mate_value;
+                } else {
+                    limits.max_score = mate_value;
+                }
+            }
+
             root.engine.startSearch(.{
                 .search_params = .{
                     .board = board,
                     .limits = limits,
-                    .previous_hashes = previous_hashes.items,
+                    .previous_hashes = previous_hashes,
                 },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
@@ -643,7 +654,7 @@ pub fn main() !void {
                 board = Board.startpos();
             }
 
-            previous_hashes.clearRetainingCapacity();
+            previous_hashes.clear();
             try previous_hashes.append(board.hash);
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
             while (move_iter.next()) |played_move| {
@@ -653,7 +664,7 @@ pub fn main() !void {
                     continue;
                 };
                 if (board.halfmove == 0) {
-                    previous_hashes.clearRetainingCapacity();
+                    previous_hashes.clear();
                 }
                 try previous_hashes.append(board.hash);
             }

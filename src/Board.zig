@@ -124,22 +124,20 @@ pub inline fn startingRankFor(self: Board, col: Colour) Rank {
     return self.castling_rights.startingRankFor(col);
 }
 
-pub fn phase(self: Board) u8 {
-    const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
-    var res: u8 = 0;
+pub fn sumPieces(self: Board, values: anytype) std.meta.Child(@TypeOf(values)) {
+    var res: std.meta.Child(@TypeOf(values)) = 0;
     for (PieceType.all) |pt| {
-        res += gamephaseInc[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
+        res += values[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
     }
     return res;
 }
 
+pub fn phase(self: Board) u8 {
+    return self.sumPieces([_]u8{ 0, 1, 1, 3, 6, 0 });
+}
+
 pub fn classicalMaterial(self: Board) u8 {
-    const value: [6]u8 = .{ 1, 3, 3, 5, 9, 0 };
-    var res: u8 = 0;
-    for (PieceType.all) |pt| {
-        res += value[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
-    }
-    return res;
+    return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
 
 pub fn parseFen(fen: []const u8, permissive: bool) !Board {
@@ -1162,18 +1160,30 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
     } != 0;
 }
 
-pub fn roughHashAfter(self: *const Board, move: Move) u64 {
+pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove: bool) u64 {
     var res: u64 = self.hash;
 
-    if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+    var hmc = self.halfmove + 1;
+    if (!move.isNull()) {
+        if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+            res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+            hmc = 0;
+        }
+
+        const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();
+
+        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
         res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+        if (cpt.toPieceType() == .pawn) {
+            hmc = 0;
+        }
+    } else {
+        hmc = 0;
     }
-
-    const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();
-
-    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
-    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
     res ^= root.zobrist.turn();
+    if (include_halfmove) {
+        res ^= root.zobrist.halfmove(hmc >> 3);
+    }
 
     return res;
 }
@@ -1315,14 +1325,14 @@ fn perft_impl(
     if (depth == 1) {
         for (movelist.vals.slice()) |move| {
             const is_legal = self.isLegal(stm, move);
-            if (is_legal and !self.isPseudoLegal(stm, move)) {
-                std.debug.print("{s} {s}\n", .{ self.toFen().slice(), move.toString(self).slice() });
-                @panic("not pseudolegal");
-            }
+            // if (is_legal and !self.isPseudoLegal(stm, move)) {
+            //     std.debug.print("{s} {s}\n", .{ self.toFen().slice(), move.toString(self).slice() });
+            //     @panic("not pseudolegal");
+            // }
             res += @intFromBool(is_legal);
-            if (is_root and is_legal and !quiet) {
-                std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
-            }
+            // if (is_root and is_legal and !quiet) {
+            //     std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
+            // }
         }
     } else {
         for (movelist.vals.slice()) |move| {
@@ -1334,7 +1344,6 @@ fn perft_impl(
             if (is_root and !quiet) {
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
-            if (depth != 1) {}
             const count = cp.perft_impl(
                 false,
                 stm.flipped(),

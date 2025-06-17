@@ -67,7 +67,7 @@ pub fn reset() void {
 }
 
 pub fn setTTSize(new_size: usize) !void {
-    tt = try std.heap.page_allocator.realloc(tt, new_size * ((1 << 20) / @sizeOf(root.TTEntry)));
+    tt = try std.heap.page_allocator.realloc(tt, @intCast(new_size * @as(u128, 1 << 20) / @sizeOf(root.TTEntry)));
     resetTT();
 }
 
@@ -150,8 +150,7 @@ fn datagenWorker(
             board = root.Board.startpos();
         }
         var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
-        var hashes = std.ArrayList(u64).init(fba.allocator());
-        defer hashes.deinit();
+        var hashes = std.BoundedArray(u64, 200){};
         const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
         random_move_loop: for (0..random_move_count) |_| {
             switch (board.stm) {
@@ -164,7 +163,7 @@ fn datagenWorker(
                         if (board.isLegal(stm, move)) {
                             board.makeMove(stm, move, root.Board.NullEvalState{});
                             if (board.halfmove == 0) {
-                                hashes.clearRetainingCapacity();
+                                hashes.clear();
                             }
                             hashes.append(board.hash) catch @panic("failed to append hash");
                             continue :random_move_loop;
@@ -184,7 +183,7 @@ fn datagenWorker(
                     .board = board,
                     .limits = limits,
                     .needs_full_reset = move_idx == 0,
-                    .previous_hashes = hashes.items,
+                    .previous_hashes = hashes,
                 },
                 false,
                 true,
@@ -219,7 +218,7 @@ fn datagenWorker(
                 },
             }
             var repetitions: u8 = 0;
-            for (hashes.items) |prev_hash| {
+            for (hashes.slice()) |prev_hash| {
                 repetitions += @intFromBool(prev_hash == board.hash);
             }
             if (repetitions >= 3) {
@@ -236,7 +235,7 @@ fn datagenWorker(
                 break :game_loop;
             }
             if (board.halfmove == 0) {
-                hashes.clearRetainingCapacity();
+                hashes.clear();
             }
             game.addMove(search_move, adjusted) catch unreachable;
             hashes.append(board.hash) catch unreachable;
@@ -321,6 +320,9 @@ pub fn querySearchedNodes() u64 {
 
 pub fn stopSearch() void {
     stop_searching.store(true, .seq_cst);
+    for (searchers) |*searcher| {
+        searcher.stop.store(true, .release);
+    }
 }
 
 pub fn shouldStopSearching() bool {

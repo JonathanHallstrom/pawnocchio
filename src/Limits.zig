@@ -31,14 +31,16 @@ last_aspiration_print: u64 = 0,
 node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
 root_depth: i32 = 0,
 min_depth: i32 = 0,
+max_score: i16 = std.math.maxInt(i16),
+min_score: i16 = std.math.minInt(i16),
 
 const Limits = @This();
 
 pub fn initStandard(board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
     var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
     const start_time = t.read();
-    const hard_time = (remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.hard_limit_base + (tunable_constants.hard_limit_phase_mult * (32 - board.phase()) >> 6))) >> 10;
-    const soft_time = (remaining_ns - overhead_ns) * @as(u128, @intCast(tunable_constants.soft_limit_base)) + increment_ns * @as(u128, @intCast(tunable_constants.soft_limit_incr)) >> 10;
+    const hard_time = (remaining_ns -| overhead_ns) * @as(u128, @intCast(tunable_constants.hard_limit_base + (tunable_constants.hard_limit_phase_mult * (32 - board.phase()) >> 6))) >> 10;
+    const soft_time = (remaining_ns -| overhead_ns) * @as(u128, @intCast(tunable_constants.soft_limit_base)) + increment_ns * @as(u128, @intCast(tunable_constants.soft_limit_incr)) >> 10;
     return Limits{
         .hard_time = @intCast(start_time + hard_time),
         .soft_time = @intCast(start_time + soft_time),
@@ -106,11 +108,24 @@ fn computeMoveStabilityFactor(_: *const Limits, stab: i32) u64 {
     return @intCast(@max(1, tunable_constants.move_stab_base - tunable_constants.move_stab_offs * stab));
 }
 
-pub fn checkRoot(self: *Limits, nodes: u64, depth: i32, move: Move, eval_stability: i32, move_stability: i32) bool {
+pub fn checkRoot(
+    self: *Limits,
+    nodes: u64,
+    depth: i32,
+    move: Move,
+    score: i16,
+    eval_stability: i32,
+    move_stability: i32,
+) bool {
     if (self.root_depth < self.min_depth) {
         return false;
     }
     if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
+        return true;
+    }
+    if (score >= self.max_score or
+        score <= self.min_score)
+    {
         return true;
     }
     if (self.max_depth) |md| {
