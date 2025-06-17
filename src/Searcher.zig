@@ -661,7 +661,7 @@ fn search(
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                std.math.clamp(@divTrunc(cur.history_score, 200) + 5, -20, 20))
+                std.math.clamp(@divTrunc(cur.history_score, 200) + 5, 0, 40))
         {
             return @intCast(static_eval + beta >> 1);
         }
