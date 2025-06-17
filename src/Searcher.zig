@@ -936,17 +936,20 @@ fn search(
             return 0;
         }
 
-        if (is_quiet) {
-            searched_quiets.append(move) catch {};
-            num_searched_quiets += 1;
-        } else {
-            searched_noisies.append(move) catch {};
+        num_searched_quiets += @intFromBool(is_quiet);
+        if (score <= alpha) {
+            if (is_quiet) {
+                searched_quiets.append(move) catch {};
+            } else {
+                searched_noisies.append(move) catch {};
+            }
         }
 
         if (score > best_score) {
             best_score = score;
             best_move = move;
         }
+
         if (score > alpha) {
             if (is_root) {
                 self.root_move = move;
@@ -964,15 +967,17 @@ fn search(
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
                         self.histories.updateQuiet(board, move, cur.prev, depth, true);
                         for (searched_quiets.slice()) |searched_move| {
-                            if (searched_move == move) break;
                             self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
                         }
+                    }
+                    self.histories.updateQuiet(board, move, cur.prev, depth, true);
+                    for (searched_quiets.slice()) |searched_move| {
+                        self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
                     }
                 } else {
                     self.histories.updateNoisy(board, move, depth, true);
                 }
                 for (searched_noisies.slice()) |searched_move| {
-                    if (searched_move == move) break;
                     self.histories.updateNoisy(board, searched_move, depth, false);
                 }
                 break;
