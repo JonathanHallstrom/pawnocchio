@@ -612,7 +612,7 @@ fn search(
         }
     }
 
-    if (depth >= 4 and
+    if (depth >= 4 + @as(i32, 2) * @intFromBool(tt_pv) and
         (is_pv or cutnode) and
         !has_tt_move)
     {
