@@ -393,16 +393,16 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
         {
             std.debug.assert(board.isNoisy(move));
         }
-        if (std.debug.runtime_safety and
-            mp.stage == .good_noisies)
-        {
-            std.debug.assert(SEE.scoreMove(board, move, 0));
-        }
-        if (std.debug.runtime_safety and
-            mp.stage == .bad_noisies)
-        {
-            std.debug.assert(!SEE.scoreMove(board, move, 0));
-        }
+        // if (std.debug.runtime_safety and
+        //     mp.stage == .good_noisies)
+        // {
+        //     std.debug.assert(SEE.scoreMove(board, move, 0));
+        // }
+        // if (std.debug.runtime_safety and
+        //     mp.stage == .bad_noisies)
+        // {
+        //     std.debug.assert(!SEE.scoreMove(board, move, 0));
+        // }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
@@ -736,16 +736,16 @@ fn search(
         {
             std.debug.assert(!is_quiet);
         }
-        if (std.debug.runtime_safety and
-            mp.stage == .good_noisies)
-        {
-            std.debug.assert(SEE.scoreMove(board, move, 0));
-        }
-        if (std.debug.runtime_safety and
-            mp.stage == .bad_noisies)
-        {
-            std.debug.assert(!SEE.scoreMove(board, move, 0));
-        }
+        // if (std.debug.runtime_safety and
+        //     mp.stage == .good_noisies)
+        // {
+        //     std.debug.assert(SEE.scoreMove(board, move, 0));
+        // }
+        // if (std.debug.runtime_safety and
+        //     mp.stage == .bad_noisies)
+        // {
+        //     std.debug.assert(!SEE.scoreMove(board, move, 0));
+        // }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
 

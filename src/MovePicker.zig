@@ -171,7 +171,9 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                     continue;
                 }
                 const res = self.movelist.vals.slice()[self.findBest()];
-                if (SEE.scoreMove(self.board, res.move, 0)) {
+                const history_score = self.histories.readNoisy(self.board, res.move);
+                const margin = @divTrunc(-history_score, 32);
+                if (SEE.scoreMove(self.board, res.move, margin)) {
                     return res;
                 }
                 self.movelist.vals.slice()[self.last_bad_noisy] = res;
