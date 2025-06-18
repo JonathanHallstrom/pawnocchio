@@ -841,7 +841,7 @@ fn search(
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
-                reduction -= @as(i32, 512) * @intFromBool(tt_pv);
+                reduction -= tunable_constants.lmr_ttpv_mult * @intFromBool(tt_pv);
 
                 reduction >>= 10;
 
