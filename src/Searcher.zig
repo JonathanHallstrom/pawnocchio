@@ -803,6 +803,10 @@ fn search(
                 return @intCast(s_beta);
             } else if (tt_entry.score >= beta) {
                 extension -= 1;
+
+                if (tt_entry.score >= beta + 20) {
+                    extension -= 1;
+                }
             } else if (cutnode) {
                 extension -= 2;
             }
