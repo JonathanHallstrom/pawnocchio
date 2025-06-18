@@ -637,6 +637,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
+        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.prev);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
@@ -647,8 +648,10 @@ fn search(
                 tunable_constants.rfp_mult * depth -
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
+                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
+                (corrplexity * 20 >> 32))
         {
+            // std.debug.print("{}\n", .{corrplexity * 10 >> 32});
             return @intCast(static_eval + beta >> 1);
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
