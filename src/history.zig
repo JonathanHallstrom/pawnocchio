@@ -238,7 +238,7 @@ pub const HistoryTable = struct {
     pub fn readQuiet(self: *const HistoryTable, board: *const Board, move: Move, prev: TypedMove) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        res += self.quiet.read(board.stm, typed);
+        res += @divTrunc(self.quiet.read(board.stm, typed) + self.pawn.read(board, typed), 2);
         res += self.countermove.read(board.stm, typed, prev);
 
         return res;
