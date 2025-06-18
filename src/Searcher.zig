@@ -649,9 +649,8 @@ fn search(
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (corrplexity * 20 >> 32))
+                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
-            // std.debug.print("{}\n", .{corrplexity * 10 >> 32});
             return @intCast(static_eval + beta >> 1);
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
