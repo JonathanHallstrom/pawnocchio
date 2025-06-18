@@ -417,7 +417,6 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             if (!is_in_check and
                 (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold)))
             {
-                std.debug.assert(mp.stage != .good_noisies);
                 continue;
             }
         }
@@ -782,12 +781,11 @@ fn search(
             const see_pruning_thresh = if (is_quiet)
                 tunable_constants.see_quiet_pruning_mult * depth
             else
-                tunable_constants.see_noisy_pruning_mult * depth * depth;
+                tunable_constants.see_noisy_pruning_mult * depth * depth - @divTrunc(history_score, 300);
 
             if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, see_pruning_thresh))
             {
-                std.debug.assert(mp.stage != .good_noisies);
                 continue;
             }
         }
