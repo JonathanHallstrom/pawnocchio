@@ -749,7 +749,7 @@ fn search(
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
 
-        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+        if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
