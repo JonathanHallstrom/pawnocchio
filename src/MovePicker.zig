@@ -47,6 +47,12 @@ pub const Stage = enum {
     quiets,
     bad_noisy_prep,
     bad_noisies,
+
+    qsearch_tt,
+    qsearch_gen_noisies,
+    qsearch_noisies,
+    qsearch_gen_evasions,
+    qsearch_evasions,
 };
 
 pub fn init(
@@ -86,7 +92,7 @@ pub fn initQs(
         .board = board_,
         .first = 0,
         .last = 0,
-        .stage = .tt,
+        .stage = .qsearch_tt,
         .skip_quiets = board_.checkers == 0,
         .histories = histories_,
         .ttmove = ttmove_,
@@ -181,7 +187,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             .generate_quiets => {
                 if (self.skip_quiets) {
                     self.stage = .quiets;
-                    return null;
+                    continue;
                 }
                 self.first = self.movelist.vals.len;
                 switch (self.board.stm) {
@@ -211,6 +217,65 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             },
             .bad_noisies => {
                 if (self.first == self.last) {
+                    return null;
+                }
+                return self.movelist.vals.slice()[self.findBest()];
+            },
+            .qsearch_tt => {
+                self.stage = .qsearch_gen_noisies;
+                if (self.skip_quiets and self.board.isQuiet(self.ttmove)) {
+                    continue;
+                }
+                switch (self.board.stm) {
+                    inline else => |stm| {
+                        if (self.board.isPseudoLegal(stm, self.ttmove)) {
+                            return ScoredMove{ .move = self.ttmove, .score = 0 };
+                        }
+                    },
+                }
+                continue;
+            },
+            .qsearch_gen_noisies => {
+                self.movelist.vals.len = 0;
+                switch (self.board.stm) {
+                    inline else => |stm| {
+                        std.debug.assert(self.movelist.vals.len == 0);
+                        movegen.generateAllNoisies(stm, self.board, self.movelist);
+                        for (self.movelist.vals.slice()) |*scored_move| {
+                            scored_move.score = self.noisyValue(scored_move.move);
+                        }
+                    },
+                }
+                self.last = self.movelist.vals.len;
+                self.stage = .qsearch_noisies;
+                continue;
+            },
+            .qsearch_noisies => {
+                if (self.first == self.last) {
+                    self.stage = .qsearch_gen_evasions;
+                    continue;
+                }
+                return self.movelist.vals.slice()[self.findBest()];
+            },
+            .qsearch_gen_evasions => {
+                if (self.skip_quiets) {
+                    return null;
+                }
+                self.first = self.movelist.vals.len;
+                switch (self.board.stm) {
+                    inline else => |stm| {
+                        movegen.generateAllQuiets(stm, self.board, self.movelist);
+                        for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
+                            scored_move.score = self.histories.readQuiet(self.board, scored_move.move, self.prev);
+                        }
+                    },
+                }
+                self.last = self.movelist.vals.len;
+                self.stage = .qsearch_evasions;
+                continue;
+            },
+            .qsearch_evasions => {
+                if (self.first == self.last or self.skip_quiets) {
                     return null;
                 }
                 return self.movelist.vals.slice()[self.findBest()];
