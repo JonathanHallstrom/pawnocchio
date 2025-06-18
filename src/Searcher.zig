@@ -677,7 +677,7 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
-            static_eval >= beta and
+            static_eval >= beta - 100 + 10 * depth and
             non_pk != 0 and
             !cur.prev.move.isNull())
         {
