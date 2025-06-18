@@ -172,7 +172,8 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 }
                 const res = self.movelist.vals.slice()[self.findBest()];
                 const history_score = self.histories.readNoisy(self.board, res.move);
-                const margin = @divTrunc(-history_score, 32);
+                const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
+                    root.tuning.tunable_constants.good_noisy_ordering_base;
                 if (SEE.scoreMove(self.board, res.move, margin)) {
                     return res;
                 }

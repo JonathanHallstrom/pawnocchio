@@ -117,6 +117,8 @@ const tunable_defaults = struct {
     pub const lmp_improving_base: i32 = -3028;
     pub const lmp_standard_mult: i32 = 867;
     pub const lmp_improving_mult: i32 = 1083;
+    pub const good_noisy_ordering_base: i32 = 0;
+    pub const good_noisy_ordering_mult: i32 = 1024;
     pub const see_pawn: i32 = 82;
     pub const see_knight: i32 = 313;
     pub const see_bishop: i32 = 291;
@@ -211,6 +213,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base },
     .{ .name = "lmp_standard_mult", .default = tunable_defaults.lmp_standard_mult },
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult },
+    .{ .name = "good_noisy_ordering_base", .default = tunable_defaults.good_noisy_ordering_base, .min = -2048, .max = 2048, .c_end = 256 },
+    .{ .name = "good_noisy_ordering_mult", .default = tunable_defaults.good_noisy_ordering_mult },
     .{ .name = "see_pawn", .default = tunable_defaults.see_pawn },
     .{ .name = "see_knight", .default = tunable_defaults.see_knight },
     .{ .name = "see_bishop", .default = tunable_defaults.see_bishop },
@@ -306,6 +310,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmp_improving_base = tunable_defaults.lmp_improving_base;
     pub var lmp_standard_mult = tunable_defaults.lmp_standard_mult;
     pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
+    pub var good_noisy_ordering_base = tunable_defaults.good_noisy_ordering_base;
+    pub var good_noisy_ordering_mult = tunable_defaults.good_noisy_ordering_mult;
     pub var see_pawn = tunable_defaults.see_pawn;
     pub var see_knight = tunable_defaults.see_knight;
     pub var see_bishop = tunable_defaults.see_bishop;
