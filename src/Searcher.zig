@@ -177,6 +177,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    reduction: i32,
 
     pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
@@ -185,6 +186,7 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
+        self.reduction = 0;
     }
 };
 
@@ -601,6 +603,7 @@ fn search(
         }
     }
 
+    // iir
     if (depth >= 4 and
         (is_pv or cutnode) and
         !has_tt_move)
@@ -637,6 +640,13 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
+        // post lmr update
+        if (self.prevStackEntry().reduction >= 4096 and
+            !opponent_worsening)
+        {
+            depth += 1;
+        }
+
         const corrplexity = self.histories.squaredCorrectionTerms(board, cur.prev);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
@@ -845,6 +855,7 @@ fn search(
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
                 reduction -= tunable_constants.lmr_ttpv_mult * @intFromBool(tt_pv);
 
+                cur.reduction = reduction;
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
@@ -859,6 +870,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
+                cur.reduction = 0;
                 if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
