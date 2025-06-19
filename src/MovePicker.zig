@@ -184,7 +184,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
             .generate_quiets => {
                 if (self.skip_quiets) {
                     self.stage = .quiets;
-                    return null;
+                    continue;
                 }
                 self.first = self.movelist.vals.len;
                 switch (self.board.stm) {
