@@ -534,6 +534,7 @@ fn search(
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
     const cur = self.curStackEntry();
+    const prev = self.prevStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
@@ -848,7 +849,7 @@ fn search(
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
                 reduction -= tunable_constants.lmr_ttpv_mult * @intFromBool(tt_pv);
                 // post lmr update
-                if (self.prevStackEntry().reduction >= 4096 and
+                if (prev.reduction >= 3072 and
                     num_legal >= 4)
                 {
                     reduction -= 1024;
