@@ -640,13 +640,6 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        // post lmr update
-        if (self.prevStackEntry().reduction >= 4096 and
-            !opponent_worsening)
-        {
-            depth += 1;
-        }
-
         const corrplexity = self.histories.squaredCorrectionTerms(board, cur.prev);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
@@ -854,6 +847,12 @@ fn search(
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
                 reduction -= tunable_constants.lmr_ttpv_mult * @intFromBool(tt_pv);
+                // post lmr update
+                if (self.prevStackEntry().reduction >= 4096 and
+                    num_legal >= 4)
+                {
+                    reduction -= 1024;
+                }
 
                 cur.reduction = reduction;
                 reduction >>= 10;
