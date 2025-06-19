@@ -653,7 +653,7 @@ fn search(
         {
             return @intCast(static_eval + beta >> 1);
         }
-        if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
+        if (depth <= 5 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
                 is_root,
                 is_pv,
