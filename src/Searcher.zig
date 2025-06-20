@@ -595,6 +595,10 @@ fn search(
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
+                    if (tt_entry.score >= beta and !evaluation.isMateScore(tt_entry.score)) {
+                        return @intCast(@divTrunc(tt_entry.score + beta, 2));
+                    }
+
                     return tt_score;
                 }
             }
