@@ -67,7 +67,7 @@ pub fn probeWdl(board: *const Board) WDL {
             else => unreachable,
         };
     } else {
-        return .loss;
+        return undefined;
     }
 }
 

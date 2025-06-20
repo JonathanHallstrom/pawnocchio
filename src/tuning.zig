@@ -131,6 +131,11 @@ const tunable_defaults = struct {
     pub const material_scaling_bishop: i32 = 401;
     pub const material_scaling_rook: i32 = 559;
     pub const material_scaling_queen: i32 = 981;
+    pub const multicut_fail_medium: i32 = 0;
+    pub const rfp_fail_medium: i32 = 512;
+    pub const tt_fail_medium: i32 = 0;
+    pub const qs_tt_fail_medium: i32 = 0;
+    pub const standpat_fail_medium: i32 = 0;
     pub const nodetm_base: i32 = 1594;
     pub const nodetm_mult: i32 = 1037;
     pub const eval_stab_base: i32 = 1249;
@@ -228,6 +233,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "material_scaling_bishop", .default = tunable_defaults.material_scaling_bishop },
     .{ .name = "material_scaling_rook", .default = tunable_defaults.material_scaling_rook },
     .{ .name = "material_scaling_queen", .default = tunable_defaults.material_scaling_queen },
+    .{ .name = "multicut_fail_medium", .default = tunable_defaults.multicut_fail_medium },
+    .{ .name = "rfp_fail_medium", .default = tunable_defaults.rfp_fail_medium },
+    .{ .name = "tt_fail_medium", .default = tunable_defaults.tt_fail_medium },
+    .{ .name = "qs_tt_fail_medium", .default = tunable_defaults.qs_tt_fail_medium },
+    .{ .name = "standpat_fail_medium", .default = tunable_defaults.standpat_fail_medium },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .c_end = 80 },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
     .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .c_end = 60 },
@@ -326,6 +336,11 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var material_scaling_bishop = tunable_defaults.material_scaling_bishop;
     pub var material_scaling_rook = tunable_defaults.material_scaling_rook;
     pub var material_scaling_queen = tunable_defaults.material_scaling_queen;
+    pub var multicut_fail_medium = tunable_defaults.multicut_fail_medium;
+    pub var rfp_fail_medium = tunable_defaults.rfp_fail_medium;
+    pub var tt_fail_medium = tunable_defaults.tt_fail_medium;
+    pub var qs_tt_fail_medium = tunable_defaults.qs_tt_fail_medium;
+    pub var standpat_fail_medium = tunable_defaults.standpat_fail_medium;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var eval_stab_base = tunable_defaults.eval_stab_base;
