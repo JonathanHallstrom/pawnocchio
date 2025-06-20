@@ -355,10 +355,12 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             static_eval = tt_score;
         }
 
-        if (static_eval >= beta)
-            return static_eval;
-        if (static_eval > alpha)
+        if (static_eval >= beta) {
+            return @intCast(@divTrunc(static_eval + beta, 2));
+        }
+        if (static_eval > alpha) {
             alpha = static_eval;
+        }
     }
 
     if (self.ply >= MAX_PLY - 1) {
