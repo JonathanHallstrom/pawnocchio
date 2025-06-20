@@ -54,6 +54,9 @@ The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
 Alternatively you can build the engine using the Makefile, with `make`
 
+## Credit
+ - [Pyrrhic](https://github.com/AndyGrant/Pyrrhic/tree/c88405c01452f906a6f7808f5b22d3679138016b) for tablebase probing, under the MIT license.
+
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1
 [v1.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.2
