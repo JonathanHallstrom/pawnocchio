@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -120,6 +120,8 @@ const tunable_defaults = struct {
     pub const lmp_improving_mult: i32 = 1108;
     pub const good_noisy_ordering_base: i32 = 19;
     pub const good_noisy_ordering_mult: i32 = 1017;
+    pub const brunocut_failhigh_gamma: i32 = 460;
+    pub const brunocut_failhigh_delta: i32 = 260;
     pub const see_pawn: i32 = 85;
     pub const see_knight: i32 = 315;
     pub const see_bishop: i32 = 305;
@@ -217,6 +219,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult },
     .{ .name = "good_noisy_ordering_base", .default = tunable_defaults.good_noisy_ordering_base, .min = -2048, .max = 2048, .c_end = 256 },
     .{ .name = "good_noisy_ordering_mult", .default = tunable_defaults.good_noisy_ordering_mult },
+    .{ .name = "brunocut_failhigh_gamma", .default = tunable_defaults.brunocut_failhigh_gamma },
+    .{ .name = "brunocut_failhigh_delta", .default = tunable_defaults.brunocut_failhigh_delta },
     .{ .name = "see_pawn", .default = tunable_defaults.see_pawn },
     .{ .name = "see_knight", .default = tunable_defaults.see_knight },
     .{ .name = "see_bishop", .default = tunable_defaults.see_bishop },
@@ -315,6 +319,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
     pub var good_noisy_ordering_base = tunable_defaults.good_noisy_ordering_base;
     pub var good_noisy_ordering_mult = tunable_defaults.good_noisy_ordering_mult;
+    pub var brunocut_failhigh_gamma = tunable_defaults.brunocut_failhigh_gamma;
+    pub var brunocut_failhigh_delta = tunable_defaults.brunocut_failhigh_delta;
     pub var see_pawn = tunable_defaults.see_pawn;
     pub var see_knight = tunable_defaults.see_knight;
     pub var see_bishop = tunable_defaults.see_bishop;

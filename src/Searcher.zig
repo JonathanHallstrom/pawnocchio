@@ -603,8 +603,8 @@ fn search(
     if (tt_hit and !is_pv and !evaluation.isMateScore(tt_entry.score)) {
         const fhp = struct {
             fn impl(surplus: i32, d: i32) i32 {
-                const gamma = 115 * 4;
-                const delta = 65 * 4;
+                const gamma = tunable_constants.brunocut_failhigh_gamma;
+                const delta = tunable_constants.brunocut_failhigh_delta;
 
                 if (surplus <= 0) {
                     return MAX_PLY + 1;
