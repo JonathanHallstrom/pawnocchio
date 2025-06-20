@@ -109,6 +109,7 @@ tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
+min_nmp_ply: u8 = 0,
 ttage: u5 = 0,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -670,7 +671,8 @@ fn search(
         if (depth >= 4 and
             static_eval >= beta and
             non_pk != 0 and
-            !cur.prev.move.isNull())
+            !cur.prev.move.isNull() and
+            self.ply >= self.min_nmp_ply)
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
@@ -690,7 +692,24 @@ fn search(
             self.unmakeNullMove(stm);
 
             if (nmp_score >= beta) {
-                return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                if (depth <= 14 or self.min_nmp_ply > 0) {
+                    return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                }
+
+                self.min_nmp_ply = @intCast(self.ply + @divTrunc((depth - nmp_reduction) * 3, 4));
+                const verification_score = -self.search(
+                    false,
+                    false,
+                    stm,
+                    beta - 1,
+                    beta,
+                    depth - nmp_reduction,
+                    true,
+                );
+                self.min_nmp_ply = 0;
+                if (verification_score >= beta) {
+                    return verification_score;
+                }
             }
         }
     }
@@ -1096,6 +1115,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     }
     self.limits.resetNodeCounts();
     evaluation.initThreadLocals();
+    self.min_nmp_ply = 0;
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
