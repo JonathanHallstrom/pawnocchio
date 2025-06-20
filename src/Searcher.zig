@@ -600,6 +600,28 @@ fn search(
             }
         }
     }
+    if (tt_hit and !is_pv and !evaluation.isMateScore(tt_entry.score)) {
+        const fhp = struct {
+            fn impl(surplus: i32, d: i32) i32 {
+                const gamma = 115 * 4;
+                const delta = 65 * 4;
+
+                if (surplus <= 0) {
+                    return MAX_PLY + 1;
+                }
+                if (surplus >= 3 * gamma - delta) {
+                    return d - 3;
+                }
+                return d - @divTrunc(surplus + delta, gamma);
+            }
+        }.impl;
+
+        if (tt_entry.flags.score_type != .upper and
+            tt_entry.depth >= fhp(tt_entry.score - beta, depth))
+        {
+            return tt_entry.score;
+        }
+    }
 
     if (depth >= 4 and
         (is_pv or cutnode) and
