@@ -242,11 +242,9 @@ fn datagenWorker(
             // std.debug.print("{s}", .{dbg_log});
             if (root.evaluation.isMateScore(search_score)) {
                 if (adjusted > 0) {
-                    // std.debug.print("white {s}\n", .{fen.slice()});
-                    game.setOutCome(2);
+                    game.setOutCome(.win);
                 } else {
-                    // std.debug.print("black {s}\n", .{fen.slice()});
-                    game.setOutCome(0);
+                    game.setOutCome(.loss);
                 }
                 break :game_loop;
             }

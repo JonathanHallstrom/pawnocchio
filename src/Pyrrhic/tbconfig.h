@@ -38,8 +38,20 @@
  * to define White as 0 and Black as 1.
  */
 
-#include "../attacks.h"
-#include "../bitboards.h"
+
+
+#include <stdint.h>
+
+extern uint8_t popcount(uint64_t x);
+extern uint8_t getlsb(uint64_t x);
+extern uint8_t poplsb(uint64_t *x);
+
+extern uint64_t pawnAttacks(uint8_t col, uint8_t sq);
+extern uint64_t knightAttacks(uint8_t sq);
+extern uint64_t bishopAttacks(uint8_t sq, uint64_t occ);
+extern uint64_t rookAttacks(uint8_t sq, uint64_t occ);
+extern uint64_t queenAttacks(uint8_t sq, uint64_t occ);
+extern uint64_t kingAttacks(uint8_t sq);
 
 #define PYRRHIC_POPCOUNT(x)              (popcount(x))
 #define PYRRHIC_LSB(x)                   (getlsb(x))
