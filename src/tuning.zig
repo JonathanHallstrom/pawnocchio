@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -233,11 +233,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "material_scaling_bishop", .default = tunable_defaults.material_scaling_bishop },
     .{ .name = "material_scaling_rook", .default = tunable_defaults.material_scaling_rook },
     .{ .name = "material_scaling_queen", .default = tunable_defaults.material_scaling_queen },
-    .{ .name = "multicut_fail_medium", .default = tunable_defaults.multicut_fail_medium },
-    .{ .name = "rfp_fail_medium", .default = tunable_defaults.rfp_fail_medium },
-    .{ .name = "tt_fail_medium", .default = tunable_defaults.tt_fail_medium },
-    .{ .name = "qs_tt_fail_medium", .default = tunable_defaults.qs_tt_fail_medium },
-    .{ .name = "standpat_fail_medium", .default = tunable_defaults.standpat_fail_medium },
+    .{ .name = "multicut_fail_medium", .default = tunable_defaults.multicut_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "rfp_fail_medium", .default = tunable_defaults.rfp_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "tt_fail_medium", .default = tunable_defaults.tt_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "qs_tt_fail_medium", .default = tunable_defaults.qs_tt_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "standpat_fail_medium", .default = tunable_defaults.standpat_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .c_end = 80 },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
     .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .c_end = 60 },
