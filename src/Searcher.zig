@@ -177,6 +177,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    reduction: i32,
 
     pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
@@ -185,6 +186,7 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
+        self.reduction = 0;
     }
 };
 
@@ -538,6 +540,7 @@ fn search(
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
     const cur = self.curStackEntry();
+    const prev = self.prevStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
@@ -611,6 +614,7 @@ fn search(
         }
     }
 
+    // iir
     if (depth >= 4 and
         (is_pv or cutnode) and
         !has_tt_move)
@@ -854,7 +858,14 @@ fn search(
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
                 reduction -= tunable_constants.lmr_ttpv_mult * @intFromBool(tt_pv);
+                // post lmr update
+                if (prev.reduction >= 3072 and
+                    num_legal >= 4)
+                {
+                    reduction -= 512;
+                }
 
+                cur.reduction = reduction;
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
@@ -869,6 +880,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
+                cur.reduction = 0;
                 if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
