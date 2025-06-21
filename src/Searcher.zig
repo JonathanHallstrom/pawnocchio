@@ -45,6 +45,7 @@ pub const Params = struct {
     limits: Limits,
     previous_hashes: std.BoundedArray(u64, 200),
     needs_full_reset: bool = false,
+    syzygy_depth: u8 = 0,
 };
 
 const EvalPair = struct {
@@ -110,6 +111,7 @@ pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
+syzygy_depth: u8 = 1,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -608,7 +610,7 @@ fn search(
         }
     }
 
-    if (!is_root and cur.excluded.isNull()) {
+    if (!is_root and cur.excluded.isNull() and depth >= self.syzygy_depth) {
         if (root.pyrrhic.probeWDL(board)) |result| {
             const tp: ScoreType, const score = switch (result) {
                 .win => .{ .lower, evaluation.tbWin(self.ply) },
@@ -1091,13 +1093,18 @@ fn fixupPreviousHashes(self: *Searcher) void {
 
 fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.limits = params.limits;
+    self.syzygy_depth = params.syzygy_depth;
     self.is_main_thread = is_main_thread;
     self.ply = 0;
     self.stop.store(false, .release);
     self.nodes = 0;
     const board = params.board;
     self.previous_hashes.len = 0;
+    var num_repeitions: u8 = 0;
     for (params.previous_hashes.slice()) |previous_hash| {
+        if (params.board.hash == previous_hash) {
+            num_repeitions += 1;
+        }
         self.previous_hashes.append(previous_hash) catch @panic("too many hashes!");
     }
     self.fixupPreviousHashes();
