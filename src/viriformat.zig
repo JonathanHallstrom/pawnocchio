@@ -196,7 +196,7 @@ pub const Game = struct {
     }
 
     pub fn setOutCome(self: *Game, wdl: WDL) void {
-        self.initial_position.wdl = wdl.toInt();
+        self.initial_position.wdl = 2 - wdl.toInt();
     }
 
     pub fn reset(self: *Game, board: Board) void {
