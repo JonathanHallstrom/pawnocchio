@@ -339,6 +339,10 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     }
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
+        if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
+            return @intCast(tt_score + @divTrunc((beta - tt_score) * tunable_constants.qs_tt_fail_medium, 1024));
+        }
+
         return tt_score;
     }
     const tt_pv = is_pv or tt_entry.flags.is_pv;
@@ -355,10 +359,12 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
             static_eval = tt_score;
         }
 
-        if (static_eval >= beta)
-            return static_eval;
-        if (static_eval > alpha)
+        if (static_eval >= beta) {
+            return @intCast(static_eval + @divTrunc((beta - static_eval) * tunable_constants.standpat_fail_medium, 1024));
+        }
+        if (static_eval > alpha) {
             alpha = static_eval;
+        }
     }
 
     if (self.ply >= MAX_PLY - 1) {
@@ -595,6 +601,10 @@ fn search(
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
+                    if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
+                        return @intCast(tt_score + @divTrunc((beta - tt_score) * tunable_constants.tt_fail_medium, 1024));
+                    }
+
                     return tt_score;
                 }
             }
@@ -651,7 +661,7 @@ fn search(
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
-            return @intCast(static_eval + beta >> 1);
+            return @intCast(static_eval + @divTrunc((beta - static_eval) * tunable_constants.rfp_fail_medium, 1024));
         }
         if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
@@ -802,7 +812,7 @@ fn search(
                     extension += 1;
                 }
             } else if (s_beta >= beta) {
-                return @intCast(s_beta);
+                return @intCast(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
             } else if (tt_entry.score >= beta) {
                 extension -= 1;
             } else if (cutnode) {
