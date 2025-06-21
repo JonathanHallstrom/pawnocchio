@@ -768,6 +768,15 @@ fn search(
                     mp.skip_quiets = true;
                     continue;
                 }
+            } else {
+                // bnfp
+                if (!is_in_check and
+                    lmr_depth <= 6 and
+                    @abs(alpha) < 2000 and
+                    static_eval + 300 + lmr_depth * @as(i32, 200) <= alpha)
+                {
+                    break;
+                }
             }
 
             const see_pruning_thresh = if (is_quiet)
