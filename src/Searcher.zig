@@ -752,7 +752,7 @@ fn search(
                 const granularity: i32 = 978;
                 if (num_legal * granularity + lmp_base >= depth * depth * lmp_mult) {
                     mp.skip_quiets = true;
-                    continue;
+                    break;
                 }
 
                 if (depth <= 3 and history_score < depth * tunable_constants.history_pruning_mult) {
