@@ -352,8 +352,21 @@ pub fn main() !void {
             }
 
             if (root.use_tbs) {
-                if (std.ascii.eqlIgnoreCase("Syzygy", option_name)) {
-                    try root.pyrrhic.init(value);
+                if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name)) {
+                    var dir = try std.fs.openDirAbsolute(value, .{ .iterate = true });
+
+                    var num_files: usize = 0;
+                    var iter = dir.iterate();
+                    while (try iter.next()) |_| {
+                        num_files += 1;
+                    }
+                    dir.close();
+                    if (num_files == 0) {
+                        write("info string The directory you specified contains no files, make sure the path is correct", .{});
+                    }
+                    const null_terminated = try allocator.dupeZ(u8, value);
+                    defer allocator.free(null_terminated);
+                    try root.pyrrhic.init(null_terminated);
                 }
             }
 
@@ -367,6 +380,8 @@ pub fn main() !void {
                     }
                 }
             }
+        } else if (root.use_tbs and std.ascii.eqlIgnoreCase(command, "ProbeWDL")) {
+            std.debug.print("{any}\n", .{root.pyrrhic.probeWDL(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             root.engine.waitUntilDoneSearching();
             write("readyok\n", .{});

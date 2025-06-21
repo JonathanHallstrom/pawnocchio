@@ -24,58 +24,146 @@ const use_tbs = root.use_tbs;
 
 const c = if (use_tbs) @cImport(@cInclude("tbprobe.h")) else undefined;
 
-var needs_deinit = false;
-pub fn init(path: []const u8) error{TBInitializationFailed}!void {
-    if (use_tbs) {
-        needs_deinit = true;
-        if (!c.tb_init(path.ptr)) {
-            return error.TBInitializationFailed;
-        }
+var tbs_init = false;
+pub fn init(path: [*:0]const u8) error{TBInitializationFailed}!void {
+    if (!use_tbs) {
+        return;
+    }
+    tbs_init = true;
+    if (!c.tb_init(path)) {
+        return error.TBInitializationFailed;
     }
 }
 
 pub fn deinit() void {
-    if (use_tbs) {
-        if (needs_deinit) {
-            needs_deinit = false;
-            c.tb_free();
-        }
+    if (!use_tbs) {
+        return;
+    }
+
+    if (tbs_init) {
+        tbs_init = false;
+        c.tb_free();
     }
 }
 
-pub fn probeWdl(board: *const Board) ?WDL {
-    if (use_tbs) {
-        if (board.castling_rights.raw != 0) {
-            return null;
-        }
-
-        const probe_result = c.tb_probe_wdl(
-            board.white,
-            board.black,
-            board.kings(),
-            board.queens(),
-            board.rooks(),
-            board.bishops(),
-            board.knights(),
-            board.pawns(),
-            if (board.ep_target) |ep| ep.toInt() else 0,
-            colorToPyrrhic(board.stm),
-        );
-        return switch (probe_result) {
-            c.TB_WIN => .win,
-
-            c.TB_DRAW,
-            c.TB_CURSED_WIN,
-            c.TB_BLESSED_LOSS,
-            => .draw,
-
-            c.TB_LOSS => .loss,
-            c.TB_RESULT_FAILED => null,
-            else => unreachable,
-        };
-    } else {
+pub fn probeWDL(board: *const Board) ?WDL {
+    if (!use_tbs or !tbs_init) {
         return null;
     }
+    if (board.halfmove > 0 or
+        board.castling_rights.rawCastlingAvailability() != 0 or
+        @popCount(board.white | board.black) > c.TB_LARGEST)
+    {
+        return null;
+    }
+
+    const probe_result = c.tb_probe_wdl(
+        board.white,
+        board.black,
+        board.kings(),
+        board.queens(),
+        board.rooks(),
+        board.bishops(),
+        board.knights(),
+        board.pawns(),
+        if (board.ep_target) |ep| ep.toInt() else 0,
+        board.stm == .white,
+    );
+
+    return switch (probe_result) {
+        c.TB_WIN => .win,
+
+        c.TB_DRAW,
+        c.TB_CURSED_WIN,
+        c.TB_BLESSED_LOSS,
+        => .draw,
+
+        c.TB_LOSS => .loss,
+        c.TB_RESULT_FAILED => null,
+        else => unreachable,
+    };
+}
+
+pub fn probeRootDTZ(
+    board: *const Board,
+    has_repetition: bool,
+) ?struct { WDL, std.BoundedArray(root.ScoredMove, c.TB_MAX_MOVES) } {
+    if (!use_tbs or !tbs_init) {
+        return null;
+    }
+    if (board.castling_rights.rawCastlingAvailability() != 0 or
+        @popCount(board.white | board.black) > c.TB_LARGEST)
+    {
+        return null;
+    }
+    var tb_results = std.mem.zeroes(c.TbRootMoves);
+
+    const probe_result = c.tb_probe_root_dtz(
+        board.white,
+        board.black,
+        board.kings(),
+        board.queens(),
+        board.rooks(),
+        board.bishops(),
+        board.knights(),
+        board.pawns(),
+        board.halfmove,
+        if (board.ep_target) |ep| ep.toInt() else 0,
+        board.stm == .white,
+        has_repetition,
+        &tb_results,
+    );
+
+    if (probe_result == c.TB_RESULT_FAILED) {
+        return null;
+    }
+
+    var scored: root.movegen.MoveListReceiver = .{};
+    switch (board.stm) {
+        inline else => |stm| {
+            root.movegen.generateAllNoisies(stm, board, &scored);
+            root.movegen.generateAllQuiets(stm, board, &scored);
+        },
+    }
+
+    const tb_moves = tb_results.moves[0..tb_results.size];
+    var res: std.BoundedArray(root.ScoredMove, c.TB_MAX_MOVES) = .{};
+    for (tb_moves) |tb_move| {
+        const from: u6 = @intCast(c.PYRRHIC_MOVE_FROM(tb_move.move));
+        const to: u6 = @intCast(c.PYRRHIC_MOVE_TO(tb_move.move));
+        const is_ep = c.PYRRHIC_MOVE_IS_ENPASS(tb_move.move);
+        var promo_type_opt: ?root.PieceType = null;
+        if (c.TB_RESULT_IS_NPROMO) promo_type_opt = .knight;
+        if (c.TB_RESULT_IS_BPROMO) promo_type_opt = .bishop;
+        if (c.TB_RESULT_IS_RPROMO) promo_type_opt = .rook;
+        if (c.TB_RESULT_IS_QPROMO) promo_type_opt = .queen;
+        const capture = board.occupancyFor(board.stm.flipped()) & @as(u64, 1) << to != 0;
+        var move = root.Move.quiet(from, to);
+        if (is_ep) {
+            move = root.Move.enPassant(from, to);
+        } else if (promo_type_opt) |promo_type| {
+            move = root.Move.promo(from, to, promo_type);
+        } else if (capture) {
+            move = root.Move.capture(from, to);
+        }
+
+        res.appendAssumeCapacity(.{
+            .move = move,
+            .score = tb_move.tbRank,
+        });
+    }
+    const wdl: WDL = switch (probe_result) {
+        c.TB_WIN => .win,
+
+        c.TB_DRAW,
+        c.TB_CURSED_WIN,
+        c.TB_BLESSED_LOSS,
+        => .draw,
+
+        c.TB_LOSS => .loss,
+        else => unreachable,
+    };
+    return .{ wdl, res };
 }
 
 // exports
@@ -83,11 +171,11 @@ pub export fn popcount(x: u64) u8 {
     return @popCount(x);
 }
 pub export fn getlsb(x: u64) u8 {
-    return @clz(x);
+    return @ctz(x);
 }
 pub export fn poplsb(x: *u64) u8 {
-    const res = @clz(x.*);
-    x.* &= x.* - 1;
+    const res = @ctz(x.*);
+    x.* &= x.* -% 1;
     return res;
 }
 
@@ -109,10 +197,4 @@ pub export fn queenAttacks(sq: u8, occ: u64) u64 {
 }
 pub export fn kingAttacks(sq: u8) u64 {
     return root.Bitboard.kingMoves(sq);
-}
-
-fn colorToPyrrhic(col: root.Colour) bool {
-    const PYRRHIC_WHITE: bool = c.PYRRHIC_WHITE != 0;
-    const PYRRHIC_BLACK: bool = c.PYRRHIC_BLACK != 0;
-    return if (col == .white) PYRRHIC_WHITE else PYRRHIC_BLACK;
 }

@@ -1004,7 +1004,6 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
     var iter = Bitboard.iterator(need_to_be_unattacked);
     while (iter.next()) |sq| {
         const attackers = movegen.attackersFor(stm.flipped(), self, sq, occ_without_king_rook);
-        // std.debug.print("attackers: {}\n", .{attackers});
         if (attackers != 0) {
             return false;
         }
