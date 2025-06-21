@@ -350,6 +350,13 @@ pub fn main() !void {
                     continue;
                 });
             }
+
+            if (root.use_tbs) {
+                if (std.ascii.eqlIgnoreCase("Syzygy", option_name)) {
+                    try root.pyrrhic.init(value);
+                }
+            }
+
             if (root.tuning.do_tuning) {
                 inline for (root.tuning.tunables) |tunable| {
                     if (std.ascii.eqlIgnoreCase(tunable.name, option_name)) {

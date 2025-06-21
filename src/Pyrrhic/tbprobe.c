@@ -494,7 +494,7 @@ static void *map_tb(const char *name, const char *suffix, map_t *mapping) {
     void *data = map_file(fd, mapping);
     if (data == NULL) {
         fprintf(stderr, "Could not map %s%s into memory.\n", name, suffix);
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     close_tb(fd);
@@ -674,7 +674,9 @@ bool tb_init(const char *path)
     pawnEntry = (struct PawnEntry*)malloc(TB_MAX_PAWN * sizeof(*pawnEntry));
     if (!pieceEntry || !pawnEntry) {
       fprintf(stderr, "Out of memory.\n");
-      exit(EXIT_FAILURE);
+      free(pieceEntry);
+      free(pawnEntry);
+      return false;
     }
   }
 

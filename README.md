@@ -55,7 +55,7 @@ The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 Alternatively you can build the engine using the Makefile, with `make`
 
 ## Credit
- - [Pyrrhic](https://github.com/AndyGrant/Pyrrhic/tree/c88405c01452f906a6f7808f5b22d3679138016b) for tablebase probing, under the MIT license.
+ - [Pyrrhic](https://github.com/JonathanHallstrom/Pyrrhic/tree/patch-1) by [Andrew Grant](https://github.com/AndyGrant) for tablebase probing, under the MIT license.
 
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1

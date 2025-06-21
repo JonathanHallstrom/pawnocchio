@@ -25,10 +25,12 @@ const use_tbs = root.use_tbs;
 const c = if (use_tbs) @cImport(@cInclude("tbprobe.h")) else undefined;
 
 var needs_deinit = false;
-pub fn init(path: []const u8) void {
+pub fn init(path: []const u8) error{TBInitializationFailed}!void {
     if (use_tbs) {
         needs_deinit = true;
-        c.tb_init(path.ptr);
+        if (!c.tb_init(path.ptr)) {
+            return error.TBInitializationFailed;
+        }
     }
 }
 
@@ -41,8 +43,12 @@ pub fn deinit() void {
     }
 }
 
-pub fn probeWdl(board: *const Board) WDL {
+pub fn probeWdl(board: *const Board) ?WDL {
     if (use_tbs) {
+        if (board.castling_rights.raw != 0) {
+            return null;
+        }
+
         const probe_result = c.tb_probe_wdl(
             board.white,
             board.black,
@@ -64,10 +70,11 @@ pub fn probeWdl(board: *const Board) WDL {
             => .draw,
 
             c.TB_LOSS => .loss,
+            c.TB_RESULT_FAILED => null,
             else => unreachable,
         };
     } else {
-        return .loss;
+        return null;
     }
 }
 
