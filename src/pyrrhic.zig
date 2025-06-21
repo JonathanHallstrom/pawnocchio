@@ -133,10 +133,10 @@ pub fn probeRootDTZ(
         const to: u6 = @intCast(c.PYRRHIC_MOVE_TO(tb_move.move));
         const is_ep = c.PYRRHIC_MOVE_IS_ENPASS(tb_move.move);
         var promo_type_opt: ?root.PieceType = null;
-        if (c.TB_RESULT_IS_NPROMO) promo_type_opt = .knight;
-        if (c.TB_RESULT_IS_BPROMO) promo_type_opt = .bishop;
-        if (c.TB_RESULT_IS_RPROMO) promo_type_opt = .rook;
-        if (c.TB_RESULT_IS_QPROMO) promo_type_opt = .queen;
+        if (c.PYRRHIC_MOVE_IS_NPROMO(tb_move.move)) promo_type_opt = .knight;
+        if (c.PYRRHIC_MOVE_IS_BPROMO(tb_move.move)) promo_type_opt = .bishop;
+        if (c.PYRRHIC_MOVE_IS_RPROMO(tb_move.move)) promo_type_opt = .rook;
+        if (c.PYRRHIC_MOVE_IS_QPROMO(tb_move.move)) promo_type_opt = .queen;
         const capture = board.occupancyFor(board.stm.flipped()) & @as(u64, 1) << to != 0;
         var move = root.Move.quiet(from, to);
         if (is_ep) {

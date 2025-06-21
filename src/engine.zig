@@ -239,8 +239,7 @@ fn datagenWorker(
             }
             game.addMove(search_move, adjusted) catch unreachable;
             hashes.append(board.hash) catch unreachable;
-            // std.debug.print("{s}", .{dbg_log});
-            if (root.evaluation.isMateScore(search_score)) {
+            if (root.evaluation.isMateScore(search_score) or root.evaluation.isTBScore(search_score)) {
                 if (adjusted > 0) {
                     game.setOutCome(.win);
                 } else {
@@ -271,7 +270,6 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     var total_position_count = std.atomic.Value(usize).init(0);
     for (0..current_num_threads) |i| {
         searchers[i].tt = try std.heap.page_allocator.alloc(root.TTEntry, (16 << 20) / @sizeOf(root.TTEntry));
-        // datagenWorker(0, 8, num_nodes, out_file.writer(), &writer_mutex, &total_position_count);
         try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 9, num_nodes, &writer, &writer_mutex, &total_position_count });
     }
 
