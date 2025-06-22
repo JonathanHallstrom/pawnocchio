@@ -362,9 +362,9 @@ pub const tunable_constants = if (do_tuning) struct {
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {
-    pub const one = [5]i32{ -1165, 1068, -862, 640, -550 };
-    pub const two: [10]i32 = .{0} ** 10;
-    pub const three: [10]i32 = .{0} ** 10;
+    pub const one = [6]i32{ -1165, 1068, -862, 640, -550, 0 };
+    pub const two: [15]i32 = .{0} ** 15;
+    pub const three: [20]i32 = .{0} ** 20;
 };
 
 pub const factorized_lmr_params = struct {
