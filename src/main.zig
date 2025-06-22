@@ -25,6 +25,10 @@ const VERSION_STRING = "1.7.2";
 pub fn main() !void {
     root.init();
     defer root.deinit();
+    defer {
+        root.engine.stopSearch();
+        root.engine.waitUntilDoneSearching();
+    }
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
