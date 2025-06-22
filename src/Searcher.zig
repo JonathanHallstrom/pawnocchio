@@ -848,7 +848,7 @@ fn search(
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
-                reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
+                reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode and num_legal < 4);
                 reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
