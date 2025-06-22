@@ -52,7 +52,7 @@ The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 1. Get the network with `git submodule update --init --depth 1`
 2. Install zig (0.14.0)
 3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
-Alternatively you can build the engine using the Makefile, with `make`
+The Makefile is only intended to be used for testing on Openbench.
 
 ## Credit
  - [Pyrrhic](https://github.com/JonathanHallstrom/Pyrrhic/tree/patch-1) by [Andrew Grant](https://github.com/AndyGrant) for tablebase probing, under the MIT license.

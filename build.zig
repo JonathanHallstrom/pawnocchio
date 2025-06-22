@@ -1,12 +1,20 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
-    const net = b.option([]const u8, "net", "Change the net to be used") orelse "pawnocchio-nets/networks/net22_1280_take6.nnue";
+    const runtime_net = b.option(bool, "runtime_net", "whether to exclude the binary from the binary") orelse false;
+    const net = b.option([]const u8, "net", "Change the net to be used") orelse blk: {
+        if (runtime_net) {
+            std.debug.print("When using a runtime net you need to give an absolute path to the network\n", .{});
+            return error.NoAbsoluteNetPathWithRuntimeNet;
+        }
+        break :blk "pawnocchio-nets/networks/net22_1280_take6.nnue";
+    };
+
     const use_tbs = true;
-    const omit_frame_ptr = switch (optimize) {
+    const minimal_executable = switch (optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
     };
@@ -23,11 +31,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .root_source_file = b.path("src/main.zig"),
-        .omit_frame_pointer = omit_frame_ptr,
+        .omit_frame_pointer = minimal_executable,
+        .strip = minimal_executable,
         .link_libc = target.result.os.tag == .windows or use_tbs,
     });
     const exe_options = b.addOptions();
     exe_options.addOption(bool, "use_tbs", use_tbs);
+    exe_options.addOption(bool, "runtime_net", runtime_net);
+    exe_options.addOption([]const u8, "net_path", net);
     exe.root_module.addOptions("build_options", exe_options);
     if (use_tbs) {
         exe.addCSourceFile(.{
@@ -54,6 +65,8 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
     const test_options = b.addOptions();
     test_options.addOption(bool, "use_tbs", false);
+    test_options.addOption(bool, "runtime_net", runtime_net);
+    test_options.addOption([]const u8, "net_path", net);
 
     const exe_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/main.zig"),

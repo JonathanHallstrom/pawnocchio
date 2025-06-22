@@ -23,9 +23,15 @@ const Board = root.Board;
 const use_hce = false;
 const impl = if (use_hce) @import("hce.zig") else @import("nnue.zig");
 
-pub fn init() void {
+pub fn init() !void {
     if (@hasDecl(impl, "init")) {
-        impl.init();
+        try impl.init();
+    }
+}
+
+pub fn deinit() void {
+    if (@hasDecl(impl, "deinit")) {
+        impl.deinit();
     }
 }
 

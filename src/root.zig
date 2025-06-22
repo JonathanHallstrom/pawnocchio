@@ -85,7 +85,7 @@ pub fn init() void {
         fn initImpl() void {
             stdout = std.io.getStdOut();
             attacks.init();
-            evaluation.init();
+            evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
             engine.reset();
             engine.setTTSize(16) catch std.debug.panic("Fatal: couldn't allocate default TT size\n", .{});
             engine.setThreadCount(1) catch std.debug.panic("Fatal: couldn't allocate default thread count\n", .{});
@@ -99,6 +99,7 @@ pub fn deinit() void {
     const globals = struct {
         fn deinitImpl() void {
             pyrrhic.deinit();
+            evaluation.deinit();
         }
         var deinit_once = std.once(deinitImpl);
     };
