@@ -150,7 +150,7 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     } else if (self.board.isEnPassant(move)) {
         res += SEE.value(.pawn, .ordering);
     }
-    res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
+    res = @divFloor(res * root.tunable_constants.mvv_mult, 64);
     res += self.histories.readNoisy(self.board, move);
 
     return res;
