@@ -788,7 +788,8 @@ fn search(
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + @as(i32, 3) >= depth and
-            tt_entry.flags.score_type != .upper)
+            tt_entry.flags.score_type != .upper and
+            self.ply < 2 * self.limits.root_depth)
         {
             const s_beta = @max(evaluation.matedIn(0) + 1, tt_entry.score - (depth * tunable_constants.singular_beta_mult >> 10));
             const s_depth = depth * tunable_constants.singular_depth_mult - tunable_constants.singular_depth_offs >> 10;
