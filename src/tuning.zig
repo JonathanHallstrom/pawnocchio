@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -88,14 +88,9 @@ const tunable_defaults = struct {
     pub const lmr_noisy_legal_mult: i32 = 948;
     pub const lmr_quiet_legal_offs: i32 = 199;
     pub const lmr_noisy_legal_offs: i32 = 33;
-    pub const lmr_pv_mult: i32 = 1165;
-    pub const lmr_cutnode_mult: i32 = 1068;
-    pub const lmr_improving_mult: i32 = 862;
     pub const lmr_quiet_history_mult: i32 = 720;
     pub const lmr_noisy_history_mult: i32 = 1024;
     pub const lmr_corrhist_mult: i32 = 9629;
-    pub const lmr_ttmove_mult: i32 = 640;
-    pub const lmr_ttpv_mult: i32 = 550;
     pub const lmr_dodeeper_margin: i32 = 52;
     pub const nmp_base: i32 = 51087;
     pub const nmp_mult: i32 = 914;
@@ -197,14 +192,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_noisy_legal_mult", .default = tunable_defaults.lmr_noisy_legal_mult, .min = -10, .max = 2357, .c_end = 93 },
     .{ .name = "lmr_quiet_legal_offs", .default = tunable_defaults.lmr_quiet_legal_offs, .min = -1024, .max = 1024, .c_end = 128 },
     .{ .name = "lmr_noisy_legal_offs", .default = tunable_defaults.lmr_noisy_legal_offs, .min = -1024, .max = 1024, .c_end = 128 },
-    .{ .name = "lmr_pv_mult", .default = tunable_defaults.lmr_pv_mult, .min = -10, .max = 2900, .c_end = 115 },
-    .{ .name = "lmr_cutnode_mult", .default = tunable_defaults.lmr_cutnode_mult, .min = -10, .max = 2552, .c_end = 101 },
-    .{ .name = "lmr_improving_mult", .default = tunable_defaults.lmr_improving_mult, .min = -10, .max = 2090, .c_end = 83 },
     .{ .name = "lmr_quiet_history_mult", .default = tunable_defaults.lmr_quiet_history_mult, .min = -10, .max = 1975, .c_end = 78 },
     .{ .name = "lmr_noisy_history_mult", .default = tunable_defaults.lmr_noisy_history_mult, .min = -10, .max = 2470, .c_end = 98 },
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult, .min = -10, .max = 23695, .c_end = 947 },
-    .{ .name = "lmr_ttmove_mult", .default = tunable_defaults.lmr_ttmove_mult, .min = -10, .max = 1582, .c_end = 62 },
-    .{ .name = "lmr_ttpv_mult", .default = tunable_defaults.lmr_ttpv_mult, .min = -10, .max = 1290, .c_end = 51 },
     .{ .name = "lmr_dodeeper_margin", .default = tunable_defaults.lmr_dodeeper_margin, .min = -10, .max = 140, .c_end = 5 },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base, .min = -10, .max = 126747, .c_end = 5069 },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult, .min = -10, .max = 2317, .c_end = 92 },
@@ -306,14 +296,9 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_noisy_legal_mult = tunable_defaults.lmr_noisy_legal_mult;
     pub var lmr_quiet_legal_offs = tunable_defaults.lmr_quiet_legal_offs;
     pub var lmr_noisy_legal_offs = tunable_defaults.lmr_noisy_legal_offs;
-    pub var lmr_pv_mult = tunable_defaults.lmr_pv_mult;
-    pub var lmr_cutnode_mult = tunable_defaults.lmr_cutnode_mult;
-    pub var lmr_improving_mult = tunable_defaults.lmr_improving_mult;
     pub var lmr_quiet_history_mult = tunable_defaults.lmr_quiet_history_mult;
     pub var lmr_noisy_history_mult = tunable_defaults.lmr_noisy_history_mult;
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
-    pub var lmr_ttmove_mult = tunable_defaults.lmr_ttmove_mult;
-    pub var lmr_ttpv_mult = tunable_defaults.lmr_ttpv_mult;
     pub var lmr_dodeeper_margin = tunable_defaults.lmr_dodeeper_margin;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
@@ -375,6 +360,24 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var singular_depth_offs = tunable_defaults.singular_depth_offs;
     pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
 } else tunable_defaults;
+
+const factorized_lmr_defaults = struct {
+    pub const one = [5]i32{ -1165, 1068, -862, 640, -550 };
+    pub const two: [10]i32 = .{0} ** 10;
+    pub const three: [10]i32 = .{0} ** 10;
+};
+
+pub const factorized_lmr_params = struct {
+    pub const min = -1024;
+    pub const max = 1024;
+    pub const c_end = 128;
+};
+
+pub const factorized_lmr = if (do_tuning) struct {
+    pub var one = factorized_lmr_defaults.one;
+    pub var two = factorized_lmr_defaults.two;
+    pub var three = factorized_lmr_defaults.three;
+} else factorized_lmr_defaults;
 
 comptime {
     std.debug.assert(std.meta.declarations(tunable_defaults).len == tunables.len);
