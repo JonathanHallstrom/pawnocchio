@@ -412,7 +412,7 @@ fn qsearch(
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             if (!is_in_check and futility <= alpha and
-                !SEE.scoreMove(board, move, 1) and
+                !SEE.scoreMove(board, move, 1, .pruning) and
                 !is_recapture)
             {
                 best_score = @intCast(@max(best_score, futility));
@@ -420,7 +420,7 @@ fn qsearch(
             }
 
             if (!is_in_check and
-                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold)))
+                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)))
             {
                 continue;
             }
@@ -798,7 +798,7 @@ fn search(
                 tunable_constants.see_noisy_pruning_mult * depth * depth;
 
             if (!skip_see_pruning and
-                !SEE.scoreMove(board, move, see_pruning_thresh))
+                !SEE.scoreMove(board, move, see_pruning_thresh, .pruning))
             {
                 continue;
             }

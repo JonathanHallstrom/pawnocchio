@@ -120,11 +120,17 @@ const tunable_defaults = struct {
     pub const lmp_improving_mult: i32 = 1091;
     pub const good_noisy_ordering_base: i32 = 23;
     pub const good_noisy_ordering_mult: i32 = 1042;
-    pub const see_pawn: i32 = 85;
-    pub const see_knight: i32 = 323;
-    pub const see_bishop: i32 = 313;
-    pub const see_rook: i32 = 542;
-    pub const see_queen: i32 = 902;
+    pub const see_pawn_pruning: i32 = 85;
+    pub const see_knight_pruning: i32 = 323;
+    pub const see_bishop_pruning: i32 = 313;
+    pub const see_rook_pruning: i32 = 542;
+    pub const see_queen_pruning: i32 = 902;
+    pub const see_pawn_ordering: i32 = 85;
+    pub const see_knight_ordering: i32 = 323;
+    pub const see_bishop_ordering: i32 = 313;
+    pub const see_rook_ordering: i32 = 542;
+    pub const see_queen_ordering: i32 = 902;
+    pub const mvv_mult: i32 = 1024;
     pub const material_scaling_base: i32 = 9114;
     pub const material_scaling_pawn: i32 = 4;
     pub const material_scaling_knight: i32 = 351;
@@ -223,11 +229,17 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult, .min = -10, .max = 2717, .c_end = 108 },
     .{ .name = "good_noisy_ordering_base", .default = tunable_defaults.good_noisy_ordering_base, .min = -2048, .max = 2048, .c_end = 32 },
     .{ .name = "good_noisy_ordering_mult", .default = tunable_defaults.good_noisy_ordering_mult, .min = -10, .max = 2570, .c_end = 102 },
-    .{ .name = "see_pawn", .default = tunable_defaults.see_pawn, .min = -10, .max = 215, .c_end = 8 },
-    .{ .name = "see_knight", .default = tunable_defaults.see_knight, .min = -10, .max = 792, .c_end = 31 },
-    .{ .name = "see_bishop", .default = tunable_defaults.see_bishop, .min = -10, .max = 737, .c_end = 29 },
-    .{ .name = "see_rook", .default = tunable_defaults.see_rook, .min = -10, .max = 1355, .c_end = 53 },
-    .{ .name = "see_queen", .default = tunable_defaults.see_queen, .min = -10, .max = 2110, .c_end = 84 },
+    .{ .name = "see_pawn_pruning", .default = tunable_defaults.see_pawn_pruning, .min = -10, .max = 215, .c_end = 8 },
+    .{ .name = "see_knight_pruning", .default = tunable_defaults.see_knight_pruning, .min = -10, .max = 792, .c_end = 31 },
+    .{ .name = "see_bishop_pruning", .default = tunable_defaults.see_bishop_pruning, .min = -10, .max = 737, .c_end = 29 },
+    .{ .name = "see_rook_pruning", .default = tunable_defaults.see_rook_pruning, .min = -10, .max = 1355, .c_end = 53 },
+    .{ .name = "see_queen_pruning", .default = tunable_defaults.see_queen_pruning, .min = -10, .max = 2110, .c_end = 84 },
+    .{ .name = "see_pawn_ordering", .default = tunable_defaults.see_pawn_ordering, .min = -10, .max = 215, .c_end = 8 },
+    .{ .name = "see_knight_ordering", .default = tunable_defaults.see_knight_ordering, .min = -10, .max = 792, .c_end = 31 },
+    .{ .name = "see_bishop_ordering", .default = tunable_defaults.see_bishop_ordering, .min = -10, .max = 737, .c_end = 29 },
+    .{ .name = "see_rook_ordering", .default = tunable_defaults.see_rook_ordering, .min = -10, .max = 1355, .c_end = 53 },
+    .{ .name = "see_queen_ordering", .default = tunable_defaults.see_queen_ordering, .min = -10, .max = 2110, .c_end = 84 },
+    .{ .name = "mvv_mult", .default = tunable_defaults.mvv_mult, .min = 1, .max = 2048, .c_end = 128 },
     .{ .name = "material_scaling_base", .default = tunable_defaults.material_scaling_base, .min = -10, .max = 23110, .c_end = 924 },
     .{ .name = "material_scaling_pawn", .default = tunable_defaults.material_scaling_pawn, .min = -100, .max = 200, .c_end = 15 },
     .{ .name = "material_scaling_knight", .default = tunable_defaults.material_scaling_knight, .min = -10, .max = 885, .c_end = 35 },
@@ -326,11 +338,17 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
     pub var good_noisy_ordering_base = tunable_defaults.good_noisy_ordering_base;
     pub var good_noisy_ordering_mult = tunable_defaults.good_noisy_ordering_mult;
-    pub var see_pawn = tunable_defaults.see_pawn;
-    pub var see_knight = tunable_defaults.see_knight;
-    pub var see_bishop = tunable_defaults.see_bishop;
-    pub var see_rook = tunable_defaults.see_rook;
-    pub var see_queen = tunable_defaults.see_queen;
+    pub var see_pawn_pruning = tunable_defaults.see_pawn_pruning;
+    pub var see_knight_pruning = tunable_defaults.see_knight_pruning;
+    pub var see_bishop_pruning = tunable_defaults.see_bishop_pruning;
+    pub var see_rook_pruning = tunable_defaults.see_rook_pruning;
+    pub var see_queen_pruning = tunable_defaults.see_queen_pruning;
+    pub var see_pawn_ordering = tunable_defaults.see_pawn_ordering;
+    pub var see_knight_ordering = tunable_defaults.see_knight_ordering;
+    pub var see_bishop_ordering = tunable_defaults.see_bishop_ordering;
+    pub var see_rook_ordering = tunable_defaults.see_rook_ordering;
+    pub var see_queen_ordering = tunable_defaults.see_queen_ordering;
+    pub var mvv_mult = tunable_defaults.mvv_mult;
     pub var material_scaling_base = tunable_defaults.material_scaling_base;
     pub var material_scaling_pawn = tunable_defaults.material_scaling_pawn;
     pub var material_scaling_knight = tunable_defaults.material_scaling_knight;

@@ -146,11 +146,11 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     //     res += SEE.value(move.promoType());
     // }
     if ((&self.board.mailbox)[move.to().toInt()].opt()) |captured_type| {
-        res += SEE.value(captured_type.toPieceType());
+        res += SEE.value(captured_type.toPieceType(), .ordering);
     } else if (self.board.isEnPassant(move)) {
-        res += SEE.value(.pawn);
+        res += SEE.value(.pawn, .ordering);
     }
-    res *= 1024;
+    res *= root.tunable_constants.mvv_mult;
     res += self.histories.readNoisy(self.board, move);
 
     return res;
@@ -197,7 +197,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 const history_score = self.histories.readNoisy(self.board, res.move);
                 const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                     root.tuning.tunable_constants.good_noisy_ordering_base;
-                if (SEE.scoreMove(self.board, res.move, margin)) {
+                if (SEE.scoreMove(self.board, res.move, margin, .ordering)) {
                     return res;
                 }
                 self.movelist.vals.slice()[self.last_bad_noisy] = res;
