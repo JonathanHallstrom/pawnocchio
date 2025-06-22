@@ -17,9 +17,17 @@
 const std = @import("std");
 
 test {
+    _ = pyrrhic;
     std.testing.refAllDecls(@This());
 }
 
+comptime {
+    if (use_tbs) {
+        _ = pyrrhic;
+    }
+}
+pub const use_tbs = @import("build_options").use_tbs;
+pub const pyrrhic = @import("pyrrhic.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const Board = @import("Board.zig");
 pub const Move = @import("move.zig").Move;
@@ -41,9 +49,19 @@ pub const refreshCache = @import("refresh_cache.zig").refreshCache;
 pub const viriformat = @import("viriformat.zig");
 pub const wdl = @import("wdl.zig");
 
-pub const is_0_14_0 = @import("builtin").zig_version.minor >= 14;
+pub const is_0_14_0 = @import("builtin").zig_version.minor == 14;
 
 const assert = std.debug.assert;
+
+pub const WDL = enum(u2) {
+    win = 2,
+    draw = 1,
+    loss = 0,
+
+    pub fn toInt(self: WDL) u8 {
+        return @intFromEnum(self);
+    }
+};
 
 pub const Colour = enum(u1) {
     white = 0,
@@ -80,8 +98,7 @@ pub fn init() void {
 pub fn deinit() void {
     const globals = struct {
         fn deinitImpl() void {
-            stdout = std.io.getStdOut();
-            attacks.init();
+            pyrrhic.deinit();
         }
         var deinit_once = std.once(deinitImpl);
     };

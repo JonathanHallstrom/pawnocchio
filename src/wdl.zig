@@ -27,7 +27,7 @@ pub fn wdlParams(material: anytype) struct { f64, f64 } {
 }
 
 pub fn normalize(score: i16, material: anytype) i16 {
-    if (root.evaluation.isMateScore(score)) {
+    if (root.evaluation.isMateScore(score) or root.evaluation.isTBScore(score)) {
         return score;
     }
     const a, _ = wdlParams(material);

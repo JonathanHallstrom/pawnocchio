@@ -256,6 +256,7 @@ pub fn main() !void {
     var board = Board.startpos();
     try previous_hashes.append(board.hash);
     var overhead: u64 = std.time.ns_per_ms * 10;
+    var syzygy_depth: u8 = 1;
     loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
@@ -282,6 +283,8 @@ pub fn main() !void {
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
+            write("option name SyzygyPath type string default <empty>\n", .{});
+            write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
             if (root.tuning.do_tuning) {
                 for (root.tuning.tunables) |tunable| {
                     write(
@@ -306,6 +309,7 @@ pub fn main() !void {
             }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
+            previous_hashes = .{};
             board = Board.startpos();
         } else if (std.ascii.eqlIgnoreCase(command, "setoption")) {
             if (!std.ascii.eqlIgnoreCase("name", parts.next() orelse "")) continue;
@@ -350,6 +354,32 @@ pub fn main() !void {
                     continue;
                 });
             }
+
+            if (root.use_tbs) {
+                if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name)) {
+                    var dir = try std.fs.openDirAbsolute(value, .{ .iterate = true });
+
+                    var num_files: usize = 0;
+                    var iter = dir.iterate();
+                    while (try iter.next()) |_| {
+                        num_files += 1;
+                    }
+                    dir.close();
+                    if (num_files == 0) {
+                        write("info string The directory you specified contains no files, make sure the path is correct", .{});
+                    }
+                    const null_terminated = try allocator.dupeZ(u8, value);
+                    defer allocator.free(null_terminated);
+                    try root.pyrrhic.init(null_terminated);
+                }
+                if (std.ascii.eqlIgnoreCase("SyzygyProbeDepth", option_name)) {
+                    syzygy_depth = std.fmt.parseInt(u8, value, 10) catch {
+                        writeLog("invalid syzygy probing depth: '{s}'\n", .{value});
+                        continue;
+                    };
+                }
+            }
+
             if (root.tuning.do_tuning) {
                 inline for (root.tuning.tunables) |tunable| {
                     if (std.ascii.eqlIgnoreCase(tunable.name, option_name)) {
@@ -360,6 +390,8 @@ pub fn main() !void {
                     }
                 }
             }
+        } else if (root.use_tbs and std.ascii.eqlIgnoreCase(command, "ProbeWDL")) {
+            std.debug.print("{any}\n", .{root.pyrrhic.probeWDL(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             root.engine.waitUntilDoneSearching();
             write("readyok\n", .{});
@@ -580,11 +612,7 @@ pub fn main() !void {
             }
 
             root.engine.startSearch(.{
-                .search_params = .{
-                    .board = board,
-                    .limits = limits,
-                    .previous_hashes = previous_hashes,
-                },
+                .search_params = .{ .board = board, .limits = limits, .previous_hashes = previous_hashes, .syzygy_depth = syzygy_depth },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
             root.engine.stopSearch();

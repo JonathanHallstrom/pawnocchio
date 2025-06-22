@@ -5,6 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
     const net = b.option([]const u8, "net", "Change the net to be used") orelse "pawnocchio-nets/networks/net22_1280_take6.nnue";
+    const use_tbs = true;
     const omit_frame_ptr = switch (optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
@@ -23,9 +24,21 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .root_source_file = b.path("src/main.zig"),
         .omit_frame_pointer = omit_frame_ptr,
+        .link_libc = target.result.os.tag == .windows or use_tbs,
     });
-    if (target.result.os.tag == .windows) {
-        exe.linkLibC();
+    const exe_options = b.addOptions();
+    exe_options.addOption(bool, "use_tbs", use_tbs);
+    exe.root_module.addOptions("build_options", exe_options);
+    if (use_tbs) {
+        exe.addCSourceFile(.{
+            .file = b.path("src/Pyrrhic/tbprobe.c"),
+            .flags = &.{
+                "-fno-sanitize=undefined",
+                "-O3",
+            },
+            .language = .c,
+        });
+        exe.addIncludePath(b.path("src/Pyrrhic/"));
     }
     exe.root_module.addImport("net", net_module);
     b.installArtifact(exe);
@@ -39,6 +52,8 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "run pawnocchio");
     run_step.dependOn(&run_cmd.step);
+    const test_options = b.addOptions();
+    test_options.addOption(bool, "use_tbs", false);
 
     const exe_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/main.zig"),
@@ -46,6 +61,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe_unit_tests.root_module.addImport("net", net_module);
+    exe_unit_tests.root_module.addOptions("build_options", test_options);
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
     const lib_unit_tests = b.addTest(.{
@@ -54,6 +70,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     lib_unit_tests.root_module.addImport("net", net_module);
+    lib_unit_tests.root_module.addOptions("build_options", test_options);
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
     const test_step = b.step("test", "run unit tests");

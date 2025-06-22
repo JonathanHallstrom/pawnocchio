@@ -45,6 +45,7 @@ pub const Params = struct {
     limits: Limits,
     previous_hashes: std.BoundedArray(u64, 200),
     needs_full_reset: bool = false,
+    syzygy_depth: u8 = 0,
 };
 
 const EvalPair = struct {
@@ -110,6 +111,7 @@ pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
+syzygy_depth: u8 = 1,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -317,11 +319,18 @@ fn isRepetition(self: *Searcher) bool {
     return false;
 }
 
-fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, comptime stm: Colour, alpha_: i32, beta: i32) i16 {
+fn qsearch(
+    self: *Searcher,
+    comptime is_root: bool,
+    comptime is_pv: bool,
+    comptime stm: Colour,
+    alpha_original: i32,
+    beta: i32,
+) i16 {
     if (is_pv) {
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
-    var alpha = alpha_;
+    var alpha = alpha_original;
     self.nodes += 1;
     if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop.store(true, .release);
@@ -351,7 +360,7 @@ fn qsearch(self: *Searcher, comptime is_root: bool, comptime is_pv: bool, compti
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else self.rawEval(stm);
+        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -611,19 +620,32 @@ fn search(
         }
     }
 
+    if (!is_root and cur.excluded.isNull() and depth >= self.syzygy_depth) {
+        if (root.pyrrhic.probeWDL(board)) |result| {
+            const tp: ScoreType, const score = switch (result) {
+                .win => .{ .lower, evaluation.tbWin(self.ply) },
+                .loss => .{ .upper, evaluation.tbLoss(self.ply) },
+                .draw => .{ .exact, self.drawScore(stm) },
+            };
+            if (evaluation.checkTTBound(score, alpha, beta, tp)) {
+                self.writeTT(tt_pv, tt_hash, Move.init(), score, tp, depth, evaluation.matedIn(self.ply));
+                return score;
+            }
+        }
+    }
+
     if (depth >= 4 and
         (is_pv or cutnode) and
         !has_tt_move)
     {
         depth -= 1;
     }
-
     var improving = false;
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = if (tt_hit) tt_entry.raw_static_eval else self.rawEval(stm);
+        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
@@ -1081,13 +1103,18 @@ fn fixupPreviousHashes(self: *Searcher) void {
 
 fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.limits = params.limits;
+    self.syzygy_depth = params.syzygy_depth;
     self.is_main_thread = is_main_thread;
     self.ply = 0;
     self.stop.store(false, .release);
     self.nodes = 0;
     const board = params.board;
     self.previous_hashes.len = 0;
+    var num_repeitions: u8 = 0;
     for (params.previous_hashes.slice()) |previous_hash| {
+        if (params.board.hash == previous_hash) {
+            num_repeitions += 1;
+        }
         self.previous_hashes.append(previous_hash) catch @panic("too many hashes!");
     }
     self.fixupPreviousHashes();
@@ -1119,14 +1146,11 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
         var quantized_window: i64 = tunable_constants.aspiration_initial;
-        const highest_non_mate_score = evaluation.win_score - 1;
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
         }
-        comptime std.debug.assert(!evaluation.isMateScore(highest_non_mate_score));
-        comptime std.debug.assert(evaluation.isMateScore(highest_non_mate_score + 1));
-        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -highest_non_mate_score));
-        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), highest_non_mate_score));
+        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -evaluation.highest_non_mate_score));
+        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.highest_non_mate_score));
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
