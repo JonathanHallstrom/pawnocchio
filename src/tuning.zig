@@ -368,8 +368,8 @@ const factorized_lmr_defaults = struct {
 };
 
 pub const factorized_lmr_params = struct {
-    pub const min = -1024;
-    pub const max = 1024;
+    pub const min = -2048;
+    pub const max = 2048;
     pub const c_end = 128;
 };
 
