@@ -283,7 +283,7 @@ pub fn main() !void {
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             write("id name pawnocchio {s}\n", .{VERSION_STRING});
             write("id author Jonathan Hallström\n", .{});
-            write("option name Hash type spin default 16 1 max 1048576\n", .{});
+            write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
