@@ -296,6 +296,16 @@ pub fn main() !void {
                         .{ tunable.name, tunable.default, tunable.getMin(), tunable.getMax() },
                     );
                 }
+                const factorized_lmr = root.tuning.factorized_lmr;
+                const factorized_lmr_params = root.tuning.factorized_lmr_params;
+                inline for (0..3, .{ factorized_lmr.one, factorized_lmr.two, factorized_lmr.three }) |i, arr| {
+                    inline for (arr, 0..) |val, j| {
+                        write(
+                            "option name factorized_{}_{} type spin default {} min {} max {}\n",
+                            .{ i, j, val, factorized_lmr_params.min, factorized_lmr_params.max },
+                        );
+                    }
+                }
             }
             write("uciok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
@@ -310,6 +320,23 @@ pub fn main() !void {
                         tunable.getCend(),
                     },
                 );
+            }
+            const factorized_lmr = root.tuning.factorized_lmr;
+            const factorized_lmr_params = root.tuning.factorized_lmr_params;
+            inline for (0..3, .{ factorized_lmr.one, factorized_lmr.two, factorized_lmr.three }) |i, arr| {
+                inline for (arr, 0..) |val, j| {
+                    write(
+                        "factorized_{}_{}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                        .{
+                            i,
+                            j,
+                            val,
+                            factorized_lmr_params.min,
+                            factorized_lmr_params.max,
+                            factorized_lmr_params.c_end,
+                        },
+                    );
+                }
             }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
@@ -391,6 +418,18 @@ pub fn main() !void {
                             writeLog("invalid constant: '{s}'\n", .{value});
                             continue :loop;
                         };
+                    }
+                }
+                const factorized_lmr = root.tuning.factorized_lmr;
+                inline for (0..3, .{ &factorized_lmr.one, &factorized_lmr.two, &factorized_lmr.three }) |i, arr| {
+                    inline for (arr, 0..) |*val_ptr, j| {
+                        const name = std.fmt.comptimePrint("factorized_{}_{}", .{ i, j });
+                        if (std.ascii.eqlIgnoreCase(name, option_name)) {
+                            val_ptr.* = std.fmt.parseInt(i32, value, 10) catch {
+                                writeLog("invalid constant: '{s}'\n", .{value});
+                                continue :loop;
+                            };
+                        }
                     }
                 }
             }

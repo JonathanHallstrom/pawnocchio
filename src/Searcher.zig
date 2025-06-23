@@ -520,6 +520,24 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
     }
 }
 
+inline fn lmrConvolve(comptime N: usize, params: [N]bool) i32 {
+    var res: i32 = 0;
+    comptime var two = 0;
+    comptime var three = 0;
+    inline for (0..N) |i| {
+        res += root.tuning.factorized_lmr.one[i] * @intFromBool(params[i]);
+        inline for (i + 1..N) |j| {
+            res += root.tuning.factorized_lmr.two[two] * @intFromBool(params[i] and params[j]);
+            inline for (j + 1..N) |k| {
+                res += root.tuning.factorized_lmr.three[three] * @intFromBool(params[i] and params[j] and params[k]);
+                three += 1;
+            }
+            two += 1;
+        }
+    }
+    return res;
+}
+
 fn search(
     self: *Searcher,
     comptime is_root: bool,
@@ -869,13 +887,9 @@ fn search(
             if (depth >= 3 and num_legal > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
-                reduction -= tunable_constants.lmr_pv_mult * @intFromBool(is_pv);
-                reduction += tunable_constants.lmr_cutnode_mult * @intFromBool(cutnode);
-                reduction -= tunable_constants.lmr_improving_mult * @intFromBool(improving);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += tunable_constants.lmr_ttmove_mult * @intFromBool(has_tt_move);
-                reduction -= tunable_constants.lmr_ttpv_mult * @intFromBool(tt_pv);
+                reduction += lmrConvolve(6, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet });
 
                 reduction >>= 10;
 
