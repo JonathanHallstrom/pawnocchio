@@ -849,7 +849,7 @@ fn search(
             } else if (s_beta >= beta) {
                 return @intCast(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
             } else if (tt_entry.score >= beta) {
-                extension -= 1;
+                extension -= 2;
             } else if (cutnode) {
                 extension -= 2;
             }
