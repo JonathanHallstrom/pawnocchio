@@ -19,8 +19,7 @@ const std = @import("std");
 const root = @import("root.zig");
 
 const Board = root.Board;
-
-const use_hce = false;
+pub const use_hce = false;
 const impl = if (use_hce) @import("hce.zig") else @import("nnue.zig");
 
 pub fn init() !void {

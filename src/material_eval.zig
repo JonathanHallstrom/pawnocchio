@@ -23,12 +23,13 @@ const Board = root.Board;
 const PieceType = root.PieceType;
 pub const State = Board.NullEvalState;
 
-pub fn evaluate(board: *const Board, _: State) i16 {
+pub fn evaluate(comptime stm: root.Colour, board: *const Board, _: *const Board, _: *State) i16 {
     var res: i16 = 0;
-    const value = [6]i16{ 100, 300, 300, 500, 900, 0 };
-    for (PieceType.all) |pt| {
-        res += value[pt.toInt()] * @popCount(board.pieceFor(.white, pt));
-        res -= value[pt.toInt()] * @popCount(board.pieceFor(.black, pt));
+    for (PieceType.all, [_]i16{ 100, 300, 300, 500, 900, 0 }) |pt, value| {
+        res += value * @popCount(board.pieceFor(.white, pt));
+        res -= value * @popCount(board.pieceFor(.black, pt));
     }
-    return if (board.stm == .white) res else -res;
+    res = if (stm == .white) res else -res;
+    res += @intCast(board.hash & 63);
+    return res;
 }

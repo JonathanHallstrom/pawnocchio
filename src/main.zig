@@ -705,14 +705,14 @@ pub fn main() !void {
             return;
         } else if (std.ascii.eqlIgnoreCase(command, "wait")) {
             root.engine.waitUntilDoneSearching();
-        } else if (std.ascii.eqlIgnoreCase(command, "nneval")) {
+        } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "nneval")) {
             const raw_eval = @import("nnue.zig").nnEval(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
             const normalized = root.wdl.normalize(scaled, board.classicalMaterial());
             write("raw eval: {}\n", .{raw_eval});
             write("scaled eval: {}\n", .{scaled});
             write("scaled and normalized eval: {}\n", .{normalized});
-        } else if (std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
+        } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
             for ([_][]const u8{
                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
                 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",

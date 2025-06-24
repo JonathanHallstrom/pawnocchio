@@ -450,11 +450,6 @@ fn qsearch(
         }
     }
 
-    if (is_root) {
-        self.root_move = best_move;
-        self.root_score = best_score;
-    }
-
     self.writeTT(
         tt_pv,
         tt_hash,

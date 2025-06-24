@@ -1198,6 +1198,12 @@ pub const NullEvalState = struct {
         _ = board;
     }
 
+    pub fn update(self: @This(), board: *const Board, old_board: *const Board) void {
+        _ = self;
+        _ = board;
+        _ = old_board;
+    }
+
     pub fn add(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
         _ = self;
         _ = col;
