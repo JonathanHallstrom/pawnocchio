@@ -851,7 +851,7 @@ fn search(
             } else if (tt_entry.score >= beta) {
                 extension -= 1;
             } else if (cutnode) {
-                extension -= 2;
+                extension -= 3;
             }
         }
         num_legal += 1;
