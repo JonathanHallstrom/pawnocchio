@@ -369,7 +369,6 @@ pub const ColouredPieceType = enum(u4) {
 
 pub const ScoredMove = extern struct {
     move: Move,
-    _padding: u16 = 0,
     score: i32,
 
     pub fn toScoreU64(self: ScoredMove) u64 {
