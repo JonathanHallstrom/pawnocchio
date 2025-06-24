@@ -179,6 +179,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    reduction: i32 = 0,
 
     pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
@@ -677,6 +678,13 @@ fn search(
     }
     const static_eval = cur.static_eval;
 
+    if (!is_root and
+        self.prevStackEntry().reduction >= 3 and
+        !opponent_worsening)
+    {
+        depth += 1;
+    }
+
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check and
@@ -891,6 +899,7 @@ fn search(
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
 
                 const reduced_depth = depth + extension - clamped_reduction;
+                cur.reduction = clamped_reduction;
                 s = -self.search(
                     false,
                     false,
@@ -900,6 +909,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
+                cur.reduction = 0;
                 if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
