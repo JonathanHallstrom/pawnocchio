@@ -372,21 +372,12 @@ pub const ScoredMove = extern struct {
     _padding: u16 = 0,
     score: i32,
 
-    pub fn toU64(self: ScoredMove) u64 {
+    pub fn toScoreU64(self: ScoredMove) u64 {
         var res: u64 = @bitCast(self);
         res &= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 });
         res ^= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = @bitCast(@as(u32, 0x80000000)) });
         return res;
     }
-
-    // comptime {
-    //     const scored_null = ScoredMove{ .move = Move.init(), .score = -1 };
-    //     const scored_actual = ScoredMove{ .move = Move.promo(.a7, .a8, .queen), .score = -1 };
-    //
-    //     @compileLog(@as(u64, @bitCast(ScoredMove{ .move = Move.init(), .score = 0 })));
-    //     @compileLog(@as(u64, @bitCast(scored_null)), scored_null.toU64());
-    //     @compileLog(@as(u64, @bitCast(scored_actual)), scored_actual.toU64());
-    // }
 
     pub fn desc(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
         return lhs.score > rhs.score;

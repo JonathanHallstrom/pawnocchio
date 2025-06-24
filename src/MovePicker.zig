@@ -98,18 +98,18 @@ pub fn deinit(self: MovePicker) void {
     self.movelist.vals.len = 0;
 }
 
-fn findBest(self: *MovePicker) usize {
+fn findBest(noalias self: *MovePicker) usize {
     const scored_moves = self.movelist.vals.slice()[self.first..self.last];
 
     const unroll = 4;
     var best_indices: [unroll]u64 = .{0} ** unroll;
-    var best_scores: [unroll]u64 = .{scored_moves[0].toU64()} ** unroll;
+    var best_scores: [unroll]u64 = .{scored_moves[0].toScoreU64()} ** unroll;
     var i: u64 = 0;
     var index_vec = std.simd.iota(u64, unroll);
     while (i + unroll <= scored_moves.len) : (i += unroll) {
         var scores: @Vector(unroll, u64) = undefined;
         inline for (0..unroll) |j| {
-            scores[j] = scored_moves[i + j].toU64();
+            scores[j] = scored_moves[i + j].toScoreU64();
         }
         const better = scores > @as(@Vector(unroll, u64), best_scores);
         best_indices = @select(u64, better, index_vec, best_indices);
@@ -125,9 +125,9 @@ fn findBest(self: *MovePicker) usize {
         }
     }
     while (i < scored_moves.len) : (i += 1) {
-        if (scored_moves[i].toU64() > best_score) {
+        if (scored_moves[i].toScoreU64() > best_score) {
             best_idx = i;
-            best_score = scored_moves[i].toU64();
+            best_score = scored_moves[i].toScoreU64();
         }
     }
 
