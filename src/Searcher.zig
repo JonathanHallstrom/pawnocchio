@@ -675,7 +675,7 @@ fn search(
             cur.static_eval = corrected_static_eval;
         }
     }
-    const static_eval = cur.static_eval;
+    const eval = cur.static_eval;
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
@@ -688,7 +688,7 @@ fn search(
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         if (depth <= 6 and
-            static_eval >= beta +
+            eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth -
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
@@ -696,9 +696,9 @@ fn search(
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
-            return @intCast(static_eval + @divTrunc((beta - static_eval) * tunable_constants.rfp_fail_medium, 1024));
+            return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
-        if (depth <= 3 and static_eval + tunable_constants.razoring_margin * depth <= alpha) {
+        if (depth <= 3 and eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(
                 is_root,
                 is_pv,
@@ -713,13 +713,13 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
-            static_eval >= beta and
+            eval >= beta and
             non_pk != 0 and
             !cur.prev.move.isNull())
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
-            nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (static_eval - beta) * tunable_constants.nmp_eval_reduction_scale);
+            nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
@@ -798,7 +798,7 @@ fn search(
                 if (!is_in_check and
                     lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
-                    static_eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult <= alpha)
+                    eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult <= alpha)
                 {
                     mp.skip_quiets = true;
                     continue;
@@ -1151,6 +1151,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var completed_depth: i32 = 0;
     var eval_stability: i32 = 0;
     var move_stability: i32 = 0;
+    var last_full_width_score: i16 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
@@ -1199,6 +1200,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         }
                     }
                 } else {
+                    last_full_width_score = score;
                     break;
                 }
             },
@@ -1219,7 +1221,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         completed_depth = depth;
         if (is_main_thread) {
             if (!quiet) {
-                self.writeInfo(self.root_score, depth, .completed);
+                self.writeInfo(last_full_width_score, depth, .completed);
             }
         }
         if (self.stop.load(.acquire) or self.limits.checkRoot(
