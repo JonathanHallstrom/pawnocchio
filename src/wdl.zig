@@ -21,8 +21,9 @@ const root = @import("root.zig");
 pub fn wdlParams(material: anytype) struct { f64, f64 } {
     const x: f64 = @floatFromInt(@max(10, material));
 
-    const p_a = ((-139.005 * x / 58 + 361.787) * x / 58 + -385.952) * x / 58 + 397.846;
-    const p_b = ((-25.859 * x / 58 + 75.532) * x / 58 + -14.220) * x / 58 + 64.262;
+    const p_a = ((-79.396 * x / 58 + 227.843) * x / 58 + -237.782) * x / 58 + 284.444;
+    const p_b = ((12.519 * x / 58 + -0.173) * x / 58 + 4.689) * x / 58 + 41.350;
+
     return .{ p_a, p_b };
 }
 
