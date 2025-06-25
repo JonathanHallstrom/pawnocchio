@@ -1067,11 +1067,10 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
             board.stm = board.stm.flipped();
         }
     }
-    const normalized_score = root.wdl.normalize(score, root_board.classicalMaterial());
     write("info depth {} seldepth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
         depth,
         self.seldepth,
-        evaluation.formatScore(normalized_score).slice(),
+        evaluation.formatScore(score).slice(),
         type_str,
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
