@@ -43,7 +43,7 @@ pub const TypedMove = struct {
         }
         return .{
             .move = move_,
-            .tp = board.pieceOn(move_.from()).?,
+            .tp = (&board.mailbox)[move_.from().toInt()].toColouredPieceType().toPieceType(),
         };
     }
 };
@@ -114,10 +114,8 @@ pub const NoisyHistory = struct {
     inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
-
-        // does not use board.getCapturedType to put EP captures in the same bucket as promotions
-        // TODO: try putting it in with other pawn captures
-        const captured_offs = if (board.colouredPieceOn(move.move.to())) |capt| capt.toInt() else 12;
+        const captured = (&board.mailbox)[to_offs];
+        const captured_offs = if (captured.opt()) |capt| capt.toInt() else 12;
         return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
     }
 

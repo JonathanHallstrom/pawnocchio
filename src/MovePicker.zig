@@ -145,8 +145,10 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     // if (self.board.isPromo(move)) {
     //     res += SEE.value(move.promoType());
     // }
-    if (self.board.getCapturedType(move)) |captured_type| {
-        res += SEE.value(captured_type, .ordering);
+    if ((&self.board.mailbox)[move.to().toInt()].opt()) |captured_type| {
+        res += SEE.value(captured_type.toPieceType(), .ordering);
+    } else if (self.board.isEnPassant(move)) {
+        res += SEE.value(.pawn, .ordering);
     }
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += self.histories.readNoisy(self.board, move);
