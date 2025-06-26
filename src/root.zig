@@ -281,16 +281,21 @@ pub const PieceType = enum {
     }
 };
 
-pub const NullableColouredPieceType = struct {
-    data: u8 = null_bit,
+pub const NullableColouredPieceType = enum(u8) {
+    _,
+
     const null_bit = 128;
 
+    pub fn init() NullableColouredPieceType {
+        return @enumFromInt(null_bit);
+    }
+
     pub inline fn isNull(self: NullableColouredPieceType) bool {
-        return self.data & null_bit != 0;
+        return @intFromEnum(self) & null_bit != 0;
     }
 
     pub inline fn from(ocpt: ?ColouredPieceType) NullableColouredPieceType {
-        return if (ocpt) |cpt| fromColouredPieceType(cpt) else .{};
+        return if (ocpt) |cpt| fromColouredPieceType(cpt) else NullableColouredPieceType.init();
     }
 
     pub inline fn opt(self: NullableColouredPieceType) ?ColouredPieceType {
@@ -298,11 +303,11 @@ pub const NullableColouredPieceType = struct {
     }
 
     pub inline fn fromColouredPieceType(cpt: ColouredPieceType) NullableColouredPieceType {
-        return .{ .data = @intCast(cpt.toInt()) };
+        return @enumFromInt(cpt.toInt());
     }
 
     pub inline fn toColouredPieceType(self: NullableColouredPieceType) ColouredPieceType {
-        return @enumFromInt(self.data);
+        return @enumFromInt(@intFromEnum(self));
     }
 };
 

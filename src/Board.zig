@@ -35,7 +35,7 @@ const Board = @This();
 white: u64 = 0,
 black: u64 = 0,
 pieces: [6]u64 = .{0} ** 6,
-mailbox: [64]NullableColouredPieceType = .{NullableColouredPieceType{}} ** 64,
+mailbox: [64]NullableColouredPieceType = .{NullableColouredPieceType.init()} ** 64,
 
 halfmove: u8 = 0,
 fullmove: u32 = 1,
@@ -136,8 +136,12 @@ pub inline fn isSquareEmpty(self: Board, sq: Square) bool {
     return self.occupancy() & sq.toBitboard() == 0;
 }
 
-pub inline fn colouredPieceOn(self: Board, sq: Square) ?ColouredPieceType {
-    return (&self.mailbox)[sq.toInt()].opt();
+pub inline fn nullableColouredPieceOn(self: *const Board, sq: Square) NullableColouredPieceType {
+    return (&self.mailbox)[sq.toInt()];
+}
+
+pub inline fn colouredPieceOn(self: *const Board, sq: Square) ?ColouredPieceType {
+    return self.nullableColouredPieceOn(sq).opt();
 }
 
 pub inline fn startingRankFor(self: Board, col: Colour) Rank {
@@ -726,7 +730,7 @@ pub inline fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq:
     self.occupancyPtrFor(col).* ^= bb;
     self.pieces[pt.toInt()] ^= bb;
     self.zobristPiece(col, pt, sq);
-    (&self.mailbox)[sq.toInt()] = .{};
+    (&self.mailbox)[sq.toInt()] = NullableColouredPieceType.init();
     eval_state.sub(col, pt, sq);
 }
 
@@ -736,7 +740,7 @@ pub inline fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from:
     self.pieces[pt.toInt()] ^= bb;
     self.zobristPiece(col, pt, from);
     self.zobristPiece(col, pt, to);
-    (&self.mailbox)[from.toInt()] = .{};
+    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col).nullable();
     eval_state.addSub(col, pt, to, col, pt, from);
 }
@@ -748,7 +752,7 @@ pub inline fn movePiecePromo(self: *Board, comptime col: Colour, promo_pt: Piece
     self.pieces[promo_pt.toInt()] ^= to.toBitboard();
     self.zobristPiece(col, .pawn, from);
     self.zobristPiece(col, promo_pt, to);
-    (&self.mailbox)[from.toInt()] = .{};
+    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(promo_pt, col).nullable();
     eval_state.addSub(col, promo_pt, to, col, .pawn, from);
 }
@@ -762,8 +766,8 @@ pub inline fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType
     self.zobristPiece(col, pt, from);
     self.zobristPiece(col, pt, to);
     self.zobristPiece(col.flipped(), captured_pt, captured_square);
-    (&self.mailbox)[from.toInt()] = .{};
-    (&self.mailbox)[captured_square.toInt()] = .{};
+    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
+    (&self.mailbox)[captured_square.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col).nullable();
     eval_state.addSubSub(col, pt, to, col, pt, from, col.flipped(), captured_pt, captured_square);
 }
@@ -778,8 +782,8 @@ pub inline fn movePiecePromoCapture(self: *Board, comptime col: Colour, promo_pt
     self.zobristPiece(col, .pawn, from);
     self.zobristPiece(col, promo_pt, to);
     self.zobristPiece(col.flipped(), captured_pt, captured_square);
-    (&self.mailbox)[from.toInt()] = .{};
-    (&self.mailbox)[captured_square.toInt()] = .{};
+    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
+    (&self.mailbox)[captured_square.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(promo_pt, col).nullable();
     eval_state.addSubSub(col, promo_pt, to, col, .pawn, from, col.flipped(), captured_pt, captured_square);
 }
@@ -794,8 +798,8 @@ pub inline fn movePieceCastling(self: *Board, comptime col: Colour, king_from: S
     self.zobristPiece(col, .king, king_to);
     self.zobristPiece(col, .rook, rook_from);
     self.zobristPiece(col, .rook, rook_to);
-    (&self.mailbox)[king_from.toInt()] = .{};
-    (&self.mailbox)[rook_from.toInt()] = .{};
+    (&self.mailbox)[king_from.toInt()] = NullableColouredPieceType.init();
+    (&self.mailbox)[rook_from.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[king_to.toInt()] = ColouredPieceType.fromPieceType(.king, col).nullable();
     (&self.mailbox)[rook_to.toInt()] = ColouredPieceType.fromPieceType(.rook, col).nullable();
     eval_state.addAddSubSub(col, .king, king_to, col, .rook, rook_to, col, .king, king_from, col, .rook, rook_from);
@@ -889,7 +893,7 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     // dont call updateMasks since there has been no change in the position, especially not checkers
 }
 
-pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
+pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;
     var updated_castling_rights = self.castling_rights;
@@ -1000,21 +1004,16 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
     const king_to = self.castlingKingDestFor(move, stm);
     const king_rook_bbs = rook_from.toBitboard() | king_from.toBitboard();
 
-    const king_min = @min(king_from.toInt(), king_to.toInt());
-    const king_max = @max(king_from.toInt(), king_to.toInt());
+    const all_pieces = rook_from.toBitboard() | rook_to.toBitboard() | king_from.toBitboard() | king_to.toBitboard();
+    const start = @ctz(all_pieces);
+    const end = 63 - @clz(all_pieces);
+    const need_to_be_empty = Bitboard.queenRayBetweenInclusive(start, end);
 
-    const rook_min = @min(rook_from.toInt(), rook_to.toInt());
-    const rook_max = @max(rook_from.toInt(), rook_to.toInt());
-
-    const leftmost = @min(king_min, rook_min);
-    const rightmost = @max(king_max, rook_max);
-
-    const need_to_be_empty = Bitboard.queenRayBetweenInclusive(leftmost, rightmost);
     const occ_without_king_rook = self.occupancy() & ~king_rook_bbs;
     if (occ_without_king_rook & need_to_be_empty != 0) {
         return false;
     }
-    const need_to_be_unattacked = king_to.toBitboard() | Bitboard.queenRayBetweenExclusive(king_from, king_to);
+    const need_to_be_unattacked = Bitboard.queenRayBetween(king_from, king_to);
     var iter = Bitboard.iterator(need_to_be_unattacked);
     while (iter.next()) |sq| {
         const attackers = movegen.attackersFor(stm.flipped(), self, sq, occ_without_king_rook);
@@ -1025,16 +1024,18 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
     return true;
 }
 
-pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
+pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const move_tp = move.tp();
     if (move_tp == .castling) {
         return self.isCastlingMoveLegal(stm, move);
     }
     const from = move.from();
     const to = move.to();
-    const pt = self.colouredPieceOn(from).?;
-    assert(pt.toColour() == stm);
-    if (pt.toPieceType() == .king) {
+    const pt = self.nullableColouredPieceOn(from);
+    // assert(pt.toColour() == stm);
+    const king = comptime NullableColouredPieceType.fromColouredPieceType(ColouredPieceType.fromPieceType(.king, stm));
+    const pawn = comptime NullableColouredPieceType.fromColouredPieceType(ColouredPieceType.fromPieceType(.pawn, stm));
+    if (pt == king) {
         const attackers = movegen.attackersFor(stm.flipped(), self, to, self.occupancy() ^ from.toBitboard());
         return attackers == 0;
     }
@@ -1060,7 +1061,7 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
         return attackers == 0;
     }
 
-    if (pt.toPieceType() == .pawn) {
+    if (pt == pawn) {
         return self.pinned[stm.toInt()] & from.toBitboard() == 0;
     }
 
@@ -1202,37 +1203,37 @@ pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove:
 }
 
 pub const NullEvalState = struct {
-    pub fn init(board: *const Board) NullEvalState {
+    pub inline fn init(board: *const Board) NullEvalState {
         _ = board;
         return .{};
     }
 
-    pub fn initInPlace(self: @This(), board: *const Board) void {
+    pub inline fn initInPlace(self: @This(), board: *const Board) void {
         _ = self;
         _ = board;
     }
 
-    pub fn update(self: @This(), board: *const Board, old_board: *const Board) void {
+    pub inline fn update(self: @This(), board: *const Board, old_board: *const Board) void {
         _ = self;
         _ = board;
         _ = old_board;
     }
 
-    pub fn add(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
+    pub inline fn add(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
         _ = self;
         _ = col;
         _ = pt;
         _ = square;
     }
 
-    pub fn sub(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
+    pub inline fn sub(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
         _ = self;
         _ = col;
         _ = pt;
         _ = square;
     }
 
-    pub fn addSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
+    pub inline fn addSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
         _ = self;
         _ = add_col;
         _ = add_pt;
@@ -1242,7 +1243,7 @@ pub const NullEvalState = struct {
         _ = sub_square;
     }
 
-    pub fn addSubSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
+    pub inline fn addSubSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
         _ = self;
         _ = add_col;
         _ = add_pt;
@@ -1255,7 +1256,7 @@ pub const NullEvalState = struct {
         _ = sub2_square;
     }
 
-    pub fn addAddSubSub(self: @This(), comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
+    pub inline fn addAddSubSub(self: @This(), comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
         _ = self;
         _ = add1_col;
         _ = add1_pt;
@@ -1356,7 +1357,7 @@ fn perft_impl(
     } else {
         for (movelist.vals.slice()) |move| {
             if (!self.isLegal(stm, move)) continue;
-            assert(self.isPseudoLegal(stm, move));
+            // assert(self.isPseudoLegal(stm, move));
             var cp = self.*;
             cp.makeMove(stm, move, NullEvalState{});
             // std.debug.print("{} {s} {s}\n", .{depth, move.toString(self).slice(), self.toFen().slice()});

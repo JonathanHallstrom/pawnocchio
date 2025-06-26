@@ -275,7 +275,7 @@ const Accumulator = struct {
         const us_acc = if (board.stm == .white) &self.white else &self.black;
         const them_acc = if (board.stm == .white) &self.black else &self.white;
 
-        //                  vvvvvvvv annotation to help zls
+        //                vvvvvvvv annotation to help zls
         const Vec = @as(type, @Vector(VEC_SIZE, i16));
 
         const ACC_COUNT = comptime std.math.gcd(4, HIDDEN_SIZE / VEC_SIZE);
