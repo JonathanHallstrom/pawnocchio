@@ -13,11 +13,12 @@ pub fn build(b: *std.Build) !void {
         break :blk "pawnocchio-nets/networks/net22_1280_take6.nnue";
     };
 
+    const emit_symbols = b.option(bool, "emit_symbols", "force debug symbols not to be strippped") orelse false;
     const use_tbs = true;
     const minimal_executable = switch (optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
-    };
+    } and !emit_symbols;
     const net_module = b.createModule(
         .{
             .root_source_file = std.Build.LazyPath{

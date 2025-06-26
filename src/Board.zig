@@ -650,7 +650,7 @@ pub inline fn isPromo(_: Board, move: Move) bool {
 }
 
 pub inline fn isCapture(self: Board, move: Move) bool {
-    return self.isEnPassant(move) or !self.isCastling(move) and !(&self.mailbox)[move.to().toInt()].isNull();
+    return self.isEnPassant(move) or !self.isCastling(move) and self.colourOn(move.to()) != null;
 }
 
 pub inline fn isNoisy(self: Board, move: Move) bool {
