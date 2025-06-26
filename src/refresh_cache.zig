@@ -109,6 +109,7 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
         data: if (empty) void else [2][@as(usize, 1) + @intFromBool(mirrored)][bucket_count]NNCacheEntry,
 
         pub fn initInPlace(self: *Self) void {
+            if (empty) return;
             for (&self.data) |*stm| {
                 for (stm) |*subarray| {
                     for (subarray) |*e| {

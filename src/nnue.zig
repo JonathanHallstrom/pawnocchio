@@ -274,43 +274,12 @@ const Accumulator = struct {
         // }
         const us_acc = if (board.stm == .white) &self.white else &self.black;
         const them_acc = if (board.stm == .white) &self.black else &self.white;
-
-        //                  vvvvvvvv annotation to help zls
-        const Vec = @as(type, @Vector(VEC_SIZE, i16));
-
-        const ACC_COUNT = comptime std.math.gcd(4, HIDDEN_SIZE / VEC_SIZE);
-        var accs = std.mem.zeroes([ACC_COUNT]@Vector(VEC_SIZE / 2, i32));
-        const ZERO: Vec = @splat(0);
-        const ONE: Vec = @splat(QA);
-        var i: usize = 0;
         const which_bucket = whichOutputBucket(board);
         const bucket_offset = which_bucket * HIDDEN_SIZE * 2;
-        while (i < HIDDEN_SIZE) {
-            inline for (&accs) |*acc| {
-                defer i += VEC_SIZE;
-                const us: Vec = us_acc[i..][0..VEC_SIZE].*;
-                const us_clamped: Vec = @max(@min(us, ONE), ZERO);
-                const them: Vec = them_acc[i..][0..VEC_SIZE].*;
-                const them_clamped: Vec = @max(@min(them, ONE), ZERO);
-
-                const us_weights: Vec = (&weights.output_weights)[bucket_offset..][i..][0..VEC_SIZE].*;
-                const them_weights: Vec = (&weights.output_weights)[bucket_offset..][i + HIDDEN_SIZE ..][0..VEC_SIZE].*;
-
-                acc.* +=
-                    madd(VEC_SIZE, mullo(VEC_SIZE, us_weights, us_clamped), us_clamped) +
-                    madd(VEC_SIZE, mullo(VEC_SIZE, them_weights, them_clamped), them_clamped);
-            }
-        }
-        var acc = accs[0];
-        for (accs[1..]) |tmp| acc += tmp;
-        var res: i32 = @reduce(std.builtin.ReduceOp.Add, acc);
-        if (@import("builtin").mode == .Debug) {
-            var verify_res: i32 = 0;
-            for (0..HIDDEN_SIZE) |j| {
-                verify_res += screlu(us_acc[j]) * (&weights.output_weights)[bucket_offset..][j];
-                verify_res += screlu(them_acc[j]) * (&weights.output_weights)[bucket_offset..][j + HIDDEN_SIZE];
-            }
-            std.debug.assert(res == verify_res);
+        var res: i32 = 0;
+        for (0..HIDDEN_SIZE) |j| {
+            res += screlu(us_acc[j]) * (&weights.output_weights)[bucket_offset..][j];
+            res += screlu(them_acc[j]) * (&weights.output_weights)[bucket_offset..][j + HIDDEN_SIZE];
         }
         res = @divTrunc(res, QA); // res /= QA
 
@@ -456,6 +425,11 @@ fn screlu(x: i32) i32 {
     return clamped * clamped;
 }
 
+fn crelu(x: i32) i32 {
+    const clamped = std.math.clamp(x, 0, QA);
+    return clamped;
+}
+
 pub fn init() !void {
     if (build_options.runtime_net) {
         weights_file = try std.fs.openFileAbsolute(build_options.net_path, .{});
@@ -523,11 +497,11 @@ pub fn nnEval(board: *const Board) i16 {
 
 threadlocal var refresh_cache: root.refreshCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT) = undefined;
 pub const VEC_SIZE = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
-pub const HORIZONTAL_MIRRORING = true;
-pub const INPUT_BUCKET_COUNT: usize = 8;
-pub const OUTPUT_BUCKET_COUNT: usize = 8;
+pub const HORIZONTAL_MIRRORING = false;
+pub const INPUT_BUCKET_COUNT: usize = 1;
+pub const OUTPUT_BUCKET_COUNT: usize = 1;
 pub const INPUT_SIZE: usize = 768;
-pub const HIDDEN_SIZE: usize = 1280;
+pub const HIDDEN_SIZE: usize = 384;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;

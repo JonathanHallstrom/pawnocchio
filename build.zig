@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) !void {
             std.debug.print("When using a runtime net you need to give an absolute path to the network\n", .{});
             return error.NoAbsoluteNetPathWithRuntimeNet;
         }
-        break :blk "pawnocchio-nets/networks/net22_1280_take6.nnue";
+        break :blk "Aurora-3f988313c3.nnue";
     };
 
     const use_tbs = true;
