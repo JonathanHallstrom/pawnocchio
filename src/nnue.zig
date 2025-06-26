@@ -278,10 +278,10 @@ const Accumulator = struct {
         const bucket_offset = which_bucket * HIDDEN_SIZE * 2;
         var res: i32 = 0;
         for (0..HIDDEN_SIZE) |j| {
-            res += screlu(us_acc[j]) * (&weights.output_weights)[bucket_offset..][j];
-            res += screlu(them_acc[j]) * (&weights.output_weights)[bucket_offset..][j + HIDDEN_SIZE];
+            res += crelu(us_acc[j]) * (&weights.output_weights)[bucket_offset..][j];
+            res += crelu(them_acc[j]) * (&weights.output_weights)[bucket_offset..][j + HIDDEN_SIZE];
         }
-        res = @divTrunc(res, QA); // res /= QA
+        // res = @divTrunc(res, QA); // res /= QA
 
         res += (&weights.output_biases)[which_bucket];
         const scaled = @divTrunc(res * SCALE, QA * QB);
