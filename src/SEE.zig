@@ -42,7 +42,7 @@ pub const Mode = enum {
     ordering,
 };
 
-pub fn value(pt: PieceType, comptime mode: Mode) i16 {
+pub fn value(pto: ?PieceType, comptime mode: Mode) i16 {
     const SEE_weight = if (mode == .pruning) [_]i16{
         @intCast(root.tunable_constants.see_pawn_pruning),
         @intCast(root.tunable_constants.see_knight_pruning),
@@ -58,22 +58,16 @@ pub fn value(pt: PieceType, comptime mode: Mode) i16 {
         @intCast(root.tunable_constants.see_queen_ordering),
         0,
     };
-    return (if (root.tuning.do_tuning) SEE_weight else comptime SEE_weight)[pt.toInt()];
+    const idx = if (pto) |pt| pt.toInt() else 5;
+    return (if (root.tuning.do_tuning) SEE_weight else comptime SEE_weight)[idx];
 }
 
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
     const from = move.from();
     const to = move.to();
-    const from_type = (&board.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
-    var captured_type: ?PieceType = null;
-    var captured_value: i16 = 0;
-    if (board.isEnPassant(move)) {
-        captured_type = .pawn;
-        captured_value = value(.pawn, mode);
-    } else if (board.isCapture(move)) {
-        captured_type = (&board.mailbox)[to.toInt()].toColouredPieceType().toPieceType();
-        captured_value = value(captured_type.?, mode);
-    }
+    const from_type = board.pieceOn(from).?;
+
+    const captured_value: i16 = value(board.getCapturedType(move), mode);
 
     var score = captured_value - threshold;
     if (board.isPromo(move)) {

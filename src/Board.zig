@@ -120,6 +120,26 @@ pub inline fn kings(self: Board) u64 {
     return self.pieces[5];
 }
 
+pub inline fn pieceOn(self: Board, sq: Square) ?PieceType {
+    const cpt = (&self.mailbox)[sq.toInt()];
+    return if (cpt.isNull()) null else cpt.toColouredPieceType().toPieceType();
+}
+
+pub inline fn colourOn(self: Board, sq: Square) ?Colour {
+    if (self.isSquareEmpty(sq)) {
+        return null;
+    }
+    return if (self.white & sq.toBitboard() != 0) .white else .black;
+}
+
+pub inline fn isSquareEmpty(self: Board, sq: Square) bool {
+    return self.occupancy() & sq.toBitboard() == 0;
+}
+
+pub inline fn colouredPieceOn(self: Board, sq: Square) ?ColouredPieceType {
+    return (&self.mailbox)[sq.toInt()].opt();
+}
+
 pub inline fn startingRankFor(self: Board, col: Colour) Rank {
     return self.castling_rights.startingRankFor(col);
 }
@@ -375,7 +395,7 @@ pub fn toFen(self: Board) std.BoundedArray(u8, 128) {
         inline for (0..8) |c| {
             const idx = r * 8 + c;
             const sq = Square.fromInt(idx);
-            if ((&self.mailbox)[idx].opt()) |pt| {
+            if (self.colouredPieceOn(sq)) |pt| {
                 var char = pt.toAsciiLetter();
                 if (self.white & sq.toBitboard() != 0) {
                     char = std.ascii.toUpper(char);
@@ -626,7 +646,7 @@ pub inline fn isPromo(_: Board, move: Move) bool {
 }
 
 pub inline fn isCapture(self: Board, move: Move) bool {
-    return self.isEnPassant(move) or !self.isCastling(move) and !(&self.mailbox)[move.to().toInt()].isNull();
+    return self.isEnPassant(move) or !self.isCastling(move) and self.colourOn(move.to()) != null;
 }
 
 pub inline fn isNoisy(self: Board, move: Move) bool {
@@ -641,10 +661,7 @@ pub inline fn getCapturedType(self: Board, move: Move) ?PieceType {
     if (self.isEnPassant(move)) {
         return .pawn;
     }
-    if ((&self.mailbox)[move.to().toInt()]) |cpt| {
-        return cpt.toPieceType();
-    }
-    return null;
+    return self.pieceOn(move.to());
 }
 
 pub inline fn kingsideKingDestFor(self: Board, col: Colour) Square {
@@ -838,7 +855,7 @@ pub fn resetHash(self: *Board) void {
         const pt = PieceType.fromInt(@intCast(p));
         var iter = Bitboard.iterator(self.pieces[p]);
         while (iter.next()) |sq| {
-            self.hash ^= root.zobrist.piece((&self.mailbox)[sq.toInt()].toColouredPieceType().toColour(), pt, sq);
+            self.hash ^= root.zobrist.piece(self.colourOn(sq).?, pt, sq);
         }
     }
 }
@@ -883,15 +900,13 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
         .default => {
             const from = move.from();
             const to = move.to();
-            const pt = (&self.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
-
-            const cap_opt = (&self.mailbox)[to.toInt()];
+            const pt = self.pieceOn(from).?;
 
             updated_castling_rights.updateSquare(from, stm);
-            if (cap_opt.opt()) |cap| {
+            if (self.pieceOn(to)) |cap| {
                 updated_halfmove = 0;
                 updated_castling_rights.updateSquare(to, stm.flipped());
-                self.movePieceCapture(stm, pt, from, to, cap.toPieceType(), to, eval_state);
+                self.movePieceCapture(stm, pt, from, to, cap, to, eval_state);
             } else {
                 self.movePiece(stm, pt, from, to, eval_state);
             }
@@ -929,11 +944,10 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
         .promotion => {
             const from = move.from();
             const to = move.to();
-            const cap_opt = (&self.mailbox)[to.toInt()];
             updated_halfmove = 0;
-            if (cap_opt.opt()) |cap| {
+            if (self.pieceOn(to)) |cap| {
                 updated_castling_rights.updateSquare(to, stm.flipped());
-                self.movePiecePromoCapture(stm, move.promoType(), from, to, cap.toPieceType(), to, eval_state);
+                self.movePiecePromoCapture(stm, move.promoType(), from, to, cap, to, eval_state);
             } else {
                 self.addPiece(stm, move.promoType(), to, eval_state);
                 self.removePiece(stm, .pawn, from, eval_state);
@@ -1018,7 +1032,7 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     }
     const from = move.from();
     const to = move.to();
-    const pt = (&self.mailbox)[from.toInt()].toColouredPieceType();
+    const pt = self.colouredPieceOn(from).?;
     assert(pt.toColour() == stm);
     if (pt.toPieceType() == .king) {
         const attackers = movegen.attackersFor(stm.flipped(), self, to, self.occupancy() ^ from.toBitboard());
@@ -1092,7 +1106,7 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         return false;
     }
 
-    const pt = (&self.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
+    const pt = self.pieceOn(from).?;
 
     // if we're in double check it has to be the king that moves, and it cant be castling
     if (self.checkers & self.checkers -% 1 != 0) {
@@ -1164,12 +1178,12 @@ pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove:
 
     var hmc = self.halfmove + 1;
     if (!move.isNull()) {
-        if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+        if (self.colouredPieceOn(move.to())) |cpt| {
             res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
             hmc = 0;
         }
 
-        const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();
+        const cpt = self.colouredPieceOn(move.from()).?;
 
         res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
         res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
