@@ -374,14 +374,24 @@ pub const ColouredPieceType = enum(u4) {
 
 pub const ScoredMove = extern struct {
     move: Move,
+    padding: u16 = 0,
     score: i32,
 
     pub fn toScoreU64(self: ScoredMove) u64 {
         var res: u64 = @bitCast(self);
         res &= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 });
         res ^= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = @bitCast(@as(u32, 0x80000000)) });
-        return res;
+        return res << comptime scoreShift();
     }
+
+    fn scoreShift() comptime_int {
+        comptime return @clz(@as(u64, @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 })));
+    }
+
+    // comptime {
+    //     const x: u64 = @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 });
+    //     @compileLog(std.fmt.comptimePrint("{b}", .{x}));
+    // }
 
     pub fn desc(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
         return lhs.score > rhs.score;
