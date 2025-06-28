@@ -104,7 +104,6 @@ root_score: i16,
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
-histories: history.HistoryTable,
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
@@ -112,6 +111,7 @@ is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
 syzygy_depth: u8 = 1,
+histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -437,7 +437,6 @@ fn qsearch(
             best_score = score;
             best_move = move;
             if (score > evaluation.matedIn(MAX_PLY)) {
-                score_type = .lower;
                 mp.skip_quiets = true;
             }
         }
@@ -445,6 +444,7 @@ fn qsearch(
         if (score > alpha) {
             alpha = score;
             if (score >= beta) {
+                score_type = .lower;
                 break;
             }
         }
