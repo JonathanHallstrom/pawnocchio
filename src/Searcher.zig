@@ -552,17 +552,18 @@ fn search(
         self.stop.store(true, .release);
         return 0;
     }
-    if (depth <= 0) {
+
+    const cur = self.curStackEntry();
+    const board = &cur.board;
+    const is_in_check = board.checkers != 0;
+    depth = @max(0, depth);
+    if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
 
     if (is_pv) {
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
-    const cur = self.curStackEntry();
-    const board = &cur.board;
-    const is_in_check = board.checkers != 0;
-
     if (self.ply >= MAX_PLY - 1) {
         return self.rawEval(stm);
     }
