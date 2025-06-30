@@ -325,12 +325,13 @@ fn qsearch(
     comptime is_pv: bool,
     comptime stm: Colour,
     alpha_original: i32,
-    beta: i32,
+    beta_original: i32,
 ) i16 {
     if (is_pv) {
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
     var alpha = alpha_original;
+    var beta = beta_original;
     self.nodes += 1;
     if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop.store(true, .release);
@@ -373,6 +374,17 @@ fn qsearch(
         }
         if (static_eval > alpha) {
             alpha = static_eval;
+        }
+    }
+
+    if (!is_root) {
+        const worst_possible = evaluation.matedIn(self.ply);
+        const best_possible = -evaluation.matedIn(self.ply + 1);
+
+        alpha = @max(alpha, worst_possible);
+        beta = @min(beta, best_possible);
+        if (alpha >= beta) {
+            return @intCast(alpha);
         }
     }
 
@@ -1158,8 +1170,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
         }
-        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -evaluation.highest_non_mate_score));
-        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.highest_non_mate_score));
+        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -evaluation.inf_score));
+        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.inf_score));
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
