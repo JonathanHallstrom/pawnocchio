@@ -868,9 +868,6 @@ fn search(
         self.makeMove(stm, move);
 
         const gives_check = self.curStackEntry().board.checkers != 0;
-        if (gives_check) {
-            extension += 1;
-        }
         const score = blk: {
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
@@ -884,6 +881,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                reduction -= @as(i32, 1024) * @intFromBool(gives_check);
                 reduction += lmrConvolve(6, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet });
 
                 reduction >>= 10;
