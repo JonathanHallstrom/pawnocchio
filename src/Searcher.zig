@@ -556,7 +556,6 @@ fn search(
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
-    depth = @max(0, depth);
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
