@@ -142,7 +142,7 @@ pub fn writeTT(
         .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = self.ttage },
         .move = move,
         .hash = TTEntry.compress(hash),
-        .depth = @intCast(depth),
+        .depth = @intCast(@max(0, depth)),
         .raw_static_eval = raw_static_eval,
     };
 }
@@ -777,7 +777,7 @@ fn search(
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-            var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
+            var base_lmr = calculateBaseLMR(@max(1, depth), num_legal, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
 
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
