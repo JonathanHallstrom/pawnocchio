@@ -858,6 +858,10 @@ fn search(
 
                 if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
                     extension += 1;
+
+                    if (board.isQuiet(tt_entry.move) and s_score < s_beta - 150) {
+                        extension += 1;
+                    }
                 }
             } else if (s_beta >= beta) {
                 return @intCast(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
