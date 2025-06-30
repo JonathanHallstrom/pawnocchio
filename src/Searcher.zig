@@ -873,7 +873,7 @@ fn search(
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
+            const corrhists_squared = self.histories.squaredCorrectionTerms(&self.curStackEntry().board, self.curStackEntry().prev);
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
