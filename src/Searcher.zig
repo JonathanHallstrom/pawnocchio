@@ -809,7 +809,7 @@ fn search(
             const see_pruning_thresh = if (is_quiet)
                 tunable_constants.see_quiet_pruning_mult * lmr_depth
             else
-                tunable_constants.see_noisy_pruning_mult * depth * depth + @divTrunc(history_score, 32);
+                tunable_constants.see_noisy_pruning_mult * depth * depth - @divTrunc(history_score, 16);
 
             if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, see_pruning_thresh, .pruning))
