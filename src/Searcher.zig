@@ -134,6 +134,9 @@ pub fn writeTT(
         self.ttage != entry.flags.age or
         depth + 4 > entry.depth))
     {
+        if (entry.hashEql(hash) and entry.move.isNull()) {
+            entry.move = move;
+        }
         return;
     }
 
