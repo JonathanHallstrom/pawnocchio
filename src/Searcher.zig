@@ -145,7 +145,7 @@ pub fn writeTT(
         .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = self.ttage },
         .move = move,
         .hash = TTEntry.compress(hash),
-        .depth = @intCast(depth),
+        .depth = @intCast(@max(0, depth)),
         .raw_static_eval = raw_static_eval,
     };
 }
@@ -328,12 +328,13 @@ fn qsearch(
     comptime is_pv: bool,
     comptime stm: Colour,
     alpha_original: i32,
-    beta: i32,
+    beta_original: i32,
 ) i16 {
     if (is_pv) {
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
     var alpha = alpha_original;
+    var beta = beta_original;
     self.nodes += 1;
     if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
         self.stop.store(true, .release);
@@ -376,6 +377,17 @@ fn qsearch(
         }
         if (static_eval > alpha) {
             alpha = static_eval;
+        }
+    }
+
+    if (!is_root) {
+        const worst_possible = evaluation.matedIn(self.ply);
+        const best_possible = -evaluation.matedIn(self.ply + 1);
+
+        alpha = @max(alpha, worst_possible);
+        beta = @min(beta, best_possible);
+        if (alpha >= beta) {
+            return @intCast(alpha);
         }
     }
 
@@ -559,7 +571,6 @@ fn search(
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
-    depth = @max(0, depth);
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
@@ -781,7 +792,7 @@ fn search(
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-            var base_lmr = calculateBaseLMR(depth, num_legal, is_quiet);
+            var base_lmr = calculateBaseLMR(@max(1, depth), num_legal, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
 
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
@@ -885,8 +896,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction -= @as(i32, 1024) * @intFromBool(gives_check);
-                reduction += lmrConvolve(6, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet });
+                reduction += lmrConvolve(7, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet, gives_check });
 
                 reduction >>= 10;
 
@@ -1161,8 +1171,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
         }
-        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -evaluation.highest_non_mate_score));
-        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.highest_non_mate_score));
+        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -evaluation.inf_score));
+        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.inf_score));
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
