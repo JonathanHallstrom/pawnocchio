@@ -98,16 +98,39 @@ pub fn deinit(self: MovePicker) void {
     self.movelist.vals.len = 0;
 }
 
-fn findBest(self: *MovePicker) usize {
+inline fn findBest(noalias self: *MovePicker) usize {
     const scored_moves = self.movelist.vals.slice()[self.first..self.last];
-    var best_idx: usize = 0;
-    var best_score: i32 = scored_moves[0].score;
-    for (0..scored_moves.len) |i| {
-        if (scored_moves[i].score > best_score) {
-            best_idx = i;
-            best_score = scored_moves[i].score;
+
+    const unroll = 4;
+    const loadVals = struct {
+        fn impl(moves: []ScoredMove, i: usize) @Vector(unroll, u64) {
+            var res: @Vector(unroll, u64) = undefined;
+            inline for (0..unroll) |j| {
+                res[j] = moves.ptr[i + j].toScoreU64();
+            }
+            return res;
         }
+    }.impl;
+    const masks = comptime blk: {
+        var res: [unroll]@Vector(unroll, u64) = undefined;
+        res[0] = @splat(0);
+        for (1..unroll) |j| {
+            res[j] = res[j - 1];
+            res[j][j - 1] = std.math.maxInt(u64);
+        }
+        break :blk res;
+    };
+    var best: @Vector(unroll, u64) = [_]u64{scored_moves[0].toScoreU64()} ** unroll;
+    var i: u64 = 0;
+    var index_vec = std.simd.iota(u64, unroll);
+    while (i + unroll <= scored_moves.len) : (i += unroll) {
+        best = @max(best, loadVals(scored_moves, i) | index_vec);
+        index_vec += @splat(unroll);
     }
+    best = @max(best, (loadVals(scored_moves, i) & masks[scored_moves.len % unroll]) | index_vec);
+
+    const best_idx: u64 = @reduce(.Max, best) & std.math.maxInt(u32);
+
     if (best_idx != 0) {
         std.mem.swap(ScoredMove, &scored_moves[0], &scored_moves[best_idx]);
     }
@@ -123,11 +146,11 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     //     res += SEE.value(move.promoType());
     // }
     if ((&self.board.mailbox)[move.to().toInt()].opt()) |captured_type| {
-        res += SEE.value(captured_type.toPieceType());
+        res += SEE.value(captured_type.toPieceType(), .ordering);
     } else if (self.board.isEnPassant(move)) {
-        res += SEE.value(.pawn);
+        res += SEE.value(.pawn, .ordering);
     }
-    res *= 1024;
+    res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += self.histories.readNoisy(self.board, move);
 
     return res;
@@ -174,7 +197,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 const history_score = self.histories.readNoisy(self.board, res.move);
                 const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                     root.tuning.tunable_constants.good_noisy_ordering_base;
-                if (SEE.scoreMove(self.board, res.move, margin)) {
+                if (SEE.scoreMove(self.board, res.move, margin, .ordering)) {
                     return res;
                 }
                 self.movelist.vals.slice()[self.last_bad_noisy] = res;

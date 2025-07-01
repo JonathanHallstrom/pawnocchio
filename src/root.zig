@@ -17,9 +17,17 @@
 const std = @import("std");
 
 test {
+    _ = pyrrhic;
     std.testing.refAllDecls(@This());
 }
 
+comptime {
+    if (use_tbs) {
+        _ = pyrrhic;
+    }
+}
+pub const use_tbs = @import("build_options").use_tbs;
+pub const pyrrhic = @import("pyrrhic.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const Board = @import("Board.zig");
 pub const Move = @import("move.zig").Move;
@@ -41,9 +49,19 @@ pub const refreshCache = @import("refresh_cache.zig").refreshCache;
 pub const viriformat = @import("viriformat.zig");
 pub const wdl = @import("wdl.zig");
 
-pub const is_0_14_0 = @import("builtin").zig_version.minor >= 14;
+pub const is_0_14_0 = @import("builtin").zig_version.minor == 14;
 
 const assert = std.debug.assert;
+
+pub const WDL = enum(u2) {
+    win = 2,
+    draw = 1,
+    loss = 0,
+
+    pub fn toInt(self: WDL) u8 {
+        return @intFromEnum(self);
+    }
+};
 
 pub const Colour = enum(u1) {
     white = 0,
@@ -67,7 +85,7 @@ pub fn init() void {
         fn initImpl() void {
             stdout = std.io.getStdOut();
             attacks.init();
-            evaluation.init();
+            evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
             engine.reset();
             engine.setTTSize(16) catch std.debug.panic("Fatal: couldn't allocate default TT size\n", .{});
             engine.setThreadCount(1) catch std.debug.panic("Fatal: couldn't allocate default thread count\n", .{});
@@ -80,8 +98,8 @@ pub fn init() void {
 pub fn deinit() void {
     const globals = struct {
         fn deinitImpl() void {
-            stdout = std.io.getStdOut();
-            attacks.init();
+            pyrrhic.deinit();
+            evaluation.deinit();
         }
         var deinit_once = std.once(deinitImpl);
     };
@@ -263,16 +281,21 @@ pub const PieceType = enum {
     }
 };
 
-pub const NullableColouredPieceType = struct {
-    data: u8 = null_bit,
+pub const NullableColouredPieceType = enum(u8) {
+    _,
+
     const null_bit = 128;
 
+    pub fn init() NullableColouredPieceType {
+        return @enumFromInt(null_bit);
+    }
+
     pub inline fn isNull(self: NullableColouredPieceType) bool {
-        return self.data & null_bit != 0;
+        return @intFromEnum(self) & null_bit != 0;
     }
 
     pub inline fn from(ocpt: ?ColouredPieceType) NullableColouredPieceType {
-        return if (ocpt) |cpt| fromColouredPieceType(cpt) else .{};
+        return if (ocpt) |cpt| fromColouredPieceType(cpt) else NullableColouredPieceType.init();
     }
 
     pub inline fn opt(self: NullableColouredPieceType) ?ColouredPieceType {
@@ -280,11 +303,11 @@ pub const NullableColouredPieceType = struct {
     }
 
     pub inline fn fromColouredPieceType(cpt: ColouredPieceType) NullableColouredPieceType {
-        return .{ .data = @intCast(cpt.toInt()) };
+        return @enumFromInt(cpt.toInt());
     }
 
     pub inline fn toColouredPieceType(self: NullableColouredPieceType) ColouredPieceType {
-        return @enumFromInt(self.data);
+        return @enumFromInt(@intFromEnum(self));
     }
 };
 
@@ -349,9 +372,26 @@ pub const ColouredPieceType = enum(u4) {
     }
 };
 
-pub const ScoredMove = struct {
+pub const ScoredMove = extern struct {
     move: Move,
+    padding: u16 = 0,
     score: i32,
+
+    pub fn toScoreU64(self: ScoredMove) u64 {
+        var res: u64 = @bitCast(self);
+        res &= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 });
+        res ^= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = @bitCast(@as(u32, 0x80000000)) });
+        return res << comptime scoreShift();
+    }
+
+    fn scoreShift() comptime_int {
+        comptime return @clz(@as(u64, @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 })));
+    }
+
+    // comptime {
+    //     const x: u64 = @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 });
+    //     @compileLog(std.fmt.comptimePrint("{b}", .{x}));
+    // }
 
     pub fn desc(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
         return lhs.score > rhs.score;

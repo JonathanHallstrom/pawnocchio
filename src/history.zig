@@ -265,8 +265,14 @@ pub const HistoryTable = struct {
             tunable_constants.corrhist_major_weight * major_correction +
             tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
 
+        const scaled = scaleEval(board, static_eval);
+
+        return evaluation.clampScore(scaled + correction);
+    }
+
+    pub fn scaleEval(board: *const Board, eval: i16) i16 {
         comptime var divisor = 1;
-        const fifty_move_rule_scaled = @as(i64, static_eval) * (200 - board.halfmove);
+        const fifty_move_rule_scaled = @as(i64, eval) * (200 - board.halfmove);
         divisor *= 200;
         @setEvalBranchQuota(1 << 30);
         const vals: [6]i16 = if (root.tuning.do_tuning) .{
@@ -288,9 +294,7 @@ pub const HistoryTable = struct {
         const material_scaled = fifty_move_rule_scaled * (tunable_constants.material_scaling_base + board.sumPieces(vals));
         divisor *= 16384;
 
-        const scaled = @divTrunc(material_scaled, divisor);
-
-        return evaluation.clampScore(scaled + correction);
+        return @intCast(@divTrunc(material_scaled, divisor));
     }
 };
 

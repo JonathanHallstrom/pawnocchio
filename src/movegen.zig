@@ -89,7 +89,7 @@ pub fn attackersFor(comptime col: Colour, noalias board: *const Board, square: S
     return attacks_from_square & board.occupancyFor(col);
 }
 
-pub fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
+pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
     const d_rank = if (stm == .white) 1 else -1;
 
     const double_move_destination_rank = if (stm == .white) 3 else 4;
@@ -128,7 +128,7 @@ pub fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Board, che
     }
 }
 
-pub fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
+pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
     const d_rank = if (stm == .white) 1 else -1;
 
     const final_rank: u6 = board.startingRankFor(stm.flipped()).toInt();
@@ -195,8 +195,8 @@ pub fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Board, ch
     }
 }
 
-pub fn generateKnightQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
-    const knights = board.knightsFor(stm) & ~board.pinned[stm.toInt()];
+pub inline fn generateKnightQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
+    const knights = board.knightsFor(stm) & ~(&board.pinned)[stm.toInt()];
     const occ = board.occupancy();
 
     var from_iter = Bitboard.iterator(knights);
@@ -208,11 +208,11 @@ pub fn generateKnightQuiets(comptime stm: Colour, noalias board: *const Board, c
     }
 }
 
-pub fn generateKnightNoisies(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
+pub inline fn generateKnightNoisies(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
     const knights = board.knightsFor(stm);
     const them = board.occupancyFor(stm.flipped());
 
-    var from_iter = Bitboard.iterator(knights & ~board.pinned[stm.toInt()]);
+    var from_iter = Bitboard.iterator(knights & ~(&board.pinned)[stm.toInt()]);
     while (from_iter.next()) |from| {
         var to_iter = Bitboard.iterator(Bitboard.knightMoves(from) & them & check_mask);
         while (to_iter.next()) |to| {
@@ -221,7 +221,7 @@ pub fn generateKnightNoisies(comptime stm: Colour, noalias board: *const Board, 
     }
 }
 
-pub fn generateKingQuiets(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
+pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
     const king = board.kingFor(stm);
     const king_sq = Square.fromBitboard(king);
     const occ = board.occupancy();
@@ -254,7 +254,7 @@ pub fn generateKingQuiets(comptime stm: Colour, noalias board: *const Board, noa
     }
 }
 
-pub fn generateKingNoisies(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
+pub inline fn generateKingNoisies(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
     const king = board.kingFor(stm);
     const them = board.occupancyFor(stm.flipped());
 
@@ -267,7 +267,7 @@ pub fn generateKingNoisies(comptime stm: Colour, noalias board: *const Board, no
     }
 }
 
-pub fn generateSliderQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
+pub inline fn generateSliderQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
     const queens = board.queensFor(stm);
     const rooks = board.rooksFor(stm);
     const bishops = board.bishopsFor(stm);
@@ -280,7 +280,7 @@ pub fn generateSliderQuiets(comptime stm: Colour, noalias board: *const Board, c
         var from_iter = Bitboard.iterator(rook_sliders);
         while (from_iter.next()) |from| {
             var reachable = attacks.getRookAttacks(from, occ) & ~occ & check_mask;
-            if (from.toBitboard() & board.pinned[stm.toInt()] != 0)
+            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
             while (to_iter.next()) |to| {
@@ -292,7 +292,7 @@ pub fn generateSliderQuiets(comptime stm: Colour, noalias board: *const Board, c
         var from_iter = Bitboard.iterator(bishop_sliders);
         while (from_iter.next()) |from| {
             var reachable = attacks.getBishopAttacks(from, occ) & ~occ & check_mask;
-            if (from.toBitboard() & board.pinned[stm.toInt()] != 0)
+            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
             while (to_iter.next()) |to| {
@@ -302,7 +302,7 @@ pub fn generateSliderQuiets(comptime stm: Colour, noalias board: *const Board, c
     }
 }
 
-pub fn generateSliderNoisies(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
+pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
     const queens = board.queensFor(stm);
     const rooks = board.rooksFor(stm);
     const bishops = board.bishopsFor(stm);
@@ -317,7 +317,7 @@ pub fn generateSliderNoisies(comptime stm: Colour, noalias board: *const Board, 
         var from_iter = Bitboard.iterator(rook_sliders);
         while (from_iter.next()) |from| {
             var reachable = attacks.getRookAttacks(from, occ) & them & check_mask;
-            if (from.toBitboard() & board.pinned[stm.toInt()] != 0)
+            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
             while (to_iter.next()) |to| {
@@ -329,7 +329,7 @@ pub fn generateSliderNoisies(comptime stm: Colour, noalias board: *const Board, 
         var from_iter = Bitboard.iterator(bishop_slides);
         while (from_iter.next()) |from| {
             var reachable = attacks.getBishopAttacks(from, occ) & them & check_mask;
-            if (from.toBitboard() & board.pinned[stm.toInt()] != 0)
+            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
 
             var to_iter = Bitboard.iterator(reachable);

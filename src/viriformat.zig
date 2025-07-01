@@ -29,6 +29,7 @@ const Move = root.Move;
 const Colour = root.Colour;
 const Rank = root.Rank;
 const File = root.File;
+const WDL = root.WDL;
 
 fn LittleEndian(comptime T: type) type {
     return packed struct {
@@ -194,8 +195,8 @@ pub const Game = struct {
         return @sizeOf(MarlinPackedBoard) + @sizeOf(MoveEvalPair) * (1 + self.moves.items.len);
     }
 
-    pub fn setOutCome(self: *Game, wdl: u8) void {
-        self.initial_position.wdl = wdl;
+    pub fn setOutCome(self: *Game, wdl: WDL) void {
+        self.initial_position.wdl = wdl.toInt();
     }
 
     pub fn reset(self: *Game, board: Board) void {

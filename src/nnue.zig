@@ -25,7 +25,8 @@ const evaluation = root.evaluation;
 const Move = root.Move;
 
 const builtin = @import("builtin");
-const CAN_VERBATIM_NET = builtin.cpu.arch.endian() == .little and builtin.mode == .ReleaseFast;
+const CAN_VERBATIM_NET = builtin.cpu.arch.endian() == .little and builtin.mode == .ReleaseFast and !build_options.runtime_net;
+const build_options = @import("build_options");
 
 fn madd(
     comptime N: comptime_int,
@@ -74,17 +75,21 @@ pub inline fn whichOutputBucket(board: *const Board) usize {
     return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.white | board.black) - 2) / divisor);
 }
 
-pub const weights = if (CAN_VERBATIM_NET)
+var weights_file: std.fs.File = undefined;
+var mapped_weights: []align(std.heap.pageSize()) const u8 = undefined;
+const verbatim_weights = if (CAN_VERBATIM_NET)
 blk: {
     var res: Weights = undefined;
     @memcpy(std.mem.asBytes(&res)[0 .. Weights.WEIGHT_COUNT * @sizeOf(i16)], @embedFile("net")[0 .. Weights.WEIGHT_COUNT * @sizeOf(i16)]);
     break :blk res;
-} else &(struct {
+} else undefined;
+
+pub var weights = if (CAN_VERBATIM_NET) &verbatim_weights else if (build_options.runtime_net) @as(*const Weights, undefined) else &(struct {
     var backing: Weights = undefined;
 }).backing;
 // @ptrCast(@alignCast(@as(*const anyopaque, @ptrCast(@embedFile("net")))));
 inline fn hiddenLayerWeightsVector() []const @Vector(VEC_SIZE, i16) {
-    comptime return @as([*]const @Vector(VEC_SIZE, i16), @ptrCast(&weights.hidden_layer_weights))[0 .. weights.hidden_layer_weights.len / VEC_SIZE];
+    return @as([*]const @Vector(VEC_SIZE, i16), @ptrCast(&weights.hidden_layer_weights))[0 .. weights.hidden_layer_weights.len / VEC_SIZE];
 }
 
 const SquarePieceType = struct {
@@ -270,7 +275,7 @@ const Accumulator = struct {
         const us_acc = if (board.stm == .white) &self.white else &self.black;
         const them_acc = if (board.stm == .white) &self.black else &self.white;
 
-        //                  vvvvvvvv annotation to help zls
+        //                vvvvvvvv annotation to help zls
         const Vec = @as(type, @Vector(VEC_SIZE, i16));
 
         const ACC_COUNT = comptime std.math.gcd(4, HIDDEN_SIZE / VEC_SIZE);
@@ -451,31 +456,56 @@ fn screlu(x: i32) i32 {
     return clamped * clamped;
 }
 
-pub fn init() void {
-    if (!CAN_VERBATIM_NET) {
-        var fbs = std.io.fixedBufferStream(@embedFile("net"));
+pub fn init() !void {
+    if (build_options.runtime_net) {
+        weights_file = try std.fs.openFileAbsolute(build_options.net_path, .{});
+        // const stat = try std.posix.fstat(weights_file.handle);
+        // const file_size: usize = @intCast(stat.size);
+        mapped_weights = try std.posix.mmap(null, Weights.WEIGHT_COUNT * @sizeOf(i16), std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
 
-        // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
-        for (0..(&weights.hidden_layer_weights).len) |i| {
-            (&weights.hidden_layer_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-        }
+        weights = @ptrCast(mapped_weights.ptr);
 
-        // then the biases for the first layer (there should be HIDDEN_SIZE of them)
-        for (0..(&weights.hidden_layer_biases).len) |i| {
-            (&weights.hidden_layer_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-        }
+        return;
+    }
 
-        // then the weights for the second layer (there should be HIDDEN_SIZE * 2 of them)
-        for (0..(&weights.output_weights).len) |i| {
-            (&weights.output_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-        }
+    if (CAN_VERBATIM_NET) {
+        return;
+    }
 
-        // then finally the bias(es)
-        for (0..(&weights.output_biases).len) |i| {
-            (&weights.output_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-        }
+    var fbs = std.io.fixedBufferStream(@embedFile("net"));
+
+    // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
+    for (0..(&weights.hidden_layer_weights).len) |i| {
+        (&weights.hidden_layer_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    }
+
+    // then the biases for the first layer (there should be HIDDEN_SIZE of them)
+    for (0..(&weights.hidden_layer_biases).len) |i| {
+        (&weights.hidden_layer_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    }
+
+    // then the weights for the second layer (there should be HIDDEN_SIZE * 2 of them)
+    for (0..(&weights.output_weights).len) |i| {
+        (&weights.output_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    }
+
+    // then finally the bias(es)
+    for (0..(&weights.output_biases).len) |i| {
+        (&weights.output_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
     }
     // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)});
+}
+
+pub fn deinit() void {
+    if (CAN_VERBATIM_NET) {
+        return;
+    }
+    if (!build_options.runtime_net) {
+        return;
+    }
+
+    weights_file.close();
+    std.posix.munmap(mapped_weights);
 }
 
 pub fn initThreadLocals() void {

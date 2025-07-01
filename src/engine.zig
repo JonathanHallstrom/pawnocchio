@@ -26,7 +26,7 @@ pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atom
 var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
 var num_finished_threads: std.atomic.Value(usize) align(std.atomic.cache_line) = std.atomic.Value(usize).init(0);
 var current_num_threads: usize align(std.atomic.cache_line) = 0; // 0 for uninitialized
-pub var searchers: []Searcher align(std.atomic.cache_line) = &.{};
+pub var searchers: []align(std.atomic.cache_line) Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
@@ -239,14 +239,11 @@ fn datagenWorker(
             }
             game.addMove(search_move, adjusted) catch unreachable;
             hashes.append(board.hash) catch unreachable;
-            // std.debug.print("{s}", .{dbg_log});
-            if (root.evaluation.isMateScore(search_score)) {
+            if (root.evaluation.isMateScore(search_score) or root.evaluation.isTBScore(search_score)) {
                 if (adjusted > 0) {
-                    // std.debug.print("white {s}\n", .{fen.slice()});
-                    game.setOutCome(2);
+                    game.setOutCome(.win);
                 } else {
-                    // std.debug.print("black {s}\n", .{fen.slice()});
-                    game.setOutCome(0);
+                    game.setOutCome(.loss);
                 }
                 break :game_loop;
             }
@@ -273,7 +270,6 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     var total_position_count = std.atomic.Value(usize).init(0);
     for (0..current_num_threads) |i| {
         searchers[i].tt = try std.heap.page_allocator.alloc(root.TTEntry, (16 << 20) / @sizeOf(root.TTEntry));
-        // datagenWorker(0, 8, num_nodes, out_file.writer(), &writer_mutex, &total_position_count);
         try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 9, num_nodes, &writer, &writer_mutex, &total_position_count });
     }
 
