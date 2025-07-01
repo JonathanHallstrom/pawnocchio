@@ -859,7 +859,7 @@ fn search(
                 if (!is_pv and s_score < s_beta - tunable_constants.singular_dext_margin) {
                     extension += 1;
 
-                    if (board.isQuiet(tt_entry.move) and s_score < s_beta - 300) {
+                    if (board.isQuiet(tt_entry.move) and s_score < s_beta - 200) {
                         extension += 1;
                     }
                 }
