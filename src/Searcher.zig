@@ -695,7 +695,6 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.prev);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
@@ -706,8 +705,7 @@ fn search(
                 tunable_constants.rfp_mult * depth -
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
+                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
@@ -885,15 +883,12 @@ fn search(
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
-
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
             if (depth >= 3 and num_legal > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
-                reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction -= @as(i32, 1024) * @intFromBool(gives_check);
                 reduction += lmrConvolve(6, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet });
 
@@ -1038,14 +1033,6 @@ fn search(
             depth,
             raw_static_eval,
         );
-
-        if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
-            if (corrected_static_eval != best_score and
-                evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
-            {
-                self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
-            }
-        }
     }
 
     return best_score;
