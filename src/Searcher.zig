@@ -568,7 +568,6 @@ fn search(
     const cur = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
-    depth = @max(0, depth);
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
@@ -889,8 +888,7 @@ fn search(
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
-                reduction -= @as(i32, 1024) * @intFromBool(gives_check);
-                reduction += lmrConvolve(6, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet });
+                reduction += lmrConvolve(7, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet, gives_check });
 
                 reduction >>= 10;
 
