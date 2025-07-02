@@ -159,7 +159,7 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
 fn quietValue(self: MovePicker, move: Move) i32 {
     var res = self.histories.readQuiet(self.board, move, self.prev);
 
-    const stm = self.board.stm.toInt();
+    const stm = self.board.stm.flipped().toInt();
     const pawn = self.board.threats[stm][0];
     const minor = self.board.threats[stm][1] | self.board.threats[stm][2] | pawn;
     const major = self.board.threats[stm][3] | minor;
