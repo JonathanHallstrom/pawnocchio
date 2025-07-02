@@ -567,7 +567,7 @@ fn search(
         return 0;
     }
 
-    const cur = self.curStackEntry();
+    const cur: *StackEntry = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
@@ -696,6 +696,24 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
+        const history_margin = blk: {
+            const offs, const div, const min, const max = if (board.isQuiet(cur.move.move)) .{
+                tunable_constants.rfp_history_offs,
+                tunable_constants.rfp_history_div,
+                tunable_constants.rfp_history_min,
+                tunable_constants.rfp_history_max,
+            } else .{
+                tunable_constants.rfp_noisy_history_offs,
+                tunable_constants.rfp_noisy_history_div,
+                tunable_constants.rfp_noisy_history_min,
+                tunable_constants.rfp_noisy_history_max,
+            };
+            break :blk std.math.clamp(
+                @divTrunc(cur.history_score + offs, div),
+                min,
+                max,
+            );
+        };
         const corrplexity = self.histories.squaredCorrectionTerms(board, cur.prev);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
@@ -709,11 +727,7 @@ fn search(
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32) +
-                std.math.clamp(
-                    @divTrunc(cur.history_score + tunable_constants.rfp_history_offs, tunable_constants.rfp_history_div),
-                    tunable_constants.rfp_history_min,
-                    tunable_constants.rfp_history_max,
-                ))
+                history_margin)
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
