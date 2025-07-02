@@ -768,6 +768,7 @@ fn search(
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_legal: u8 = 0;
+    var was_bestmove_ever_noisy = false;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -978,6 +979,9 @@ fn search(
         if (score > best_score) {
             best_score = score;
             best_move = move;
+            if (!is_quiet) {
+                was_bestmove_ever_noisy = true;
+            }
         }
 
         if (score > alpha) {
@@ -1038,7 +1042,8 @@ fn search(
         );
 
         if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
-            if (corrected_static_eval != best_score and
+            if (!was_bestmove_ever_noisy and
+                corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
                 self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
