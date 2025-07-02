@@ -194,9 +194,14 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                     continue;
                 }
                 const res = self.movelist.vals.slice()[self.findBest()];
+                const threats = (&self.board.threats)[self.board.stm.flipped().toInt()];
+                const source_threatened = res.move.from().toBitboard() & threats != 0;
                 const history_score = self.histories.readNoisy(self.board, res.move);
-                const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
+                var margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                     root.tuning.tunable_constants.good_noisy_ordering_base;
+                if (source_threatened) {
+                    margin -= @divTrunc(SEE.value(self.board.pieceOn(res.move.from()).?, .ordering), 4);
+                }
                 if (SEE.scoreMove(self.board, res.move, margin, .ordering)) {
                     return res;
                 }
