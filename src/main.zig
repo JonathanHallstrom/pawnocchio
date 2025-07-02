@@ -303,6 +303,7 @@ pub fn main() !void {
     try previous_hashes.append(board.hash);
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
+    var min_depth: i32 = 0;
     loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
@@ -329,6 +330,7 @@ pub fn main() !void {
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
+            write("option name mindepth type spin default 0 min 0 max 255\n", .{});
             write("option name SyzygyPath type string default <empty>\n", .{});
             write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
             if (root.tuning.do_tuning) {
@@ -410,6 +412,13 @@ pub fn main() !void {
                     continue;
                 };
                 try root.engine.setThreadCount(count);
+            }
+
+            if (std.ascii.eqlIgnoreCase("mindepth", option_name)) {
+                min_depth = std.fmt.parseInt(u8, value, 10) catch {
+                    writeLog("invalid depth: '{s}'\n", .{value});
+                    continue;
+                };
             }
 
             if (std.ascii.eqlIgnoreCase("UCI_Chess960", option_name)) {

@@ -95,7 +95,7 @@ pub const QuietHistory = struct {
 };
 
 pub const NoisyHistory = struct {
-    vals: [64 * 64 * 13]i16,
+    vals: [64 * 64 * 13 * 2 * 2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -120,7 +120,10 @@ pub const NoisyHistory = struct {
         const to_offs: usize = move.move.to().toInt();
         const captured = (&board.mailbox)[to_offs];
         const captured_offs = if (captured.opt()) |capt| capt.toInt() else 12;
-        return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
+        const threats = board.threats[board.stm.flipped().toInt()];
+        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
+        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
+        return &(&self.vals)[from_offs * 64 * 13 * 2 * 2 + to_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
     inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
