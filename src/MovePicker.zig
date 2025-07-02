@@ -197,7 +197,9 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                 const history_score = self.histories.readNoisy(self.board, res.move);
                 const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                     root.tuning.tunable_constants.good_noisy_ordering_base;
-                if (SEE.scoreMove(self.board, res.move, margin, .ordering)) {
+                const threats = self.board.threats[self.board.stm.flipped().toInt()];
+                const destination_unthreatened = res.move.to().toBitboard() & threats == 0;
+                if (destination_unthreatened or SEE.scoreMove(self.board, res.move, margin, .ordering)) {
                     return res;
                 }
                 self.movelist.vals.slice()[self.last_bad_noisy] = res;
