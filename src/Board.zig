@@ -55,7 +55,7 @@ castling_rights: CastlingRights = CastlingRights.init(),
 pinned: [2]u64 = .{0} ** 2,
 // pinner: [2]u64 = .{0} ** 2,
 checkers: u64 = 0,
-threats: [2]u64 = .{0} ** 2,
+threats: [2][7]u64 = .{.{0} ** 7} ** 2,
 
 pub inline fn occupancyFor(self: Board, col: Colour) u64 {
     return if (col == .white) self.white else self.black;
@@ -842,20 +842,43 @@ pub inline fn updatePins(noalias self: *Board, comptime col: Colour) void {
 
 pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     const occ = self.occupancy();
-    var threatened: u64 = 0;
 
-    threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
-    threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
-    threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
-    var iter = Bitboard.iterator(self.bishopsFor(col) | self.queensFor(col));
-    while (iter.next()) |sq| {
-        threatened |= attacks.getBishopAttacks(sq, occ);
+    self.threats[col.toInt()][0] = Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
+    self.threats[col.toInt()][1] = Bitboard.knightMoveBitBoard(self.knightsFor(col));
+
+    {
+        var threatened: u64 = 0;
+        var iter = Bitboard.iterator(self.bishopsFor(col));
+        while (iter.next()) |sq| {
+            threatened |= attacks.getBishopAttacks(sq, occ);
+        }
+        self.threats[col.toInt()][2] = threatened;
     }
-    iter = Bitboard.iterator(self.rooksFor(col) | self.queensFor(col));
-    while (iter.next()) |sq| {
-        threatened |= attacks.getRookAttacks(sq, occ);
+    {
+        var threatened: u64 = 0;
+        var iter = Bitboard.iterator(self.rooksFor(col));
+        while (iter.next()) |sq| {
+            threatened |= attacks.getRookAttacks(sq, occ);
+        }
+        self.threats[col.toInt()][3] = threatened;
     }
-    self.threats[col.toInt()] = threatened;
+    {
+        var threatened: u64 = 0;
+        var iter = Bitboard.iterator(self.queensFor(col));
+        while (iter.next()) |sq| {
+            threatened |= attacks.getBishopAttacks(sq, occ);
+            threatened |= attacks.getRookAttacks(sq, occ);
+        }
+        self.threats[col.toInt()][4] = threatened;
+    }
+
+    self.threats[col.toInt()][5] = Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
+    self.threats[col.toInt()][6] = self.threats[col.toInt()][0] |
+        self.threats[col.toInt()][1] |
+        self.threats[col.toInt()][2] |
+        self.threats[col.toInt()][3] |
+        self.threats[col.toInt()][4] |
+        self.threats[col.toInt()][5];
 }
 
 pub fn updateMasks(self: *Board, col: Colour) void {

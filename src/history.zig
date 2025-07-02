@@ -78,7 +78,7 @@ pub const QuietHistory = struct {
         const col_offs: usize = board.stm.toInt();
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
-        const threats = board.threats[board.stm.flipped().toInt()];
+        const threats = board.threats[board.stm.flipped().toInt()][6];
         const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
         const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
 

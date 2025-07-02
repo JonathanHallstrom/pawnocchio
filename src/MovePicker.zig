@@ -156,6 +156,47 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     return res;
 }
 
+fn quietValue(self: MovePicker, move: Move) i32 {
+    var res = self.histories.readQuiet(self.board, move, self.prev);
+
+    const stm = self.board.stm.toInt();
+    const pawn = self.board.threats[stm][0];
+    const minor = self.board.threats[stm][1] | self.board.threats[stm][2] | pawn;
+    const major = self.board.threats[stm][3] | minor;
+
+    const from_bb = move.from().toBitboard();
+    const to_bb = move.to().toBitboard();
+    switch (self.board.pieceOn(move.from()).?) {
+        .queen => {
+            if (major & from_bb != 0) {
+                res += 17000;
+            }
+            if (major & to_bb != 0) {
+                res -= 16000;
+            }
+        },
+        .rook => {
+            if (minor & from_bb != 0) {
+                res += 14000;
+            }
+            if (minor & to_bb != 0) {
+                res -= 13000;
+            }
+        },
+        .bishop, .knight => {
+            if (pawn & from_bb != 0) {
+                res += 11000;
+            }
+            if (pawn & to_bb != 0) {
+                res -= 10000;
+            }
+        },
+        else => {},
+    }
+
+    return res;
+}
+
 pub fn next(self: *MovePicker) ?ScoredMove {
     while (true) {
         switch (self.stage) {
@@ -214,7 +255,7 @@ pub fn next(self: *MovePicker) ?ScoredMove {
                     inline else => |stm| {
                         movegen.generateAllQuiets(stm, self.board, self.movelist);
                         for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
-                            scored_move.score = self.histories.readQuiet(self.board, scored_move.move, self.prev);
+                            scored_move.score = self.quietValue(scored_move.move);
                         }
                     },
                 }
