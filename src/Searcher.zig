@@ -1076,14 +1076,21 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
             board.stm = board.stm.flipped();
         }
     }
+    var hashfull: usize = 0;
+    if (self.tt.len >= 1000) {
+        for (0..1000) |i| {
+            hashfull += @intFromBool(self.tt[i].flags.age == self.ttage);
+        }
+    }
     const normalized_score = root.wdl.normalize(score, root_board.classicalMaterial());
-    write("info depth {} seldepth {} score {s}{s} nodes {} nps {} time {} pv {s}\n", .{
+    write("info depth {} seldepth {} score {s}{s} nodes {} nps {} hashfull {} time {} pv {s}\n", .{
         depth,
         self.seldepth,
         evaluation.formatScore(normalized_score).slice(),
         type_str,
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
+        hashfull,
         (elapsed + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
         std.mem.trim(u8, fixed_buffer_pv_writer.getWritten(), &std.ascii.whitespace),
     });
@@ -1143,11 +1150,9 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.pvs[0].len = 0;
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
+    self.ttage +%= 1;
     if (params.needs_full_reset) {
         self.histories.reset();
-        self.ttage = 0;
-    } else {
-        self.ttage +%= 1;
     }
     self.limits.resetNodeCounts();
     evaluation.initThreadLocals();
