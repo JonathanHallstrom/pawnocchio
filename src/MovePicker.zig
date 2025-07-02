@@ -169,26 +169,26 @@ fn quietValue(self: MovePicker, move: Move) i32 {
     switch (self.board.pieceOn(move.from()).?) {
         .queen => {
             if (major & from_bb != 0) {
-                res += 17000;
+                res += 1700;
             }
             if (major & to_bb != 0) {
-                res -= 16000;
+                res -= 1600;
             }
         },
         .rook => {
             if (minor & from_bb != 0) {
-                res += 14000;
+                res += 1400;
             }
             if (minor & to_bb != 0) {
-                res -= 13000;
+                res -= 1300;
             }
         },
         .bishop, .knight => {
             if (pawn & from_bb != 0) {
-                res += 11000;
+                res += 1100;
             }
             if (pawn & to_bb != 0) {
-                res -= 10000;
+                res -= 1000;
             }
         },
         else => {},
