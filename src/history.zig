@@ -54,7 +54,7 @@ const MAX_CORRHIST = 256 * 32;
 const SHIFT = @ctz(MAX_HISTORY);
 
 pub const QuietHistory = struct {
-    vals: [2 * 64 * 64]i16,
+    vals: [2 * 64 * 64 * 2 * 2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -74,19 +74,23 @@ pub const QuietHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    inline fn entry(self: anytype, col: Colour, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
-        const col_offs: usize = col.toInt();
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = board.stm.toInt();
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
-        return &(&self.vals)[col_offs * 64 * 64 + from_offs * 64 + to_offs];
+        const threats = board.threats[board.stm.flipped().toInt()];
+        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
+        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
+
+        return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + from_offs * 64 * 2 * 2 + to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
-    inline fn update(self: *QuietHistory, col: Colour, move: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(col, move), if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
+        gravityUpdate(self.entry(board, move), if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
-    inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {
-        return self.entry(col, move).*;
+    inline fn read(self: *const QuietHistory, board: *const Board, move: TypedMove) i16 {
+        return self.entry(board, move).*;
     }
 };
 
@@ -189,7 +193,7 @@ pub const HistoryTable = struct {
     pub fn readQuiet(self: *const HistoryTable, board: *const Board, move: Move, prev: TypedMove) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        res += self.quiet.read(board.stm, typed);
+        res += self.quiet.read(board, typed);
         res += self.countermove.read(board.stm, typed, prev);
 
         return res;
@@ -197,7 +201,7 @@ pub const HistoryTable = struct {
 
     pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, prev: TypedMove, depth: i32, is_bonus: bool) void {
         const typed = TypedMove.fromBoard(board, move);
-        self.quiet.update(board.stm, typed, depth, is_bonus);
+        self.quiet.update(board, typed, depth, is_bonus);
         self.countermove.update(board.stm, typed, prev, depth, is_bonus);
     }
 

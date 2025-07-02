@@ -416,8 +416,21 @@ pub fn knightMoves(square: anytype) u64 {
     return (&knight_moves)[idx(square)];
 }
 
+pub inline fn knightMoveBitBoard(bb: u64) u64 {
+    var res: u64 = 0;
+    inline for (knight_d_ranks, knight_d_files) |dr, df| {
+        res |= move(bb, dr, df);
+    }
+    return res;
+}
+
 pub fn pawnAttacks(square: anytype, color: anytype) u64 {
     return (&(&pawn_attacks)[idx(square)])[idx(color)];
+}
+
+pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
+    const moved = if (col == .white) bb << 8 else bb >> 8;
+    return move(moved, 0, -1) | move(moved, 0, 1);
 }
 
 pub fn bishopAttacks(square: anytype) u64 {
