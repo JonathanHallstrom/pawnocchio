@@ -175,14 +175,16 @@ pub const StackEntry = struct {
     board: Board,
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
+    move_quiet: bool,
     prev: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
 
-    pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
+    pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, move_quiet_: bool, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
         self.move = move_;
+        self.move_quiet = move_quiet_;
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
@@ -242,7 +244,7 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
     return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
 }
 
-fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
+fn makeMove(self: *Searcher, comptime stm: Colour, move: Move, quiet: bool) void {
     const old_stack_entry = self.prevStackEntry();
     const prev_stack_entry = self.curStackEntry();
     const prev_eval_state = self.curEvalState();
@@ -260,6 +262,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
+        quiet,
         prev_stack_entry.move,
         prev_stack_entry.evals,
     );
@@ -288,6 +291,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     new_stack_entry.init(
         board,
         TypedMove.init(),
+        false,
         TypedMove.init(),
         prev_stack_entry.evals,
     );
@@ -337,7 +341,7 @@ fn qsearch(
         self.stop.store(true, .release);
         return 0;
     }
-    const cur = self.curStackEntry();
+    const cur: *StackEntry = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
@@ -438,7 +442,7 @@ fn qsearch(
             }
         }
 
-        self.makeMove(stm, move);
+        self.makeMove(stm, move, board.isQuiet(move));
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
         if (self.stop.load(.acquire)) {
@@ -527,16 +531,16 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
     }
 }
 
-inline fn lmrConvolve(comptime N: usize, params: [N]bool) i32 {
+inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i32 {
     var res: i32 = 0;
     comptime var two = 0;
     comptime var three = 0;
     inline for (0..N) |i| {
-        res += root.tuning.factorized_lmr.one[i] * @intFromBool(params[i]);
+        res += weights.one[i] * @intFromBool(params[i]);
         inline for (i + 1..N) |j| {
-            res += root.tuning.factorized_lmr.two[two] * @intFromBool(params[i] and params[j]);
+            res += weights.two[two] * @intFromBool(params[i] and params[j]);
             inline for (j + 1..N) |k| {
-                res += root.tuning.factorized_lmr.three[three] * @intFromBool(params[i] and params[j] and params[k]);
+                res += weights.three[three] * @intFromBool(params[i] and params[j] and params[k]);
                 three += 1;
             }
             two += 1;
@@ -565,7 +569,7 @@ fn search(
         return 0;
     }
 
-    const cur = self.curStackEntry();
+    const cur: *StackEntry = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
@@ -698,15 +702,16 @@ fn search(
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
-        const no_tthit_cutnode = !tt_hit and cutnode;
         if (depth <= 6 and
             eval >= beta +
                 tunable_constants.rfp_base +
-                tunable_constants.rfp_mult * depth -
-                tunable_constants.rfp_improving_margin * @intFromBool(improving) -
-                tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
+                tunable_constants.rfp_mult * depth +
+                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32) +
+                convolve(
+                    5,
+                    .{ improving, opponent_worsening, cutnode, !tt_hit, cur.move_quiet },
+                    root.tuning.factorized_rfp,
+                ))
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
@@ -877,7 +882,7 @@ fn search(
             }
         }
 
-        self.makeMove(stm, move);
+        self.makeMove(stm, move, is_quiet);
 
         const gives_check = self.curStackEntry().board.checkers != 0;
         const score = blk: {
@@ -893,7 +898,11 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += lmrConvolve(7, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet, gives_check });
+                reduction += convolve(
+                    7,
+                    .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet, gives_check },
+                    root.tuning.factorized_lmr,
+                );
 
                 reduction >>= 10;
 
@@ -1148,7 +1157,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.root_score = 0;
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
-    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
+    self.searchStackRoot()[0].init(&board, TypedMove.init(), false, TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     self.ttage +%= 1;
     if (params.needs_full_reset) {

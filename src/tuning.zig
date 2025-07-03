@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -70,9 +70,6 @@ const tunable_defaults = struct {
     pub const noisy_history_penalty_max: i32 = 2024;
     pub const rfp_base: i32 = 49;
     pub const rfp_mult: i32 = 56;
-    pub const rfp_improving_margin: i32 = 71;
-    pub const rfp_worsening_margin: i32 = 14;
-    pub const rfp_cutnode_margin: i32 = 19;
     pub const rfp_corrplexity_mult: i32 = 19;
     pub const aspiration_initial: i32 = 12631;
     pub const aspiration_multiplier: i32 = 1402;
@@ -174,9 +171,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "noisy_history_penalty_max", .default = tunable_defaults.noisy_history_penalty_max, .min = -10, .max = 4965, .c_end = 198 },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 147, .c_end = 5 },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 145, .c_end = 5 },
-    .{ .name = "rfp_improving_margin", .default = tunable_defaults.rfp_improving_margin, .min = -10, .max = 195, .c_end = 7 },
-    .{ .name = "rfp_worsening_margin", .default = tunable_defaults.rfp_worsening_margin, .min = -10, .max = 45, .c_end = 1 },
-    .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
     .{ .name = "rfp_corrplexity_mult", .default = tunable_defaults.rfp_corrplexity_mult, .min = -10, .max = 60, .c_end = 2 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = -10, .max = 39450, .c_end = 1577 },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = -10, .max = 4015, .c_end = 160 },
@@ -278,9 +272,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var noisy_history_penalty_max = tunable_defaults.noisy_history_penalty_max;
     pub var rfp_base = tunable_defaults.rfp_base;
     pub var rfp_mult = tunable_defaults.rfp_mult;
-    pub var rfp_improving_margin = tunable_defaults.rfp_improving_margin;
-    pub var rfp_worsening_margin = tunable_defaults.rfp_worsening_margin;
-    pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var rfp_corrplexity_mult = tunable_defaults.rfp_corrplexity_mult;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
@@ -444,6 +435,55 @@ pub const factorized_lmr = if (do_tuning) struct {
     pub var two = factorized_lmr_defaults.two;
     pub var three = factorized_lmr_defaults.three;
 } else factorized_lmr_defaults;
+
+const factorized_rfp_defaults = struct {
+    pub const rfp_improving_margin: i32 = 71;
+    pub const rfp_worsening_margin: i32 = 14;
+    pub const rfp_cutnode_margin: i32 = 19;
+    pub const one = [5]i32{
+        -71, // improving
+        -14, // worsening
+        0, // cutnode
+        0, // !tthit
+        0, // parent quiet
+    };
+    pub const two: [10]i32 = .{
+        0, // i,w
+        0, // i,c
+        0, // i,c
+        0, // i,n
+        0, // w,c
+        0, // w,t
+        0, // w,p
+        -19, // c,t
+        0, // c,p
+        0, // t,p
+    };
+    pub const three: [10]i32 = .{
+        0, //i,w,c
+        0, //i,w,t
+        0, //i,w,p
+        0, //i,c,t
+        0, //i,c,p
+        0, //i,t,p
+        0, //w,c,t
+        0, //w,c,p
+        0, //w,t,p
+        0, //c,t,p
+    };
+};
+
+pub const factorized_rfp_params = struct {
+    pub const min = -128;
+    pub const max = 128;
+    pub const c_end = 8;
+};
+
+pub const factorized_rfp = if (do_tuning) struct {
+    pub var one = factorized_rfp_defaults.one;
+    pub var two = factorized_rfp_defaults.two;
+    pub var three = factorized_rfp_defaults.three;
+} else factorized_rfp_defaults;
 
 comptime {
     std.debug.assert(std.meta.declarations(tunable_defaults).len == tunables.len);
