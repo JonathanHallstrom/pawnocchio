@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = true;
+pub const do_tuning = false;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -74,14 +74,14 @@ const tunable_defaults = struct {
     pub const rfp_worsening_margin: i32 = 14;
     pub const rfp_cutnode_margin: i32 = 19;
     pub const rfp_corrplexity_mult: i32 = 19;
-    pub const rfp_history_offs: i32 = 0;
-    pub const rfp_history_div: i32 = 600;
-    pub const rfp_history_min: i32 = -25;
-    pub const rfp_history_max: i32 = 25;
-    pub const rfp_noisy_history_offs: i32 = 0;
-    pub const rfp_noisy_history_div: i32 = 600;
-    pub const rfp_noisy_history_min: i32 = -25;
-    pub const rfp_noisy_history_max: i32 = 25;
+    pub const rfp_history_offs: i32 = 1054;
+    pub const rfp_history_div: i32 = 619;
+    pub const rfp_history_min: i32 = -15;
+    pub const rfp_history_max: i32 = 46;
+    pub const rfp_noisy_history_offs: i32 = 70;
+    pub const rfp_noisy_history_div: i32 = 614;
+    pub const rfp_noisy_history_min: i32 = -21;
+    pub const rfp_noisy_history_max: i32 = 63;
     pub const aspiration_initial: i32 = 12631;
     pub const aspiration_multiplier: i32 = 1402;
     pub const lmr_quiet_base: i32 = 2979;
