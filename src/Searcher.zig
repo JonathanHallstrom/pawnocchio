@@ -700,13 +700,13 @@ fn search(
             const offs, const div, const min, const max = if (board.isQuiet(cur.move.move)) .{
                 tunable_constants.rfp_history_offs,
                 tunable_constants.rfp_history_div,
-                tunable_constants.rfp_history_min,
-                tunable_constants.rfp_history_max,
+                tunable_constants.rfp_history_min * 0,
+                tunable_constants.rfp_history_max * 0,
             } else .{
                 tunable_constants.rfp_noisy_history_offs,
                 tunable_constants.rfp_noisy_history_div,
-                tunable_constants.rfp_noisy_history_min * 0,
-                tunable_constants.rfp_noisy_history_max * 0,
+                tunable_constants.rfp_noisy_history_min,
+                tunable_constants.rfp_noisy_history_max,
             };
             break :blk std.math.clamp(
                 @divTrunc(cur.history_score + offs, div),
