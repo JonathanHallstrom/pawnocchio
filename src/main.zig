@@ -372,8 +372,18 @@ pub fn main() !void {
                 inline for (0..3, .{ factorized_lmr.one, factorized_lmr.two, factorized_lmr.three }) |i, arr| {
                     inline for (arr, 0..) |val, j| {
                         write(
-                            "option name factorized_{}_{} type spin default {} min {} max {}\n",
+                            "option name factorized_lmr_{}_{} type spin default {} min {} max {}\n",
                             .{ i, j, val, factorized_lmr_params.min, factorized_lmr_params.max },
+                        );
+                    }
+                }
+                const factorized_rfp = root.tuning.factorized_rfp;
+                const factorized_rfp_params = root.tuning.factorized_rfp_params;
+                inline for (0..3, .{ factorized_rfp.one, factorized_rfp.two, factorized_rfp.three }) |i, arr| {
+                    inline for (arr, 0..) |val, j| {
+                        write(
+                            "option name factorized_rfp_{}_{} type spin default {} min {} max {}\n",
+                            .{ i, j, val, factorized_rfp_params.min, factorized_rfp_params.max },
                         );
                     }
                 }
@@ -397,7 +407,7 @@ pub fn main() !void {
             inline for (0..3, .{ factorized_lmr.one, factorized_lmr.two, factorized_lmr.three }) |i, arr| {
                 inline for (arr, 0..) |val, j| {
                     write(
-                        "factorized_{}_{}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                        "factorized_lmr_{}_{}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
                         .{
                             i,
                             j,
@@ -405,6 +415,23 @@ pub fn main() !void {
                             factorized_lmr_params.min,
                             factorized_lmr_params.max,
                             factorized_lmr_params.c_end,
+                        },
+                    );
+                }
+            }
+            const factorized_rfp = root.tuning.factorized_rfp;
+            const factorized_rfp_params = root.tuning.factorized_rfp_params;
+            inline for (0..3, .{ factorized_rfp.one, factorized_rfp.two, factorized_rfp.three }) |i, arr| {
+                inline for (arr, 0..) |val, j| {
+                    write(
+                        "factorized_rfp_{}_{}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                        .{
+                            i,
+                            j,
+                            val,
+                            factorized_rfp_params.min,
+                            factorized_rfp_params.max,
+                            factorized_rfp_params.c_end,
                         },
                     );
                 }
@@ -501,7 +528,19 @@ pub fn main() !void {
                 const factorized_lmr = root.tuning.factorized_lmr;
                 inline for (0..3, .{ &factorized_lmr.one, &factorized_lmr.two, &factorized_lmr.three }) |i, arr| {
                     inline for (arr, 0..) |*val_ptr, j| {
-                        const name = std.fmt.comptimePrint("factorized_{}_{}", .{ i, j });
+                        const name = std.fmt.comptimePrint("factorized_lmr_{}_{}", .{ i, j });
+                        if (std.ascii.eqlIgnoreCase(name, option_name)) {
+                            val_ptr.* = std.fmt.parseInt(i32, value, 10) catch {
+                                writeLog("invalid constant: '{s}'\n", .{value});
+                                continue :loop;
+                            };
+                        }
+                    }
+                }
+                const factorized_rfp = root.tuning.factorized_rfp;
+                inline for (0..3, .{ &factorized_rfp.one, &factorized_rfp.two, &factorized_rfp.three }) |i, arr| {
+                    inline for (arr, 0..) |*val_ptr, j| {
+                        const name = std.fmt.comptimePrint("factorized_rfp_{}_{}", .{ i, j });
                         if (std.ascii.eqlIgnoreCase(name, option_name)) {
                             val_ptr.* = std.fmt.parseInt(i32, value, 10) catch {
                                 writeLog("invalid constant: '{s}'\n", .{value});
