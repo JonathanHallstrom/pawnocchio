@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = true;
+pub const do_tuning = false;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -437,39 +437,36 @@ pub const factorized_lmr = if (do_tuning) struct {
 } else factorized_lmr_defaults;
 
 const factorized_rfp_defaults = struct {
-    pub const rfp_improving_margin: i32 = 71;
-    pub const rfp_worsening_margin: i32 = 14;
-    pub const rfp_cutnode_margin: i32 = 19;
     pub const one = [5]i32{
-        -71, // improving
-        -14, // worsening
-        0, // cutnode
-        0, // !tthit
-        0, // parent quiet
+        -73, // improving
+        -7, // worsening
+        1, // cutnode
+        5, // !tthit
+        3, // parent quiet
     };
     pub const two: [10]i32 = .{
-        0, // i,w
-        0, // i,c
-        0, // i,c
-        0, // i,n
-        0, // w,c
-        0, // w,t
-        0, // w,p
-        -19, // c,t
-        0, // c,p
+        3, // i,w
+        3, // i,c
+        3, // i,c
+        -2, // i,n
+        -1, // w,c
+        -4, // w,t
+        3, // w,p
+        -18, // c,t
+        -2, // c,p
         0, // t,p
     };
     pub const three: [10]i32 = .{
-        0, //i,w,c
-        0, //i,w,t
+        5, //i,w,c
+        1, //i,w,t
         0, //i,w,p
-        0, //i,c,t
-        0, //i,c,p
-        0, //i,t,p
-        0, //w,c,t
-        0, //w,c,p
-        0, //w,t,p
-        0, //c,t,p
+        3, //i,c,t
+        1, //i,c,p
+        1, //i,t,p
+        5, //w,c,t
+        1, //w,c,p
+        -6, //w,t,p
+        -6, //c,t,p
     };
 };
 
