@@ -152,26 +152,11 @@ fn datagenWorker(
         var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
         var hashes = std.BoundedArray(u64, 200){};
         const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
-        random_move_loop: for (0..random_move_count) |_| {
-            switch (board.stm) {
-                inline else => |stm| {
-                    var rec = root.movegen.MoveListReceiver{};
-                    root.movegen.generateAllQuiets(stm, &board, &rec);
-
-                    rng.random().shuffle(root.Move, rec.vals.slice());
-                    for (rec.vals.slice()) |move| {
-                        if (board.isLegal(stm, move)) {
-                            board.makeMove(stm, move, root.Board.NullEvalState{});
-                            if (board.halfmove == 0) {
-                                hashes.clear();
-                            }
-                            hashes.append(board.hash) catch @panic("failed to append hash");
-                            continue :random_move_loop;
-                        }
-                    }
-                    continue :datagen_loop;
-                },
+        for (0..random_move_count) |_| {
+            if (!board.makeMoveDatagen(rng.random())) {
+                continue :datagen_loop;
             }
+            hashes.append(board.hash) catch @panic("failed to append hash");
         }
         var game: viriformat.Game = viriformat.Game.from(board, fba.allocator());
         game_loop: for (0..2000) |move_idx| {
@@ -303,6 +288,49 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
             positions,
             pps_ema_opt.?,
         });
+    }
+}
+
+pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: std.io.AnyWriter, allocator: std.mem.Allocator) !void {
+    var rng = std.Random.DefaultPrng.init(seed);
+    var fens = std.ArrayList([]const u8).init(allocator);
+    defer fens.deinit();
+    defer for (fens.items) |fen| {
+        allocator.free(fen);
+    };
+    if (path) |p| {
+        var f = try std.fs.cwd().openFile(p, .{});
+        defer f.close();
+
+        var br = std.io.bufferedReader(f.reader());
+        while (br.reader().readUntilDelimiterAlloc(allocator, '\n', 128)) |fen| {
+            try fens.append(fen);
+            const dfrc_pos = rng.random().uintLessThan(u20, 960 * 960);
+            try fens.append(try allocator.dupe(u8, root.Board.dfrcPosition(dfrc_pos).toFen().slice()));
+        } else |_| {}
+    }
+    rng.random().shuffle([]const u8, fens.items);
+
+    var remaining: usize = count;
+    var i: usize = 0;
+    fen_loop: while (remaining > 0) : (i += 1) {
+        var board = if (fens.items.len > 0 and rng.random().boolean())
+            try root.Board.parseFen(fens.items[i % fens.items.len], true)
+        else
+            root.Board.dfrcPosition(rng.random().uintLessThan(u20, 960 * 960));
+
+        var moves = 1 + rng.random().uintLessThan(u8, 4);
+        // do more random moves if we there are a lot of pieces on the first couple ranks
+        moves += (@popCount(board.occupancy() & 0xff000000000000ff) + 2) / 6;
+        moves += @popCount(board.occupancy() & 0x00ff00000000ff00) / 8;
+        for (0..moves) |_| {
+            if (!board.makeMoveDatagen(rng.random())) {
+                continue :fen_loop;
+            }
+        }
+
+        try writer.print("info string genfens {s}\n", .{board.toFen().slice()});
+        remaining -= 1;
     }
 }
 

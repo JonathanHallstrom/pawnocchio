@@ -49,6 +49,10 @@ pub fn main() !void {
         var datagen_nodes = datagen_nodes_default;
         var datagen_threads = datagen_threads_default;
         var datagen_file = datagen_file_default;
+        var do_genfens = false;
+        var genfens_seed: u64 = 0;
+        var genfens_count: usize = 0;
+        var genfens_book: ?[]const u8 = null;
         while (args.next()) |arg| {
             if (std.mem.count(u8, arg, "help") != 0) {
                 std.debug.print(
@@ -122,6 +126,29 @@ pub fn main() !void {
             }
             if (std.mem.count(u8, arg, "file=") > 0) {
                 datagen_file = arg["file=".len..];
+            }
+            if (std.mem.count(u8, arg, "genfens") > 0) {
+                var genfens_args = std.mem.tokenizeScalar(u8, arg, ' ');
+                do_genfens = true;
+                _ = genfens_args.next(); // discard "genfens"
+                genfens_count = std.fmt.parseInt(usize, genfens_args.next() orelse "", 10) catch |e| {
+                    writeLog("invalid fen count, error: '{}'", .{e});
+                    return e;
+                };
+                _ = genfens_args.next(); // discard "seed"
+                genfens_seed = std.fmt.parseInt(u64, genfens_args.next() orelse "", 10) catch |e| {
+                    writeLog("invalid seed, error: '{}'", .{e});
+                    return e;
+                };
+                _ = genfens_args.next(); // discard "book"
+
+                if (genfens_args.next()) |path| {
+                    if (!std.ascii.eqlIgnoreCase(path, "none")) {
+                        genfens_book = path;
+                    }
+                }
+                try root.engine.genfens(genfens_book, genfens_count, genfens_seed, std.io.getStdOut().writer().any(), allocator);
+                return;
             }
         }
         if (do_datagen) {

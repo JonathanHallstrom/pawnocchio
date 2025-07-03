@@ -1021,6 +1021,54 @@ pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
     return error.NoSuchMove;
 }
 
+pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
+    const hce = @import("hce.zig");
+    switch (self.stm) {
+        inline else => |stm| {
+            var ml = root.ScoredMoveReceiver{};
+            root.movegen.generateAllQuiets(stm, self, &ml);
+            root.movegen.generateAllNoisies(stm, self, &ml);
+
+            for (ml.vals.slice()) |*m| {
+                m.score = switch (m.move.tp()) {
+                    .default => blk: {
+                        const pt = self.pieceOn(m.move.from()).?;
+                        const pst_score: i32 = hce.readPieceSquareTable(stm, pt, m.move.to()).midgame();
+                        const material = hce.readPieceValue(pt).midgame();
+                        var piece_score: i32 = switch (pt) {
+                            .pawn => 500,
+                            .knight => 1000,
+                            .bishop => 1000,
+                            .rook => 500,
+                            .queen => 100,
+                            .king => 0,
+                        };
+                        const diag_sliders = self.bishopsFor(stm) | self.queensFor(stm);
+
+                        if (Bitboard.bishopAttacks(m.move.from()) & diag_sliders != 0) {
+                            piece_score += 1000;
+                        }
+                        break :blk pst_score - material + piece_score;
+                    },
+                    .castling => 20000,
+                    .ep => 20000,
+                    .promotion => 20000,
+                } + rng.uintLessThanBiased(u16, 10000);
+            }
+            std.sort.pdq(root.ScoredMove, ml.vals.slice(), void{}, root.ScoredMove.desc);
+            var found_legal = false;
+            for (ml.vals.slice()) |m| {
+                if (self.isLegal(stm, m.move) and root.SEE.scoreMove(self, m.move, -200, .pruning)) {
+                    self.makeMove(stm, m.move, &root.Board.NullEvalState{});
+                    found_legal = true;
+                    break;
+                }
+            }
+            return found_legal;
+        },
+    }
+}
+
 fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const rook_from = move.to();
     if (self.pinned[stm.toInt()] & rook_from.toBitboard() != 0) {

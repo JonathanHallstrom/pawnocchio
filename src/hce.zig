@@ -328,7 +328,11 @@ fn computePhase(board: *const Board) u8 {
     return res;
 }
 
-inline fn readPieceSquareTable(col: Colour, pt: PieceType, square: Square) Packed {
+pub inline fn readPieceValue(pt: PieceType) Packed {
+    return Packed.from(mg_value[pt.toInt()], eg_value[pt.toInt()]);
+}
+
+pub inline fn readPieceSquareTable(col: Colour, pt: PieceType, square: Square) Packed {
     return packed_table[@as(usize, pt.toInt()) * 2 + col.toInt()][square.toInt()];
 }
 

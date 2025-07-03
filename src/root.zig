@@ -31,6 +31,7 @@ pub const pyrrhic = @import("pyrrhic.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const Board = @import("Board.zig");
 pub const Move = @import("move.zig").Move;
+pub const MoveType = @import("move.zig").MoveType;
 pub const movegen = @import("movegen.zig");
 pub const attacks = @import("attacks.zig");
 pub const zobrist = @import("zobrist.zig");
