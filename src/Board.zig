@@ -1069,6 +1069,28 @@ pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
     }
 }
 
+pub fn hasLegalMove(self: *const Board) bool {
+    switch (self.stm) {
+        inline else => |stm| {
+            var ml = root.movegen.MoveListReceiver{};
+            root.movegen.generateAllNoisies(stm, self, &ml);
+            for (ml.vals.slice()) |m| {
+                if (self.isLegal(stm, m)) {
+                    return true;
+                }
+            }
+            ml.vals.clear();
+            root.movegen.generateAllQuiets(stm, self, &ml);
+            for (ml.vals.slice()) |m| {
+                if (self.isLegal(stm, m)) {
+                    return true;
+                }
+            }
+            return false;
+        },
+    }
+}
+
 fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const rook_from = move.to();
     if (self.pinned[stm.toInt()] & rook_from.toBitboard() != 0) {

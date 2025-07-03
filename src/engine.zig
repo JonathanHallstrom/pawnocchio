@@ -329,6 +329,10 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: std.io.AnyWri
             }
         }
 
+        if (!board.hasLegalMove()) {
+            continue :fen_loop;
+        }
+
         try writer.print("info string genfens {s}\n", .{board.toFen().slice()});
         remaining -= 1;
     }
