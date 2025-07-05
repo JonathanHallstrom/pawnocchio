@@ -1068,7 +1068,7 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
         'R' => .rook,
         'Q' => .queen,
         'K' => .king,
-        else => undefined,
+        else => unreachable,
     };
 
     var is_capture: bool = false;
