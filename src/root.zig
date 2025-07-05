@@ -470,10 +470,7 @@ pub fn isConstPointer(comptime T: type) bool {
 }
 
 pub fn inheritConstness(comptime Base: type, comptime Pointer: type) type {
-    comptime var ptr_attrs: std.builtin.Type.Pointer = undefined;
-    ptr_attrs = @typeInfo(Pointer).pointer;
-    if (isConstPointer(Base)) {
-        ptr_attrs.is_const = true;
-    }
+    comptime var ptr_attrs = @typeInfo(Pointer).pointer;
+    ptr_attrs.is_const = @typeInfo(Base).pointer.is_const;
     return @Type(.{ .pointer = ptr_attrs });
 }
