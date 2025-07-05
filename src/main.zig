@@ -383,7 +383,7 @@ pub fn main() !void {
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
-            write("option name MindDepth type spin default 0 min 0 max 255\n", .{});
+            write("option name MinDepth type spin default 0 min 0 max 255\n", .{});
             write("option name SyzygyPath type string default <empty>\n", .{});
             write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
             write("option name NormalizeEval type check default true\n", .{});
