@@ -1162,6 +1162,9 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
+    if (params.limits.min_depth == 0 or params.normalize) {
+        @panic("options are broken");
+    }
     self.init(params, is_main_thread);
     var previous_score: i32 = 0;
     var previous_move: Move = Move.init();
