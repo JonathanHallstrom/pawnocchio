@@ -415,6 +415,16 @@ pub fn main() !void {
                         );
                     }
                 }
+                const factorized_rfp_mult = root.tuning.factorized_rfp_mult;
+                const factorized_rfp_mult_params = root.tuning.factorized_rfp_mult_params;
+                inline for (0..3, .{ factorized_rfp_mult.one, factorized_rfp_mult.two, factorized_rfp_mult.three }) |i, arr| {
+                    inline for (arr, 0..) |val, j| {
+                        write(
+                            "option name factorized_rfp_mult_{}_{} type spin default {} min {} max {}\n",
+                            .{ i, j, val, factorized_rfp_mult_params.min, factorized_rfp_mult_params.max },
+                        );
+                    }
+                }
             }
             write("uciok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
@@ -460,6 +470,23 @@ pub fn main() !void {
                             factorized_rfp_params.min,
                             factorized_rfp_params.max,
                             factorized_rfp_params.c_end,
+                        },
+                    );
+                }
+            }
+            const factorized_rfp_mult = root.tuning.factorized_rfp_mult;
+            const factorized_rfp_mult_params = root.tuning.factorized_rfp_mult_params;
+            inline for (0..3, .{ factorized_rfp_mult.one, factorized_rfp_mult.two, factorized_rfp_mult.three }) |i, arr| {
+                inline for (arr, 0..) |val, j| {
+                    write(
+                        "factorized_rfp_mult_{}_{}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                        .{
+                            i,
+                            j,
+                            val,
+                            factorized_rfp_mult_params.min,
+                            factorized_rfp_mult_params.max,
+                            factorized_rfp_mult_params.c_end,
                         },
                     );
                 }
@@ -587,6 +614,18 @@ pub fn main() !void {
                 inline for (0..3, .{ &factorized_rfp.one, &factorized_rfp.two, &factorized_rfp.three }) |i, arr| {
                     inline for (arr, 0..) |*val_ptr, j| {
                         const name = std.fmt.comptimePrint("factorized_rfp_{}_{}", .{ i, j });
+                        if (std.ascii.eqlIgnoreCase(name, option_name)) {
+                            val_ptr.* = std.fmt.parseInt(i32, value, 10) catch {
+                                writeLog("invalid constant: '{s}'\n", .{value});
+                                continue :loop;
+                            };
+                        }
+                    }
+                }
+                const factorized_rfp_mult = root.tuning.factorized_rfp_mult;
+                inline for (0..3, .{ &factorized_rfp_mult.one, &factorized_rfp_mult.two, &factorized_rfp_mult.three }) |i, arr| {
+                    inline for (arr, 0..) |*val_ptr, j| {
+                        const name = std.fmt.comptimePrint("factorized_rfp_mult_{}_{}", .{ i, j });
                         if (std.ascii.eqlIgnoreCase(name, option_name)) {
                             val_ptr.* = std.fmt.parseInt(i32, value, 10) catch {
                                 writeLog("invalid constant: '{s}'\n", .{value});

@@ -704,18 +704,27 @@ fn search(
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
-        if (depth <= 6 and
-            eval >= beta +
+
+        if (depth <= 6) {
+            const mult_fact = convolve(
+                5,
+                .{ improving, opponent_worsening, cutnode, !tt_hit, cur.move_quiet },
+                root.tuning.factorized_rfp_mult,
+            );
+            const offset_fact = convolve(
+                5,
+                .{ improving, opponent_worsening, cutnode, !tt_hit, cur.move_quiet },
+                root.tuning.factorized_rfp,
+            );
+
+            if (eval >= beta +
                 tunable_constants.rfp_base +
-                tunable_constants.rfp_mult * depth +
+                (tunable_constants.rfp_mult + mult_fact) * depth +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32) +
-                convolve(
-                    5,
-                    .{ improving, opponent_worsening, cutnode, !tt_hit, cur.move_quiet },
-                    root.tuning.factorized_rfp,
-                ))
-        {
-            return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
+                offset_fact)
+            {
+                return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
+            }
         }
         if (depth <= 3 and eval + tunable_constants.razoring_margin * depth <= alpha) {
             const razor_score = self.qsearch(

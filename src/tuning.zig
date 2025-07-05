@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -481,6 +481,52 @@ pub const factorized_rfp = if (do_tuning) struct {
     pub var two = factorized_rfp_defaults.two;
     pub var three = factorized_rfp_defaults.three;
 } else factorized_rfp_defaults;
+
+const factorized_rfp_mult_defaults = struct {
+    pub const one = [5]i32{
+        0, // improving
+        0, // worsening
+        0, // cutnode
+        0, // !tthit
+        0, // parent quiet
+    };
+    pub const two: [10]i32 = .{
+        0, // i,w
+        0, // i,c
+        0, // i,c
+        0, // i,n
+        0, // w,c
+        0, // w,t
+        0, // w,p
+        0, // c,t
+        0, // c,p
+        0, // t,p
+    };
+    pub const three: [10]i32 = .{
+        0, //i,w,c
+        0, //i,w,t
+        0, //i,w,p
+        0, //i,c,t
+        0, //i,c,p
+        0, //i,t,p
+        0, //w,c,t
+        0, //w,c,p
+        0, //w,t,p
+        0, //c,t,p
+    };
+};
+
+pub const factorized_rfp_mult_params = struct {
+    pub const min = -64;
+    pub const max = 64;
+    pub const c_end = 4;
+};
+
+pub const factorized_rfp_mult = if (do_tuning) struct {
+    pub var one = factorized_rfp_mult_defaults.one;
+    pub var two = factorized_rfp_mult_defaults.two;
+    pub var three = factorized_rfp_mult_defaults.three;
+} else factorized_rfp_mult_defaults;
 
 comptime {
     std.debug.assert(std.meta.declarations(tunable_defaults).len == tunables.len);
