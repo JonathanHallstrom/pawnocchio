@@ -71,6 +71,35 @@ pub inline fn generateAllNoisies(comptime stm: Colour, noalias board: *const Boa
     generateKingNoisies(stm, board, move_receiver);
 }
 
+pub inline fn generateAllQuietsWithMask(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype, mask: u64) void {
+    var check_mask = mask;
+    if (board.checkers != 0) {
+        if (board.checkers & board.checkers -% 1 != 0) {
+            generateKingQuiets(stm, board, move_receiver);
+            return;
+        }
+        check_mask &= Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers));
+    }
+    generateSliderQuiets(stm, board, check_mask, move_receiver);
+    generateKnightQuiets(stm, board, check_mask, move_receiver);
+    generatePawnQuiets(stm, board, check_mask, move_receiver);
+    generateKingQuiets(stm, board, move_receiver);
+}
+
+pub inline fn generateAllNoisiesWithMask(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype, mask: u64) void {
+    var check_mask = mask;
+    if (board.checkers != 0) {
+        if (board.checkers & board.checkers -% 1 != 0) {
+            generateKingNoisies(stm, board, move_receiver);
+            return;
+        }
+        check_mask &= Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers));
+    }
+    generateSliderNoisies(stm, board, check_mask, move_receiver);
+    generateKnightNoisies(stm, board, check_mask, move_receiver);
+    generatePawnNoisies(stm, board, check_mask, move_receiver);
+    generateKingNoisies(stm, board, move_receiver);
+}
 pub fn slidingAttackersFor(comptime col: Colour, noalias board: *const Board, square: Square, occ: u64) u64 {
     const attacks_from_square =
         (attacks.getBishopAttacks(square, occ) & (board.bishops() | board.queens())) |

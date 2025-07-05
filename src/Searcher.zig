@@ -46,6 +46,7 @@ pub const Params = struct {
     previous_hashes: std.BoundedArray(u64, 200),
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
+    normalize: bool,
 };
 
 const EvalPair = struct {
@@ -111,6 +112,7 @@ is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
 syzygy_depth: u8 = 1,
+normalize: bool = false,
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -1091,7 +1093,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
             hashfull += @intFromBool(self.tt[i].flags.age == self.ttage);
         }
     }
-    const normalized_score = root.wdl.normalize(score, root_board.classicalMaterial());
+    const normalized_score = if (self.normalize) root.wdl.normalize(score, root_board.classicalMaterial()) else score;
     write("info depth {} seldepth {} score {s}{s} nodes {} nps {} hashfull {} time {} pv {s}\n", .{
         depth,
         self.seldepth,
@@ -1144,6 +1146,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.nodes = 0;
     const board = params.board;
     self.previous_hashes.len = 0;
+    self.normalize = params.normalize;
     var num_repeitions: u8 = 0;
     for (params.previous_hashes.slice()) |previous_hash| {
         if (params.board.hash == previous_hash) {

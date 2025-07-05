@@ -1021,6 +1021,106 @@ pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
     return error.NoSuchMove;
 }
 
+pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
+    if (san_move_inp[0] == 'O') {
+        switch (self.stm) {
+            inline else => |stm| {
+                var ml = movegen.MoveListReceiver{};
+                root.movegen.generateKingQuiets(stm, self, &ml);
+                const queenside = san_move_inp.len >= "O-O-O".len and std.mem.eql(u8, san_move_inp[0..5], "O-O-O");
+                for (ml.vals.slice()) |move| {
+                    if (!self.isLegal(stm, move)) {
+                        continue;
+                    }
+                    if (move.tp() != .castling) {
+                        continue;
+                    }
+                    if ((self.castlingKingDestFor(move, stm).getFile() == .c) == queenside) {
+                        return move;
+                    }
+                }
+            },
+        }
+        return null;
+    }
+    var san_move = san_move_inp;
+    switch (san_move[san_move.len - 1]) {
+        '+', '#' => san_move.len -= 1,
+        else => {},
+    }
+    const promo_type = switch (san_move[san_move.len - 1]) {
+        '1'...'8' => null,
+        else => |p| blk: {
+            san_move.len -= 2;
+            break :blk PieceType.fromAsciiLetter(p);
+        },
+    };
+
+    const destination = Square.fromRankFile(
+        Rank.parse(san_move[san_move.len - 1]) catch unreachable,
+        File.parse(san_move[san_move.len - 2]) catch unreachable,
+    );
+
+    const tp: PieceType = switch (san_move[0]) {
+        'a'...'h' => .pawn,
+        'N' => .knight,
+        'B' => .bishop,
+        'R' => .rook,
+        'Q' => .queen,
+        'K' => .king,
+        else => unreachable,
+    };
+
+    var is_capture: bool = false;
+    var allowed_start_mask: u64 = std.math.maxInt(u64);
+    for (san_move[0 .. san_move.len - 2]) |c| switch (c) {
+        '1'...'8' => allowed_start_mask &= @as(u64, 0b11111111) << @intCast(8 * (c - '1')),
+        'a'...'h' => allowed_start_mask &= @as(u64, std.math.maxInt(u64) / std.math.maxInt(u8)) << @intCast(c - 'a'),
+        'x' => is_capture = true,
+        else => {},
+    };
+
+    switch (self.stm) {
+        inline else => |stm| {
+            var ml = movegen.MoveListReceiver{};
+            root.movegen.generateAllQuietsWithMask(stm, self, &ml, destination.toBitboard());
+            root.movegen.generateAllNoisiesWithMask(stm, self, &ml, destination.toBitboard());
+            var valid_count: usize = 0;
+
+            for (ml.vals.slice()) |move| {
+                if (move.to() != destination) {
+                    continue;
+                }
+                if (move.from().toBitboard() & allowed_start_mask == 0) {
+                    continue;
+                }
+                if (self.pieceOn(move.from()) != tp) {
+                    continue;
+                }
+                const move_promotype = if (move.tp() == .promotion) move.promoType() else null;
+                if (promo_type != move_promotype) {
+                    continue;
+                }
+                if (!self.isLegal(stm, move)) {
+                    continue;
+                }
+
+                if (!std.debug.runtime_safety) {
+                    return move;
+                }
+                ml.vals.slice()[valid_count] = move;
+                valid_count += 1;
+            }
+            if (valid_count == 1) {
+                if (promo_type != null) {}
+                return ml.vals.slice()[0];
+            }
+            std.debug.print("valid: {} {s} {} {} '{s}'\n", .{ valid_count, self.toFen().slice(), allowed_start_mask, destination, san_move });
+        },
+    }
+    return null;
+}
+
 pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
     const hce = @import("hce.zig");
     switch (self.stm) {
@@ -1065,6 +1165,28 @@ pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
                 }
             }
             return found_legal;
+        },
+    }
+}
+
+pub fn hasLegalMove(self: *const Board) bool {
+    switch (self.stm) {
+        inline else => |stm| {
+            var ml = root.movegen.MoveListReceiver{};
+            root.movegen.generateAllNoisies(stm, self, &ml);
+            for (ml.vals.slice()) |m| {
+                if (self.isLegal(stm, m)) {
+                    return true;
+                }
+            }
+            ml.vals.clear();
+            root.movegen.generateAllQuiets(stm, self, &ml);
+            for (ml.vals.slice()) |m| {
+                if (self.isLegal(stm, m)) {
+                    return true;
+                }
+            }
+            return false;
         },
     }
 }

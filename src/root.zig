@@ -50,8 +50,6 @@ pub const refreshCache = @import("refresh_cache.zig").refreshCache;
 pub const viriformat = @import("viriformat.zig");
 pub const wdl = @import("wdl.zig");
 
-pub const is_0_14_0 = @import("builtin").zig_version.minor == 14;
-
 const assert = std.debug.assert;
 
 pub const WDL = enum(u2) {
@@ -465,31 +463,14 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
 }
 
 pub fn isConstPointer(comptime T: type) bool {
-    if (is_0_14_0) {
-        if (@typeInfo(T) == .pointer) {
-            return @typeInfo(T).pointer.is_const;
-        }
-    } else {
-        if (@typeInfo(T) == .Pointer) {
-            return @typeInfo(T).Pointer.is_const;
-        }
+    if (@typeInfo(T) == .pointer) {
+        return @typeInfo(T).pointer.is_const;
     }
     return false;
 }
 
 pub fn inheritConstness(comptime Base: type, comptime Pointer: type) type {
-    comptime var ptr_attrs: std.builtin.Type.Pointer = undefined;
-    if (is_0_14_0) {
-        ptr_attrs = @typeInfo(Pointer).pointer;
-    } else {
-        ptr_attrs = @typeInfo(Pointer).Pointer;
-    }
-    if (isConstPointer(Base)) {
-        ptr_attrs.is_const = true;
-    }
-    if (is_0_14_0) {
-        return @Type(.{ .pointer = ptr_attrs });
-    } else {
-        return @Type(.{ .Pointer = ptr_attrs });
-    }
+    comptime var ptr_attrs = @typeInfo(Pointer).pointer;
+    ptr_attrs.is_const = @typeInfo(Base).pointer.is_const;
+    return @Type(.{ .pointer = ptr_attrs });
 }

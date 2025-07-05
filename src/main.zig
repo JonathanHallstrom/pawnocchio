@@ -150,6 +150,29 @@ pub fn main() !void {
                 try root.engine.genfens(genfens_book, genfens_count, genfens_seed, std.io.getStdOut().writer().any(), allocator);
                 return;
             }
+            if (std.mem.count(u8, arg, "pgntovf") > 0) {
+                const input = args.next() orelse "";
+                const extension_len = std.mem.indexOf(u8, input, ".pgn") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
+                const output_base = args.next() orelse input[0..extension_len];
+
+                const output = try std.fmt.allocPrint(allocator, "{s}.vf", .{output_base});
+                defer allocator.free(output);
+
+                var input_file = std.fs.cwd().openFile(input, .{}) catch try std.fs.openFileAbsolute(input, .{});
+                defer input_file.close();
+
+                const stat = try input_file.stat();
+                const input_mapped = try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
+                defer std.posix.munmap(input_mapped);
+                var output_file = try std.fs.cwd().createFile(output, .{});
+                defer output_file.close();
+
+                // std.debug.print("{s} {s}\n", .{ input, output });
+                try @import("pgn_to_vf.zig").convert(input_mapped, output_file.writer(), std.heap.smp_allocator);
+                // try @import("pgn_to_vf.zig").convert(input_mapped, std.io.null_writer, std.heap.smp_allocator);
+
+                return;
+            }
         }
         if (do_datagen) {
             std.debug.print("datagenning with {} threads\n", .{datagen_threads});
@@ -299,6 +322,7 @@ pub fn main() !void {
                         .board = try Board.parseFen(fen, false),
                         .limits = root.Limits.initFixedDepth(bench_depth),
                         .previous_hashes = .{},
+                        .normalize = false,
                     },
                     .quiet = true,
                 });
@@ -331,6 +355,8 @@ pub fn main() !void {
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
+    var normalize: bool = true;
+    var softnodes: bool = false;
     loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
@@ -360,6 +386,8 @@ pub fn main() !void {
             write("option name MindDepth type spin default 0 min 0 max 255\n", .{});
             write("option name SyzygyPath type string default <empty>\n", .{});
             write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
+            write("option name NormalizeEval type check default true\n", .{});
+            write("option name SoftNodes type check default false\n", .{});
             if (root.tuning.do_tuning) {
                 for (root.tuning.tunables) |tunable| {
                     write(
@@ -484,6 +512,24 @@ pub fn main() !void {
                 }
             }
 
+            if (std.ascii.eqlIgnoreCase("NormalizeEval", option_name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    normalize = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    normalize = false;
+                }
+            }
+
+            if (std.ascii.eqlIgnoreCase("SoftNodes", option_name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    softnodes = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    softnodes = false;
+                }
+            }
+
             if (std.ascii.eqlIgnoreCase("Move Overhead", option_name)) {
                 overhead = std.time.ns_per_ms * (std.fmt.parseInt(u64, value, 10) catch {
                     writeLog("invalid overhead: '{s}'\n", .{value});
@@ -563,7 +609,8 @@ pub fn main() !void {
             write("{s}\n", .{board.toFen().slice()});
         } else if (std.ascii.eqlIgnoreCase(command, "go")) {
             var max_depth_opt: ?u8 = null;
-            var max_nodes_opt: ?u64 = null;
+            var soft_nodes_opt: ?u64 = null;
+            var hard_nodes_opt: ?u64 = null;
 
             // by default assume each player has 1000s
             // completely arbitrarily chosen value
@@ -693,7 +740,20 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "nodes")) {
                     const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    max_nodes_opt = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
+
+                    const nodes = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
+                        writeLog("invalid nodes: '{s}'\n", .{nodes_to_parse});
+                        continue;
+                    };
+                    if (softnodes) {
+                        soft_nodes_opt = nodes;
+                    } else {
+                        hard_nodes_opt = nodes;
+                    }
+                }
+                if (std.ascii.eqlIgnoreCase(command_part, "softnodes")) {
+                    const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    soft_nodes_opt = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
                         writeLog("invalid nodes: '{s}'\n", .{nodes_to_parse});
                         continue;
                     };
@@ -755,12 +815,15 @@ pub fn main() !void {
                 limits.max_depth = max_depth;
             }
             limits.min_depth = min_depth;
-            if (max_nodes_opt) |max_nodes| {
+            if (hard_nodes_opt) |max_nodes| {
                 if (!std.debug.runtime_safety) {
                     write("info string Not built with runtime safety, node bound will not be exact\n", .{});
                 }
                 limits.soft_nodes = max_nodes;
                 limits.hard_nodes = max_nodes;
+            }
+            if (soft_nodes_opt) |max_modes| {
+                limits.soft_nodes = max_modes;
             }
 
             if (mate_score_opt) |mate_value| {
@@ -772,7 +835,13 @@ pub fn main() !void {
             }
 
             root.engine.startSearch(.{
-                .search_params = .{ .board = board, .limits = limits, .previous_hashes = previous_hashes, .syzygy_depth = syzygy_depth },
+                .search_params = .{
+                    .board = board,
+                    .limits = limits,
+                    .previous_hashes = previous_hashes,
+                    .syzygy_depth = syzygy_depth,
+                    .normalize = normalize,
+                },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
             root.engine.stopSearch();
