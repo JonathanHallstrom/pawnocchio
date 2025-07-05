@@ -64,6 +64,7 @@ pub fn initFixedDepth(max_depth_: i32) Limits {
         .hard_time = start_time + std.time.ns_per_hour,
         .timer = t,
         .max_depth = max_depth_,
+        .min_depth = max_depth_,
     };
 }
 
