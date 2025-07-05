@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = true;
+pub const do_tuning = false;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -439,34 +439,34 @@ pub const factorized_lmr = if (do_tuning) struct {
 const factorized_rfp_defaults = struct {
     pub const one = [5]i32{
         -75, // improving
-        -10, // worsening
-        8, // cutnode
-        0, // !tthit
-        9, // parent quiet
+        -11, // worsening
+        6, // cutnode
+        -1, // !tthit
+        10, // parent quiet
     };
     pub const two: [10]i32 = .{
-        -2, // i,w
-        -2, // i,c
-        5, // i,c
-        -1, // i,n
+        -1, // i,w
+        1, // i,c
+        1, // i,c
+        3, // i,n
         -4, // w,c
-        1, // w,t
-        11, // w,p
-        -23, // c,t
-        -3, // c,p
-        -2, // t,p
+        2, // w,t
+        13, // w,p
+        -24, // c,t
+        -7, // c,p
+        -1, // t,p
     };
     pub const three: [10]i32 = .{
-        7, //i,w,c
-        3, //i,w,t
-        -8, //i,w,p
-        11, //i,c,t
-        -7, //i,c,p
-        1, //i,t,p
+        6, //i,w,c
+        1, //i,w,t
+        -5, //i,w,p
+        13, //i,c,t
+        -5, //i,c,p
+        5, //i,t,p
         3, //w,c,t
-        -2, //w,c,p
-        -6, //w,t,p
-        -11, //c,t,p
+        -5, //w,c,p
+        -7, //w,t,p
+        -8, //c,t,p
     };
 };
 
@@ -484,35 +484,35 @@ pub const factorized_rfp = if (do_tuning) struct {
 
 const factorized_rfp_mult_defaults = struct {
     pub const one = [5]i32{
-        0, // improving
+        1, // improving
         0, // worsening
-        0, // cutnode
-        0, // !tthit
-        0, // parent quiet
+        4, // cutnode
+        -1, // !tthit
+        2, // parent quiet
     };
     pub const two: [10]i32 = .{
-        0, // i,w
+        2, // i,w
         0, // i,c
-        0, // i,c
-        0, // i,n
-        0, // w,c
-        0, // w,t
+        -1, // i,c
+        2, // i,n
+        1, // w,c
+        2, // w,t
         0, // w,p
-        0, // c,t
-        0, // c,p
-        0, // t,p
+        1, // c,t
+        -2, // c,p
+        -2, // t,p
     };
     pub const three: [10]i32 = .{
-        0, //i,w,c
-        0, //i,w,t
-        0, //i,w,p
+        1, //i,w,c
+        1, //i,w,t
+        -2, //i,w,p
         0, //i,c,t
-        0, //i,c,p
-        0, //i,t,p
-        0, //w,c,t
-        0, //w,c,p
-        0, //w,t,p
-        0, //c,t,p
+        2, //i,c,p
+        1, //i,t,p
+        -2, //w,c,t
+        3, //w,c,p
+        1, //w,t,p
+        -1, //c,t,p
     };
 };
 
