@@ -353,6 +353,7 @@ pub fn main() !void {
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
     var normalize: bool = true;
+    var softnodes: bool = false;
     loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
@@ -383,6 +384,7 @@ pub fn main() !void {
             write("option name SyzygyPath type string default <empty>\n", .{});
             write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
             write("option name NormalizeEval type check default true\n", .{});
+            write("option name SoftNodes type check default false\n", .{});
             if (root.tuning.do_tuning) {
                 for (root.tuning.tunables) |tunable| {
                     write(
@@ -489,6 +491,15 @@ pub fn main() !void {
                 }
             }
 
+            if (std.ascii.eqlIgnoreCase("SoftNodes", option_name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    softnodes = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    softnodes = false;
+                }
+            }
+
             if (std.ascii.eqlIgnoreCase("Move Overhead", option_name)) {
                 overhead = std.time.ns_per_ms * (std.fmt.parseInt(u64, value, 10) catch {
                     writeLog("invalid overhead: '{s}'\n", .{value});
@@ -556,7 +567,8 @@ pub fn main() !void {
             write("{s}\n", .{board.toFen().slice()});
         } else if (std.ascii.eqlIgnoreCase(command, "go")) {
             var max_depth_opt: ?u8 = null;
-            var max_nodes_opt: ?u64 = null;
+            var soft_nodes_opt: ?u64 = null;
+            var hard_nodes_opt: ?u64 = null;
 
             // by default assume each player has 1000s
             // completely arbitrarily chosen value
@@ -686,7 +698,20 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "nodes")) {
                     const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    max_nodes_opt = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
+
+                    const nodes = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
+                        writeLog("invalid nodes: '{s}'\n", .{nodes_to_parse});
+                        continue;
+                    };
+                    if (softnodes) {
+                        soft_nodes_opt = nodes;
+                    } else {
+                        hard_nodes_opt = nodes;
+                    }
+                }
+                if (std.ascii.eqlIgnoreCase(command_part, "softnodes")) {
+                    const nodes_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    soft_nodes_opt = std.fmt.parseInt(u64, nodes_to_parse, 10) catch {
                         writeLog("invalid nodes: '{s}'\n", .{nodes_to_parse});
                         continue;
                     };
@@ -748,12 +773,15 @@ pub fn main() !void {
                 limits.max_depth = max_depth;
             }
             limits.min_depth = min_depth;
-            if (max_nodes_opt) |max_nodes| {
+            if (hard_nodes_opt) |max_nodes| {
                 if (!std.debug.runtime_safety) {
                     write("info string Not built with runtime safety, node bound will not be exact\n", .{});
                 }
                 limits.soft_nodes = max_nodes;
                 limits.hard_nodes = max_nodes;
+            }
+            if (soft_nodes_opt) |max_modes| {
+                limits.soft_nodes = max_modes;
             }
 
             if (mate_score_opt) |mate_value| {
