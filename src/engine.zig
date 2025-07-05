@@ -169,6 +169,7 @@ fn datagenWorker(
                     .limits = limits,
                     .needs_full_reset = move_idx == 0,
                     .previous_hashes = hashes,
+                    .normalize = false,
                 },
                 false,
                 true,

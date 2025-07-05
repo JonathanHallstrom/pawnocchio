@@ -299,6 +299,7 @@ pub fn main() !void {
                         .board = try Board.parseFen(fen, false),
                         .limits = root.Limits.initFixedDepth(bench_depth),
                         .previous_hashes = .{},
+                        .normalize = false,
                     },
                     .quiet = true,
                 });
@@ -331,6 +332,7 @@ pub fn main() !void {
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
+    var normalize: bool = true;
     loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
@@ -360,6 +362,7 @@ pub fn main() !void {
             write("option name MindDepth type spin default 0 min 0 max 255\n", .{});
             write("option name SyzygyPath type string default <empty>\n", .{});
             write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
+            write("option name NormalizeEval type check default true\n", .{});
             if (root.tuning.do_tuning) {
                 for (root.tuning.tunables) |tunable| {
                     write(
@@ -454,6 +457,15 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase("false", value)) {
                     board.frc = false;
+                }
+            }
+
+            if (std.ascii.eqlIgnoreCase("NormalizeEval", option_name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    normalize = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    normalize = false;
                 }
             }
 
@@ -733,7 +745,13 @@ pub fn main() !void {
             }
 
             root.engine.startSearch(.{
-                .search_params = .{ .board = board, .limits = limits, .previous_hashes = previous_hashes, .syzygy_depth = syzygy_depth },
+                .search_params = .{
+                    .board = board,
+                    .limits = limits,
+                    .previous_hashes = previous_hashes,
+                    .syzygy_depth = syzygy_depth,
+                    .normalize = normalize,
+                },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
             root.engine.stopSearch();
