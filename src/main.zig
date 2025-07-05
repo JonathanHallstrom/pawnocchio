@@ -150,6 +150,26 @@ pub fn main() !void {
                 try root.engine.genfens(genfens_book, genfens_count, genfens_seed, std.io.getStdOut().writer().any(), allocator);
                 return;
             }
+            if (std.mem.count(u8, arg, "pgntovf") > 0) {
+                const input = args.next() orelse "";
+                const extension_len = std.mem.indexOf(u8, input, ".pgn") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
+                const output_base = args.next() orelse input[0..extension_len];
+
+                const output = try std.fmt.allocPrint(allocator, "{s}.vf", .{output_base});
+                defer allocator.free(output);
+
+                var input_file = std.fs.cwd().openFile(input, .{}) catch try std.fs.openFileAbsolute(input, .{});
+                defer input_file.close();
+
+                // var output_file = try std.fs.cwd().createFile(output, .{});
+                // defer output_file.close();
+
+                std.debug.print("{s} {s}\n", .{ input, output });
+                // try @import("pgn_to_vf.zig").convert(input_file.reader().any(), output_file.writer().any(), allocator);
+                try @import("pgn_to_vf.zig").convert(input_file.reader().any(), std.io.null_writer.any(), std.heap.smp_allocator);
+
+                return;
+            }
         }
         if (do_datagen) {
             std.debug.print("datagenning with {} threads\n", .{datagen_threads});
