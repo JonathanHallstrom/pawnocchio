@@ -785,6 +785,7 @@ pub fn main() !void {
             }
             if (soft_nodes_opt) |max_modes| {
                 limits.soft_nodes = max_modes;
+                limits.hard_nodes = max_modes * 128;
             }
 
             if (mate_score_opt) |mate_value| {
