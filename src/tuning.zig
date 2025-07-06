@@ -109,10 +109,12 @@ const tunable_defaults = struct {
     pub const corrhist_countermove_weight: i32 = 1060;
     pub const corrhist_major_weight: i32 = 1339;
     pub const corrhist_minor_weight: i32 = 1024;
-    pub const lmp_standard_base: i32 = -3110;
-    pub const lmp_improving_base: i32 = -3172;
-    pub const lmp_standard_mult: i32 = 796;
-    pub const lmp_improving_mult: i32 = 1078;
+    pub const lmp_standard_base: i32 = 3110;
+    pub const lmp_improving_base: i32 = 3172;
+    pub const lmp_standard_linear_mult: i32 = 0;
+    pub const lmp_improving_linear_mult: i32 = 0;
+    pub const lmp_standard_quadratic_mult: i32 = 796;
+    pub const lmp_improving_quadratic_mult: i32 = 1078;
     pub const good_noisy_ordering_base: i32 = 61;
     pub const good_noisy_ordering_mult: i32 = 1040;
     pub const see_pawn_pruning: i32 = 79;
@@ -139,6 +141,7 @@ const tunable_defaults = struct {
     pub const standpat_fail_medium: i32 = 26;
     pub const nodetm_base: i32 = 1515;
     pub const nodetm_mult: i32 = 1079;
+    pub const eval_stab_margin: i32 = 20;
     pub const eval_stab_base: i32 = 1273;
     pub const eval_stab_offs: i32 = 55;
     pub const move_stab_base: i32 = 1277;
@@ -213,10 +216,12 @@ pub const tunables = [_]Tunable{
     .{ .name = "corrhist_countermove_weight", .default = tunable_defaults.corrhist_countermove_weight, .min = -10, .max = 2875, .c_end = 114 },
     .{ .name = "corrhist_major_weight", .default = tunable_defaults.corrhist_major_weight, .min = -10, .max = 2952, .c_end = 117 },
     .{ .name = "corrhist_minor_weight", .default = tunable_defaults.corrhist_minor_weight, .min = -10, .max = 2315, .c_end = 92 },
-    .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base, .min = -9345, .max = 10, .c_end = 512 },
-    .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base, .min = -7580, .max = 10, .c_end = 512 },
-    .{ .name = "lmp_standard_mult", .default = tunable_defaults.lmp_standard_mult, .min = -10, .max = 2177, .c_end = 256 },
-    .{ .name = "lmp_improving_mult", .default = tunable_defaults.lmp_improving_mult, .min = -10, .max = 2717, .c_end = 256 },
+    .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base, .min = 10, .max = -9345, .c_end = 512 },
+    .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base, .min = 10, .max = -7580, .c_end = 512 },
+    .{ .name = "lmp_standard_linear_mult", .default = tunable_defaults.lmp_standard_linear_mult, .min = -1024, .max = 1024, .c_end = 256 },
+    .{ .name = "lmp_improving_linear_mult", .default = tunable_defaults.lmp_improving_linear_mult, .min = -1024, .max = 1024, .c_end = 256 },
+    .{ .name = "lmp_standard_quadratic_mult", .default = tunable_defaults.lmp_standard_quadratic_mult, .min = -10, .max = 2177, .c_end = 256 },
+    .{ .name = "lmp_improving_quadratic_mult", .default = tunable_defaults.lmp_improving_quadratic_mult, .min = -10, .max = 2717, .c_end = 256 },
     .{ .name = "good_noisy_ordering_base", .default = tunable_defaults.good_noisy_ordering_base, .min = -2048, .max = 2048, .c_end = 32 },
     .{ .name = "good_noisy_ordering_mult", .default = tunable_defaults.good_noisy_ordering_mult, .min = -10, .max = 2570, .c_end = 102 },
     .{ .name = "see_pawn_pruning", .default = tunable_defaults.see_pawn_pruning, .min = -10, .max = 215, .c_end = 8 },
@@ -243,6 +248,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "standpat_fail_medium", .default = tunable_defaults.standpat_fail_medium, .min = 0, .max = 1024, .c_end = 32 },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .c_end = 80 },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
+    .{ .name = "eval_stab_margin", .default = tunable_defaults.eval_stab_margin, .c_end = 1 },
     .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .c_end = 60 },
     .{ .name = "eval_stab_offs", .default = tunable_defaults.eval_stab_offs, .c_end = 2 },
     .{ .name = "move_stab_base", .default = tunable_defaults.move_stab_base, .c_end = 60 },
@@ -319,8 +325,10 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var corrhist_minor_weight = tunable_defaults.corrhist_minor_weight;
     pub var lmp_standard_base = tunable_defaults.lmp_standard_base;
     pub var lmp_improving_base = tunable_defaults.lmp_improving_base;
-    pub var lmp_standard_mult = tunable_defaults.lmp_standard_mult;
-    pub var lmp_improving_mult = tunable_defaults.lmp_improving_mult;
+    pub var lmp_standard_linear_mult = tunable_defaults.lmp_standard_linear_mult;
+    pub var lmp_improving_linear_mult = tunable_defaults.lmp_improving_linear_mult;
+    pub var lmp_standard_quadratic_mult = tunable_defaults.lmp_standard_quadratic_mult;
+    pub var lmp_improving_quadratic_mult = tunable_defaults.lmp_improving_quadratic_mult;
     pub var good_noisy_ordering_base = tunable_defaults.good_noisy_ordering_base;
     pub var good_noisy_ordering_mult = tunable_defaults.good_noisy_ordering_mult;
     pub var see_pawn_pruning = tunable_defaults.see_pawn_pruning;
@@ -347,6 +355,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var standpat_fail_medium = tunable_defaults.standpat_fail_medium;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
+    pub var eval_stab_margin = tunable_defaults.eval_stab_margin;
     pub var eval_stab_base = tunable_defaults.eval_stab_base;
     pub var eval_stab_offs = tunable_defaults.eval_stab_offs;
     pub var move_stab_base = tunable_defaults.move_stab_base;

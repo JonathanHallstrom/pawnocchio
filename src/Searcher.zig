@@ -796,10 +796,15 @@ fn search(
 
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
-                const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
+                const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
+                const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
                 const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 const granularity: i32 = 978;
-                if (num_legal * granularity + lmp_base >= depth * depth * lmp_mult) {
+                if (num_legal * granularity >=
+                    lmp_base +
+                        lmp_linear_mult * depth +
+                        lmp_quadratic_mult * depth * depth)
+                {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -1222,7 +1227,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 }
             },
         }
-        if (@abs(previous_score - score) < 20) {
+        if (@abs(previous_score - score) < tunable_constants.eval_stab_margin) {
             eval_stability = @min(eval_stability + 1, 8);
         } else {
             eval_stability = 0;
