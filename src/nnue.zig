@@ -134,6 +134,10 @@ pub fn idx(comptime perspective: Colour, comptime side: Colour, king_sq: Square,
     return bucket_offs + side_offs * 64 * 6 + tp_offs * 64 + sq_offs;
 }
 
+fn vecIdx(comptime perspective: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square, mirror: MirroringType) usize {
+    return idx(perspective, side, king_sq, tp, sq, mirror) * HIDDEN_SIZE / VEC_SIZE;
+}
+
 const Accumulator = struct {
     white: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
     black: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
@@ -210,47 +214,47 @@ const Accumulator = struct {
     }
 
     fn doAdd(self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
-        const add_idx = idx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
+        const add_idx = vecIdx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
 
         for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
-            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx * HIDDEN_SIZE / VEC_SIZE + i];
+            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx + i];
         }
     }
 
     fn doAddSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
-        const add_idx = idx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
-        const sub_idx = idx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
+        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
+        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
 
         for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
-            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[sub_idx * HIDDEN_SIZE / VEC_SIZE + i];
+            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx + i] -
+                hiddenLayerWeightsVector()[sub_idx + i];
         }
     }
 
     fn doAddSubSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
-        const add_idx = idx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
-        const sub_idx = idx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
-        const opp_sub_idx = idx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
+        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
+        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
+        const opp_sub_idx = vecIdx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
         for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
             self.vecAccFor(acc)[i] +=
-                hiddenLayerWeightsVector()[add_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[sub_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[opp_sub_idx * HIDDEN_SIZE / VEC_SIZE + i];
+                hiddenLayerWeightsVector()[add_idx + i] -
+                hiddenLayerWeightsVector()[sub_idx + i] -
+                hiddenLayerWeightsVector()[opp_sub_idx + i];
         }
     }
 
     fn doAddAddSubSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
-        const add1_idx = idx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
-        const sub1_idx = idx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
-        const add2_idx = idx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
-        const sub2_idx = idx(acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc));
+        const add1_idx = vecIdx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
+        const sub1_idx = vecIdx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
+        const add2_idx = vecIdx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
+        const sub2_idx = vecIdx(acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc));
 
         for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
             self.vecAccFor(acc)[i] +=
-                hiddenLayerWeightsVector()[add1_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[sub1_idx * HIDDEN_SIZE / VEC_SIZE + i] +
-                hiddenLayerWeightsVector()[add2_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[sub2_idx * HIDDEN_SIZE / VEC_SIZE + i];
+                hiddenLayerWeightsVector()[add1_idx + i] -
+                hiddenLayerWeightsVector()[sub1_idx + i] +
+                hiddenLayerWeightsVector()[add2_idx + i] -
+                hiddenLayerWeightsVector()[sub2_idx + i];
         }
     }
 
