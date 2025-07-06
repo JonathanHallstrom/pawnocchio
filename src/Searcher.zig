@@ -799,7 +799,7 @@ fn search(
                 const lmp_mult = if (improving) tunable_constants.lmp_improving_mult else tunable_constants.lmp_standard_mult;
                 const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 const granularity: i32 = 978;
-                if (num_legal * granularity + lmp_base >= depth * depth * lmp_mult) {
+                if (!is_in_check and num_legal * granularity + lmp_base >= depth * depth * lmp_mult) {
                     mp.skip_quiets = true;
                     continue;
                 }
