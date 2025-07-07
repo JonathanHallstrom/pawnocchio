@@ -883,6 +883,13 @@ fn search(
         self.makeMove(stm, move);
 
         const gives_check = self.curStackEntry().board.checkers != 0;
+        if (std.debug.runtime_safety) {
+            if (board.givesCheckApproximate(stm, move)) {
+                std.testing.expect(gives_check) catch {
+                    std.debug.panic("{s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
+                };
+            }
+        }
         const score = blk: {
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);

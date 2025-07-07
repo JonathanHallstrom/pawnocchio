@@ -934,18 +934,23 @@ pub inline fn givesCheckApproximate(noalias self: *const Board, comptime stm: Co
     }
 
     const them_king_sq = Square.fromBitboard(them_king);
-    const occ_discovered = self.occupancy() ^ from.toBitboard();
+    const occ_discovered = self.occupancy() ^ from.toBitboard() ^ to.toBitboard();
     const potential_discovered = Bitboard.extendingRayBb(them_king_sq, from) &
         (self.bishopsFor(stm) | self.rooksFor(stm) | self.queensFor(stm));
     if (potential_discovered == 0) {
         @branchHint(.likely);
         return false;
     }
-    var iter = Bitboard.iterator(potential_discovered);
     var has_blocker_free_discovery = false;
+    var iter = Bitboard.iterator(potential_discovered & ~self.bishops());
     while (iter.next()) |sq| {
-        const blockers = Bitboard.queenRayBetweenExclusive(them_king_sq, sq) & occ_discovered;
-        has_blocker_free_discovery = has_blocker_free_discovery or blockers == 0;
+        const ray = Bitboard.rookRayBetween(them_king_sq, sq);
+        has_blocker_free_discovery = has_blocker_free_discovery or ray & occ_discovered == 0 and Bitboard.contains(ray, sq);
+    }
+    iter = Bitboard.iterator(potential_discovered & ~self.rooks());
+    while (iter.next()) |sq| {
+        const ray = Bitboard.bishopRayBetween(them_king_sq, sq);
+        has_blocker_free_discovery = has_blocker_free_discovery or ray & occ_discovered == 0 and Bitboard.contains(ray, sq);
     }
     return has_blocker_free_discovery;
 }
