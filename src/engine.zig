@@ -129,6 +129,7 @@ fn datagenWorker(
     writer: anytype,
     writer_mutex: *std.Thread.Mutex,
     total_position_count: *std.atomic.Value(usize),
+    total_game_count: *std.atomic.Value(usize),
 ) void {
     const viriformat = root.viriformat;
     var seed: u64 = 0;
@@ -240,6 +241,7 @@ fn datagenWorker(
         }
 
         _ = total_position_count.fetchAdd(game.moves.items.len, .seq_cst);
+        _ = total_game_count.fetchAdd(1, .seq_cst);
         num_positions_written += game.moves.items.len;
         writer_mutex.lock();
         game.serializeInto(writer) catch @panic("failed to serialize position");
@@ -254,9 +256,10 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     const writer = buf_writer.writer();
     var writer_mutex = std.Thread.Mutex{};
     var total_position_count = std.atomic.Value(usize).init(0);
+    var total_game_count = std.atomic.Value(usize).init(0);
     for (0..current_num_threads) |i| {
         searchers[i].tt = try std.heap.page_allocator.alloc(root.TTEntry, (16 << 20) / @sizeOf(root.TTEntry));
-        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 9, num_nodes, &writer, &writer_mutex, &total_position_count });
+        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 9, num_nodes, &writer, &writer_mutex, &total_position_count, &total_game_count });
     }
 
     var prev_positions: usize = 0;
@@ -285,7 +288,8 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
         pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 4 + clamped_pps) / 5 else pps;
-        std.debug.print("total positions:{} positions/s:{}\n", .{
+        std.debug.print("games: {} positions:{} positions/s:{}\n", .{
+            total_game_count.load(.seq_cst),
             positions,
             pps_ema_opt.?,
         });
