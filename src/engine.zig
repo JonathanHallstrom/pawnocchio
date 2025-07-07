@@ -133,7 +133,7 @@ pub fn pickBestSearcher() *const Searcher {
         if (root.evaluation.isMateScore(cur_score) and cur_score > cur_score) {
             best = cur;
         }
-        if (!root.evaluation.isMateScore(cur_score) and cur_depth > best_depth) {
+        if (cur_depth > best_depth and (cur_score > best_score or !root.evaluation.isMateScore(best_score))) {
             best = cur;
         }
     }
