@@ -102,6 +102,7 @@ eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: Move,
 root_score: i16,
+completed: struct { i16, i32 },
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
@@ -110,7 +111,6 @@ tt: []TTEntry,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
-ttage: u5 = 0,
 syzygy_depth: u8 = 1,
 normalize: bool = false,
 histories: history.HistoryTable,
@@ -133,7 +133,7 @@ pub fn writeTT(
 
     if (!(score_type == .exact or
         !entry.hashEql(hash) or
-        self.ttage != entry.flags.age or
+        engine.ttage != entry.flags.age or
         depth + 4 > entry.depth))
     {
         return;
@@ -141,7 +141,7 @@ pub fn writeTT(
 
     entry.* = TTEntry{
         .score = score,
-        .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = self.ttage },
+        .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = engine.ttage },
         .move = move,
         .hash = TTEntry.compress(hash),
         .depth = @intCast(@max(0, depth)),
@@ -1057,8 +1057,13 @@ const InfoType = enum {
     upper,
 };
 
-fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
-    const elapsed = @max(1, self.limits.timer.read());
+fn writeFinalInfo(self: *const Searcher) void {
+    self.writeInfo(self.completed.@"0", self.completed.@"1", .completed);
+}
+
+fn writeInfo(self: *const Searcher, score: i16, depth: i32, tp: InfoType) void {
+    var timer_copy = self.limits.timer;
+    const elapsed = @max(1, timer_copy.read());
     const type_str = switch (tp) {
         .completed => "",
         .lower => " lowerbound",
@@ -1081,7 +1086,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     var hashfull: usize = 0;
     if (self.tt.len >= 1000) {
         for (0..1000) |i| {
-            hashfull += @intFromBool(self.tt[i].flags.age == self.ttage);
+            hashfull += @intFromBool(self.tt[i].flags.age == engine.ttage);
         }
     }
     const normalized_score = if (self.normalize) root.wdl.normalize(score, root_board.classicalMaterial()) else score;
@@ -1149,13 +1154,16 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
 
     self.root_move = Move.init();
     self.root_score = 0;
+    self.completed = .{ 0, 0 };
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
-    self.ttage +%= 1;
     if (params.needs_full_reset) {
         self.histories.reset();
+    }
+    if (is_main_thread) {
+        engine.ttage +%= 1;
     }
     self.limits.resetNodeCounts();
     evaluation.initThreadLocals();
@@ -1165,7 +1173,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     self.init(params, is_main_thread);
     var previous_score: i32 = 0;
     var previous_move: Move = Move.init();
-    var completed_depth: i32 = 0;
     var eval_stability: i32 = 0;
     var move_stability: i32 = 0;
     var last_full_width_score: i16 = 0;
@@ -1235,10 +1242,10 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         previous_score = score;
         previous_move = self.root_move;
 
-        completed_depth = depth;
+        self.completed = .{ score, depth - failhigh_reduction };
         if (is_main_thread) {
             if (!quiet) {
-                self.writeInfo(last_full_width_score, depth, .completed);
+                engine.pickBestSearcher().writeFinalInfo();
             }
         }
         if (self.stop.load(.acquire) or self.limits.checkRoot(

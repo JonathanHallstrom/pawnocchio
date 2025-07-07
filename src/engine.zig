@@ -31,6 +31,7 @@ var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
 var tt: []root.TTEntry = &.{};
+pub var ttage: u5 = 0;
 
 pub const SearchSettings = struct {
     search_params: Searcher.Params,
@@ -118,6 +119,26 @@ pub fn startSearch(settings: SearchSettings) void {
         thread_pool.spawn(searchWorker, .{ i, search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
     }
     needs_full_reset = false; // don't clear state unnecessarily
+}
+
+pub fn pickBestSearcher() *const Searcher {
+    var best: *const Searcher = &searchers[0];
+
+    for (searchers[1..current_num_threads]) |*cur| {
+        const best_score, const best_depth = best.completed;
+        const cur_score, const cur_depth = cur.completed;
+        if (cur_depth == best_depth and cur_score > best_score) {
+            best = cur;
+        }
+        if (root.evaluation.isMateScore(cur_score) and cur_score > cur_score) {
+            best = cur;
+        }
+        if (!root.evaluation.isMateScore(cur_score) and cur_depth > best_depth) {
+            best = cur;
+        }
+    }
+
+    return best;
 }
 
 fn datagenWorker(
