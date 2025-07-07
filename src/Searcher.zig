@@ -1242,7 +1242,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         previous_score = score;
         previous_move = self.root_move;
 
-        self.completed = .{ score, depth - failhigh_reduction };
+        self.completed = .{ score, depth };
         if (is_main_thread) {
             if (!quiet) {
                 self.writeInfo(score, depth, .completed);
