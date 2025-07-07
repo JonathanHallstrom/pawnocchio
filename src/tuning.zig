@@ -98,6 +98,7 @@ const tunable_defaults = struct {
     pub const nmp_eval_reduction_max: i32 = 24816;
     pub const fp_base: i32 = 301;
     pub const fp_mult: i32 = 85;
+    pub const fp_hist_mult: i32 = 128;
     pub const qs_see_threshold: i32 = -85;
     pub const see_quiet_pruning_mult: i32 = -76;
     pub const see_noisy_pruning_mult: i32 = -43;
@@ -205,6 +206,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max, .min = -10, .max = 62215, .c_end = 2488 },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base, .min = -10, .max = 747, .c_end = 29 },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult, .min = -10, .max = 242, .c_end = 9 },
+    .{ .name = "fp_hist_mult", .default = tunable_defaults.fp_hist_mult, .min = -10, .max = 512, .c_end = 32 },
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold, .min = -230, .max = 10, .c_end = 8 },
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -185, .max = 10, .c_end = 7 },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -135, .max = 10, .c_end = 5 },
@@ -312,6 +314,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nmp_eval_reduction_max = tunable_defaults.nmp_eval_reduction_max;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
+    pub var fp_hist_mult = tunable_defaults.fp_hist_mult;
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
     pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
