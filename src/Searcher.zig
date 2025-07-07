@@ -567,7 +567,7 @@ fn search(
         return 0;
     }
 
-    const cur = self.curStackEntry();
+    const cur: *StackEntry = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
@@ -812,7 +812,8 @@ fn search(
                 if (!is_in_check and
                     lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
-                    eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult <= alpha)
+                    eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult <= alpha and
+                    !board.givesCheckApproximate(stm, move))
                 {
                     mp.skip_quiets = true;
                     continue;
