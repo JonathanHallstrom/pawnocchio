@@ -1057,8 +1057,8 @@ const InfoType = enum {
     upper,
 };
 
-fn writeFinalInfo(self: *const Searcher) void {
-    self.writeInfo(self.completed.@"0", self.completed.@"1", .completed);
+fn writeBestMove(self: *const Searcher) void {
+    write("bestmove {s}\n", .{self.root_move.toString(&self.searchStackRoot()[0].board).slice()});
 }
 
 fn writeInfo(self: *const Searcher, score: i16, depth: i32, tp: InfoType) void {
@@ -1245,7 +1245,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         self.completed = .{ score, depth - failhigh_reduction };
         if (is_main_thread) {
             if (!quiet) {
-                engine.pickBestSearcher().writeFinalInfo();
+                self.writeInfo(score, depth, .completed);
             }
         }
         if (self.stop.load(.acquire) or self.limits.checkRoot(
@@ -1262,7 +1262,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
 
     if (is_main_thread) {
         if (!quiet) {
-            write("bestmove {s}\n", .{self.root_move.toString(&params.board).slice()});
+            engine.pickBestSearcher().writeBestMove();
         }
         engine.stopSearch();
     }
