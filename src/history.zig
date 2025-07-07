@@ -201,7 +201,8 @@ pub const HistoryTable = struct {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += self.quiet.read(board, typed);
-        res += self.countermove.read(board.stm, typed, board.stm.flipped(), prev1) + self.countermove.read(board.stm, typed, board.stm, prev2) >> 1;
+        res += self.countermove.read(board.stm, typed, board.stm.flipped(), prev1);
+        res += self.countermove.read(board.stm, typed, board.stm, prev2) >> 1;
 
         return res;
     }
