@@ -809,7 +809,7 @@ fn search(
                     continue;
                 }
 
-                if (depth <= 3 and history_score < depth * tunable_constants.history_pruning_mult) {
+                if (depth <= 3 and history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs) {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -817,7 +817,9 @@ fn search(
                 if (!is_in_check and
                     lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
-                    eval + tunable_constants.fp_base + lmr_depth * tunable_constants.fp_mult + @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096) <= alpha)
+                    eval + tunable_constants.fp_base +
+                        lmr_depth * tunable_constants.fp_mult +
+                        @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096) <= alpha)
                 {
                     mp.skip_quiets = true;
                     continue;

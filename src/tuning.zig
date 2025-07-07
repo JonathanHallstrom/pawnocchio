@@ -103,6 +103,7 @@ const tunable_defaults = struct {
     pub const see_quiet_pruning_mult: i32 = -76;
     pub const see_noisy_pruning_mult: i32 = -43;
     pub const razoring_margin: i32 = 213;
+    pub const history_pruning_offs: i32 = -1024;
     pub const history_pruning_mult: i32 = -3035;
     pub const qs_futility_margin: i32 = 111;
     pub const corrhist_pawn_weight: i32 = 679;
@@ -211,6 +212,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -185, .max = 10, .c_end = 7 },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -135, .max = 10, .c_end = 5 },
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin, .min = -10, .max = 572, .c_end = 22 },
+    .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 256 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin, .min = -10, .max = 305, .c_end = 11 },
     .{ .name = "corrhist_pawn_weight", .default = tunable_defaults.corrhist_pawn_weight, .min = -10, .max = 1825, .c_end = 72 },
@@ -319,6 +321,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
     pub var razoring_margin = tunable_defaults.razoring_margin;
+    pub var history_pruning_offs = tunable_defaults.history_pruning_offs;
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
     pub var corrhist_pawn_weight = tunable_defaults.corrhist_pawn_weight;
