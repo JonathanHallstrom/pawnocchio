@@ -1021,6 +1021,9 @@ fn search(
     }
 
     if (best_move.isNull()) {
+        if (is_singular_search) {
+            return @intCast(alpha);
+        }
         const mated_score = evaluation.matedIn(self.ply);
         return if (is_in_check) mated_score else 0;
     }
