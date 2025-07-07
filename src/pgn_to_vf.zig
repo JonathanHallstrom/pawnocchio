@@ -100,9 +100,13 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
                 }
                 if (!mated) {
                     var score = try std.fmt.parseFloat(f64, score_str);
-                    if (board.stm == .black) score = -score;
-                    try game.addMove(move, @intFromFloat(score * 100));
-                    position_count += 1;
+                    if (@abs(score) < 100) {
+                        if (board.stm == .black) score = -score;
+                        try game.addMove(move, @intFromFloat(score * 100));
+                        position_count += 1;
+                    } else {
+                        mated = true;
+                    }
                 }
                 switch (board.stm) {
                     inline else => |stm| board.makeMove(stm, move, &Board.NullEvalState{}),
@@ -112,11 +116,11 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
             }
         }
         if (game.moves.items.len > 0) {
-            std.debug.print("{s} {} {}\n", .{
-                board.toFen().slice(),
-                game.initial_position.wdl,
-                game.moves.items[game.moves.items.len - 1].eval.toNative(),
-            });
+            // std.debug.print("{s} {} {}\n", .{
+            //     board.toFen().slice(),
+            //     game.initial_position.wdl,
+            //     game.moves.items[game.moves.items.len - 1].eval.toNative(),
+            // });
             try game.serializeInto(bw.writer());
         }
     }
