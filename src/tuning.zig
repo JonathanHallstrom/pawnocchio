@@ -75,6 +75,7 @@ const tunable_defaults = struct {
     pub const rfp_cutnode_margin: i32 = 19;
     pub const rfp_corrplexity_mult: i32 = 19;
     pub const aspiration_initial: i32 = 12698;
+    pub const aspiration_score_mult: i32 = 1024;
     pub const aspiration_multiplier: i32 = 1425;
     pub const lmr_quiet_base: i32 = 3039;
     pub const lmr_noisy_base: i32 = 1966;
@@ -183,6 +184,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "rfp_worsening_margin", .default = tunable_defaults.rfp_worsening_margin, .min = -10, .max = 45, .c_end = 1 },
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
     .{ .name = "rfp_corrplexity_mult", .default = tunable_defaults.rfp_corrplexity_mult, .min = -10, .max = 60, .c_end = 2 },
+    .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 0, .max = 4096, .c_end = 256 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = -10, .max = 39450, .c_end = 1577 },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = -10, .max = 4015, .c_end = 160 },
     .{ .name = "lmr_quiet_base", .default = tunable_defaults.lmr_quiet_base, .min = -10, .max = 6772, .c_end = 270 },
@@ -292,6 +294,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var rfp_worsening_margin = tunable_defaults.rfp_worsening_margin;
     pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var rfp_corrplexity_mult = tunable_defaults.rfp_corrplexity_mult;
+    pub var aspiration_score_mult = tunable_defaults.aspiration_score_mult;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
     pub var lmr_quiet_base = tunable_defaults.lmr_quiet_base;
