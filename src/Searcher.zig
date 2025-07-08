@@ -1176,10 +1176,11 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var eval_stability: i32 = 0;
     var move_stability: i32 = 0;
     var last_full_width_score: i16 = 0;
+    var average_score: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
-        var quantized_window: i64 = tunable_constants.aspiration_initial;
+        var quantized_window: i64 = tunable_constants.aspiration_initial + (@as(i64, average_score) * average_score >> 4);
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
         }
@@ -1241,6 +1242,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         }
         previous_score = score;
         previous_move = self.root_move;
+
+        average_score = if (d == 1) score else @divTrunc(average_score + score, 2);
 
         completed_depth = depth;
         if (is_main_thread) {
