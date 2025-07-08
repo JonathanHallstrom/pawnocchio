@@ -1034,7 +1034,7 @@ fn search(
 
     depth = @max(depth, 0);
     if (best_score > beta and !evaluation.isTBScore(best_score) and !evaluation.isTBScore(alpha)) {
-        best_score = @intCast(@divTrunc(best_score * depth + beta, depth + 1));
+        best_score = @intCast(@divTrunc(best_score * (depth + 2) + beta, depth + 3));
     }
 
     if (!is_singular_search) {
