@@ -1032,8 +1032,9 @@ fn search(
         return if (is_in_check) mated_score else 0;
     }
 
+    depth = @max(depth, 0);
     if (best_score > beta and !evaluation.isTBScore(best_score) and !evaluation.isTBScore(alpha)) {
-        best_score = @intCast(@divTrunc(best_score * depth + beta, @max(1, depth + 1)));
+        best_score = @intCast(@divTrunc(best_score * depth + beta, depth + 1));
     }
 
     if (!is_singular_search) {
