@@ -339,7 +339,7 @@ fn qsearch(
         self.stop.store(true, .release);
         return 0;
     }
-    const cur = self.curStackEntry();
+    const cur: *StackEntry = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
@@ -433,8 +433,12 @@ fn qsearch(
                 continue;
             }
 
+            if (std.debug.runtime_safety) {
+                std.debug.assert(board.isNoisy(move));
+            }
+            const history_score = self.histories.readNoisy(board, move);
             if (!is_in_check and
-                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)))
+                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold + @divTrunc(history_score, 32), .pruning)))
             {
                 continue;
             }
