@@ -410,6 +410,7 @@ fn qsearch(
 
     const previous_move_destination = cur.move.move.to();
 
+    var searched_noisies: std.BoundedArray(Move, 8) = .{};
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         self.prefetch(move);
@@ -447,6 +448,11 @@ fn qsearch(
             return 0;
         }
 
+        if (board.isNoisy(move)) {
+            if (score <= alpha) {
+                searched_noisies.append(move) catch {};
+            }
+        }
         if (score > best_score) {
             best_score = score;
             best_move = move;
@@ -461,6 +467,13 @@ fn qsearch(
                 score_type = .lower;
                 break;
             }
+        }
+    }
+
+    if (best_score >= beta) {
+        self.histories.updateNoisy(board, best_move, 0, true);
+        for (searched_noisies.slice()) |searched| {
+            self.histories.updateNoisy(board, searched, 0, false);
         }
     }
 
