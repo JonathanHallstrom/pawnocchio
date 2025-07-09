@@ -339,7 +339,7 @@ fn qsearch(
         self.stop.store(true, .release);
         return 0;
     }
-    const cur = self.curStackEntry();
+    const cur: *StackEntry = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
@@ -436,6 +436,11 @@ fn qsearch(
             if (!is_in_check and
                 (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)))
             {
+                continue;
+            }
+
+            const history_score = self.histories.readNoisy(board, move);
+            if (history_score < -3000) {
                 continue;
             }
         }
