@@ -439,8 +439,11 @@ fn qsearch(
                 continue;
             }
 
+            if (std.debug.runtime_safety) {
+                std.debug.assert(board.isNoisy(move));
+            }
             const history_score = self.histories.readNoisy(board, move);
-            if (history_score < -3000) {
+            if (history_score < -4000) {
                 continue;
             }
         }
