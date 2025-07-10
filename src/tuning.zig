@@ -184,7 +184,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "rfp_worsening_margin", .default = tunable_defaults.rfp_worsening_margin, .min = -10, .max = 45, .c_end = 1 },
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
     .{ .name = "rfp_corrplexity_mult", .default = tunable_defaults.rfp_corrplexity_mult, .min = -10, .max = 60, .c_end = 2 },
-    .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 0, .max = 4096, .c_end = 256 },
+    .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 0, .max = 4096, .c_end = 64 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = -10, .max = 39450, .c_end = 1577 },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = -10, .max = 4015, .c_end = 160 },
     .{ .name = "lmr_quiet_base", .default = tunable_defaults.lmr_quiet_base, .min = -10, .max = 6772, .c_end = 270 },
