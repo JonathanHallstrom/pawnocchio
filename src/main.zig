@@ -510,6 +510,14 @@ pub fn main() !void {
                 });
             }
 
+            if (std.ascii.eqlIgnoreCase("SetMin", option_name)) {
+                root.tuning.setmin();
+            }
+
+            if (std.ascii.eqlIgnoreCase("SetMax", option_name)) {
+                root.tuning.setmax();
+            }
+
             if (root.use_tbs) {
                 if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name)) {
                     var dir = try std.fs.openDirAbsolute(value, .{ .iterate = true });
