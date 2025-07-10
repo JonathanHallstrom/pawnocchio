@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) !void {
             std.debug.print("When using a runtime net you need to give an absolute path to the network\n", .{});
             return error.NoAbsoluteNetPathWithRuntimeNet;
         }
-        break :blk "pawnocchio-nets/networks/net22_1280_take6.nnue";
+        break :blk "pawnocchio-nets/networks/net22_1280_take7.nnue";
     };
 
     const emit_symbols = b.option(bool, "emit_symbols", "force debug symbols not to be strippped") orelse false;

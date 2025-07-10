@@ -61,6 +61,27 @@ pub fn value(pt: PieceType, comptime mode: Mode) i16 {
     return (if (root.tuning.do_tuning) SEE_weight else comptime SEE_weight)[pt.toInt()];
 }
 
+fn pickFirstScalar(pieces: *const [6]u64, mask: u64) u8 {
+    var res: u8 = 0;
+    while (res < 6) {
+        if (pieces[res] & mask != 0) {
+            break;
+        }
+        res += 1;
+    }
+    return res;
+}
+
+fn pickFirstVectorized(pieces: *const [6]u64, mask: u64) u8 {
+    const mask_vec: @Vector(8, u64) = @splat(mask);
+    const zero: @Vector(8, u64) = @splat(0);
+    const eql: u8 = @bitCast(mask_vec & (pieces.* ++ .{0} ** 2) != zero);
+    return @ctz(eql);
+}
+
+// if we have SIMD support use it otherwise use the scalar version
+const pickFirst = if (std.simd.suggestVectorLength(u8) orelse 0 >= 1) pickFirstVectorized else pickFirstScalar;
+
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
     const from = move.from();
     const to = move.to();
@@ -126,14 +147,12 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         if (attackers & board.occupancyFor(stm) == 0) {
             break;
         }
-        for (PieceType.all) |pt| {
-            const potential_attacker_board = board.pieces[pt.toInt()] & board.occupancyFor(stm) & attackers;
-            if (potential_attacker_board != 0) {
-                occ ^= potential_attacker_board & -%potential_attacker_board;
-                attacker = pt;
-                break;
-            }
-        }
+        const our_attackers = board.occupancyFor(stm) & attackers;
+        const attacker_i = pickFirst(&board.pieces, our_attackers);
+        const attacker_bb = board.pieces[attacker_i] & our_attackers;
+        occ ^= attacker_bb & -%attacker_bb;
+
+        attacker = PieceType.fromInt(attacker_i);
         // if our last attacker is the king, and they still have an attacker, we can't actually recapture
         if (attacker == .king and attackers & board.occupancyFor(stm.flipped()) != 0) {
             break;
