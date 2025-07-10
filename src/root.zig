@@ -60,6 +60,9 @@ pub const WDL = enum(u2) {
     pub fn toInt(self: WDL) u8 {
         return @intFromEnum(self);
     }
+    pub fn flipped(self: WDL) WDL {
+        return @enumFromInt(2 - self.toInt());
+    }
 };
 
 pub const Colour = enum(u1) {

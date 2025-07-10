@@ -68,17 +68,11 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
             defer i = endOfInfo(line, i) + 1;
 
             if (std.mem.eql(u8, line[i..], "1-0")) {
-                game.setOutCome(switch (start_stm) {
-                    .white => .win,
-                    .black => .loss,
-                });
+                game.setOutCome(.win);
                 break;
             }
             if (std.mem.eql(u8, line[i..], "0-1")) {
-                game.setOutCome(switch (start_stm) {
-                    .white => .loss,
-                    .black => .win,
-                });
+                game.setOutCome(.loss);
                 break;
             }
             if (std.mem.eql(u8, line[i..], "1/2-1/2")) {
@@ -116,11 +110,6 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
             }
         }
         if (game.moves.items.len > 0) {
-            // std.debug.print("{s} {} {}\n", .{
-            //     board.toFen().slice(),
-            //     game.initial_position.wdl,
-            //     game.moves.items[game.moves.items.len - 1].eval.toNative(),
-            // });
             try game.serializeInto(bw.writer());
         }
     }
