@@ -308,22 +308,10 @@ fn gravityUpdate(entry: *i16, adjustment: anytype) void {
     entry.* += @intCast(clamped - ((magnitude * entry.*) >> SHIFT));
 }
 
-// var update_portion: i64 = 0;
-// var update_count: u32 = 0;
-
 const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        // const val = self.val;
-        // const lerped = (val * (256 - weight) + err * weight) >> 8;
-        // const clamped = std.math.clamp(lerped, -MAX_CORRHIST, MAX_CORRHIST);
-        // self.val = @intCast(clamped);
-        gravityUpdate(&self.val, err * weight << 2);
-        // update_portion += @divTrunc(@as(i64, 1024) * @abs(val - self.val), @abs(err));
-        // update_count += 1;
-        // if (update_count % 32768 == 0) {
-        //     std.debug.print("{}\n", .{@divTrunc(update_portion, update_count)});
-        // }
+        gravityUpdate(&self.val, err * weight << 1);
     }
 };
