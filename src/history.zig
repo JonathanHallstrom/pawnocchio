@@ -319,7 +319,7 @@ const CorrhistEntry = struct {
         // const lerped = (val * (256 - weight) + err * weight) >> 8;
         // const clamped = std.math.clamp(lerped, -MAX_CORRHIST, MAX_CORRHIST);
         // self.val = @intCast(clamped);
-        gravityUpdate(&self.val, err * weight << 1);
+        gravityUpdate(&self.val, err * weight << 2);
         // update_portion += @divTrunc(@as(i64, 1024) * @abs(val - self.val), @abs(err));
         // update_count += 1;
         // if (update_count % 32768 == 0) {
