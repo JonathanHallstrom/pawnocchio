@@ -1180,7 +1180,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
-        var quantized_window: i64 = tunable_constants.aspiration_initial + (average_score * tunable_constants.aspiration_score_mult >> 14);
+        var quantized_window: i64 = tunable_constants.aspiration_initial + (average_score >> 4);
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
         }
