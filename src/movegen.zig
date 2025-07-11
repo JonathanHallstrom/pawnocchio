@@ -278,7 +278,7 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
             move_receiver.receive(Move.castlingKingside(stm, king_sq, kingside_rook_square));
         }
         if (can_queenside_castle) {
-            move_receiver.receive(Move.castlingKingside(stm, king_sq, queenside_rook_square));
+            move_receiver.receive(Move.castlingQueenside(stm, king_sq, queenside_rook_square));
         }
     }
 }
