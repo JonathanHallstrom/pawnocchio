@@ -567,7 +567,7 @@ fn search(
         return 0;
     }
 
-    const cur = self.curStackEntry();
+    const cur: *StackEntry = self.curStackEntry();
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
@@ -780,6 +780,10 @@ fn search(
             continue;
         }
 
+        if (!board.isPseudoLegal(stm, move)) {
+            write("info string ERROR: Illegal move in root {s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
+            continue;
+        }
         const is_quiet = board.isQuiet(move);
         if (std.debug.runtime_safety and
             (mp.stage == .good_noisies or mp.stage == .bad_noisies))

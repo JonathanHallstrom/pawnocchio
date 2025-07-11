@@ -219,7 +219,7 @@ pub const HistoryTable = struct {
     }
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {
-        const err = (score - corrected_static_eval) * 256;
+        const err = score - corrected_static_eval;
         const weight = @min(depth, 15) + 1;
 
         self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
@@ -312,9 +312,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        const val = self.val;
-        const lerped = (val * (256 - weight) + err * weight) >> 8;
-        const clamped = std.math.clamp(lerped, -MAX_CORRHIST, MAX_CORRHIST);
-        self.val = @intCast(clamped);
+        gravityUpdate(&self.val, std.math.clamp(err * weight << 1, -16000, 16000));
     }
 };
