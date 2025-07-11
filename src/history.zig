@@ -312,6 +312,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        gravityUpdate(&self.val, std.math.clamp(err * weight << 1, -1024, 1024));
+        gravityUpdate(&self.val, std.math.clamp(err * weight << 1, -16000, 16000));
     }
 };
