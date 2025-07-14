@@ -194,15 +194,18 @@ pub const HistoryTable = struct {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += self.quiet.read(board, typed);
-        res += self.countermove.read(board.stm, typed, prev);
-
+        if (!prev.move.isNull()) {
+            res += self.countermove.read(board.stm, typed, prev);
+        }
         return res;
     }
 
     pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, prev: TypedMove, depth: i32, is_bonus: bool) void {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus);
-        self.countermove.update(board.stm, typed, prev, depth, is_bonus);
+        if (!prev.move.isNull()) {
+            self.countermove.update(board.stm, typed, prev, depth, is_bonus);
+        }
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
