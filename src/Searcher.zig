@@ -177,15 +177,17 @@ pub const StackEntry = struct {
     board: Board,
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
-    prev: TypedMove,
+    prev1: TypedMove,
+    prev2: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
 
-    pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
+    pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev1_: TypedMove, prev2_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
         self.move = move_;
-        self.prev = prev_;
+        self.prev1 = prev1_;
+        self.prev2 = prev2_;
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
@@ -263,6 +265,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
         board,
         TypedMove.fromBoard(board, move),
         prev_stack_entry.move,
+        prev_stack_entry.prev1,
         prev_stack_entry.evals,
     );
     self.pvs[self.ply].len = 0;
@@ -289,6 +292,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     new_eval_state.update(board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
+        TypedMove.init(),
         TypedMove.init(),
         TypedMove.init(),
         prev_stack_entry.evals,
@@ -364,7 +368,7 @@ fn qsearch(
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.prev1, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -402,7 +406,8 @@ fn qsearch(
         &cur.movelist,
         &self.histories,
         tt_entry.move,
-        cur.prev,
+        cur.prev1,
+        cur.prev2,
     );
     defer mp.deinit();
 
@@ -673,7 +678,7 @@ fn search(
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.prev1, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -696,7 +701,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.prev);
+        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.prev1);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
@@ -729,7 +734,7 @@ fn search(
         if (depth >= 4 and
             eval >= beta and
             non_pk != 0 and
-            !cur.prev.move.isNull())
+            !cur.prev1.move.isNull())
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
@@ -759,7 +764,8 @@ fn search(
         &cur.movelist,
         &self.histories,
         if (is_singular_search) cur.excluded else tt_entry.move,
-        cur.prev,
+        cur.prev1,
+        cur.prev2,
         is_singular_search,
     );
     defer mp.deinit();
@@ -791,7 +797,7 @@ fn search(
             std.debug.assert(!is_quiet);
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
-        const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
+        const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev1, cur.prev2) else self.histories.readNoisy(board, move);
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
@@ -897,7 +903,7 @@ fn search(
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
+            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev1);
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
@@ -1008,14 +1014,14 @@ fn search(
 
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
-                        self.histories.updateQuiet(board, move, cur.prev, depth, true);
+                        self.histories.updateQuiet(board, move, cur.prev1, cur.prev2, depth, true);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
+                            self.histories.updateQuiet(board, searched_move, cur.prev1, cur.prev2, depth, false);
                         }
                     }
-                    self.histories.updateQuiet(board, move, cur.prev, depth, true);
+                    self.histories.updateQuiet(board, move, cur.prev1, cur.prev2, depth, true);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
+                        self.histories.updateQuiet(board, searched_move, cur.prev1, cur.prev2, depth, false);
                     }
                 } else {
                     self.histories.updateNoisy(board, move, depth, true);
@@ -1054,7 +1060,7 @@ fn search(
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
-                self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
+                self.histories.updateCorrection(board, cur.prev1, corrected_static_eval, best_score, depth);
             }
         }
     }
@@ -1162,7 +1168,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.root_score = 0;
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
-    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
+    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     self.ttage +%= 1;
     if (params.needs_full_reset) {
