@@ -932,6 +932,7 @@ fn search(
 
                     new_depth += @intFromBool(do_deeper_search);
                     new_depth -= @intFromBool(do_shallower_search);
+                    new_depth += @intCast(history_lmr_mult * history_score >> 23);
 
                     s = -self.search(
                         false,
