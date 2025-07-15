@@ -780,7 +780,7 @@ fn search(
             continue;
         }
 
-        if (!board.isPseudoLegal(stm, move)) {
+        if (is_root and !board.isPseudoLegal(stm, move)) {
             write("info string ERROR: Illegal move in root {s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
             continue;
         }
