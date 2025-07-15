@@ -374,7 +374,7 @@ pub const ColouredPieceType = enum(u4) {
     }
 };
 
-pub const ScoredMove = extern struct {
+pub const ScoredMove = packed struct {
     move: Move,
     padding: u16 = 0,
     score: i32,
