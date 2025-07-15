@@ -770,6 +770,7 @@ fn search(
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_legal: u8 = 0;
+    const previous_move_destination = cur.move.move.to();
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -792,6 +793,7 @@ fn search(
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
+        const is_recapture = move.to() == previous_move_destination;
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
@@ -827,6 +829,17 @@ fn search(
                 {
                     mp.skip_quiets = true;
                     continue;
+                }
+            } else {
+                // bnfp
+                if (!is_in_check and
+                    mp.stage == .bad_noisies and
+                    !is_recapture and
+                    lmr_depth <= 6 and
+                    @abs(alpha) < 2000 and
+                    eval + 300 + lmr_depth * @as(i32, 200) <= alpha)
+                {
+                    break;
                 }
             }
 
