@@ -410,6 +410,7 @@ fn qsearch(
 
     const previous_move_destination = cur.move.move.to();
 
+    var num_searched: u8 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         self.prefetch(move);
@@ -438,7 +439,11 @@ fn qsearch(
             {
                 continue;
             }
+            if (!is_in_check and num_searched >= 3) {
+                break;
+            }
         }
+        num_searched += 1;
 
         self.makeMove(stm, move);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
