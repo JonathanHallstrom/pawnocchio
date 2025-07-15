@@ -691,6 +691,7 @@ fn search(
     }
     const eval = cur.static_eval;
 
+    const has_non_king_pawn_material = board.occupancyFor(stm) & ~(board.pawns() | board.kings()) != 0;
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check and
@@ -724,11 +725,9 @@ fn search(
             return razor_score;
         }
 
-        const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
-
         if (depth >= 4 and
             eval >= beta and
-            non_pk != 0 and
+            has_non_king_pawn_material and
             !cur.prev.move.isNull())
         {
             self.prefetch(Move.init());
@@ -793,7 +792,7 @@ fn search(
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
 
-        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY) and has_non_king_pawn_material) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_legal, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
