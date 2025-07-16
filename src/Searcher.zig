@@ -833,7 +833,11 @@ fn search(
             const see_pruning_thresh = if (is_quiet)
                 tunable_constants.see_quiet_pruning_mult * lmr_depth
             else
-                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth;
+                std.math.clamp(
+                    tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth + @divTrunc(history_score, 32),
+                    -300,
+                    0,
+                );
 
             if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, see_pruning_thresh, .pruning))
