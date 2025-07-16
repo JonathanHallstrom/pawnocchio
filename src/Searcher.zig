@@ -181,6 +181,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    failhighs: u8,
 
     pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
         self.board = board_.*;
@@ -189,6 +190,7 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
+        self.failhighs = 0;
     }
 };
 
@@ -770,6 +772,7 @@ fn search(
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
+    self.searchStackRoot()[self.ply + 2].failhighs = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -906,6 +909,9 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                if (self.prevStackEntry().failhighs > 2) {
+                    reduction += 1024;
+                }
                 reduction += lmrConvolve(7, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet, gives_check });
 
                 reduction >>= 10;
@@ -1005,7 +1011,7 @@ fn search(
             score_type = .exact;
             if (score >= beta) {
                 score_type = .lower;
-
+                cur.failhighs += 1;
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
                         self.histories.updateQuiet(board, move, cur.prev, depth, true);
