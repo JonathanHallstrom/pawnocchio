@@ -673,6 +673,7 @@ fn search(
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
+    var tt_plexity: u16 = 0;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
@@ -686,6 +687,7 @@ fn search(
             corrected_static_eval,
             tt_entry.flags.score_type,
         )) {
+            tt_plexity = @intCast(@abs(@as(i32, tt_score) - corrected_static_eval));
             cur.static_eval = tt_score;
         } else {
             cur.static_eval = corrected_static_eval;
@@ -710,7 +712,8 @@ fn search(
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
+                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32) +
+                tt_plexity / 2)
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
