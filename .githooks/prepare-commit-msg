@@ -1,6 +1,6 @@
 #!/bin/sh
 
 echo "Running benchmark to append onto commit message"
-BENCH_OUTPUT=$(zig build --release=fast run -- bench | awk '/nodes/ {print $1}')
+BENCH_OUTPUT=$(zig build --release=small run -- bench | awk '/nodes/ {print $1}')
 echo "\nbench: $BENCH_OUTPUT" >> "$1"
 echo "Benchmark complete: $BENCH_OUTPUT"
