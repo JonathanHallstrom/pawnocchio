@@ -380,7 +380,51 @@ pub const tunable_constants = if (do_tuning) struct {
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {
-    pub const one = [7]i32{
+    const N = 8;
+    pub fn biggerTables(comptime amount: usize) void {
+        comptime var two_idx_old = 0;
+        comptime var three_idx_old = 0;
+        comptime var two_idx = 0;
+        comptime var three_idx = 0;
+        comptime var one_out: []const u8 = "";
+        comptime var two_out: []const u8 = "";
+        comptime var three_out: []const u8 = "";
+        inline for (0..N + amount) |i| {
+            inline for (i + 1..N + amount) |j| {
+                inline for (j + 1..N + amount) |k| {
+                    if (i < N and j < N and k < N) {
+                        three_out = three_out ++ std.fmt.comptimePrint("{},\n", .{three[three_idx_old]});
+                        three_idx_old += 1;
+                    } else {
+                        three_out = three_out ++ std.fmt.comptimePrint("0,\n", .{});
+                    }
+                    three_idx += 1;
+                }
+                if (i < N and j < N) {
+                    two_out = two_out ++ std.fmt.comptimePrint("{},\n", .{two[two_idx_old]});
+                    two_idx_old += 1;
+                } else {
+                    two_out = two_out ++ std.fmt.comptimePrint("0,\n", .{});
+                }
+                two_idx += 1;
+            }
+            if (i < N) {
+                one_out = one_out ++ std.fmt.comptimePrint("{},\n", .{one[i]});
+            } else {
+                one_out = one_out ++ std.fmt.comptimePrint("0,\n", .{});
+            }
+        }
+        std.debug.print(
+            \\pub const one = [N]i32{{
+            \\{s}}};
+            \\pub const two: [N * (N - 1) / 2]i32 = .{{
+            \\{s}}};
+            \\pub const three: [N * (N - 1) * (N - 2) / 6]i32 = .{{
+            \\{s}}};
+            \\
+        , .{ one_out, two_out, three_out });
+    }
+    pub const one = [N]i32{
         -1095,
         1272,
         -832,
@@ -388,66 +432,95 @@ const factorized_lmr_defaults = struct {
         -728,
         -40,
         -978,
+        1024,
     };
-    pub const two: [21]i32 = .{
+    pub const two: [N * (N - 1) / 2]i32 = .{
         7,
         105,
         35,
         -56,
         80,
         62,
+        0,
         -4,
         103,
         73,
         18,
         22,
+        0,
         21,
         6,
         45,
         20,
+        0,
         -43,
         19,
         -77,
+        0,
         111,
         44,
+        0,
         23,
+        0,
+        0,
     };
-    pub const three: [35]i32 = .{
+    pub const three: [N * (N - 1) * (N - 2) / 6]i32 = .{
         42,
         -134,
         -46,
         86,
         71,
+        0,
         -12,
         105,
         -62,
         -17,
+        0,
         121,
         -80,
         92,
+        0,
         -22,
         -38,
+        0,
         50,
+        0,
+        0,
         93,
         11,
         28,
         -70,
+        0,
         -21,
         185,
         98,
+        0,
         -170,
         -78,
+        0,
         10,
+        0,
+        0,
         -14,
         149,
         -40,
+        0,
         -40,
         0,
+        0,
         15,
+        0,
+        0,
         -93,
         13,
+        0,
         44,
+        0,
+        0,
         -96,
+        0,
+        0,
+        0,
     };
 };
 

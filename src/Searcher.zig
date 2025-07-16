@@ -909,10 +909,16 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                if (self.prevStackEntry().failhighs > 2) {
-                    reduction += 1024;
-                }
-                reduction += lmrConvolve(7, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet, gives_check });
+                reduction += lmrConvolve(8, .{
+                    is_pv,
+                    cutnode,
+                    improving,
+                    has_tt_move,
+                    tt_pv,
+                    is_quiet,
+                    gives_check,
+                    self.prevStackEntry().failhighs > 2,
+                });
 
                 reduction >>= 10;
 
