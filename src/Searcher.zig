@@ -799,6 +799,7 @@ fn search(
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
 
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
+            const lmr_depth_granular = @max(0, (depth << 10) - base_lmr);
             if (is_quiet) {
                 const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
@@ -821,9 +822,9 @@ fn search(
                 if (!is_in_check and
                     lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
-                    eval + tunable_constants.fp_base +
-                        lmr_depth * tunable_constants.fp_mult +
-                        @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096) <= alpha)
+                    eval * @as(i32, 1024) + tunable_constants.fp_base +
+                        lmr_depth_granular * tunable_constants.fp_mult +
+                        @divTrunc(history_score * tunable_constants.fp_hist_mult, 4) <= alpha * 1024)
                 {
                     mp.skip_quiets = true;
                     continue;
