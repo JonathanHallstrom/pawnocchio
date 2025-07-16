@@ -834,7 +834,7 @@ fn search(
                 tunable_constants.see_quiet_pruning_mult * lmr_depth
             else
                 std.math.clamp(
-                    tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth + @divTrunc(history_score, 32),
+                    tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth - @divTrunc(history_score, 32),
                     -300 * depth,
                     0,
                 );
