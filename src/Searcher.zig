@@ -769,7 +769,7 @@ fn search(
     var searched_noisies: std.BoundedArray(Move, 64) = .{};
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
-    var num_legal: u8 = 0;
+    var num_searched: u8 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -795,7 +795,7 @@ fn search(
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-            var base_lmr = calculateBaseLMR(@max(1, depth), num_legal, is_quiet);
+            var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
 
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
@@ -804,7 +804,7 @@ fn search(
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
                 const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 const granularity: i32 = 978;
-                if (num_legal * granularity >=
+                if (num_searched * granularity >=
                     lmp_base +
                         lmp_linear_mult * depth +
                         lmp_quadratic_mult * depth * depth)
@@ -879,7 +879,7 @@ fn search(
                 extension -= 3;
             }
         }
-        num_legal += 1;
+        num_searched += 1;
 
         if (std.debug.runtime_safety) {
             if (std.mem.count(Move, searched_noisies.slice(), &.{move}) != 0) {
@@ -901,9 +901,9 @@ fn search(
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
-            if (depth >= 3 and num_legal > 1) {
+            if (depth >= 3 and num_searched > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-                var reduction = calculateBaseLMR(depth, num_legal, is_quiet);
+                var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += lmrConvolve(7, .{ is_pv, cutnode, improving, has_tt_move, tt_pv, is_quiet, gives_check });
@@ -946,7 +946,7 @@ fn search(
                         break :blk 0;
                     }
                 }
-            } else if (!is_pv or num_legal > 1) {
+            } else if (!is_pv or num_searched > 1) {
                 s = -self.search(
                     false,
                     false,
@@ -960,7 +960,7 @@ fn search(
                     break :blk 0;
                 }
             }
-            if (is_pv and (num_legal == 1 or s > alpha)) {
+            if (is_pv and (num_searched == 1 or s > alpha)) {
                 s = -self.search(
                     false,
                     true,
