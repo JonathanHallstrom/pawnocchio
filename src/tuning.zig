@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -48,6 +48,23 @@ pub const Tunable = struct {
         return @max(0.5, d / 10);
     }
 };
+
+pub fn setMin() void {
+    if (!do_tuning) {
+        return;
+    }
+    inline for (tunables) |tunable| {
+        @field(tunable_constants, tunable.name) = tunable.getMin();
+    }
+}
+pub fn setMax() void {
+    if (!do_tuning) {
+        return;
+    }
+    inline for (tunables) |tunable| {
+        @field(tunable_constants, tunable.name) = tunable.getMax();
+    }
+}
 
 const tunable_defaults = struct {
     pub const quiet_history_bonus_mult: i32 = 444;
@@ -184,9 +201,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "rfp_worsening_margin", .default = tunable_defaults.rfp_worsening_margin, .min = -10, .max = 45, .c_end = 1 },
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
     .{ .name = "rfp_corrplexity_mult", .default = tunable_defaults.rfp_corrplexity_mult, .min = -10, .max = 60, .c_end = 2 },
-    .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 0, .max = 4096, .c_end = 256 },
-    .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = -10, .max = 39450, .c_end = 1577 },
-    .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = -10, .max = 4015, .c_end = 160 },
+    .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 10, .max = 4096, .c_end = 256 },
+    .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = 10, .max = 39450, .c_end = 1577 },
+    .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = 1127, .max = 4015, .c_end = 160 },
     .{ .name = "lmr_quiet_base", .default = tunable_defaults.lmr_quiet_base, .min = -10, .max = 6772, .c_end = 270 },
     .{ .name = "lmr_noisy_base", .default = tunable_defaults.lmr_noisy_base, .min = -10, .max = 4412, .c_end = 176 },
     .{ .name = "lmr_quiet_log_mult", .default = tunable_defaults.lmr_quiet_log_mult, .min = -10, .max = 510, .c_end = 20 },
@@ -252,17 +269,17 @@ pub const tunables = [_]Tunable{
     .{ .name = "tt_fail_medium", .default = tunable_defaults.tt_fail_medium, .min = 0, .max = 1024, .c_end = 32 },
     .{ .name = "qs_tt_fail_medium", .default = tunable_defaults.qs_tt_fail_medium, .min = 0, .max = 1024, .c_end = 32 },
     .{ .name = "standpat_fail_medium", .default = tunable_defaults.standpat_fail_medium, .min = 0, .max = 1024, .c_end = 32 },
-    .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .c_end = 80 },
-    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .c_end = 50 },
-    .{ .name = "eval_stab_margin", .default = tunable_defaults.eval_stab_margin, .c_end = 1 },
-    .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .c_end = 60 },
-    .{ .name = "eval_stab_offs", .default = tunable_defaults.eval_stab_offs, .c_end = 2 },
-    .{ .name = "move_stab_base", .default = tunable_defaults.move_stab_base, .c_end = 60 },
-    .{ .name = "move_stab_offs", .default = tunable_defaults.move_stab_offs, .c_end = 2 },
-    .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base, .c_end = 2 },
-    .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr, .c_end = 30 },
-    .{ .name = "hard_limit_phase_mult", .default = tunable_defaults.hard_limit_phase_mult, .c_end = 6 },
-    .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base, .c_end = 10 },
+    .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .min = 1024, .c_end = 80 },
+    .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .min = 10, .c_end = 50 },
+    .{ .name = "eval_stab_margin", .default = tunable_defaults.eval_stab_margin, .min = 1, .c_end = 1 },
+    .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .min = 10, .c_end = 60 },
+    .{ .name = "eval_stab_offs", .default = tunable_defaults.eval_stab_offs, .min = 10, .c_end = 2 },
+    .{ .name = "move_stab_base", .default = tunable_defaults.move_stab_base, .min = 10, .c_end = 60 },
+    .{ .name = "move_stab_offs", .default = tunable_defaults.move_stab_offs, .min = 10, .c_end = 2 },
+    .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base, .min = 10, .c_end = 2 },
+    .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr, .min = 10, .c_end = 30 },
+    .{ .name = "hard_limit_phase_mult", .default = tunable_defaults.hard_limit_phase_mult, .min = 10, .c_end = 6 },
+    .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base, .min = 10, .c_end = 10 },
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult, .min = -10, .max = 992, .c_end = 39 },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult, .min = -10, .max = 1565, .c_end = 62 },
     .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs, .min = -10, .max = 1837, .c_end = 73 },
