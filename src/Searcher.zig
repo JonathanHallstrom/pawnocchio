@@ -836,7 +836,7 @@ fn search(
                 tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth;
 
             if (!skip_see_pruning and
-                !SEE.scoreMove(board, move, see_pruning_thresh - if (board.givesCheckApproximate(stm, move)) @as(i32, 200) else 0, .pruning))
+                !SEE.scoreMove(board, move, see_pruning_thresh - if (board.givesCheckApproximate(stm, move)) @as(i32, 100) else 0, .pruning))
             {
                 continue;
             }
