@@ -813,7 +813,7 @@ fn search(
                     continue;
                 }
 
-                if (depth <= 3 and history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs) {
+                if (lmr_depth <= 2 and history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs) {
                     mp.skip_quiets = true;
                     continue;
                 }
