@@ -150,8 +150,8 @@ pub fn writeTT(
 }
 
 fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
-    const hash = self.curStackEntry().board.getHashWithHalfmove();
-    const eval = evaluate(stm, &self.curStackEntry().board, &self.prevStackEntry().board, self.curEvalState());
+    const hash = self.stackEntry(0).board.getHashWithHalfmove();
+    const eval = evaluate(stm, &self.stackEntry(0).board, &self.stackEntry(-1).board, self.evalState(0));
     self.writeTT(
         false,
         hash,
@@ -165,7 +165,7 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
 }
 
 pub fn prefetch(self: *const Searcher, move: Move) void {
-    const board = &self.curStackEntry().board;
+    const board = &self.stackEntry(0).board;
     @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
 }
 
@@ -210,20 +210,12 @@ fn updatePv(self: *Searcher, move: Move) void {
     }
 }
 
-fn curStackEntry(self: anytype) root.inheritConstness(@TypeOf(self), *StackEntry) {
-    return &self.searchStackRoot()[self.ply];
+fn stackEntry(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self), *StackEntry) {
+    return &(&self.search_stack)[@intCast(STACK_PADDING + @as(i64, self.ply) + offset)];
 }
 
-fn nextStackEntry(self: *Searcher) *StackEntry {
-    return &self.searchStackRoot()[self.ply + 1];
-}
-
-fn prevStackEntry(self: *Searcher) *StackEntry {
-    return &(&self.search_stack)[STACK_PADDING + self.ply - 1];
-}
-
-fn curEvalState(self: *Searcher) *evaluation.State {
-    return &self.evalStateRoot()[self.ply];
+fn evalState(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self), *evaluation.State) {
+    return &(&self.eval_states)[@intCast(@as(i64, self.ply) + offset)];
 }
 
 fn searchStackRoot(self: anytype) root.inheritConstness(@TypeOf(self), [*]StackEntry) {
@@ -247,26 +239,22 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
-    const old_stack_entry = self.prevStackEntry();
-    const prev_stack_entry = self.curStackEntry();
-    const prev_eval_state = self.curEvalState();
-    self.ply += 1;
-    const new_stack_entry = self.curStackEntry();
-    const new_eval_state = self.curEvalState();
+    const old_stack_entry = self.stackEntry(-1);
+    const prev_stack_entry = self.stackEntry(0);
+    const prev_eval_state = self.evalState(0);
+    const new_stack_entry = self.stackEntry(1);
+    const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
 
     new_eval_state.* = prev_eval_state.*;
-    if (self.ply == 0) {
-        new_eval_state.initInPlace(board);
-    } else {
-        new_eval_state.update(board, &old_stack_entry.board);
-    }
+    new_eval_state.update(board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
         prev_stack_entry.move,
         prev_stack_entry.evals,
     );
+    self.ply += 1;
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -279,14 +267,12 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
 }
 
 fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
-    const old_stack_entry = self.prevStackEntry();
-    const prev_stack_entry = self.curStackEntry();
-    const prev_eval_state = self.curEvalState();
-    self.ply += 1;
-    const new_stack_entry = self.curStackEntry();
-    const new_eval_state = self.curEvalState();
+    const old_stack_entry = self.stackEntry(-1);
+    const prev_stack_entry = self.stackEntry(0);
+    const prev_eval_state = self.evalState(0);
+    const new_stack_entry = self.stackEntry(1);
+    const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
-
     new_eval_state.* = prev_eval_state.*;
     new_eval_state.update(board, &old_stack_entry.board);
     new_stack_entry.init(
@@ -295,6 +281,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
         TypedMove.init(),
         prev_stack_entry.evals,
     );
+    self.ply += 1;
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -306,7 +293,7 @@ fn unmakeNullMove(self: *Searcher, comptime stm: Colour) void {
 }
 
 fn isRepetition(self: *Searcher) bool {
-    const board = &self.curStackEntry().board;
+    const board = &self.stackEntry(0).board;
 
     const hash = board.hash;
     const amt = @min(self.ply, board.halfmove);
@@ -341,7 +328,7 @@ fn qsearch(
         self.stop.store(true, .release);
         return 0;
     }
-    const cur = self.curStackEntry();
+    const cur: *StackEntry = self.stackEntry(0);
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
 
@@ -570,7 +557,7 @@ fn search(
         return 0;
     }
 
-    const cur: *StackEntry = self.curStackEntry();
+    const cur: *StackEntry = self.stackEntry(0);
     const board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
@@ -897,7 +884,7 @@ fn search(
 
         self.makeMove(stm, move);
 
-        const gives_check = self.curStackEntry().board.checkers != 0;
+        const gives_check = self.stackEntry(0).board.checkers != 0;
         const score = blk: {
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
@@ -919,7 +906,7 @@ fn search(
                     tt_pv,
                     is_quiet,
                     gives_check,
-                    self.prevStackEntry().failhighs > 2,
+                    self.stackEntry(-1).failhighs > 2,
                 });
 
                 reduction >>= 10;
