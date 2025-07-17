@@ -366,7 +366,7 @@ fn qsearch(
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -676,7 +676,7 @@ fn search(
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.prev, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -699,7 +699,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.prev);
+        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
@@ -902,7 +902,7 @@ fn search(
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.prev);
+            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
@@ -1068,7 +1068,7 @@ fn search(
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
-                self.histories.updateCorrection(board, cur.prev, corrected_static_eval, best_score, depth);
+                self.histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, depth);
             }
         }
     }
