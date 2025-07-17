@@ -693,6 +693,7 @@ fn search(
     }
     const eval = cur.static_eval;
 
+    const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check and
@@ -725,8 +726,6 @@ fn search(
 
             return razor_score;
         }
-
-        const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
             eval >= beta and
@@ -816,7 +815,10 @@ fn search(
                     continue;
                 }
 
-                if (depth <= 3 and history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs) {
+                if (non_pk != 0 and
+                    lmr_depth <= 2 and
+                    history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
+                {
                     mp.skip_quiets = true;
                     continue;
                 }
