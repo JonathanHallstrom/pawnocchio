@@ -947,7 +947,7 @@ fn search(
                         break :blk 0;
                     }
 
-                    if (s <= alpha or s >= beta) {
+                    if (is_quiet and (s <= alpha or s >= beta)) {
                         const is_bonus = s >= beta;
                         const typed = TypedMove.fromBoard(board, move);
                         self.histories.countermove.update(board.stm, typed, board.stm.flipped(), cur.move, depth, is_bonus);
