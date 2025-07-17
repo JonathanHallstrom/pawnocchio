@@ -36,6 +36,7 @@ stage: Stage,
 skip_quiets: bool,
 histories: *const root.history.HistoryTable,
 ttmove: Move,
+cur: root.history.TypedMove,
 prev: root.history.TypedMove,
 last_bad_noisy: usize = 0,
 next_func: *const fn (*MovePicker) ScoredMove,
@@ -55,6 +56,7 @@ pub fn init(
     movelist_: *MoveReceiver,
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
+    cur_: root.history.TypedMove,
     prev_: root.history.TypedMove,
     is_singular_search: bool,
 ) MovePicker {
@@ -70,6 +72,7 @@ pub fn init(
         .skip_quiets = false,
         .histories = histories_,
         .ttmove = ttmove_,
+        .cur = cur_,
         .prev = prev_,
     };
 }
@@ -79,6 +82,7 @@ pub fn initQs(
     movelist_: *MoveReceiver,
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
+    cur_: root.history.TypedMove,
     prev_: root.history.TypedMove,
 ) MovePicker {
     movelist_.vals.len = 0;
@@ -93,6 +97,7 @@ pub fn initQs(
         .skip_quiets = board_.checkers == 0,
         .histories = histories_,
         .ttmove = ttmove_,
+        .cur = cur_,
         .prev = prev_,
     };
 }
@@ -223,7 +228,7 @@ fn generateQuiets(self: *MovePicker) ScoredMove {
         inline else => |stm| {
             movegen.generateAllQuiets(stm, self.board, self.movelist);
             for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
-                scored_move.score = self.histories.readQuiet(self.board, scored_move.move, self.prev);
+                scored_move.score = self.histories.readQuiet(self.board, scored_move.move, self.cur, self.prev);
             }
         },
     }
