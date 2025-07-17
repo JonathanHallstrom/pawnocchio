@@ -803,9 +803,10 @@ fn search(
 
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
-                const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
-                const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
-                const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
+                const optimistic = improving or eval >= beta;
+                const lmp_linear_mult = if (optimistic) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
+                const lmp_quadratic_mult = if (optimistic) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
+                const lmp_base = if (optimistic) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 const granularity: i32 = 978;
                 if (num_searched * granularity >=
                     lmp_base +
