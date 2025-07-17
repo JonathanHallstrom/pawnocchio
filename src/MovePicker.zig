@@ -158,6 +158,9 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     } else if (self.board.isEnPassant(move)) {
         res += SEE.value(.pawn, .ordering);
     }
+    if (move.to() == self.cur.move.to()) {
+        res += 50;
+    }
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += self.histories.readNoisy(self.board, move);
 
@@ -198,6 +201,7 @@ fn generateNoisies(self: *MovePicker) ScoredMove {
     self.next_func = &goodNoises;
     return @call(call_modifier, &goodNoises, .{self});
 }
+
 fn goodNoises(self: *MovePicker) ScoredMove {
     if (self.first == self.last) {
         self.stage = .generate_quiets;
