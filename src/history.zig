@@ -161,11 +161,11 @@ pub const ContHistory = struct {
         return &(&self.vals)[col_offs * 6 * 64 * 2 * 6 * 64 + prev_offs * 2 * 6 * 64 + move_offs * 2 + prev_col_offs];
     }
 
-    inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove, depth: i32, is_bonus: bool) void {
+    pub inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove, depth: i32, is_bonus: bool) void {
         gravityUpdate(self.entry(col, move, prev_col, prev), if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
-    inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove) i16 {
+    pub inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove) i16 {
         return self.entry(col, move, prev_col, prev).*;
     }
 };

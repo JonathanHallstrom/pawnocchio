@@ -946,6 +946,13 @@ fn search(
                     if (self.stop.load(.acquire)) {
                         break :blk 0;
                     }
+
+                    if (s <= alpha or s >= beta) {
+                        const is_bonus = s >= beta;
+                        const typed = TypedMove.fromBoard(board, move);
+                        self.histories.countermove.update(board.stm, typed, board.stm.flipped(), cur.move, depth, is_bonus);
+                        self.histories.countermove.update(board.stm, typed, board.stm, cur.prev, depth, is_bonus);
+                    }
                 }
             } else if (!is_pv or num_searched > 1) {
                 s = -self.search(
