@@ -226,8 +226,8 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                 if (Bitboard.contains(Bitboard.move(pawns, forward, -1), dest)) {
                     const mv = Move.capture(dest.move(-forward, 1), dest);
                     if (mv != self.ttmove) {
-                        self.recapture_move = mv;
                         if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            self.recapture_move = mv;
                             return ScoredMove{ .move = mv, .score = 0 };
                         }
                     }
@@ -236,8 +236,8 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                 if (attacking_knights != 0) {
                     const mv = Move.capture(Square.fromInt(@ctz(attacking_knights)), dest);
                     if (mv != self.ttmove) {
-                        self.recapture_move = mv;
                         if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            self.recapture_move = mv;
                             return ScoredMove{ .move = mv, .score = 0 };
                         }
                     }
@@ -247,8 +247,8 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                 if (attacking_bishops != 0) {
                     const mv = Move.capture(Square.fromInt(@ctz(attacking_bishops)), dest);
                     if (mv != self.ttmove) {
-                        self.recapture_move = mv;
                         if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            self.recapture_move = mv;
                             return ScoredMove{ .move = mv, .score = 0 };
                         }
                     }
@@ -258,8 +258,8 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                 if (attacking_rooks != 0) {
                     const mv = Move.capture(Square.fromInt(@ctz(attacking_rooks)), dest);
                     if (mv != self.ttmove) {
-                        self.recapture_move = mv;
                         if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            self.recapture_move = mv;
                             return ScoredMove{ .move = mv, .score = 0 };
                         }
                     }
@@ -268,8 +268,8 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                 if (attacking_queens != 0) {
                     const mv = Move.capture(Square.fromInt(@ctz(attacking_queens)), dest);
                     if (mv != self.ttmove) {
-                        self.recapture_move = mv;
                         if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            self.recapture_move = mv;
                             return ScoredMove{ .move = mv, .score = 0 };
                         }
                     }
