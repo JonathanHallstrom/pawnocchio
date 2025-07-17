@@ -219,6 +219,7 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                     const mv = Move.capture(dest.move(-forward, -1), dest);
                     if (mv != self.ttmove) {
                         self.recapture_move = mv;
+                        // no see needed for pawn captures
                         return ScoredMove{ .move = mv, .score = 0 };
                     }
                 }
@@ -226,7 +227,9 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                     const mv = Move.capture(dest.move(-forward, 1), dest);
                     if (mv != self.ttmove) {
                         self.recapture_move = mv;
-                        return ScoredMove{ .move = mv, .score = 0 };
+                        if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            return ScoredMove{ .move = mv, .score = 0 };
+                        }
                     }
                 }
                 const attacking_knights = Bitboard.knightMoves(dest) & knights;
@@ -234,7 +237,9 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                     const mv = Move.capture(Square.fromInt(@ctz(attacking_knights)), dest);
                     if (mv != self.ttmove) {
                         self.recapture_move = mv;
-                        return ScoredMove{ .move = mv, .score = 0 };
+                        if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            return ScoredMove{ .move = mv, .score = 0 };
+                        }
                     }
                 }
                 const bishop_attacks = root.attacks.getBishopAttacks(dest, board.occupancy());
@@ -243,7 +248,9 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                     const mv = Move.capture(Square.fromInt(@ctz(attacking_bishops)), dest);
                     if (mv != self.ttmove) {
                         self.recapture_move = mv;
-                        return ScoredMove{ .move = mv, .score = 0 };
+                        if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            return ScoredMove{ .move = mv, .score = 0 };
+                        }
                     }
                 }
                 const rook_attacks = root.attacks.getRookAttacks(dest, board.occupancy());
@@ -252,7 +259,9 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                     const mv = Move.capture(Square.fromInt(@ctz(attacking_rooks)), dest);
                     if (mv != self.ttmove) {
                         self.recapture_move = mv;
-                        return ScoredMove{ .move = mv, .score = 0 };
+                        if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            return ScoredMove{ .move = mv, .score = 0 };
+                        }
                     }
                 }
                 const attacking_queens = (bishop_attacks | rook_attacks) & queens;
@@ -260,7 +269,9 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
                     const mv = Move.capture(Square.fromInt(@ctz(attacking_queens)), dest);
                     if (mv != self.ttmove) {
                         self.recapture_move = mv;
-                        return ScoredMove{ .move = mv, .score = 0 };
+                        if (SEE.scoreMove(board, mv, 0, .ordering)) {
+                            return ScoredMove{ .move = mv, .score = 0 };
+                        }
                     }
                 }
             },
