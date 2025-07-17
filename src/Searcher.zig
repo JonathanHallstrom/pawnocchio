@@ -404,7 +404,7 @@ fn qsearch(
         &cur.movelist,
         &self.histories,
         tt_entry.move,
-        cur.prev,
+        cur.move,
     );
     defer mp.deinit();
 
@@ -761,7 +761,7 @@ fn search(
         &cur.movelist,
         &self.histories,
         if (is_singular_search) cur.excluded else tt_entry.move,
-        cur.prev,
+        cur.move,
         is_singular_search,
     );
     defer mp.deinit();
@@ -794,7 +794,7 @@ fn search(
             std.debug.assert(!is_quiet);
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
-        const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.prev) else self.histories.readNoisy(board, move);
+        const history_score = if (is_quiet) self.histories.readQuiet(board, move, cur.move) else self.histories.readNoisy(board, move);
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
@@ -1020,14 +1020,14 @@ fn search(
                 cur.failhighs += 1;
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
-                        self.histories.updateQuiet(board, move, cur.prev, depth, true);
+                        self.histories.updateQuiet(board, move, cur.move, depth, true);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
+                            self.histories.updateQuiet(board, searched_move, cur.move, depth, false);
                         }
                     }
-                    self.histories.updateQuiet(board, move, cur.prev, depth, true);
+                    self.histories.updateQuiet(board, move, cur.move, depth, true);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, cur.prev, depth, false);
+                        self.histories.updateQuiet(board, searched_move, cur.move, depth, false);
                     }
                 } else {
                     self.histories.updateNoisy(board, move, depth, true);
