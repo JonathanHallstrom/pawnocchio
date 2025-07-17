@@ -191,8 +191,16 @@ fn lvaRecapture(self: *MovePicker) ScoredMove {
     self.next_func = &generateNoisies;
     const board = self.board;
     const dest = self.cur.move.to();
+    var check_mask: u64 = std.math.maxInt(u64);
+    if (board.checkers != 0) {
+        if (@popCount(board.checkers) == 1) {
+            check_mask = Bitboard.checkMask(Square.fromBitboard(board.kingFor(board.stm)), Square.fromBitboard(board.checkers));
+        } else {
+            check_mask = 0;
+        }
+    }
     if (!self.cur.move.isNull() and
-        board.checkers == 0 and
+        Bitboard.contains(check_mask, dest) and
         Bitboard.contains(board.occupancyFor(board.stm.flipped()), dest))
     {
         switch (board.stm) {
