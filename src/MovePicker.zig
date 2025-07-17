@@ -25,6 +25,8 @@ const MoveReceiver = root.FilteringScoredMoveReceiver;
 const movegen = root.movegen;
 const SEE = root.SEE;
 const PieceType = root.PieceType;
+const Square = root.Square;
+const Bitboard = root.Bitboard;
 
 const MovePicker = @This();
 
@@ -40,9 +42,11 @@ cur: root.history.TypedMove,
 prev: root.history.TypedMove,
 last_bad_noisy: usize = 0,
 next_func: *const fn (*MovePicker) ScoredMove,
+recapture_move: Move = Move.init(),
 
 pub const Stage = enum {
     tt,
+    lva_recapture,
     generate_noisies,
     good_noisies,
     generate_quiets,
@@ -167,10 +171,10 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug) .auto else .always_tail;
 
 fn tt(self: *MovePicker) ScoredMove {
-    self.stage = .generate_noisies;
-    self.next_func = &generateNoisies;
+    self.stage = .lva_recapture;
+    self.next_func = &lvaRecapture;
     if (self.skip_quiets and self.board.isQuiet(self.ttmove)) {
-        return @call(call_modifier, generateNoisies, .{self});
+        return @call(call_modifier, lvaRecapture, .{self});
     }
     switch (self.board.stm) {
         inline else => |stm| {
@@ -179,7 +183,82 @@ fn tt(self: *MovePicker) ScoredMove {
             }
         },
     }
-    return @call(call_modifier, &generateNoisies, .{self});
+    return @call(call_modifier, lvaRecapture, .{self});
+}
+
+fn lvaRecapture(self: *MovePicker) ScoredMove {
+    self.stage = .generate_noisies;
+    self.next_func = &generateNoisies;
+    const board = self.board;
+    const dest = self.cur.move.to();
+    if (!self.cur.move.isNull() and
+        board.checkers == 0 and
+        Bitboard.contains(board.occupancyFor(board.stm.flipped()), dest))
+    {
+        switch (board.stm) {
+            inline else => |stm| {
+                const pawns = board.pawnsFor(stm);
+
+                // for now only handle recaptures by unpinned pieces
+                const knights = board.knightsFor(stm) & ~board.pinned[stm.toInt()];
+                const bishops = board.bishopsFor(stm) & ~board.pinned[stm.toInt()];
+                const rooks = board.rooksFor(stm) & ~board.pinned[stm.toInt()];
+                const queens = board.queensFor(stm) & ~board.pinned[stm.toInt()];
+
+                const forward: i8 = if (stm == .white) 1 else -1;
+
+                if (Bitboard.contains(Bitboard.move(pawns, forward, 1), dest)) {
+                    const mv = Move.capture(dest.move(-forward, -1), dest);
+                    if (mv != self.ttmove) {
+                        self.recapture_move = mv;
+                        return ScoredMove{ .move = mv, .score = 0 };
+                    }
+                }
+                if (Bitboard.contains(Bitboard.move(pawns, forward, -1), dest)) {
+                    const mv = Move.capture(dest.move(-forward, 1), dest);
+                    if (mv != self.ttmove) {
+                        self.recapture_move = mv;
+                        return ScoredMove{ .move = mv, .score = 0 };
+                    }
+                }
+                const attacking_knights = Bitboard.knightMoves(dest) & knights;
+                if (attacking_knights != 0) {
+                    const mv = Move.capture(Square.fromInt(@ctz(attacking_knights)), dest);
+                    if (mv != self.ttmove) {
+                        self.recapture_move = mv;
+                        return ScoredMove{ .move = mv, .score = 0 };
+                    }
+                }
+                const bishop_attacks = root.attacks.getBishopAttacks(dest, board.occupancy());
+                const attacking_bishops = bishop_attacks & bishops;
+                if (attacking_bishops != 0) {
+                    const mv = Move.capture(Square.fromInt(@ctz(attacking_bishops)), dest);
+                    if (mv != self.ttmove) {
+                        self.recapture_move = mv;
+                        return ScoredMove{ .move = mv, .score = 0 };
+                    }
+                }
+                const rook_attacks = root.attacks.getRookAttacks(dest, board.occupancy());
+                const attacking_rooks = rook_attacks & rooks;
+                if (attacking_rooks != 0) {
+                    const mv = Move.capture(Square.fromInt(@ctz(attacking_rooks)), dest);
+                    if (mv != self.ttmove) {
+                        self.recapture_move = mv;
+                        return ScoredMove{ .move = mv, .score = 0 };
+                    }
+                }
+                const attacking_queens = (bishop_attacks | rook_attacks) & queens;
+                if (attacking_queens != 0) {
+                    const mv = Move.capture(Square.fromInt(@ctz(attacking_queens)), dest);
+                    if (mv != self.ttmove) {
+                        self.recapture_move = mv;
+                        return ScoredMove{ .move = mv, .score = 0 };
+                    }
+                }
+            },
+        }
+    }
+    return @call(call_modifier, generateNoisies, .{self});
 }
 
 fn generateNoisies(self: *MovePicker) ScoredMove {
@@ -188,21 +267,30 @@ fn generateNoisies(self: *MovePicker) ScoredMove {
         inline else => |stm| {
             std.debug.assert(self.movelist.vals.len == 0);
             movegen.generateAllNoisies(stm, self.board, self.movelist);
-            for (self.movelist.vals.slice()) |*scored_move| {
-                scored_move.score = self.noisyValue(scored_move.move);
+            var new_len: usize = 0;
+            for (self.movelist.vals.slice()) |scored_move| {
+                if (scored_move.move == self.recapture_move) {
+                    continue;
+                }
+                self.movelist.vals.slice()[new_len] = .{
+                    .move = scored_move.move,
+                    .score = self.noisyValue(scored_move.move),
+                };
+                new_len += 1;
             }
+            self.movelist.vals.len = new_len;
         },
     }
     self.last = self.movelist.vals.len;
     self.stage = .good_noisies;
     self.next_func = &goodNoises;
-    return @call(call_modifier, &goodNoises, .{self});
+    return @call(call_modifier, goodNoises, .{self});
 }
 fn goodNoises(self: *MovePicker) ScoredMove {
     if (self.first == self.last) {
         self.stage = .generate_quiets;
         self.next_func = &generateQuiets;
-        return @call(call_modifier, &generateQuiets, .{self});
+        return @call(call_modifier, generateQuiets, .{self});
     }
     const res = self.movelist.vals.slice()[self.findBest()];
     const history_score = self.histories.readNoisy(self.board, res.move);
@@ -213,7 +301,7 @@ fn goodNoises(self: *MovePicker) ScoredMove {
     }
     self.movelist.vals.slice()[self.last_bad_noisy] = res;
     self.last_bad_noisy += 1;
-    return @call(call_modifier, &goodNoises, .{self});
+    return @call(call_modifier, goodNoises, .{self});
 }
 
 fn generateQuiets(self: *MovePicker) ScoredMove {
@@ -235,14 +323,14 @@ fn generateQuiets(self: *MovePicker) ScoredMove {
     self.last = self.movelist.vals.len;
     self.stage = .quiets;
     self.next_func = &quiets;
-    return @call(call_modifier, &quiets, .{self});
+    return @call(call_modifier, quiets, .{self});
 }
 
 fn quiets(self: *MovePicker) ScoredMove {
     if (self.first == self.last or self.skip_quiets) {
         self.stage = .bad_noisy_prep;
         self.next_func = &badNoisyPrep;
-        return @call(call_modifier, &badNoisyPrep, .{self});
+        return @call(call_modifier, badNoisyPrep, .{self});
     }
     return self.movelist.vals.slice()[self.findBest()];
 }
@@ -251,7 +339,7 @@ fn badNoisyPrep(self: *MovePicker) ScoredMove {
     self.last = self.last_bad_noisy;
     self.stage = .bad_noisies;
     self.next_func = &badNoisies;
-    return @call(call_modifier, &badNoisies, .{self});
+    return @call(call_modifier, badNoisies, .{self});
 }
 fn badNoisies(self: *MovePicker) ScoredMove {
     if (self.first == self.last) {
@@ -265,5 +353,6 @@ pub inline fn next(self: *MovePicker) ?ScoredMove {
     if (res.move.isNull()) {
         return null;
     }
+    // std.debug.print("{s} {s}\n", .{ self.board.toFen().slice(), res.move.toString(self.board).slice() });
     return res;
 }
