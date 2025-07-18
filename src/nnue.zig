@@ -463,8 +463,9 @@ fn screlu(x: i32) i32 {
 pub fn init() !void {
     if (build_options.runtime_net) {
         weights_file = try std.fs.openFileAbsolute(build_options.net_path, .{});
-        // const stat = try std.posix.fstat(weights_file.handle);
-        // const file_size: usize = @intCast(stat.size);
+        if (@import("builtin").target.os.tag == .windows) {
+            @compileError("sorry mmap-ing the network manually is not supported on windows");
+        }
         mapped_weights = try std.posix.mmap(null, Weights.WEIGHT_COUNT * @sizeOf(i16), std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
 
         weights = @ptrCast(mapped_weights.ptr);
