@@ -162,20 +162,20 @@ pub fn main() !void {
                 defer input_file.close();
 
                 const stat = try input_file.stat();
-                const input_mapped = if (@import("builtin").target.os.tag == .windows)
+                const input_bytes = if (@import("builtin").target.os.tag == .windows)
                     try input_file.readToEndAlloc(allocator, 1 << 30)
                 else
                     try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
 
                 defer if (@import("builtin").target.os.tag == .windows)
-                    allocator.free(input_mapped)
+                    allocator.free(input_bytes)
                 else
-                    std.posix.munmap(input_mapped);
+                    std.posix.munmap(input_bytes);
 
                 var output_file = try std.fs.cwd().createFile(output, .{});
                 defer output_file.close();
 
-                try @import("pgn_to_vf.zig").convert(input_mapped, output_file.writer(), std.heap.smp_allocator);
+                try @import("pgn_to_vf.zig").convert(input_bytes, output_file.writer(), std.heap.smp_allocator);
 
                 return;
             }

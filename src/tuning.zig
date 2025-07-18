@@ -43,10 +43,6 @@ pub const Tunable = struct {
 
     pub fn getCend(self: Tunable) f64 {
         if (self.c_end) |m| {
-            const d: f64 = @floatFromInt(@abs(self.default));
-            const suggested = @max(0.5, d / 10);
-            std.debug.print("{d} ", .{m / suggested});
-
             return m;
         }
         const d: f64 = @floatFromInt(@abs(self.default));
