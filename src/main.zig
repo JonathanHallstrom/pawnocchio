@@ -850,6 +850,34 @@ pub fn main() !void {
             switch (board.stm) {
                 inline else => |stm| write("{}\n", .{hce.evaluate(stm, &board, &board, &state)}),
             }
+        } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
+            var prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
+            var mutex = std.Thread.Mutex{};
+            for (0..1024) |_| {
+                const worker_fn = struct {
+                    fn impl(rng: std.Random, m: *std.Thread.Mutex) void {
+                        m.lock();
+                        var b = Board.dfrcPosition(rng.uintLessThan(u20, 960 * 960));
+                        m.unlock();
+                        b.frc = true;
+                        var buf: [256]u8 = undefined;
+                        var fbs = std.io.fixedBufferStream(&buf);
+                        fbs.writer().print("{s} ;D1 {}; D2 {}; D3 {}; D4 {}; D5 {}; D6 {}\n", .{
+                            b.toFen().slice(),
+                            b.perft(true, 1),
+                            b.perft(true, 2),
+                            b.perft(true, 3),
+                            b.perft(true, 4),
+                            b.perft(true, 5),
+                            b.perft(true, 6),
+                        }) catch unreachable;
+                        m.lock();
+                        write("{s}", .{fbs.getWritten()});
+                        m.unlock();
+                    }
+                }.impl;
+                try root.engine.thread_pool.spawn(worker_fn, .{ prng.random(), &mutex });
+            }
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
             const sub_command = parts.next() orelse "";
