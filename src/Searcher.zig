@@ -653,7 +653,7 @@ fn search(
 
     if (depth >= 4 and
         (is_pv or cutnode) and
-        !has_tt_move)
+        (!has_tt_move or tt_entry.depth < depth - 4))
     {
         depth -= 1;
     }
