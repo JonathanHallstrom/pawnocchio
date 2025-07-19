@@ -1350,7 +1350,7 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
     }
 
     if (pt == .king) {
-        return Bitboard.kingMoves(from) & to_bb != 0;
+        return Bitboard.kingMoves(from) & to_bb != 0 and tp == .default;
     }
 
     if (tp == .ep) {
@@ -1384,6 +1384,8 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         }
 
         return allowed & to_bb != 0;
+    } else if (tp == .promotion) {
+        return false;
     }
 
     // we already handled castling, ep, and promotion
