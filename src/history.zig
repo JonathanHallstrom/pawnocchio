@@ -94,6 +94,45 @@ pub const QuietHistory = struct {
     }
 };
 
+pub const PawnHistory = struct {
+    const HashSize = 2048;
+    vals: [HashSize * 2 * 6 * 64]i16,
+
+    fn bonus(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.pawn_history_bonus_mult + tunable_constants.pawn_history_bonus_offs,
+            tunable_constants.pawn_history_bonus_max,
+        ));
+    }
+
+    fn penalty(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.pawn_history_penalty_mult + tunable_constants.pawn_history_penalty_offs,
+            tunable_constants.pawn_history_penalty_max,
+        ));
+    }
+
+    inline fn reset(self: *PawnHistory) void {
+        @memset(std.mem.asBytes(&self.vals), 0);
+    }
+
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = board.stm.toInt();
+        const tp_offs: usize = move.tp.toInt();
+        const to_offs: usize = move.move.to().toInt();
+        const hash_offs: usize = @intCast(board.pawn_hash % HashSize);
+        return &(&self.vals)[hash_offs * 2 * 6 * 64 + col_offs * 6 * 64 + tp_offs * 64 + to_offs];
+    }
+
+    inline fn update(self: *PawnHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
+        gravityUpdate(self.entry(board, move), if (is_bonus) bonus(depth) else -penalty(depth));
+    }
+
+    inline fn read(self: *const PawnHistory, board: *const Board, move: TypedMove) i16 {
+        return self.entry(board, move).*;
+    }
+};
+
 pub const NoisyHistory = struct {
     vals: [64 * 64 * 13]i16,
 
@@ -172,6 +211,7 @@ pub const ContHistory = struct {
 
 pub const HistoryTable = struct {
     quiet: QuietHistory,
+    pawn: PawnHistory,
     noisy: NoisyHistory,
     countermove: ContHistory,
     pawn_corrhist: [16384][2]CorrhistEntry,
@@ -182,6 +222,7 @@ pub const HistoryTable = struct {
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
+        self.pawn.reset();
         self.noisy.reset();
         self.countermove.reset();
         @memset(std.mem.asBytes(&self.pawn_corrhist), 0);
@@ -191,7 +232,7 @@ pub const HistoryTable = struct {
         @memset(std.mem.asBytes(&self.countermove_corrhist), 0);
     }
 
-    pub fn readQuiet(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
+    pub fn readQuietPruning(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += self.quiet.read(board, typed);
@@ -201,9 +242,21 @@ pub const HistoryTable = struct {
         return res;
     }
 
+    pub fn readQuietOrdering(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
+        const typed = TypedMove.fromBoard(board, move);
+        var res: i32 = 0;
+        res += self.quiet.read(board, typed);
+        res += self.pawn.read(board, typed);
+        res += self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
+        res += self.countermove.read(board.stm, typed, board.stm, prev);
+
+        return res;
+    }
+
     pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove, depth: i32, is_bonus: bool) void {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus);
+        self.pawn.update(board, typed, depth, is_bonus);
         self.countermove.update(board.stm, typed, board.stm.flipped(), cur, depth, is_bonus);
         self.countermove.update(board.stm, typed, board.stm, prev, depth, is_bonus);
     }
