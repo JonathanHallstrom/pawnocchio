@@ -724,6 +724,9 @@ fn search(
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
+            if (has_tt_move and board.isNoisy(tt_entry.move)) {
+                nmp_reduction += 8192;
+            }
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
