@@ -719,7 +719,7 @@ fn search(
         if (depth >= 4 and
             eval >= beta and
             non_pk != 0 and
-            !cur.prev.move.isNull())
+            !cur.move.move.isNull())
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
