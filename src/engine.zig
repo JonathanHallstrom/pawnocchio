@@ -289,7 +289,7 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
         pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 4 + clamped_pps) / 5 else pps;
-        std.debug.print("games: {} positions:{} positions/s:{}\n", .{
+        std.debug.print("games:{} positions:{} positions/s:{}\n", .{
             total_game_count.load(.seq_cst),
             positions,
             pps_ema_opt.?,
