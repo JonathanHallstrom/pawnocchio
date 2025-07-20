@@ -453,6 +453,12 @@ fn qsearch(
             }
         }
     }
+    if (best_score >= beta and
+        !evaluation.isMateScore(beta) and
+        !evaluation.isMateScore(best_score))
+    {
+        best_score = @intCast(@divTrunc(best_score + beta, 2));
+    }
 
     self.writeTT(
         tt_pv,
