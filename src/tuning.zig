@@ -74,6 +74,12 @@ const tunable_defaults = struct {
     pub const quiet_history_penalty_mult: i32 = 228;
     pub const quiet_history_penalty_offs: i32 = 338;
     pub const quiet_history_penalty_max: i32 = 1589;
+    pub const pawn_history_bonus_mult: i32 = 442;
+    pub const pawn_history_bonus_offs: i32 = 412;
+    pub const pawn_history_bonus_max: i32 = 2771;
+    pub const pawn_history_penalty_mult: i32 = 228;
+    pub const pawn_history_penalty_offs: i32 = 338;
+    pub const pawn_history_penalty_max: i32 = 1589;
     pub const cont_history_bonus_mult: i32 = 475;
     pub const cont_history_bonus_offs: i32 = 239;
     pub const cont_history_bonus_max: i32 = 3229;
@@ -184,6 +190,12 @@ pub const tunables = [_]Tunable{
     .{ .name = "quiet_history_penalty_mult", .default = tunable_defaults.quiet_history_penalty_mult, .min = -10, .max = 567, .c_end = 22 },
     .{ .name = "quiet_history_penalty_offs", .default = tunable_defaults.quiet_history_penalty_offs, .min = -10, .max = 822, .c_end = 32 },
     .{ .name = "quiet_history_penalty_max", .default = tunable_defaults.quiet_history_penalty_max, .min = -10, .max = 4145, .c_end = 165 },
+    .{ .name = "pawn_history_bonus_mult", .default = tunable_defaults.pawn_history_bonus_mult, .min = -10, .max = 1212, .c_end = 48 },
+    .{ .name = "pawn_history_bonus_offs", .default = tunable_defaults.pawn_history_bonus_offs, .min = -10, .max = 960, .c_end = 38 },
+    .{ .name = "pawn_history_bonus_max", .default = tunable_defaults.pawn_history_bonus_max, .min = -10, .max = 6650, .c_end = 265 },
+    .{ .name = "pawn_history_penalty_mult", .default = tunable_defaults.pawn_history_penalty_mult, .min = -10, .max = 567, .c_end = 22 },
+    .{ .name = "pawn_history_penalty_offs", .default = tunable_defaults.pawn_history_penalty_offs, .min = -10, .max = 822, .c_end = 32 },
+    .{ .name = "pawn_history_penalty_max", .default = tunable_defaults.pawn_history_penalty_max, .min = -10, .max = 4145, .c_end = 165 },
     .{ .name = "cont_history_bonus_mult", .default = tunable_defaults.cont_history_bonus_mult, .min = -10, .max = 1385, .c_end = 55 },
     .{ .name = "cont_history_bonus_offs", .default = tunable_defaults.cont_history_bonus_offs, .min = -10, .max = 800, .c_end = 31 },
     .{ .name = "cont_history_bonus_max", .default = tunable_defaults.cont_history_bonus_max, .min = -10, .max = 6430, .c_end = 256 },
@@ -294,6 +306,12 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var quiet_history_penalty_mult = tunable_defaults.quiet_history_penalty_mult;
     pub var quiet_history_penalty_offs = tunable_defaults.quiet_history_penalty_offs;
     pub var quiet_history_penalty_max = tunable_defaults.quiet_history_penalty_max;
+    pub var pawn_history_bonus_mult = tunable_defaults.pawn_history_bonus_mult;
+    pub var pawn_history_bonus_offs = tunable_defaults.pawn_history_bonus_offs;
+    pub var pawn_history_bonus_max = tunable_defaults.pawn_history_bonus_max;
+    pub var pawn_history_penalty_mult = tunable_defaults.pawn_history_penalty_mult;
+    pub var pawn_history_penalty_offs = tunable_defaults.pawn_history_penalty_offs;
+    pub var pawn_history_penalty_max = tunable_defaults.pawn_history_penalty_max;
     pub var cont_history_bonus_mult = tunable_defaults.cont_history_bonus_mult;
     pub var cont_history_bonus_offs = tunable_defaults.cont_history_bonus_offs;
     pub var cont_history_bonus_max = tunable_defaults.cont_history_bonus_max;
