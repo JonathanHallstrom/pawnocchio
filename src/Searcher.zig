@@ -439,13 +439,13 @@ fn qsearch(
 
         if (score > best_score) {
             best_score = score;
-            best_move = move;
             if (score > evaluation.matedIn(MAX_PLY)) {
                 mp.skip_quiets = true;
             }
         }
 
         if (score > alpha) {
+            best_move = move;
             alpha = score;
             if (score >= beta) {
                 score_type = .lower;
@@ -762,6 +762,7 @@ fn search(
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
     self.searchStackRoot()[self.ply + 2].failhighs = 0;
+    var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -771,6 +772,7 @@ fn search(
         if (!board.isLegal(stm, move)) {
             continue;
         }
+        num_legal += 1;
 
         if (is_root and !board.isPseudoLegal(stm, move)) {
             write("info string ERROR: Illegal move in root {s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
@@ -991,10 +993,10 @@ fn search(
 
         if (score > best_score) {
             best_score = score;
-            best_move = move;
         }
 
         if (score > alpha) {
+            best_move = move;
             if (is_root) {
                 self.root_move = move;
                 self.root_score = best_score;
@@ -1032,7 +1034,7 @@ fn search(
         }
     }
 
-    if (best_move.isNull()) {
+    if (num_legal == 0) {
         const mated_score = evaluation.matedIn(self.ply);
         return if (is_in_check) mated_score else 0;
     }
