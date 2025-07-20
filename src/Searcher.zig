@@ -719,7 +719,6 @@ fn search(
         if (depth >= 4 and
             eval >= beta and
             non_pk != 0 and
-            !cur.prev.move.isNull() and
             !cur.move.move.isNull())
         {
             self.prefetch(Move.init());
