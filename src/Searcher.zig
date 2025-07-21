@@ -395,6 +395,7 @@ fn qsearch(
         cur.prev,
     );
     defer mp.deinit();
+    var num_searched: u8 = 0;
 
     const futility = static_eval + tunable_constants.qs_futility_margin;
 
@@ -402,6 +403,13 @@ fn qsearch(
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
+        if (best_score > evaluation.matedIn(MAX_PLY) and
+            !is_in_check and
+            num_searched >= 2)
+        {
+            break;
+        }
+
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
             continue;
@@ -430,6 +438,7 @@ fn qsearch(
             }
         }
 
+        num_searched += 1;
         self.makeMove(stm, move);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
