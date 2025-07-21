@@ -75,11 +75,11 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
         return true;
     }
     if (nodes % 1024 == 0) {
-        if (self.root_depth < self.min_depth) {
-            return false;
-        }
         if (nodes >= self.hard_nodes) {
             return true;
+        }
+        if (self.root_depth < self.min_depth) {
+            return false;
         }
         if (self.timer.read() >= self.hard_time) {
             return true;
@@ -120,11 +120,11 @@ pub fn checkRoot(
     eval_stability: i32,
     move_stability: i32,
 ) bool {
-    if (self.root_depth < self.min_depth) {
-        return false;
-    }
     if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
         return true;
+    }
+    if (self.root_depth < self.min_depth) {
+        return false;
     }
     if (score >= self.max_score or
         score <= self.min_score)

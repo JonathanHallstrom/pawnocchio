@@ -163,7 +163,7 @@ fn datagenWorker(
         game_loop: for (0..2000) |move_idx| {
             var limits = root.Limits.initFixedTime(std.time.ns_per_s);
             limits.soft_nodes = node_count;
-            limits.hard_nodes = 10 * node_count;
+            limits.hard_nodes = 100 * node_count;
             limits.min_depth = min_depth;
             searchers[i].startSearch(
                 root.Searcher.Params{
