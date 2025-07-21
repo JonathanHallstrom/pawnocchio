@@ -458,7 +458,7 @@ fn qsearch(
         tt_pv,
         tt_hash,
         best_move,
-        best_score,
+        evaluation.scoreToTt(best_score, self.ply),
         score_type,
         0,
         raw_static_eval,
