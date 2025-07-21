@@ -78,13 +78,10 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
         if (nodes >= self.hard_nodes) {
             return true;
         }
-        if (self.root_depth < self.min_depth) {
-            return false;
-        }
-        if (self.timer.read() >= self.hard_time) {
+        if (root.engine.shouldStopSearching()) {
             return true;
         }
-        if (root.engine.shouldStopSearching()) {
+        if (self.timer.read() >= self.hard_time) {
             return true;
         }
     }
@@ -123,9 +120,6 @@ pub fn checkRoot(
     if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
         return true;
     }
-    if (self.root_depth < self.min_depth) {
-        return false;
-    }
     if (score >= self.max_score or
         score <= self.min_score)
     {
@@ -137,6 +131,12 @@ pub fn checkRoot(
         }
     }
     const curr_time = self.timer.read();
+    if (curr_time >= self.hard_time) {
+        return true;
+    }
+    if (self.root_depth < self.min_depth) {
+        return false;
+    }
     if (self.soft_time) |st| {
         var adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
         adjusted_limit = adjusted_limit * self.computeEvalStabilityFactor(eval_stability) >> 10;
@@ -144,9 +144,6 @@ pub fn checkRoot(
         if (curr_time >= adjusted_limit) {
             return true;
         }
-    }
-    if (curr_time >= self.hard_time) {
-        return true;
     }
     if (root.engine.shouldStopSearching()) {
         return true;
