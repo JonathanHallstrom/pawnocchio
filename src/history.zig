@@ -235,22 +235,23 @@ pub const HistoryTable = struct {
     pub fn readQuietPruning(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        res += self.quiet.read(board, typed);
-        res += self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
-        res += self.countermove.read(board.stm, typed, board.stm, prev);
+        res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
+        res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
+        res += tunable_constants.cont1_pruning_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
+        res += tunable_constants.cont2_pruning_weight * self.countermove.read(board.stm, typed, board.stm, prev);
 
-        return res;
+        return @divTrunc(res, 1024);
     }
 
     pub fn readQuietOrdering(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        res += self.quiet.read(board, typed);
-        res += self.pawn.read(board, typed);
-        res += self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
-        res += self.countermove.read(board.stm, typed, board.stm, prev);
+        res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
+        res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
+        res += tunable_constants.cont1_ordering_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
+        res += tunable_constants.cont2_ordering_weight * self.countermove.read(board.stm, typed, board.stm, prev);
 
-        return res;
+        return @divTrunc(res, 1024);
     }
 
     pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove, depth: i32, is_bonus: bool) void {

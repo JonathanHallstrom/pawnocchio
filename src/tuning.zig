@@ -92,6 +92,16 @@ const tunable_defaults = struct {
     pub const noisy_history_penalty_mult: i32 = 226;
     pub const noisy_history_penalty_offs: i32 = 196;
     pub const noisy_history_penalty_max: i32 = 2372;
+    pub const quiet_ordering_weight: i32 = 1024;
+    pub const quiet_pruning_weight: i32 = 1024;
+    pub const pawn_ordering_weight: i32 = 1024;
+    pub const pawn_pruning_weight: i32 = 0;
+    pub const cont1_ordering_weight: i32 = 1024;
+    pub const cont1_pruning_weight: i32 = 1024;
+    pub const cont2_ordering_weight: i32 = 1024;
+    pub const cont2_pruning_weight: i32 = 1024;
+    pub const noisy_ordering_weight: i32 = 1024;
+    pub const noisy_pruning_weight: i32 = 1024;
     pub const rfp_base: i32 = 42;
     pub const rfp_mult: i32 = 64;
     pub const rfp_improving_margin: i32 = 69;
@@ -208,6 +218,16 @@ pub const tunables = [_]Tunable{
     .{ .name = "noisy_history_penalty_mult", .default = tunable_defaults.noisy_history_penalty_mult, .min = -10, .max = 530, .c_end = 20 },
     .{ .name = "noisy_history_penalty_offs", .default = tunable_defaults.noisy_history_penalty_offs, .min = -10, .max = 435, .c_end = 17 },
     .{ .name = "noisy_history_penalty_max", .default = tunable_defaults.noisy_history_penalty_max, .min = -10, .max = 4965, .c_end = 198 },
+    .{ .name = "quiet_ordering_weight", .default = tunable_defaults.quiet_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "quiet_pruning_weight", .default = tunable_defaults.quiet_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "pawn_ordering_weight", .default = tunable_defaults.pawn_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "pawn_pruning_weight", .default = tunable_defaults.pawn_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "cont1_ordering_weight", .default = tunable_defaults.cont1_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "cont1_pruning_weight", .default = tunable_defaults.cont1_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "cont2_ordering_weight", .default = tunable_defaults.cont2_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "cont2_pruning_weight", .default = tunable_defaults.cont2_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "noisy_ordering_weight", .default = tunable_defaults.noisy_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "noisy_pruning_weight", .default = tunable_defaults.noisy_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 147, .c_end = 5 },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 145, .c_end = 5 },
     .{ .name = "rfp_improving_margin", .default = tunable_defaults.rfp_improving_margin, .min = -10, .max = 195, .c_end = 7 },
@@ -324,6 +344,16 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var noisy_history_penalty_mult = tunable_defaults.noisy_history_penalty_mult;
     pub var noisy_history_penalty_offs = tunable_defaults.noisy_history_penalty_offs;
     pub var noisy_history_penalty_max = tunable_defaults.noisy_history_penalty_max;
+    pub var quiet_ordering_weight = tunable_defaults.quiet_ordering_weight;
+    pub var quiet_pruning_weight = tunable_defaults.quiet_pruning_weight;
+    pub var pawn_ordering_weight = tunable_defaults.pawn_ordering_weight;
+    pub var pawn_pruning_weight = tunable_defaults.pawn_pruning_weight;
+    pub var cont1_ordering_weight = tunable_defaults.cont1_ordering_weight;
+    pub var cont1_pruning_weight = tunable_defaults.cont1_pruning_weight;
+    pub var cont2_ordering_weight = tunable_defaults.cont2_ordering_weight;
+    pub var cont2_pruning_weight = tunable_defaults.cont2_pruning_weight;
+    pub var noisy_ordering_weight = tunable_defaults.noisy_ordering_weight;
+    pub var noisy_pruning_weight = tunable_defaults.noisy_pruning_weight;
     pub var rfp_base = tunable_defaults.rfp_base;
     pub var rfp_mult = tunable_defaults.rfp_mult;
     pub var rfp_improving_margin = tunable_defaults.rfp_improving_margin;
