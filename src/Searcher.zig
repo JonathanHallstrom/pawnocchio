@@ -395,6 +395,7 @@ fn qsearch(
         cur.prev,
     );
     defer mp.deinit();
+    var num_searched: u8 = 0;
 
     const futility = static_eval + tunable_constants.qs_futility_margin;
 
@@ -415,6 +416,13 @@ fn qsearch(
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
+            const history_score = self.histories.readNoisy(board, move);
+            if (!is_in_check and
+                num_searched >= 2 and
+                history_score < -4000)
+            {
+                break;
+            }
             if (!is_in_check and futility <= alpha and
                 !SEE.scoreMove(board, move, 1, .pruning) and
                 !is_recapture)
@@ -430,6 +438,7 @@ fn qsearch(
             }
         }
 
+        num_searched += 1;
         self.makeMove(stm, move);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
