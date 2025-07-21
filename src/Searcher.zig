@@ -930,7 +930,7 @@ fn search(
                 }
 
                 if (s > alpha and clamped_reduction > 1) {
-                    const do_deeper_search = s > best_score + tunable_constants.lmr_dodeeper_margin + 2 * new_depth;
+                    const do_deeper_search = s > best_score + tunable_constants.lmr_dodeeper_margin + tunable_constants.lmr_dodeeper_mult * new_depth;
                     const do_shallower_search = s < best_score + new_depth;
 
                     new_depth += @intFromBool(do_deeper_search);

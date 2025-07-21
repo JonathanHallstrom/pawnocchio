@@ -127,6 +127,7 @@ const tunable_defaults = struct {
     pub const lmr_noisy_history_mult: i32 = 1024;
     pub const lmr_corrhist_mult: i32 = 9221;
     pub const lmr_dodeeper_margin: i32 = 56;
+    pub const lmr_dodeeper_mult: i32 = 2;
     pub const nmp_base: i32 = 55914;
     pub const nmp_mult: i32 = 997;
     pub const nmp_eval_reduction_scale: i32 = 29;
@@ -253,6 +254,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_noisy_history_mult", .default = tunable_defaults.lmr_noisy_history_mult, .min = -10, .max = 2470, .c_end = 98 },
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult, .min = -10, .max = 23695, .c_end = 947 },
     .{ .name = "lmr_dodeeper_margin", .default = tunable_defaults.lmr_dodeeper_margin, .min = -10, .max = 140, .c_end = 5 },
+    .{ .name = "lmr_dodeeper_mult", .default = tunable_defaults.lmr_dodeeper_mult, .min = 0, .max = 10, .c_end = 0.5 },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base, .min = -10, .max = 126747, .c_end = 5069 },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult, .min = -10, .max = 2317, .c_end = 92 },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale, .min = -10, .max = 97, .c_end = 3 },
@@ -379,6 +381,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_noisy_history_mult = tunable_defaults.lmr_noisy_history_mult;
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var lmr_dodeeper_margin = tunable_defaults.lmr_dodeeper_margin;
+    pub var lmr_dodeeper_mult = tunable_defaults.lmr_dodeeper_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
