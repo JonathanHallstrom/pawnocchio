@@ -733,7 +733,7 @@ fn search(
                 stm.flipped(),
                 -beta,
                 -beta + 1,
-                depth - nmp_reduction,
+                @max(1, depth - nmp_reduction),
                 !cutnode,
             );
             self.unmakeNullMove(stm);
