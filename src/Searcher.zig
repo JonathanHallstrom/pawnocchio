@@ -395,6 +395,7 @@ fn qsearch(
         cur.prev,
     );
     defer mp.deinit();
+    var num_searched: u8 = 0;
 
     const futility = static_eval + tunable_constants.qs_futility_margin;
 
@@ -428,8 +429,13 @@ fn qsearch(
             {
                 continue;
             }
+
+            if (num_searched >= 2) {
+                break;
+            }
         }
 
+        num_searched += 1;
         self.makeMove(stm, move);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
