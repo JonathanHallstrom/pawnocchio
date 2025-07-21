@@ -221,6 +221,7 @@ pub const HistoryTable = struct {
     major_corrhist: [16384][2]CorrhistEntry,
     minor_corrhist: [16384][2]CorrhistEntry,
     nonpawn_corrhist: [16384][2][2]CorrhistEntry,
+    threat_corrhist: [16384][2]CorrhistEntry,
     countermove_corrhist: [6 * 64][2]CorrhistEntry,
 
     pub fn reset(self: *HistoryTable) void {
@@ -232,6 +233,7 @@ pub const HistoryTable = struct {
         @memset(std.mem.asBytes(&self.major_corrhist), 0);
         @memset(std.mem.asBytes(&self.minor_corrhist), 0);
         @memset(std.mem.asBytes(&self.nonpawn_corrhist), 0);
+        @memset(std.mem.asBytes(&self.threat_corrhist), 0);
         @memset(std.mem.asBytes(&self.countermove_corrhist), 0);
     }
 
@@ -287,6 +289,7 @@ pub const HistoryTable = struct {
         self.minor_corrhist[board.minor_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
         self.nonpawn_corrhist[board.nonpawn_hash[0] % CORRHIST_SIZE][board.stm.toInt()][0].update(err, weight);
         self.nonpawn_corrhist[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].update(err, weight);
+        self.threat_corrhist[board.threatHash() % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
         self.countermove_corrhist[@as(usize, prev.tp.toInt()) * 64 + prev.move.to().toInt()][board.stm.toInt()].update(err, weight);
     }
 
@@ -321,13 +324,16 @@ pub const HistoryTable = struct {
         const black_nonpawn_correction: i64 = (&self.nonpawn_corrhist)[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].val;
         const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction;
 
+        const threat_correction: i64 = (&self.threat_corrhist)[board.threatHash() % CORRHIST_SIZE][board.stm.toInt()].val;
+
         const countermove_correction: i64 = (&self.countermove_corrhist)[@as(usize, prev.tp.toInt()) * 64 + prev.move.to().toInt()][board.stm.toInt()].val;
 
         const correction = (tunable_constants.corrhist_pawn_weight * pawn_correction +
             tunable_constants.corrhist_nonpawn_weight * nonpawn_correction +
             tunable_constants.corrhist_countermove_weight * countermove_correction +
             tunable_constants.corrhist_major_weight * major_correction +
-            tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
+            tunable_constants.corrhist_minor_weight * minor_correction +
+            1024 * threat_correction) >> 18;
 
         const scaled = scaleEval(board, static_eval);
 

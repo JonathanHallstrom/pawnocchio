@@ -161,6 +161,10 @@ pub fn phase(self: Board) u8 {
     return self.sumPieces([_]u8{ 0, 1, 1, 3, 6, 0 });
 }
 
+pub fn threatHash(self: Board) u64 {
+    return std.hash.murmur.Murmur2_64.hashUint64(self.occupancyFor(self.stm) & self.threats[self.stm.flipped().toInt()]);
+}
+
 pub fn classicalMaterial(self: Board) u8 {
     return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
