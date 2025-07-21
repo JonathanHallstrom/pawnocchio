@@ -430,7 +430,9 @@ fn qsearch(
                 continue;
             }
 
-            if (num_searched >= 2) {
+            if (!is_in_check and
+                num_searched >= 2)
+            {
                 break;
             }
         }
