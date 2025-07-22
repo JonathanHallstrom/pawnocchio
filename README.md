@@ -1,6 +1,16 @@
-# pawnocchio
+<div align="center">
 
-Strongest UCI Chess engine written in zig
+<img
+  width="250"
+  alt="Pawnocchio Logo"
+  src="assets/main_pawnocchio-A.png">
+ 
+<h3>Pawnocchio</h3>
+<b>Strongest UCI Chess engine written in zig</b>
+<br>
+<br>
+
+</div>
 
 ## Strength
 
@@ -17,7 +27,9 @@ Strongest UCI Chess engine written in zig
 | [1.1][v1.1]             |  2025-01-24  |           2432           |           2450*          |           2400*          |
 | [1.0][v1.0]             |  2025-01-20  |           2100*          |           2150*          |           2100*          |
 
+
 *estimated
+
 
 ## Features
 Supports FRC, also known as Chess960
