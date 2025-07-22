@@ -54,6 +54,10 @@ The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
 3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
 The Makefile is only intended to be used for testing on Openbench.
 
+## Licensing
+ - The code is licensed under the GPLv3 license. Full text can be found in LICENSE in the project root
+ - The assets are licensed under the CC-BY-ND 4.0 license. Full text can be found in assets/LICENSE
+
 ## Credit
  - [Pyrrhic](https://github.com/JonathanHallstrom/Pyrrhic/tree/patch-1) by [Andrew Grant](https://github.com/AndyGrant) for tablebase probing, under the MIT license.
 
