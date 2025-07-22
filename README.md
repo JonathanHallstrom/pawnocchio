@@ -8,8 +8,6 @@
 <h3>Pawnocchio</h3>
 <b>Strongest UCI Chess engine written in zig</b>
 <br>
-<br>
-
 </div>
 
 ## Strength
