@@ -8,9 +8,6 @@
 <h3>Pawnocchio</h3>
 <b>Strongest UCI Chess engine written in zig</b>
 <br>
-</div>
-
-## Strength
 
 |         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][ccrl Blitz] | [ipman r9 list][ipman 10+1] |
 |:-----------------------:|:------------:|:------------------------:|:------------------------:|:------------------------:|:---------------------------:|
@@ -27,7 +24,7 @@
 
 
 *estimated
-
+</div>
 
 ## Features
 Supports FRC, also known as Chess960
