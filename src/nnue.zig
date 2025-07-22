@@ -24,6 +24,10 @@ const Colour = root.Colour;
 const evaluation = root.evaluation;
 const Move = root.Move;
 
+const builtin = @import("builtin");
+const CAN_VERBATIM_NET = builtin.cpu.arch.endian() == .little and builtin.mode == .ReleaseFast and !build_options.runtime_net;
+const build_options = @import("build_options");
+
 fn madd(
     comptime N: comptime_int,
     a: @Vector(N, i16),
@@ -44,11 +48,18 @@ fn mullo(
     return a *% b;
 }
 
-const Weights = struct {
+const Weights = extern struct {
     hidden_layer_weights: [HIDDEN_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
     hidden_layer_biases: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
     output_weights: [HIDDEN_SIZE * 2 * OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
     output_biases: [OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
+    const WEIGHT_COUNT = blk: {
+        var res = 0;
+        for (std.meta.fields(Weights)) |field| {
+            res += @typeInfo(field.type).array.len;
+        }
+        break :blk res;
+    };
 };
 
 pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
@@ -64,9 +75,21 @@ pub inline fn whichOutputBucket(board: *const Board) usize {
     return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.white | board.black) - 2) / divisor);
 }
 
-pub var weights: Weights = undefined;
+var weights_file: std.fs.File = undefined;
+var mapped_weights: []align(std.heap.pageSize()) const u8 = undefined;
+const verbatim_weights = if (CAN_VERBATIM_NET)
+blk: {
+    var res: Weights = undefined;
+    @memcpy(std.mem.asBytes(&res)[0 .. Weights.WEIGHT_COUNT * @sizeOf(i16)], @embedFile("net")[0 .. Weights.WEIGHT_COUNT * @sizeOf(i16)]);
+    break :blk res;
+} else undefined;
+
+pub var weights = if (CAN_VERBATIM_NET) &verbatim_weights else if (build_options.runtime_net) @as(*const Weights, undefined) else &(struct {
+    var backing: Weights = undefined;
+}).backing;
+// @ptrCast(@alignCast(@as(*const anyopaque, @ptrCast(@embedFile("net")))));
 inline fn hiddenLayerWeightsVector() []const @Vector(VEC_SIZE, i16) {
-    comptime return @as([*]const @Vector(VEC_SIZE, i16), @ptrCast(&weights.hidden_layer_weights))[0 .. (&weights.hidden_layer_weights).len / VEC_SIZE];
+    return @as([*]const @Vector(VEC_SIZE, i16), @ptrCast(&weights.hidden_layer_weights))[0 .. weights.hidden_layer_weights.len / VEC_SIZE];
 }
 
 const SquarePieceType = struct {
@@ -111,21 +134,26 @@ pub fn idx(comptime perspective: Colour, comptime side: Colour, king_sq: Square,
     return bucket_offs + side_offs * 64 * 6 + tp_offs * 64 + sq_offs;
 }
 
+fn vecIdx(comptime perspective: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square, mirror: MirroringType) usize {
+    return idx(perspective, side, king_sq, tp, sq, mirror) * HIDDEN_SIZE / VEC_SIZE;
+}
+
 const Accumulator = struct {
     white: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
     black: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
 
-    dirty_piece: DirtyPiece = .{},
+    dirty_piece: DirtyPiece,
 
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
 
-    pub fn default() Accumulator {
+    pub inline fn default() Accumulator {
         return .{
             .white = weights.hidden_layer_biases,
             .black = weights.hidden_layer_biases,
             .white_mirrored = .{},
             .black_mirrored = .{},
+            .dirty_piece = .{},
         };
     }
 
@@ -186,53 +214,53 @@ const Accumulator = struct {
     }
 
     fn doAdd(self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
-        const add_idx = idx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
+        const add_idx = vecIdx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
 
         for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
-            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx * HIDDEN_SIZE / VEC_SIZE + i];
+            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx + i];
         }
     }
 
     fn doAddSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
-        const add_idx = idx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
-        const sub_idx = idx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
+        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
+        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
 
         for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
-            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[sub_idx * HIDDEN_SIZE / VEC_SIZE + i];
+            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx + i] -
+                hiddenLayerWeightsVector()[sub_idx + i];
         }
     }
 
     fn doAddSubSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
-        const add_idx = idx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
-        const sub_idx = idx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
-        const opp_sub_idx = idx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
+        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
+        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
+        const opp_sub_idx = vecIdx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
         for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
             self.vecAccFor(acc)[i] +=
-                hiddenLayerWeightsVector()[add_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[sub_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[opp_sub_idx * HIDDEN_SIZE / VEC_SIZE + i];
+                hiddenLayerWeightsVector()[add_idx + i] -
+                hiddenLayerWeightsVector()[sub_idx + i] -
+                hiddenLayerWeightsVector()[opp_sub_idx + i];
         }
     }
 
     fn doAddAddSubSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
-        const add1_idx = idx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
-        const sub1_idx = idx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
-        const add2_idx = idx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
-        const sub2_idx = idx(acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc));
+        const add1_idx = vecIdx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
+        const sub1_idx = vecIdx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
+        const add2_idx = vecIdx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
+        const sub2_idx = vecIdx(acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc));
 
         for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
             self.vecAccFor(acc)[i] +=
-                hiddenLayerWeightsVector()[add1_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[sub1_idx * HIDDEN_SIZE / VEC_SIZE + i] +
-                hiddenLayerWeightsVector()[add2_idx * HIDDEN_SIZE / VEC_SIZE + i] -
-                hiddenLayerWeightsVector()[sub2_idx * HIDDEN_SIZE / VEC_SIZE + i];
+                hiddenLayerWeightsVector()[add1_idx + i] -
+                hiddenLayerWeightsVector()[sub1_idx + i] +
+                hiddenLayerWeightsVector()[add2_idx + i] -
+                hiddenLayerWeightsVector()[sub2_idx + i];
         }
     }
 
     pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, old_board: *const Board) i16 {
-        // std.debug.print("{any}\n", .{weights.hidden_layer_biases[0..10]});
-        // std.debug.print("{any}\n", .{weights.output_biases[0..BUCKET_COUNT]});
+        // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)[0..10]});
+        // std.debug.print("{any}\n", .{(&weights.output_biases)[0..BUCKET_COUNT]});
         self.applyUpdate(stm.flipped(), board, old_board);
         // std.debug.print("{any}\n", .{self.white[0..10]});
         // std.debug.print("{any}\n", .{self.black[0..10]});
@@ -251,9 +279,11 @@ const Accumulator = struct {
         const us_acc = if (board.stm == .white) &self.white else &self.black;
         const them_acc = if (board.stm == .white) &self.black else &self.white;
 
-        //                  vvvvvvvv annotation to help zls
+        //                vvvvvvvv annotation to help zls
         const Vec = @as(type, @Vector(VEC_SIZE, i16));
-        var accs = std.mem.zeroes([4]@Vector(VEC_SIZE / 2, i32));
+
+        const ACC_COUNT = comptime std.math.gcd(4, HIDDEN_SIZE / VEC_SIZE);
+        var accs = std.mem.zeroes([ACC_COUNT]@Vector(VEC_SIZE / 2, i32));
         const ZERO: Vec = @splat(0);
         const ONE: Vec = @splat(QA);
         var i: usize = 0;
@@ -267,8 +297,8 @@ const Accumulator = struct {
                 const them: Vec = them_acc[i..][0..VEC_SIZE].*;
                 const them_clamped: Vec = @max(@min(them, ONE), ZERO);
 
-                const us_weights: Vec = weights.output_weights[bucket_offset..][i..][0..VEC_SIZE].*;
-                const them_weights: Vec = weights.output_weights[bucket_offset..][i + HIDDEN_SIZE ..][0..VEC_SIZE].*;
+                const us_weights: Vec = (&weights.output_weights)[bucket_offset..][i..][0..VEC_SIZE].*;
+                const them_weights: Vec = (&weights.output_weights)[bucket_offset..][i + HIDDEN_SIZE ..][0..VEC_SIZE].*;
 
                 acc.* +=
                     madd(VEC_SIZE, mullo(VEC_SIZE, us_weights, us_clamped), us_clamped) +
@@ -281,14 +311,14 @@ const Accumulator = struct {
         if (@import("builtin").mode == .Debug) {
             var verify_res: i32 = 0;
             for (0..HIDDEN_SIZE) |j| {
-                verify_res += screlu(us_acc[j]) * weights.output_weights[bucket_offset..][j];
-                verify_res += screlu(them_acc[j]) * weights.output_weights[bucket_offset..][j + HIDDEN_SIZE];
+                verify_res += screlu(us_acc[j]) * (&weights.output_weights)[bucket_offset..][j];
+                verify_res += screlu(them_acc[j]) * (&weights.output_weights)[bucket_offset..][j + HIDDEN_SIZE];
             }
             std.debug.assert(res == verify_res);
         }
         res = @divTrunc(res, QA); // res /= QA
 
-        res += weights.output_biases[which_bucket];
+        res += (&weights.output_biases)[which_bucket];
         const scaled = @divTrunc(res * SCALE, QA * QB);
 
         return evaluation.clampScore(scaled);
@@ -430,30 +460,57 @@ fn screlu(x: i32) i32 {
     return clamped * clamped;
 }
 
-pub fn init() void {
+pub fn init() !void {
+    if (build_options.runtime_net) {
+        weights_file = try std.fs.openFileAbsolute(build_options.net_path, .{});
+        if (@import("builtin").target.os.tag == .windows) {
+            @compileError("sorry mmap-ing the network manually is not supported on windows");
+        }
+        mapped_weights = try std.posix.mmap(null, Weights.WEIGHT_COUNT * @sizeOf(i16), std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
+
+        weights = @ptrCast(mapped_weights.ptr);
+
+        return;
+    }
+
+    if (CAN_VERBATIM_NET) {
+        return;
+    }
+
     var fbs = std.io.fixedBufferStream(@embedFile("net"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
-    for (0..weights.hidden_layer_weights.len) |i| {
-        weights.hidden_layer_weights[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    for (0..(&weights.hidden_layer_weights).len) |i| {
+        (&weights.hidden_layer_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
     }
 
     // then the biases for the first layer (there should be HIDDEN_SIZE of them)
-    for (0..weights.hidden_layer_biases.len) |i| {
-        weights.hidden_layer_biases[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    for (0..(&weights.hidden_layer_biases).len) |i| {
+        (&weights.hidden_layer_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
     }
 
     // then the weights for the second layer (there should be HIDDEN_SIZE * 2 of them)
-    for (0..weights.output_weights.len) |i| {
-        weights.output_weights[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    for (0..(&weights.output_weights).len) |i| {
+        (&weights.output_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
     }
 
     // then finally the bias(es)
-    for (0..weights.output_biases.len) |i| {
-        weights.output_biases[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    for (0..(&weights.output_biases).len) |i| {
+        (&weights.output_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+    }
+    // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)});
+}
+
+pub fn deinit() void {
+    if (CAN_VERBATIM_NET) {
+        return;
+    }
+    if (!build_options.runtime_net) {
+        return;
     }
 
-    // std.debug.print("{any}\n", .{weights.hidden_layer_biases});
+    weights_file.close();
+    std.posix.munmap(mapped_weights);
 }
 
 pub fn initThreadLocals() void {

@@ -17,12 +17,21 @@
 const std = @import("std");
 
 test {
+    _ = pyrrhic;
     std.testing.refAllDecls(@This());
 }
 
+comptime {
+    if (use_tbs) {
+        _ = pyrrhic;
+    }
+}
+pub const use_tbs = @import("build_options").use_tbs;
+pub const pyrrhic = @import("pyrrhic.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const Board = @import("Board.zig");
 pub const Move = @import("move.zig").Move;
+pub const MoveType = @import("move.zig").MoveType;
 pub const movegen = @import("movegen.zig");
 pub const attacks = @import("attacks.zig");
 pub const zobrist = @import("zobrist.zig");
@@ -41,9 +50,20 @@ pub const refreshCache = @import("refresh_cache.zig").refreshCache;
 pub const viriformat = @import("viriformat.zig");
 pub const wdl = @import("wdl.zig");
 
-pub const is_0_14_0 = @import("builtin").zig_version.minor >= 14;
-
 const assert = std.debug.assert;
+
+pub const WDL = enum(u2) {
+    win = 2,
+    draw = 1,
+    loss = 0,
+
+    pub fn toInt(self: WDL) u8 {
+        return @intFromEnum(self);
+    }
+    pub fn flipped(self: WDL) WDL {
+        return @enumFromInt(2 - self.toInt());
+    }
+};
 
 pub const Colour = enum(u1) {
     white = 0,
@@ -67,7 +87,7 @@ pub fn init() void {
         fn initImpl() void {
             stdout = std.io.getStdOut();
             attacks.init();
-            evaluation.init();
+            evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
             engine.reset();
             engine.setTTSize(16) catch std.debug.panic("Fatal: couldn't allocate default TT size\n", .{});
             engine.setThreadCount(1) catch std.debug.panic("Fatal: couldn't allocate default thread count\n", .{});
@@ -80,8 +100,8 @@ pub fn init() void {
 pub fn deinit() void {
     const globals = struct {
         fn deinitImpl() void {
-            stdout = std.io.getStdOut();
-            attacks.init();
+            pyrrhic.deinit();
+            evaluation.deinit();
         }
         var deinit_once = std.once(deinitImpl);
     };
@@ -263,16 +283,21 @@ pub const PieceType = enum {
     }
 };
 
-pub const NullableColouredPieceType = struct {
-    data: u8 = null_bit,
+pub const NullableColouredPieceType = enum(u8) {
+    _,
+
     const null_bit = 128;
 
+    pub fn init() NullableColouredPieceType {
+        return @enumFromInt(null_bit);
+    }
+
     pub inline fn isNull(self: NullableColouredPieceType) bool {
-        return self.data & null_bit != 0;
+        return @intFromEnum(self) & null_bit != 0;
     }
 
     pub inline fn from(ocpt: ?ColouredPieceType) NullableColouredPieceType {
-        return if (ocpt) |cpt| fromColouredPieceType(cpt) else .{};
+        return if (ocpt) |cpt| fromColouredPieceType(cpt) else NullableColouredPieceType.init();
     }
 
     pub inline fn opt(self: NullableColouredPieceType) ?ColouredPieceType {
@@ -280,11 +305,11 @@ pub const NullableColouredPieceType = struct {
     }
 
     pub inline fn fromColouredPieceType(cpt: ColouredPieceType) NullableColouredPieceType {
-        return .{ .data = @intCast(cpt.toInt()) };
+        return @enumFromInt(cpt.toInt());
     }
 
     pub inline fn toColouredPieceType(self: NullableColouredPieceType) ColouredPieceType {
-        return @enumFromInt(self.data);
+        return @enumFromInt(@intFromEnum(self));
     }
 };
 
@@ -349,9 +374,26 @@ pub const ColouredPieceType = enum(u4) {
     }
 };
 
-pub const ScoredMove = struct {
+pub const ScoredMove = packed struct {
     move: Move,
+    padding: u16 = 0,
     score: i32,
+
+    pub fn toScoreU64(self: ScoredMove) u64 {
+        var res: u64 = @bitCast(self);
+        res &= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 });
+        res ^= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = @bitCast(@as(u32, 0x80000000)) });
+        return res << comptime scoreShift();
+    }
+
+    fn scoreShift() comptime_int {
+        comptime return @clz(@as(u64, @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 })));
+    }
+
+    // comptime {
+    //     const x: u64 = @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 });
+    //     @compileLog(std.fmt.comptimePrint("{b}", .{x}));
+    // }
 
     pub fn desc(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
         return lhs.score > rhs.score;
@@ -386,14 +428,28 @@ pub const ScoreType = enum(u2) {
 pub const TTFlags = packed struct {
     score_type: ScoreType = .none,
     is_pv: bool = false,
+    age: u5 = 0,
 };
 
+comptime {
+    assert(@sizeOf(TTFlags) == 1);
+}
+
 pub const TTEntry = struct {
-    hash: u64 = 0,
+    hash: u16 = 0,
     score: i16 = 0,
     flags: TTFlags = .{},
     move: Move = Move.init(),
     depth: u8 = 0,
+    raw_static_eval: i16 = 0,
+
+    pub fn compress(h: u64) u16 {
+        return @intCast(h & 0xffff);
+    }
+
+    pub fn hashEql(self: TTEntry, other_hash: u64) bool {
+        return self.hash == compress(other_hash);
+    }
 };
 
 var stdout: std.fs.File = undefined;
@@ -410,31 +466,14 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
 }
 
 pub fn isConstPointer(comptime T: type) bool {
-    if (is_0_14_0) {
-        if (@typeInfo(T) == .pointer) {
-            return @typeInfo(T).pointer.is_const;
-        }
-    } else {
-        if (@typeInfo(T) == .Pointer) {
-            return @typeInfo(T).Pointer.is_const;
-        }
+    if (@typeInfo(T) == .pointer) {
+        return @typeInfo(T).pointer.is_const;
     }
     return false;
 }
 
 pub fn inheritConstness(comptime Base: type, comptime Pointer: type) type {
-    comptime var ptr_attrs: std.builtin.Type.Pointer = undefined;
-    if (is_0_14_0) {
-        ptr_attrs = @typeInfo(Pointer).pointer;
-    } else {
-        ptr_attrs = @typeInfo(Pointer).Pointer;
-    }
-    if (isConstPointer(Base)) {
-        ptr_attrs.is_const = true;
-    }
-    if (is_0_14_0) {
-        return @Type(.{ .pointer = ptr_attrs });
-    } else {
-        return @Type(.{ .Pointer = ptr_attrs });
-    }
+    comptime var ptr_attrs = @typeInfo(Pointer).pointer;
+    ptr_attrs.is_const = @typeInfo(Base).pointer.is_const;
+    return @Type(.{ .pointer = ptr_attrs });
 }

@@ -19,13 +19,18 @@ const std = @import("std");
 const root = @import("root.zig");
 
 const Board = root.Board;
-
-const use_hce = false;
+pub const use_hce = false;
 const impl = if (use_hce) @import("hce.zig") else @import("nnue.zig");
 
-pub fn init() void {
+pub fn init() !void {
     if (@hasDecl(impl, "init")) {
-        impl.init();
+        try impl.init();
+    }
+}
+
+pub fn deinit() void {
+    if (@hasDecl(impl, "deinit")) {
+        impl.deinit();
     }
 }
 
@@ -38,9 +43,12 @@ pub fn initThreadLocals() void {
 pub const State = impl.State;
 pub const evaluate: fn (comptime root.Colour, *const Board, *const Board, *State) i16 = impl.evaluate;
 
-pub const checkmate_score: i16 = 16000;
-pub const win_score: i16 = checkmate_score - root.Searcher.MAX_PLY;
-pub const inf_score: i16 = 16383;
+pub const inf_score: i16 = 32767;
+pub const checkmate_score: i16 = 32000;
+pub const highest_non_mate_score = checkmate_score - root.Searcher.MAX_PLY - 1;
+pub const tb_win_score: i16 = 30000;
+pub const highest_non_TB_score = tb_win_score - root.Searcher.MAX_PLY - 1;
+pub const win_score: i16 = 29000;
 
 pub fn clampScore(score: anytype) i16 {
     return @intCast(std.math.clamp(score, -(win_score - 1), win_score - 1));
@@ -79,8 +87,20 @@ pub fn matedIn(plies: u16) i16 {
     return -checkmate_score + @as(i16, @intCast(plies));
 }
 
+pub fn tbWin(plies: u8) i16 {
+    return tb_win_score - plies;
+}
+
+pub fn tbLoss(plies: u8) i16 {
+    return -tb_win_score + plies;
+}
+
 pub fn isMateScore(score: i32) bool {
-    return @abs(score) >= win_score;
+    return @abs(score) > highest_non_mate_score;
+}
+
+pub fn isTBScore(score: i32) bool {
+    return @abs(score) > highest_non_TB_score;
 }
 
 pub fn formatScore(score: i16) std.BoundedArray(u8, 15) {

@@ -54,7 +54,7 @@ const MAX_CORRHIST = 256 * 32;
 const SHIFT = @ctz(MAX_HISTORY);
 
 pub const QuietHistory = struct {
-    vals: [2 * 64 * 64]i16,
+    vals: [2 * 64 * 64 * 2 * 2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -74,24 +74,67 @@ pub const QuietHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    inline fn entry(self: anytype, col: Colour, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
-        const col_offs: usize = col.toInt();
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = board.stm.toInt();
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
-        return &(&self.vals)[col_offs * 64 * 64 + from_offs * 64 + to_offs];
+        const threats = board.threats[board.stm.flipped().toInt()];
+        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
+        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
+
+        return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + from_offs * 64 * 2 * 2 + to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
-    inline fn update(self: *QuietHistory, col: Colour, move: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(col, move), if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
+        gravityUpdate(self.entry(board, move), if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
-    inline fn read(self: *const QuietHistory, col: Colour, move: TypedMove) i16 {
-        return self.entry(col, move).*;
+    inline fn read(self: *const QuietHistory, board: *const Board, move: TypedMove) i16 {
+        return self.entry(board, move).*;
+    }
+};
+
+pub const PawnHistory = struct {
+    const HashSize = 2048;
+    vals: [HashSize * 2 * 6 * 64]i16,
+
+    fn bonus(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.pawn_history_bonus_mult + tunable_constants.pawn_history_bonus_offs,
+            tunable_constants.pawn_history_bonus_max,
+        ));
+    }
+
+    fn penalty(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.pawn_history_penalty_mult + tunable_constants.pawn_history_penalty_offs,
+            tunable_constants.pawn_history_penalty_max,
+        ));
+    }
+
+    inline fn reset(self: *PawnHistory) void {
+        @memset(std.mem.asBytes(&self.vals), 0);
+    }
+
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = board.stm.toInt();
+        const tp_offs: usize = move.tp.toInt();
+        const to_offs: usize = move.move.to().toInt();
+        const hash_offs: usize = @intCast(board.pawn_hash % HashSize);
+        return &(&self.vals)[hash_offs * 2 * 6 * 64 + col_offs * 6 * 64 + tp_offs * 64 + to_offs];
+    }
+
+    inline fn update(self: *PawnHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
+        gravityUpdate(self.entry(board, move), if (is_bonus) bonus(depth) else -penalty(depth));
+    }
+
+    inline fn read(self: *const PawnHistory, board: *const Board, move: TypedMove) i16 {
+        return self.entry(board, move).*;
     }
 };
 
 pub const NoisyHistory = struct {
-    vals: [64 * 64 * 13]i16,
+    vals: [64 * 64 * 13 * 2 * 2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -116,7 +159,10 @@ pub const NoisyHistory = struct {
         const to_offs: usize = move.move.to().toInt();
         const captured = (&board.mailbox)[to_offs];
         const captured_offs = if (captured.opt()) |capt| capt.toInt() else 12;
-        return &(&self.vals)[from_offs * 64 * 13 + to_offs * 13 + captured_offs];
+        const threats = board.threats[board.stm.flipped().toInt()];
+        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
+        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
+        return &(&self.vals)[from_offs * 64 * 13 * 2 * 2 + to_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
     inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
@@ -129,7 +175,7 @@ pub const NoisyHistory = struct {
 };
 
 pub const ContHistory = struct {
-    vals: [2 * 6 * 64 * 6 * 64]i16,
+    vals: [2 * 6 * 64 * 2 * 6 * 64]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -149,24 +195,26 @@ pub const ContHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    inline fn entry(self: anytype, col: Colour, move: TypedMove, prev: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+    inline fn entry(self: anytype, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = col.toInt();
         const move_offs: usize = @as(usize, move.tp.toInt()) * 64 + move.move.to().toInt();
+        const prev_col_offs: usize = prev_col.toInt();
         const prev_offs: usize = @as(usize, prev.tp.toInt()) * 64 + prev.move.to().toInt();
-        return &(&self.vals)[col_offs * 6 * 64 * 6 * 64 + prev_offs * 6 * 64 + move_offs];
+        return &(&self.vals)[col_offs * 6 * 64 * 2 * 6 * 64 + prev_offs * 2 * 6 * 64 + move_offs * 2 + prev_col_offs];
     }
 
-    inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(col, move, prev), if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove, depth: i32, is_bonus: bool) void {
+        gravityUpdate(self.entry(col, move, prev_col, prev), if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
-    inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev: TypedMove) i16 {
-        return self.entry(col, move, prev).*;
+    inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove) i16 {
+        return self.entry(col, move, prev_col, prev).*;
     }
 };
 
 pub const HistoryTable = struct {
     quiet: QuietHistory,
+    pawn: PawnHistory,
     noisy: NoisyHistory,
     countermove: ContHistory,
     pawn_corrhist: [16384][2]CorrhistEntry,
@@ -177,6 +225,7 @@ pub const HistoryTable = struct {
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
+        self.pawn.reset();
         self.noisy.reset();
         self.countermove.reset();
         @memset(std.mem.asBytes(&self.pawn_corrhist), 0);
@@ -186,19 +235,34 @@ pub const HistoryTable = struct {
         @memset(std.mem.asBytes(&self.countermove_corrhist), 0);
     }
 
-    pub fn readQuiet(self: *const HistoryTable, board: *const Board, move: Move, prev: TypedMove) i32 {
+    pub fn readQuietPruning(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        res += self.quiet.read(board.stm, typed);
-        res += self.countermove.read(board.stm, typed, prev);
+        res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
+        res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
+        res += tunable_constants.cont1_pruning_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
+        res += tunable_constants.cont2_pruning_weight * self.countermove.read(board.stm, typed, board.stm, prev);
 
-        return res;
+        return @divTrunc(res, 1024);
     }
 
-    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, prev: TypedMove, depth: i32, is_bonus: bool) void {
+    pub fn readQuietOrdering(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
         const typed = TypedMove.fromBoard(board, move);
-        self.quiet.update(board.stm, typed, depth, is_bonus);
-        self.countermove.update(board.stm, typed, prev, depth, is_bonus);
+        var res: i32 = 0;
+        res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
+        res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
+        res += tunable_constants.cont1_ordering_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
+        res += tunable_constants.cont2_ordering_weight * self.countermove.read(board.stm, typed, board.stm, prev);
+
+        return @divTrunc(res, 1024);
+    }
+
+    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove, depth: i32, is_bonus: bool) void {
+        const typed = TypedMove.fromBoard(board, move);
+        self.quiet.update(board, typed, depth, is_bonus);
+        self.pawn.update(board, typed, depth, is_bonus);
+        self.countermove.update(board.stm, typed, board.stm.flipped(), cur, depth, is_bonus);
+        self.countermove.update(board.stm, typed, board.stm, prev, depth, is_bonus);
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
@@ -215,7 +279,7 @@ pub const HistoryTable = struct {
     }
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {
-        const err = (score - corrected_static_eval) * 256;
+        const err = score - corrected_static_eval;
         const weight = @min(depth, 15) + 1;
 
         self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
@@ -265,15 +329,36 @@ pub const HistoryTable = struct {
             tunable_constants.corrhist_major_weight * major_correction +
             tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
 
-        comptime var divisor = 1;
-        const fifty_move_rule_scaled = @as(i64, static_eval) * (200 - board.halfmove);
-        divisor *= 200;
-        const material_scaled = fifty_move_rule_scaled * (@as(i64, 224) + board.phase());
-        divisor *= 256;
-
-        const scaled = @divTrunc(material_scaled, divisor);
+        const scaled = scaleEval(board, static_eval);
 
         return evaluation.clampScore(scaled + correction);
+    }
+
+    pub fn scaleEval(board: *const Board, eval: i16) i16 {
+        comptime var divisor = 1;
+        const fifty_move_rule_scaled = @as(i64, eval) * (200 - board.halfmove);
+        divisor *= 200;
+        @setEvalBranchQuota(1 << 30);
+        const vals: [6]i16 = if (root.tuning.do_tuning) .{
+            @intCast(tunable_constants.material_scaling_pawn),
+            @intCast(tunable_constants.material_scaling_knight),
+            @intCast(tunable_constants.material_scaling_bishop),
+            @intCast(tunable_constants.material_scaling_rook),
+            @intCast(tunable_constants.material_scaling_queen),
+            0,
+        } else comptime .{
+            tunable_constants.material_scaling_pawn,
+            tunable_constants.material_scaling_knight,
+            tunable_constants.material_scaling_bishop,
+            tunable_constants.material_scaling_rook,
+            tunable_constants.material_scaling_queen,
+            0,
+        };
+
+        const material_scaled = fifty_move_rule_scaled * (tunable_constants.material_scaling_base + board.sumPieces(vals));
+        divisor *= 16384;
+
+        return @intCast(@divTrunc(material_scaled, divisor));
     }
 };
 
@@ -287,9 +372,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        const val = self.val;
-        const lerped = (val * (256 - weight) + err * weight) >> 8;
-        const clamped = std.math.clamp(lerped, -MAX_CORRHIST, MAX_CORRHIST);
-        self.val = @intCast(clamped);
+        gravityUpdate(&self.val, std.math.clamp(err * weight << 1, -16000, 16000));
     }
 };

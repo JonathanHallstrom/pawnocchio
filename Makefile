@@ -22,5 +22,5 @@ NET_SPECIFIER=
 endif
 
 default: net
-	zig build --release=fast install $(NET_SPECIFIER)
+	zig build --release=fast install $(NET_SPECIFIER) -Druntime_net
 	@$(MV)

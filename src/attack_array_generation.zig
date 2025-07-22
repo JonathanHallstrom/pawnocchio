@@ -153,7 +153,6 @@ fn findMagics(bishops: bool, r: Random) struct { [64]AttackEntry, usize } {
 
     var offs: u32 = 0;
     inline for (0..64) |i| {
-        // std.debug.print("{s}: {}\n", .{ if (bishops) "bishop" else "rook", i });
         const s = Square.fromInt(i);
         const mask = if (bishops) Bitboard.bishopRelevantSquares(s.toBitboard()) else Bitboard.rookRelevantSquares(s.toBitboard());
 

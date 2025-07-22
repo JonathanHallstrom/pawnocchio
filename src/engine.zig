@@ -23,10 +23,10 @@ const Searcher = root.Searcher;
 var is_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
 var stop_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
 pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
-var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
+pub var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
 var num_finished_threads: std.atomic.Value(usize) align(std.atomic.cache_line) = std.atomic.Value(usize).init(0);
 var current_num_threads: usize align(std.atomic.cache_line) = 0; // 0 for uninitialized
-pub var searchers: []Searcher align(std.atomic.cache_line) = &.{};
+pub var searchers: []align(std.atomic.cache_line) Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
@@ -67,7 +67,7 @@ pub fn reset() void {
 }
 
 pub fn setTTSize(new_size: usize) !void {
-    tt = try std.heap.page_allocator.realloc(tt, new_size * ((1 << 20) / @sizeOf(root.TTEntry)));
+    tt = try std.heap.page_allocator.realloc(tt, @intCast(new_size * @as(u128, 1 << 20) / @sizeOf(root.TTEntry)));
     resetTT();
 }
 
@@ -122,11 +122,14 @@ pub fn startSearch(settings: SearchSettings) void {
 
 fn datagenWorker(
     i: usize,
-    random_move_count: u8,
+    random_move_count_low: u8,
+    random_move_count_high: u8,
+    min_depth: i32,
     node_count: u64,
     writer: anytype,
     writer_mutex: *std.Thread.Mutex,
     total_position_count: *std.atomic.Value(usize),
+    total_game_count: *std.atomic.Value(usize),
 ) void {
     const viriformat = root.viriformat;
     var seed: u64 = 0;
@@ -149,37 +152,26 @@ fn datagenWorker(
         }
         var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
         var hashes = std.BoundedArray(u64, 200){};
-        random_move_loop: for (0..random_move_count) |_| {
-            switch (board.stm) {
-                inline else => |stm| {
-                    var rec = root.movegen.MoveListReceiver{};
-                    root.movegen.generateAllQuiets(stm, &board, &rec);
-
-                    rng.random().shuffle(root.Move, rec.vals.slice());
-                    for (rec.vals.slice()) |move| {
-                        if (board.isLegal(stm, move)) {
-                            board.makeMove(stm, move, root.Board.NullEvalState{});
-                            if (board.halfmove == 0) {
-                                hashes.clear();
-                            }
-                            hashes.append(board.hash) catch @panic("failed to append hash");
-                            continue :random_move_loop;
-                        }
-                    }
-                    continue :datagen_loop;
-                },
+        const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
+        for (0..random_move_count) |_| {
+            if (!board.makeMoveDatagen(rng.random())) {
+                continue :datagen_loop;
             }
+            hashes.append(board.hash) catch @panic("failed to append hash");
         }
         var game: viriformat.Game = viriformat.Game.from(board, fba.allocator());
         game_loop: for (0..2000) |move_idx| {
             var limits = root.Limits.initFixedTime(std.time.ns_per_s);
             limits.soft_nodes = node_count;
+            limits.hard_nodes = 100 * node_count;
+            limits.min_depth = min_depth;
             searchers[i].startSearch(
                 root.Searcher.Params{
                     .board = board,
                     .limits = limits,
                     .needs_full_reset = move_idx == 0,
                     .previous_hashes = hashes,
+                    .normalize = false,
                 },
                 false,
                 true,
@@ -235,14 +227,11 @@ fn datagenWorker(
             }
             game.addMove(search_move, adjusted) catch unreachable;
             hashes.append(board.hash) catch unreachable;
-            // std.debug.print("{s}", .{dbg_log});
-            if (root.evaluation.isMateScore(search_score)) {
+            if (root.evaluation.isMateScore(search_score) or root.evaluation.isTBScore(search_score)) {
                 if (adjusted > 0) {
-                    // std.debug.print("white {s}\n", .{fen.slice()});
-                    game.setOutCome(2);
+                    game.setOutCome(.win);
                 } else {
-                    // std.debug.print("black {s}\n", .{fen.slice()});
-                    game.setOutCome(0);
+                    game.setOutCome(.loss);
                 }
                 break :game_loop;
             }
@@ -253,6 +242,7 @@ fn datagenWorker(
         }
 
         _ = total_position_count.fetchAdd(game.moves.items.len, .seq_cst);
+        _ = total_game_count.fetchAdd(1, .seq_cst);
         num_positions_written += game.moves.items.len;
         writer_mutex.lock();
         game.serializeInto(writer) catch @panic("failed to serialize position");
@@ -267,10 +257,10 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     const writer = buf_writer.writer();
     var writer_mutex = std.Thread.Mutex{};
     var total_position_count = std.atomic.Value(usize).init(0);
+    var total_game_count = std.atomic.Value(usize).init(0);
     for (0..current_num_threads) |i| {
         searchers[i].tt = try std.heap.page_allocator.alloc(root.TTEntry, (16 << 20) / @sizeOf(root.TTEntry));
-        // datagenWorker(0, 8, num_nodes, out_file.writer(), &writer_mutex, &total_position_count);
-        try thread_pool.spawn(datagenWorker, .{ i, 8, num_nodes, &writer, &writer_mutex, &total_position_count });
+        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 9, num_nodes, &writer, &writer_mutex, &total_position_count, &total_game_count });
     }
 
     var prev_positions: usize = 0;
@@ -298,11 +288,59 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
         const lower_bound = if (pps_ema_opt) |pps_ema| pps_ema / 2 -| 1000 else pps;
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
-        pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 4 + clamped_pps) / 5 else pps;
-        std.debug.print("total positions:{} positions/s:{}\n", .{
+        pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 19 + clamped_pps) / 20 else pps;
+        std.debug.print("games:{} positions:{} positions/s:{}\n", .{
+            total_game_count.load(.seq_cst),
             positions,
             pps_ema_opt.?,
         });
+    }
+}
+
+pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: std.io.AnyWriter, allocator: std.mem.Allocator) !void {
+    var rng = std.Random.DefaultPrng.init(seed);
+    var fens = std.ArrayList([]const u8).init(allocator);
+    defer fens.deinit();
+    defer for (fens.items) |fen| {
+        allocator.free(fen);
+    };
+    if (path) |p| {
+        var f = try std.fs.cwd().openFile(p, .{});
+        defer f.close();
+
+        var br = std.io.bufferedReader(f.reader());
+        while (br.reader().readUntilDelimiterAlloc(allocator, '\n', 128)) |fen| {
+            try fens.append(fen);
+            const dfrc_pos = rng.random().uintLessThan(u20, 960 * 960);
+            try fens.append(try allocator.dupe(u8, root.Board.dfrcPosition(dfrc_pos).toFen().slice()));
+        } else |_| {}
+    }
+    rng.random().shuffle([]const u8, fens.items);
+
+    var remaining: usize = count;
+    var i: usize = 0;
+    fen_loop: while (remaining > 0) : (i += 1) {
+        var board = if (fens.items.len > 0 and rng.random().boolean())
+            try root.Board.parseFen(fens.items[i % fens.items.len], true)
+        else
+            root.Board.dfrcPosition(rng.random().uintLessThan(u20, 960 * 960));
+
+        var moves = 1 + rng.random().uintLessThan(u8, 4);
+        // do more random moves if we there are a lot of pieces on the first couple ranks
+        moves += (@popCount(board.occupancy() & 0xff000000000000ff) + 2) / 6;
+        moves += @popCount(board.occupancy() & 0x00ff00000000ff00) / 8;
+        for (0..moves) |_| {
+            if (!board.makeMoveDatagen(rng.random())) {
+                continue :fen_loop;
+            }
+        }
+
+        if (!board.hasLegalMove()) {
+            continue :fen_loop;
+        }
+
+        try writer.print("info string genfens {s}\n", .{board.toFen().slice()});
+        remaining -= 1;
     }
 }
 

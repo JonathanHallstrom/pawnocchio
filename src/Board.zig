@@ -35,7 +35,7 @@ const Board = @This();
 white: u64 = 0,
 black: u64 = 0,
 pieces: [6]u64 = .{0} ** 6,
-mailbox: [64]NullableColouredPieceType = .{NullableColouredPieceType{}} ** 64,
+mailbox: [64]NullableColouredPieceType = .{NullableColouredPieceType.init()} ** 64,
 
 halfmove: u8 = 0,
 fullmove: u32 = 1,
@@ -55,6 +55,7 @@ castling_rights: CastlingRights = CastlingRights.init(),
 pinned: [2]u64 = .{0} ** 2,
 // pinner: [2]u64 = .{0} ** 2,
 checkers: u64 = 0,
+threats: [2]u64 = .{0} ** 2,
 
 pub inline fn occupancyFor(self: Board, col: Colour) u64 {
     return if (col == .white) self.white else self.black;
@@ -120,26 +121,48 @@ pub inline fn kings(self: Board) u64 {
     return self.pieces[5];
 }
 
+pub inline fn pieceOn(self: Board, sq: Square) ?PieceType {
+    const cpt = (&self.mailbox)[sq.toInt()];
+    return if (cpt.isNull()) null else cpt.toColouredPieceType().toPieceType();
+}
+
+pub inline fn colourOn(self: Board, sq: Square) ?Colour {
+    if (self.isSquareEmpty(sq)) {
+        return null;
+    }
+    return if (self.white & sq.toBitboard() != 0) .white else .black;
+}
+
+pub inline fn isSquareEmpty(self: Board, sq: Square) bool {
+    return self.occupancy() & sq.toBitboard() == 0;
+}
+
+pub inline fn nullableColouredPieceOn(self: *const Board, sq: Square) NullableColouredPieceType {
+    return (&self.mailbox)[sq.toInt()];
+}
+
+pub inline fn colouredPieceOn(self: *const Board, sq: Square) ?ColouredPieceType {
+    return self.nullableColouredPieceOn(sq).opt();
+}
+
 pub inline fn startingRankFor(self: Board, col: Colour) Rank {
     return self.castling_rights.startingRankFor(col);
 }
 
-pub fn phase(self: Board) u8 {
-    const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
-    var res: u8 = 0;
+pub fn sumPieces(self: Board, values: anytype) std.meta.Child(@TypeOf(values)) {
+    var res: std.meta.Child(@TypeOf(values)) = 0;
     for (PieceType.all) |pt| {
-        res += gamephaseInc[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
+        res += values[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
     }
     return res;
 }
 
+pub fn phase(self: Board) u8 {
+    return self.sumPieces([_]u8{ 0, 1, 1, 3, 6, 0 });
+}
+
 pub fn classicalMaterial(self: Board) u8 {
-    const value: [6]u8 = .{ 1, 3, 3, 5, 9, 0 };
-    var res: u8 = 0;
-    for (PieceType.all) |pt| {
-        res += value[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
-    }
-    return res;
+    return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
 
 pub fn parseFen(fen: []const u8, permissive: bool) !Board {
@@ -628,7 +651,7 @@ pub inline fn isPromo(_: Board, move: Move) bool {
 }
 
 pub inline fn isCapture(self: Board, move: Move) bool {
-    return self.isEnPassant(move) or !self.isCastling(move) and !(&self.mailbox)[move.to().toInt()].isNull();
+    return self.isEnPassant(move) or !self.isCastling(move) and self.colourOn(move.to()) != null;
 }
 
 pub inline fn isNoisy(self: Board, move: Move) bool {
@@ -711,7 +734,7 @@ pub inline fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq:
     self.occupancyPtrFor(col).* ^= bb;
     self.pieces[pt.toInt()] ^= bb;
     self.zobristPiece(col, pt, sq);
-    (&self.mailbox)[sq.toInt()] = .{};
+    (&self.mailbox)[sq.toInt()] = NullableColouredPieceType.init();
     eval_state.sub(col, pt, sq);
 }
 
@@ -721,7 +744,7 @@ pub inline fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from:
     self.pieces[pt.toInt()] ^= bb;
     self.zobristPiece(col, pt, from);
     self.zobristPiece(col, pt, to);
-    (&self.mailbox)[from.toInt()] = .{};
+    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col).nullable();
     eval_state.addSub(col, pt, to, col, pt, from);
 }
@@ -733,7 +756,7 @@ pub inline fn movePiecePromo(self: *Board, comptime col: Colour, promo_pt: Piece
     self.pieces[promo_pt.toInt()] ^= to.toBitboard();
     self.zobristPiece(col, .pawn, from);
     self.zobristPiece(col, promo_pt, to);
-    (&self.mailbox)[from.toInt()] = .{};
+    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(promo_pt, col).nullable();
     eval_state.addSub(col, promo_pt, to, col, .pawn, from);
 }
@@ -747,8 +770,8 @@ pub inline fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType
     self.zobristPiece(col, pt, from);
     self.zobristPiece(col, pt, to);
     self.zobristPiece(col.flipped(), captured_pt, captured_square);
-    (&self.mailbox)[from.toInt()] = .{};
-    (&self.mailbox)[captured_square.toInt()] = .{};
+    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
+    (&self.mailbox)[captured_square.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col).nullable();
     eval_state.addSubSub(col, pt, to, col, pt, from, col.flipped(), captured_pt, captured_square);
 }
@@ -763,8 +786,8 @@ pub inline fn movePiecePromoCapture(self: *Board, comptime col: Colour, promo_pt
     self.zobristPiece(col, .pawn, from);
     self.zobristPiece(col, promo_pt, to);
     self.zobristPiece(col.flipped(), captured_pt, captured_square);
-    (&self.mailbox)[from.toInt()] = .{};
-    (&self.mailbox)[captured_square.toInt()] = .{};
+    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
+    (&self.mailbox)[captured_square.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(promo_pt, col).nullable();
     eval_state.addSubSub(col, promo_pt, to, col, .pawn, from, col.flipped(), captured_pt, captured_square);
 }
@@ -779,14 +802,14 @@ pub inline fn movePieceCastling(self: *Board, comptime col: Colour, king_from: S
     self.zobristPiece(col, .king, king_to);
     self.zobristPiece(col, .rook, rook_from);
     self.zobristPiece(col, .rook, rook_to);
-    (&self.mailbox)[king_from.toInt()] = .{};
-    (&self.mailbox)[rook_from.toInt()] = .{};
+    (&self.mailbox)[king_from.toInt()] = NullableColouredPieceType.init();
+    (&self.mailbox)[rook_from.toInt()] = NullableColouredPieceType.init();
     (&self.mailbox)[king_to.toInt()] = ColouredPieceType.fromPieceType(.king, col).nullable();
     (&self.mailbox)[rook_to.toInt()] = ColouredPieceType.fromPieceType(.rook, col).nullable();
     eval_state.addAddSubSub(col, .king, king_to, col, .rook, rook_to, col, .king, king_from, col, .rook, rook_from);
 }
 
-pub inline fn updatePins(self: *Board, comptime col: Colour) void {
+pub inline fn updatePins(noalias self: *Board, comptime col: Colour) void {
     const occ = self.occupancy();
     const us_occ = self.occupancyFor(col);
     const king_bb = self.kingFor(col);
@@ -817,9 +840,29 @@ pub inline fn updatePins(self: *Board, comptime col: Colour) void {
     // self.pinner[col.flipped().toInt()] = pinner;
 }
 
+pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
+    const occ = self.occupancy();
+    var threatened: u64 = 0;
+
+    threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
+    threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
+    threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
+    var iter = Bitboard.iterator(self.bishopsFor(col) | self.queensFor(col));
+    while (iter.next()) |sq| {
+        threatened |= attacks.getBishopAttacks(sq, occ);
+    }
+    iter = Bitboard.iterator(self.rooksFor(col) | self.queensFor(col));
+    while (iter.next()) |sq| {
+        threatened |= attacks.getRookAttacks(sq, occ);
+    }
+    self.threats[col.toInt()] = threatened;
+}
+
 pub fn updateMasks(self: *Board, col: Colour) void {
     self.updatePins(.white);
     self.updatePins(.black);
+    self.updateThreats(.white);
+    self.updateThreats(.black);
     self.checkers = switch (col) {
         inline else => |col_comptime| movegen.attackersFor(
             col_comptime.flipped(),
@@ -874,7 +917,45 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     // dont call updateMasks since there has been no change in the position, especially not checkers
 }
 
-pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
+pub inline fn givesCheckApproximate(noalias self: *const Board, comptime stm: Colour, move: Move) bool {
+    const from = move.from();
+    const to = move.to();
+    const them_king = self.kingFor(stm.flipped());
+    if (them_king & switch (self.pieceOn(from).?) { // direct check
+        .pawn => Bitboard.pawnAttacks(to, stm),
+        .knight => Bitboard.knightMoves(to),
+        .bishop => attacks.getBishopAttacks(to, self.occupancy()),
+        .rook => attacks.getRookAttacks(to, self.occupancy()),
+        .queen => attacks.getBishopAttacks(to, self.occupancy()) | attacks.getRookAttacks(to, self.occupancy()),
+        .king => 0,
+    } != 0) {
+        @branchHint(.unlikely);
+        return true;
+    }
+
+    const them_king_sq = Square.fromBitboard(them_king);
+    const occ_discovered = self.occupancy() ^ from.toBitboard() ^ to.toBitboard();
+    const potential_discovered = Bitboard.extendingRayBb(them_king_sq, from) &
+        (self.bishopsFor(stm) | self.rooksFor(stm) | self.queensFor(stm));
+    if (potential_discovered == 0) {
+        @branchHint(.likely);
+        return false;
+    }
+    var has_blocker_free_discovery = false;
+    var iter = Bitboard.iterator(potential_discovered & ~self.bishops());
+    while (iter.next()) |sq| {
+        const ray = Bitboard.rookRayBetween(them_king_sq, sq);
+        has_blocker_free_discovery = has_blocker_free_discovery or ray & occ_discovered == 0 and Bitboard.contains(ray, sq);
+    }
+    iter = Bitboard.iterator(potential_discovered & ~self.rooks());
+    while (iter.next()) |sq| {
+        const ray = Bitboard.bishopRayBetween(them_king_sq, sq);
+        has_blocker_free_discovery = has_blocker_free_discovery or ray & occ_discovered == 0 and Bitboard.contains(ray, sq);
+    }
+    return has_blocker_free_discovery;
+}
+
+pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;
     var updated_castling_rights = self.castling_rights;
@@ -978,6 +1059,176 @@ pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
     return error.NoSuchMove;
 }
 
+pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
+    if (san_move_inp[0] == 'O') {
+        switch (self.stm) {
+            inline else => |stm| {
+                var ml = movegen.MoveListReceiver{};
+                root.movegen.generateKingQuiets(stm, self, &ml);
+                const queenside = san_move_inp.len >= "O-O-O".len and std.mem.eql(u8, san_move_inp[0..5], "O-O-O");
+                for (ml.vals.slice()) |move| {
+                    if (!self.isLegal(stm, move)) {
+                        continue;
+                    }
+                    if (move.tp() != .castling) {
+                        continue;
+                    }
+                    if ((self.castlingKingDestFor(move, stm).getFile() == .c) == queenside) {
+                        return move;
+                    }
+                }
+            },
+        }
+        return null;
+    }
+    var san_move = san_move_inp;
+    switch (san_move[san_move.len - 1]) {
+        '+', '#' => san_move.len -= 1,
+        else => {},
+    }
+    const promo_type = switch (san_move[san_move.len - 1]) {
+        '1'...'8' => null,
+        else => |p| blk: {
+            san_move.len -= 2;
+            break :blk PieceType.fromAsciiLetter(p);
+        },
+    };
+
+    const destination = Square.fromRankFile(
+        Rank.parse(san_move[san_move.len - 1]) catch unreachable,
+        File.parse(san_move[san_move.len - 2]) catch unreachable,
+    );
+
+    const tp: PieceType = switch (san_move[0]) {
+        'a'...'h' => .pawn,
+        'N' => .knight,
+        'B' => .bishop,
+        'R' => .rook,
+        'Q' => .queen,
+        'K' => .king,
+        else => unreachable,
+    };
+
+    var is_capture: bool = false;
+    var allowed_start_mask: u64 = std.math.maxInt(u64);
+    for (san_move[0 .. san_move.len - 2]) |c| switch (c) {
+        '1'...'8' => allowed_start_mask &= @as(u64, 0b11111111) << @intCast(8 * (c - '1')),
+        'a'...'h' => allowed_start_mask &= @as(u64, std.math.maxInt(u64) / std.math.maxInt(u8)) << @intCast(c - 'a'),
+        'x' => is_capture = true,
+        else => {},
+    };
+
+    switch (self.stm) {
+        inline else => |stm| {
+            var ml = movegen.MoveListReceiver{};
+            root.movegen.generateAllQuietsWithMask(stm, self, &ml, destination.toBitboard());
+            root.movegen.generateAllNoisiesWithMask(stm, self, &ml, destination.toBitboard());
+            var valid_count: usize = 0;
+
+            for (ml.vals.slice()) |move| {
+                if (move.to() != destination) {
+                    continue;
+                }
+                if (move.from().toBitboard() & allowed_start_mask == 0) {
+                    continue;
+                }
+                if (self.pieceOn(move.from()) != tp) {
+                    continue;
+                }
+                const move_promotype = if (move.tp() == .promotion) move.promoType() else null;
+                if (promo_type != move_promotype) {
+                    continue;
+                }
+                if (!self.isLegal(stm, move)) {
+                    continue;
+                }
+
+                if (!std.debug.runtime_safety) {
+                    return move;
+                }
+                ml.vals.slice()[valid_count] = move;
+                valid_count += 1;
+            }
+            if (valid_count == 1) {
+                if (promo_type != null) {}
+                return ml.vals.slice()[0];
+            }
+            std.debug.print("valid: {} {s} {} {} '{s}'\n", .{ valid_count, self.toFen().slice(), allowed_start_mask, destination, san_move });
+        },
+    }
+    return null;
+}
+
+pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
+    const hce = @import("hce.zig");
+    switch (self.stm) {
+        inline else => |stm| {
+            var ml = root.ScoredMoveReceiver{};
+            root.movegen.generateAllQuiets(stm, self, &ml);
+            root.movegen.generateAllNoisies(stm, self, &ml);
+
+            for (ml.vals.slice()) |*m| {
+                m.score = switch (m.move.tp()) {
+                    .default => blk: {
+                        const pt = self.pieceOn(m.move.from()).?;
+                        const pst_score: i32 = hce.readPieceSquareTable(stm, pt, m.move.to()).midgame();
+                        const material = hce.readPieceValue(pt).midgame();
+                        var piece_score: i32 = switch (pt) {
+                            .pawn => 500,
+                            .knight => 1000,
+                            .bishop => 1000,
+                            .rook => 500,
+                            .queen => 100,
+                            .king => 0,
+                        };
+                        const diag_sliders = self.bishopsFor(stm) | self.queensFor(stm);
+
+                        if (Bitboard.bishopAttacks(m.move.from()) & diag_sliders != 0) {
+                            piece_score += 1000;
+                        }
+                        break :blk pst_score - material + piece_score;
+                    },
+                    .castling => 20000,
+                    .ep => 20000,
+                    .promotion => 20000,
+                } + rng.uintLessThanBiased(u16, 10000);
+            }
+            std.sort.pdq(root.ScoredMove, ml.vals.slice(), void{}, root.ScoredMove.desc);
+            var found_legal = false;
+            for (ml.vals.slice()) |m| {
+                if (self.isLegal(stm, m.move) and root.SEE.scoreMove(self, m.move, -200, .pruning)) {
+                    self.makeMove(stm, m.move, &root.Board.NullEvalState{});
+                    found_legal = true;
+                    break;
+                }
+            }
+            return found_legal;
+        },
+    }
+}
+
+pub fn hasLegalMove(self: *const Board) bool {
+    switch (self.stm) {
+        inline else => |stm| {
+            var ml = root.movegen.MoveListReceiver{};
+            root.movegen.generateAllNoisies(stm, self, &ml);
+            for (ml.vals.slice()) |m| {
+                if (self.isLegal(stm, m)) {
+                    return true;
+                }
+            }
+            ml.vals.clear();
+            root.movegen.generateAllQuiets(stm, self, &ml);
+            for (ml.vals.slice()) |m| {
+                if (self.isLegal(stm, m)) {
+                    return true;
+                }
+            }
+            return false;
+        },
+    }
+}
+
 fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const rook_from = move.to();
     if (self.pinned[stm.toInt()] & rook_from.toBitboard() != 0) {
@@ -988,25 +1239,19 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
     const king_to = self.castlingKingDestFor(move, stm);
     const king_rook_bbs = rook_from.toBitboard() | king_from.toBitboard();
 
-    const king_min = @min(king_from.toInt(), king_to.toInt());
-    const king_max = @max(king_from.toInt(), king_to.toInt());
+    const all_pieces = rook_from.toBitboard() | rook_to.toBitboard() | king_from.toBitboard() | king_to.toBitboard();
+    const start = @ctz(all_pieces);
+    const end = 63 - @clz(all_pieces);
+    const need_to_be_empty = Bitboard.queenRayBetweenInclusive(start, end);
 
-    const rook_min = @min(rook_from.toInt(), rook_to.toInt());
-    const rook_max = @max(rook_from.toInt(), rook_to.toInt());
-
-    const leftmost = @min(king_min, rook_min);
-    const rightmost = @max(king_max, rook_max);
-
-    const need_to_be_empty = Bitboard.queenRayBetweenInclusive(leftmost, rightmost);
     const occ_without_king_rook = self.occupancy() & ~king_rook_bbs;
     if (occ_without_king_rook & need_to_be_empty != 0) {
         return false;
     }
-    const need_to_be_unattacked = king_to.toBitboard() | Bitboard.queenRayBetweenExclusive(king_from, king_to);
+    const need_to_be_unattacked = Bitboard.queenRayBetween(king_from, king_to);
     var iter = Bitboard.iterator(need_to_be_unattacked);
     while (iter.next()) |sq| {
         const attackers = movegen.attackersFor(stm.flipped(), self, sq, occ_without_king_rook);
-        // std.debug.print("attackers: {}\n", .{attackers});
         if (attackers != 0) {
             return false;
         }
@@ -1014,7 +1259,7 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
     return true;
 }
 
-pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
+pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const move_tp = move.tp();
     if (move_tp == .castling) {
         return self.isCastlingMoveLegal(stm, move);
@@ -1105,7 +1350,7 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
     }
 
     if (pt == .king) {
-        return Bitboard.kingMoves(from) & to_bb != 0;
+        return Bitboard.kingMoves(from) & to_bb != 0 and tp == .default;
     }
 
     if (tp == .ep) {
@@ -1139,6 +1384,8 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         }
 
         return allowed & to_bb != 0;
+    } else if (tp == .promotion) {
+        return false;
     }
 
     // we already handled castling, ep, and promotion
@@ -1162,48 +1409,66 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
     } != 0;
 }
 
-pub fn roughHashAfter(self: *const Board, move: Move) u64 {
+pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove: bool) u64 {
     var res: u64 = self.hash;
 
-    if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+    var hmc = self.halfmove + 1;
+    if (!move.isNull()) {
+        if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+            res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+            hmc = 0;
+        }
+
+        const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();
+
+        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
         res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+        if (cpt.toPieceType() == .pawn) {
+            hmc = 0;
+        }
+    } else {
+        hmc = 0;
     }
-
-    const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();
-
-    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
-    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
     res ^= root.zobrist.turn();
+    if (include_halfmove) {
+        res ^= root.zobrist.halfmove(hmc >> 3);
+    }
 
     return res;
 }
 
 pub const NullEvalState = struct {
-    pub fn init(board: *const Board) NullEvalState {
+    pub inline fn init(board: *const Board) NullEvalState {
         _ = board;
         return .{};
     }
 
-    pub fn initInPlace(self: @This(), board: *const Board) void {
+    pub inline fn initInPlace(self: @This(), board: *const Board) void {
         _ = self;
         _ = board;
     }
 
-    pub fn add(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
+    pub inline fn update(self: @This(), board: *const Board, old_board: *const Board) void {
+        _ = self;
+        _ = board;
+        _ = old_board;
+    }
+
+    pub inline fn add(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
         _ = self;
         _ = col;
         _ = pt;
         _ = square;
     }
 
-    pub fn sub(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
+    pub inline fn sub(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
         _ = self;
         _ = col;
         _ = pt;
         _ = square;
     }
 
-    pub fn addSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
+    pub inline fn addSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
         _ = self;
         _ = add_col;
         _ = add_pt;
@@ -1213,7 +1478,7 @@ pub const NullEvalState = struct {
         _ = sub_square;
     }
 
-    pub fn addSubSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
+    pub inline fn addSubSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
         _ = self;
         _ = add_col;
         _ = add_pt;
@@ -1226,7 +1491,7 @@ pub const NullEvalState = struct {
         _ = sub2_square;
     }
 
-    pub fn addAddSubSub(self: @This(), comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
+    pub inline fn addAddSubSub(self: @This(), comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
         _ = self;
         _ = add1_col;
         _ = add1_pt;
@@ -1315,26 +1580,25 @@ fn perft_impl(
     if (depth == 1) {
         for (movelist.vals.slice()) |move| {
             const is_legal = self.isLegal(stm, move);
-            if (is_legal and !self.isPseudoLegal(stm, move)) {
-                std.debug.print("{s} {s}\n", .{ self.toFen().slice(), move.toString(self).slice() });
-                @panic("not pseudolegal");
-            }
+            // if (is_legal and !self.isPseudoLegal(stm, move)) {
+            //     std.debug.print("{s} {s}\n", .{ self.toFen().slice(), move.toString(self).slice() });
+            //     @panic("not pseudolegal");
+            // }
             res += @intFromBool(is_legal);
-            if (is_root and is_legal and !quiet) {
-                std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
-            }
+            // if (is_root and is_legal and !quiet) {
+            //     std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
+            // }
         }
     } else {
         for (movelist.vals.slice()) |move| {
             if (!self.isLegal(stm, move)) continue;
-            assert(self.isPseudoLegal(stm, move));
+            // assert(self.isPseudoLegal(stm, move));
             var cp = self.*;
             cp.makeMove(stm, move, NullEvalState{});
             // std.debug.print("{} {s} {s}\n", .{depth, move.toString(self).slice(), self.toFen().slice()});
             if (is_root and !quiet) {
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
-            if (depth != 1) {}
             const count = cp.perft_impl(
                 false,
                 stm.flipped(),
