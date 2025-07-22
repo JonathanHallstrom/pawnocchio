@@ -71,6 +71,7 @@ The Makefile is only intended to be used for testing on Openbench.
 ## Credit
  - [Pyrrhic](https://github.com/JonathanHallstrom/Pyrrhic/tree/patch-1) by [Andrew Grant](https://github.com/AndyGrant) for tablebase probing, under the MIT license.
  - [Jackal](https://github.com/TomaszJaworski777/Jackal) by [snekkers](https://github.com/TomaszJaworski777) for inspiration styling this readme
+
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1
 [v1.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.2
