@@ -24,8 +24,8 @@
 | [1.0][v1.0]             |  2025-01-20  |           2100*          |           2150*          |           2100*          |
 
 
-*estimated
 </div>
+*estimated
 
 ## Features
 Supports FRC, also known as Chess960
@@ -54,7 +54,7 @@ The search is a standard alpha-beta search with the following enhancements:
 
 ### Evaluation
 The evaluation is done using a neural net trained entirely on self play games from zero knowledge using the excellent open source [bullet](https://github.com/jw1912/bullet) neural network trainer.
-The architecture of the network is (768x8hm -> 1024)x2 -> 1x8
+The architecture of the network is (768x8hm -> 1280)x2 -> 1x8
 
 ## Build instructions
 1. Get the network with `git submodule update --init --depth 1`
@@ -81,6 +81,7 @@ The Makefile is only intended to be used for testing on Openbench.
 [v1.6]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.6
 [v1.6.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.6.1
 [v1.7]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7
+[v1.7.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7.2
 
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
 [ccrl Blitz]:https://www.computerchess.org.uk/ccrl/404/cgi/compare_engines.cgi?family=pawnocchio
