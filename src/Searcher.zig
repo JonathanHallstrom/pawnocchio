@@ -913,6 +913,11 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+
+                if (self.ply < MAX_PLY - 1 and self.stackEntry(1).failhighs > 2) {
+                    reduction += 1024;
+                }
+
                 reduction += lmrConvolve(8, .{
                     is_pv,
                     cutnode,
