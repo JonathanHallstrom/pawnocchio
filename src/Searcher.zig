@@ -190,7 +190,6 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
-        self.failhighs = 0;
     }
 };
 
@@ -770,6 +769,7 @@ fn search(
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
+    self.searchStackRoot()[self.ply + 1].failhighs = 0;
     self.searchStackRoot()[self.ply + 2].failhighs = 0;
     var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
@@ -1184,6 +1184,9 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.root_score = 0;
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
+    for (0..STACK_PADDING) |i| {
+        self.search_stack[i] = std.mem.zeroes(StackEntry);
+    }
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
     self.ttage +%= 1;
