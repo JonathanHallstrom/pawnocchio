@@ -389,6 +389,7 @@ fn qsearch(
         tt_entry.move,
         cur.move,
         self.stackEntry(-1).move,
+        self.stackEntry(-3).move,
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
@@ -756,6 +757,7 @@ fn search(
         if (is_singular_search) cur.excluded else tt_entry.move,
         cur.move,
         self.stackEntry(-1).move,
+        self.stackEntry(-3).move,
         is_singular_search,
     );
     defer mp.deinit();
@@ -790,7 +792,13 @@ fn search(
             std.debug.assert(!is_quiet);
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
-        const history_score = if (is_quiet) self.histories.readQuietPruning(board, move, cur.move, self.stackEntry(-1).move) else self.histories.readNoisy(board, move);
+        const history_score = if (is_quiet) self.histories.readQuietPruning(
+            board,
+            move,
+            cur.move,
+            self.stackEntry(-1).move,
+            self.stackEntry(-3).move,
+        ) else self.histories.readNoisy(board, move);
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
@@ -1021,16 +1029,17 @@ fn search(
                 cur.failhighs += 1;
                 const cur_move = cur.move;
                 const prev_move = self.stackEntry(-1).move;
+                const prev2_move = self.stackEntry(-3).move;
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
-                        self.histories.updateQuiet(board, move, cur_move, prev_move, hist_depth, true);
+                        self.histories.updateQuiet(board, move, cur_move, prev_move, prev2_move, hist_depth, true);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, cur_move, prev_move, hist_depth, false);
+                            self.histories.updateQuiet(board, searched_move, cur_move, prev_move, prev2_move, hist_depth, false);
                         }
                     }
-                    self.histories.updateQuiet(board, move, cur_move, prev_move, hist_depth, true);
+                    self.histories.updateQuiet(board, move, cur_move, prev_move, prev2_move, hist_depth, true);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, cur_move, prev_move, hist_depth, false);
+                        self.histories.updateQuiet(board, searched_move, cur_move, prev_move, prev2_move, hist_depth, false);
                     }
                 } else {
                     self.histories.updateNoisy(board, move, hist_depth, true);

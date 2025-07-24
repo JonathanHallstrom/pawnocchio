@@ -100,6 +100,8 @@ const tunable_defaults = struct {
     pub const cont1_pruning_weight: i32 = 1024;
     pub const cont2_ordering_weight: i32 = 1024;
     pub const cont2_pruning_weight: i32 = 1024;
+    pub const cont4_ordering_weight: i32 = 512;
+    pub const cont4_pruning_weight: i32 = 0;
     pub const noisy_ordering_weight: i32 = 1024;
     pub const noisy_pruning_weight: i32 = 1024;
     pub const rfp_base: i32 = 42;
@@ -219,16 +221,18 @@ pub const tunables = [_]Tunable{
     .{ .name = "noisy_history_penalty_mult", .default = tunable_defaults.noisy_history_penalty_mult, .min = -10, .max = 530, .c_end = 20 },
     .{ .name = "noisy_history_penalty_offs", .default = tunable_defaults.noisy_history_penalty_offs, .min = -10, .max = 435, .c_end = 17 },
     .{ .name = "noisy_history_penalty_max", .default = tunable_defaults.noisy_history_penalty_max, .min = -10, .max = 4965, .c_end = 198 },
-    .{ .name = "quiet_ordering_weight", .default = tunable_defaults.quiet_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "quiet_pruning_weight", .default = tunable_defaults.quiet_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "pawn_ordering_weight", .default = tunable_defaults.pawn_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "pawn_pruning_weight", .default = tunable_defaults.pawn_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "cont1_ordering_weight", .default = tunable_defaults.cont1_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "cont1_pruning_weight", .default = tunable_defaults.cont1_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "cont2_ordering_weight", .default = tunable_defaults.cont2_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "cont2_pruning_weight", .default = tunable_defaults.cont2_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "noisy_ordering_weight", .default = tunable_defaults.noisy_ordering_weight, .min = 0, .max = 1024, .c_end = 128 },
-    .{ .name = "noisy_pruning_weight", .default = tunable_defaults.noisy_pruning_weight, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "quiet_ordering_weight", .default = tunable_defaults.quiet_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "quiet_pruning_weight", .default = tunable_defaults.quiet_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "pawn_ordering_weight", .default = tunable_defaults.pawn_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "pawn_pruning_weight", .default = tunable_defaults.pawn_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont1_ordering_weight", .default = tunable_defaults.cont1_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont1_pruning_weight", .default = tunable_defaults.cont1_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont2_ordering_weight", .default = tunable_defaults.cont2_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont2_pruning_weight", .default = tunable_defaults.cont2_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont4_ordering_weight", .default = tunable_defaults.cont4_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "noisy_ordering_weight", .default = tunable_defaults.noisy_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "noisy_pruning_weight", .default = tunable_defaults.noisy_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 147, .c_end = 5 },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 145, .c_end = 5 },
     .{ .name = "rfp_improving_margin", .default = tunable_defaults.rfp_improving_margin, .min = -10, .max = 195, .c_end = 7 },
@@ -354,6 +358,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var cont1_pruning_weight = tunable_defaults.cont1_pruning_weight;
     pub var cont2_ordering_weight = tunable_defaults.cont2_ordering_weight;
     pub var cont2_pruning_weight = tunable_defaults.cont2_pruning_weight;
+    pub var cont4_ordering_weight = tunable_defaults.cont4_ordering_weight;
+    pub var cont4_pruning_weight = tunable_defaults.cont4_pruning_weight;
     pub var noisy_ordering_weight = tunable_defaults.noisy_ordering_weight;
     pub var noisy_pruning_weight = tunable_defaults.noisy_pruning_weight;
     pub var rfp_base = tunable_defaults.rfp_base;

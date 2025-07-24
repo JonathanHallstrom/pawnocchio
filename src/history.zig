@@ -235,34 +235,60 @@ pub const HistoryTable = struct {
         @memset(std.mem.asBytes(&self.countermove_corrhist), 0);
     }
 
-    pub fn readQuietPruning(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
+    pub fn readQuietPruning(
+        self: *const HistoryTable,
+        board: *const Board,
+        move: Move,
+        cur: TypedMove,
+        prev: TypedMove,
+        prev2: TypedMove,
+    ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
         res += tunable_constants.cont1_pruning_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
         res += tunable_constants.cont2_pruning_weight * self.countermove.read(board.stm, typed, board.stm, prev);
+        res += tunable_constants.cont4_pruning_weight * self.countermove.read(board.stm, typed, board.stm, prev2);
 
         return @divTrunc(res, 1024);
     }
 
-    pub fn readQuietOrdering(self: *const HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove) i32 {
+    pub fn readQuietOrdering(
+        self: *const HistoryTable,
+        board: *const Board,
+        move: Move,
+        cur: TypedMove,
+        prev: TypedMove,
+        prev2: TypedMove,
+    ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
         res += tunable_constants.cont1_ordering_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
         res += tunable_constants.cont2_ordering_weight * self.countermove.read(board.stm, typed, board.stm, prev);
+        res += tunable_constants.cont4_ordering_weight * self.countermove.read(board.stm, typed, board.stm, prev2);
 
         return @divTrunc(res, 1024);
     }
 
-    pub fn updateQuiet(self: *HistoryTable, board: *const Board, move: Move, cur: TypedMove, prev: TypedMove, depth: i32, is_bonus: bool) void {
+    pub fn updateQuiet(
+        self: *HistoryTable,
+        board: *const Board,
+        move: Move,
+        cur: TypedMove,
+        prev: TypedMove,
+        prev2: TypedMove,
+        depth: i32,
+        is_bonus: bool,
+    ) void {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus);
         self.pawn.update(board, typed, depth, is_bonus);
         self.countermove.update(board.stm, typed, board.stm.flipped(), cur, depth, is_bonus);
         self.countermove.update(board.stm, typed, board.stm, prev, depth, is_bonus);
+        self.countermove.update(board.stm, typed, board.stm, prev2, depth, is_bonus);
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
