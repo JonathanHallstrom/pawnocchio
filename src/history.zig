@@ -52,6 +52,9 @@ pub const MAX_HISTORY: i16 = 1 << 14;
 const CORRHIST_SIZE = 16384;
 const MAX_CORRHIST = 256 * 32;
 const SHIFT = @ctz(MAX_HISTORY);
+pub const CONTHIST_OFFSETS = [_]comptime_int{ 0, 1, 3 };
+pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
+pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
 
 pub const QuietHistory = struct {
     vals: [2 * 64 * 64 * 2 * 2]i16,
@@ -239,17 +242,21 @@ pub const HistoryTable = struct {
         self: *const HistoryTable,
         board: *const Board,
         move: Move,
-        cur: TypedMove,
-        prev: TypedMove,
-        prev2: TypedMove,
+        moves: ConthistMoves,
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
-        res += tunable_constants.cont1_pruning_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
-        res += tunable_constants.cont2_pruning_weight * self.countermove.read(board.stm, typed, board.stm, prev);
-        res += tunable_constants.cont4_pruning_weight * self.countermove.read(board.stm, typed, board.stm, prev2);
+        const weights = [NUM_CONTHISTS]i32{
+            tunable_constants.cont1_pruning_weight,
+            tunable_constants.cont2_pruning_weight,
+            tunable_constants.cont4_pruning_weight,
+        };
+        inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
+            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
+            res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
+        }
 
         return @divTrunc(res, 1024);
     }
@@ -258,17 +265,21 @@ pub const HistoryTable = struct {
         self: *const HistoryTable,
         board: *const Board,
         move: Move,
-        cur: TypedMove,
-        prev: TypedMove,
-        prev2: TypedMove,
+        moves: ConthistMoves,
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
-        res += tunable_constants.cont1_ordering_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), cur);
-        res += tunable_constants.cont2_ordering_weight * self.countermove.read(board.stm, typed, board.stm, prev);
-        res += tunable_constants.cont4_ordering_weight * self.countermove.read(board.stm, typed, board.stm, prev2);
+        const weights = [NUM_CONTHISTS]i32{
+            tunable_constants.cont1_ordering_weight,
+            tunable_constants.cont2_ordering_weight,
+            tunable_constants.cont4_ordering_weight,
+        };
+        inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
+            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
+            res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
+        }
 
         return @divTrunc(res, 1024);
     }
@@ -277,18 +288,17 @@ pub const HistoryTable = struct {
         self: *HistoryTable,
         board: *const Board,
         move: Move,
-        cur: TypedMove,
-        prev: TypedMove,
-        prev2: TypedMove,
+        moves: ConthistMoves,
         depth: i32,
         is_bonus: bool,
     ) void {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus);
         self.pawn.update(board, typed, depth, is_bonus);
-        self.countermove.update(board.stm, typed, board.stm.flipped(), cur, depth, is_bonus);
-        self.countermove.update(board.stm, typed, board.stm, prev, depth, is_bonus);
-        self.countermove.update(board.stm, typed, board.stm, prev2, depth, is_bonus);
+        inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
+            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
+            self.countermove.update(board.stm, typed, stm, moves[i], depth, is_bonus);
+        }
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
