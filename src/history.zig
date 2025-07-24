@@ -55,7 +55,7 @@ const SHIFT = @ctz(MAX_HISTORY);
 pub const CONTHIST_OFFSETS = [_]comptime_int{
     0,
     1,
-    // 3,
+    3,
 };
 pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
 pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
@@ -255,15 +255,12 @@ pub const HistoryTable = struct {
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_pruning_weight,
             tunable_constants.cont2_pruning_weight,
-                // tunable_constants.cont4_pruning_weight,
+            tunable_constants.cont4_pruning_weight,
         };
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-        // res += tunable_constants.cont1_pruning_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), moves[0]);
-        // res += tunable_constants.cont2_pruning_weight * self.countermove.read(board.stm, typed, board.stm, moves[1]);
-
         return @divTrunc(res, 1024);
     }
 
@@ -280,15 +277,12 @@ pub const HistoryTable = struct {
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_ordering_weight,
             tunable_constants.cont2_ordering_weight,
-                // tunable_constants.cont4_ordering_weight,
+            tunable_constants.cont4_ordering_weight,
         };
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-        // res += tunable_constants.cont1_ordering_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), moves[0]);
-        // res += tunable_constants.cont2_ordering_weight * self.countermove.read(board.stm, typed, board.stm, moves[1]);
-
         return @divTrunc(res, 1024);
     }
 
