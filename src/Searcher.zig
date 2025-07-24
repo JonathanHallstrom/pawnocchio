@@ -182,8 +182,16 @@ pub const StackEntry = struct {
     excluded: Move = Move.init(),
     static_eval: i16,
     failhighs: u8,
+    usable_moves: u8,
 
-    pub fn init(self: *StackEntry, board_: *const Board, move_: TypedMove, prev_: TypedMove, prev_evals: EvalPair) void {
+    pub fn init(
+        self: *StackEntry,
+        board_: *const Board,
+        move_: TypedMove,
+        prev_: TypedMove,
+        prev_evals: EvalPair,
+        usable_moves_: u8,
+    ) void {
         self.board = board_.*;
         self.move = move_;
         self.prev = prev_;
@@ -191,8 +199,19 @@ pub const StackEntry = struct {
         self.excluded = Move.init();
         self.static_eval = 0;
         self.failhighs = 0;
+        self.usable_moves = usable_moves_;
     }
 };
+
+inline fn getUsableMoves(self: *const Searcher) history.ConthistMoves {
+    var res: history.ConthistMoves = undefined;
+    const usable = self.stackEntry(0).usable_moves;
+    std.debug.assert(usable <= self.ply);
+    inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
+        res[j] = if (i < usable) self.stackEntry(-i).move else TypedMove.init();
+    }
+    return res;
+}
 
 const Searcher = @This();
 
@@ -239,11 +258,11 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
-    const old_stack_entry = self.stackEntry(-1);
-    const prev_stack_entry = self.stackEntry(0);
-    const prev_eval_state = self.evalState(0);
-    const new_stack_entry = self.stackEntry(1);
-    const new_eval_state = self.evalState(1);
+    const old_stack_entry: *StackEntry = self.stackEntry(-1);
+    const prev_stack_entry: *StackEntry = self.stackEntry(0);
+    const prev_eval_state: *evaluation.State = self.evalState(0);
+    const new_stack_entry: *StackEntry = self.stackEntry(1);
+    const new_eval_state: *evaluation.State = self.evalState(1);
     const board = &prev_stack_entry.board;
 
     new_eval_state.* = prev_eval_state.*;
@@ -253,6 +272,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
         TypedMove.fromBoard(board, move),
         prev_stack_entry.move,
         prev_stack_entry.evals,
+        prev_stack_entry.usable_moves + 1,
     );
     self.ply += 1;
     self.pvs[self.ply].len = 0;
@@ -280,6 +300,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
         TypedMove.init(),
         TypedMove.init(),
         prev_stack_entry.evals,
+        0,
     );
     self.ply += 1;
     self.pvs[self.ply].len = 0;
@@ -391,8 +412,7 @@ fn qsearch(
         &cur.movelist,
         &self.histories,
         tt_entry.move,
-        cur.move,
-        cur.prev,
+        self.getUsableMoves(),
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
@@ -758,8 +778,7 @@ fn search(
         &cur.movelist,
         &self.histories,
         if (is_singular_search) cur.excluded else tt_entry.move,
-        cur.move,
-        cur.prev,
+        self.getUsableMoves(),
         is_singular_search,
     );
     defer mp.deinit();
@@ -770,7 +789,7 @@ fn search(
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
-    self.searchStackRoot()[self.ply + 2].failhighs = 0;
+    self.stackEntry(2).failhighs = 0;
     var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
@@ -794,7 +813,11 @@ fn search(
             std.debug.assert(!is_quiet);
         }
         const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
-        const history_score = if (is_quiet) self.histories.readQuietPruning(board, move, cur.move, cur.prev) else self.histories.readNoisy(board, move);
+        const history_score = if (is_quiet) self.histories.readQuietPruning(
+            board,
+            move,
+            self.getUsableMoves(),
+        ) else self.histories.readNoisy(board, move);
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
@@ -1023,16 +1046,17 @@ fn search(
                 const hist_depth = depth + @as(i32, if (score >= beta + 50) 1 else 0);
                 score_type = .lower;
                 cur.failhighs += 1;
+                const usable_moves = self.getUsableMoves();
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
-                        self.histories.updateQuiet(board, move, cur.move, cur.prev, hist_depth, true);
+                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, cur.move, cur.prev, hist_depth, false);
+                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
                         }
                     }
-                    self.histories.updateQuiet(board, move, cur.move, cur.prev, hist_depth, true);
+                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, cur.move, cur.prev, hist_depth, false);
+                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
                     }
                 } else {
                     self.histories.updateNoisy(board, move, hist_depth, true);
@@ -1179,7 +1203,10 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.root_score = 0;
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
-    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{});
+    for (0..STACK_PADDING) |i| {
+        self.search_stack[i] = std.mem.zeroes(StackEntry);
+    }
+    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
     self.ttage +%= 1;
     if (params.needs_full_reset) {
