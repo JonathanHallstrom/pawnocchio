@@ -25,6 +25,9 @@ const MoveReceiver = root.FilteringScoredMoveReceiver;
 const movegen = root.movegen;
 const SEE = root.SEE;
 const PieceType = root.PieceType;
+const history = root.history;
+const TypedMove = history.TypedMove;
+const Historytable = history.HistoryTable;
 
 const MovePicker = @This();
 
@@ -34,10 +37,9 @@ last: usize,
 board: *const Board,
 stage: Stage,
 skip_quiets: bool,
-histories: *const root.history.HistoryTable,
+histories: *const history.HistoryTable,
 ttmove: Move,
-cur: root.history.TypedMove,
-prev: root.history.TypedMove,
+moves: history.ConthistMoves,
 last_bad_noisy: usize = 0,
 next_func: *const fn (*MovePicker) ScoredMove,
 
@@ -56,8 +58,7 @@ pub fn init(
     movelist_: *MoveReceiver,
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
-    cur_: root.history.TypedMove,
-    prev_: root.history.TypedMove,
+    moves_: history.ConthistMoves,
     is_singular_search: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
@@ -72,8 +73,7 @@ pub fn init(
         .skip_quiets = false,
         .histories = histories_,
         .ttmove = ttmove_,
-        .cur = cur_,
-        .prev = prev_,
+        .moves = moves_,
     };
 }
 
@@ -82,8 +82,7 @@ pub fn initQs(
     movelist_: *MoveReceiver,
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
-    cur_: root.history.TypedMove,
-    prev_: root.history.TypedMove,
+    moves_: history.ConthistMoves,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -97,8 +96,7 @@ pub fn initQs(
         .skip_quiets = board_.checkers == 0,
         .histories = histories_,
         .ttmove = ttmove_,
-        .cur = cur_,
-        .prev = prev_,
+        .moves = moves_,
     };
 }
 
@@ -111,10 +109,10 @@ inline fn findBest(noalias self: *MovePicker) usize {
 
     const unroll = 4;
     const loadVals = struct {
-        fn impl(moves: []ScoredMove, i: usize) @Vector(unroll, u64) {
+        fn impl(mvs: []ScoredMove, i: usize) @Vector(unroll, u64) {
             var res: @Vector(unroll, u64) = undefined;
             inline for (0..unroll) |j| {
-                res[j] = moves.ptr[i + j].toScoreU64();
+                res[j] = mvs.ptr[i + j].toScoreU64();
             }
             return res;
         }
@@ -228,7 +226,7 @@ fn generateQuiets(self: *MovePicker) ScoredMove {
         inline else => |stm| {
             movegen.generateAllQuiets(stm, self.board, self.movelist);
             for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
-                scored_move.score = self.histories.readQuietOrdering(self.board, scored_move.move, self.cur, self.prev);
+                scored_move.score = self.histories.readQuietOrdering(self.board, scored_move.move, self.moves);
             }
         },
     }
