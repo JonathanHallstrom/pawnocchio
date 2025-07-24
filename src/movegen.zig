@@ -370,6 +370,7 @@ pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const 
 }
 
 test "startpos 16 pawn moves" {
+    root.init();
     var rec = MoveListReceiver{};
     const board = Board.startpos();
     const full_mask = ~@as(u64, 0);
@@ -380,6 +381,7 @@ test "startpos 16 pawn moves" {
 }
 
 test "startpos 20 moves" {
+    root.init();
     var rec = MoveListReceiver{};
     const board = Board.startpos();
     generateAllQuiets(.white, &board, &rec);

@@ -47,29 +47,9 @@ fn LittleEndian(comptime T: type) type {
     };
 }
 
-fn PackedIntArray(comptime N: comptime_int, comptime T: type) type {
-    return packed struct {
-        data: @Vector(N, T),
-
-        const Self = @This();
-
-        pub fn init() Self {
-            return .{ .data = @splat(0) };
-        }
-
-        pub fn set(self: *Self, idx: usize, val: T) void {
-            self.data[idx] = val;
-        }
-
-        pub fn get(self: Self, idx: usize) T {
-            return self.data[idx];
-        }
-    };
-}
-
 const MarlinPackedBoard = extern struct {
     occupancy: LittleEndian(u64),
-    pieces: PackedIntArray(32, u4) align(8),
+    pieces: [16]u8 align(8),
     stm_ep_square: u8,
     halfmove_clock: u8,
     fullmove_number: LittleEndian(u16),
@@ -81,7 +61,7 @@ const MarlinPackedBoard = extern struct {
 
     pub fn from(board: Board, loss_draw_win: u8, score: i16) MarlinPackedBoard {
         const occ = board.white | board.black;
-        var pieces = PackedIntArray(32, u4).init();
+        var pieces: [16]u8 = .{0} ** 16;
         {
             var i: usize = 0;
             var iter = Bitboard.iterator(occ);
@@ -103,7 +83,8 @@ const MarlinPackedBoard = extern struct {
                     }
                 }
 
-                pieces.set(i, piece_code | @as(u4, if (side == .black) 1 << 3 else 0));
+                const val: u8 = piece_code | @as(u4, if (side == .black) 1 << 3 else 0);
+                pieces[i / 2] |= val << if (i % 2 == 0) 0 else 4;
             }
         }
         return MarlinPackedBoard{
@@ -239,6 +220,7 @@ fn viriformatTest(fen: []const u8, move: Move, expected: u32) !void {
 }
 
 test "viriformat moves" {
+    root.init();
     try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Move.quiet(.e2, .e4), 0x070c);
     try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1", Move.castlingKingside(.white, .e1, .h1), 0x81c4);
     try viriformatTest("8/6P1/8/8/1k6/4K3/8/8 w - - 0 1", Move.promo(.g7, .g8, .queen), 0xffb6);
@@ -246,6 +228,7 @@ test "viriformat moves" {
 }
 
 test "all edge cases i could think of in one position" {
+    root.init();
     var game = Game.from(try Board.parseFen("4k3/P4p2/8/6P1/8/8/8/R3K2R w Q - 0 1", false), std.testing.allocator);
     defer game.deinit();
     try game.addMove(Move.castlingQueenside(.white, .e1, .a1), 0);
