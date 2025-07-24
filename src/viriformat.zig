@@ -47,29 +47,9 @@ fn LittleEndian(comptime T: type) type {
     };
 }
 
-fn PackedIntArray(comptime N: comptime_int, comptime T: type) type {
-    return packed struct {
-        data: @Vector(N, T),
-
-        const Self = @This();
-
-        pub fn init() Self {
-            return .{ .data = @splat(0) };
-        }
-
-        pub fn set(self: *Self, idx: usize, val: T) void {
-            self.data[idx] = val;
-        }
-
-        pub fn get(self: Self, idx: usize) T {
-            return self.data[idx];
-        }
-    };
-}
-
 const MarlinPackedBoard = extern struct {
     occupancy: LittleEndian(u64),
-    pieces: PackedIntArray(32, u4) align(8),
+    pieces: [16]u8 align(8),
     stm_ep_square: u8,
     halfmove_clock: u8,
     fullmove_number: LittleEndian(u16),
@@ -81,7 +61,7 @@ const MarlinPackedBoard = extern struct {
 
     pub fn from(board: Board, loss_draw_win: u8, score: i16) MarlinPackedBoard {
         const occ = board.white | board.black;
-        var pieces = PackedIntArray(32, u4).init();
+        var pieces: [16]u8 = .{0} ** 16;
         {
             var i: usize = 0;
             var iter = Bitboard.iterator(occ);
@@ -103,7 +83,8 @@ const MarlinPackedBoard = extern struct {
                     }
                 }
 
-                pieces.set(i, piece_code | @as(u4, if (side == .black) 1 << 3 else 0));
+                const val: u8 = piece_code | @as(u4, if (side == .black) 1 << 3 else 0);
+                pieces[i / 2] |= val << if (i % 2 == 0) 0 else 4;
             }
         }
         return MarlinPackedBoard{
@@ -260,9 +241,9 @@ test "all edge cases i could think of in one position" {
     var fbs = std.io.fixedBufferStream(&buf);
     try game.serializeInto(fbs.writer());
 
-    var file = try std.fs.cwd().createFile("tmp.bin", .{});
-    defer file.close();
-    try file.writeAll(fbs.getWritten());
+    // var file = try std.fs.cwd().createFile("tmp.bin", .{});
+    // defer file.close();
+    // try file.writeAll(fbs.getWritten());
 
     try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.getWritten());
 }
