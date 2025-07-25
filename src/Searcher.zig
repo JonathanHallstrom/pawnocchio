@@ -897,7 +897,7 @@ fn search(
                 if (s_score < s_beta - (tunable_constants.singular_dext_margin + if (is_pv) 20 else 0)) {
                     extension += 1;
 
-                    if (s_score < s_beta - (@as(i32, 100) + if (is_pv) 50 else 0)) {
+                    if (s_score < s_beta - (@as(i32, 100) + if (is_pv) 100 else 0)) {
                         extension += 1;
                     }
                 }
