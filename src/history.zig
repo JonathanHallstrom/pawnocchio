@@ -255,7 +255,7 @@ pub const HistoryTable = struct {
         res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
         if (ply < 3) {
-            res += tunable_constants.root_pruning_weight * self.low_ply.read(board, typed) >> @intCast(ply);
+            res += 8 * @divTrunc(tunable_constants.root_pruning_weight * self.low_ply.read(board, typed), ply + 1);
         }
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_pruning_weight,
@@ -281,7 +281,7 @@ pub const HistoryTable = struct {
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
         if (ply < 3) {
-            res += tunable_constants.root_ordering_weight * self.low_ply.read(board, typed) >> @intCast(ply);
+            res += 8 * @divTrunc(tunable_constants.root_ordering_weight * self.low_ply.read(board, typed), ply + 1);
         }
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_ordering_weight,
