@@ -76,7 +76,7 @@ pub const QuietHistory = struct {
         ));
     }
 
-    inline fn reset(self: *QuietHistory) void {
+    pub inline fn reset(self: *QuietHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
