@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.8";
+const VERSION_STRING = "1.8.1";
 
 pub fn main() !void {
     root.init();
@@ -889,7 +889,7 @@ pub fn main() !void {
             const sub_command = parts.next() orelse "";
             const rest = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
 
-            var pos_iter = std.mem.tokenizeSequence(u8, if (started_with_position) rest else line, " moves ");
+            var pos_iter = std.mem.tokenizeSequence(u8, if (started_with_position) rest else line, "moves");
 
             if (std.ascii.eqlIgnoreCase(sub_command, "fen") or !started_with_position) {
                 const fen_to_parse = std.mem.trim(u8, pos_iter.next() orelse {

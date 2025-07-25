@@ -113,6 +113,7 @@ seldepth: u8,
 ttage: u5 = 0,
 syzygy_depth: u8 = 1,
 normalize: bool = false,
+tbhits: u64 = 0,
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -668,6 +669,7 @@ fn search(
 
     if (!is_root and cur.excluded.isNull() and depth >= self.syzygy_depth) {
         if (root.pyrrhic.probeWDL(board)) |result| {
+            self.tbhits += 1;
             const tp: ScoreType, const score = switch (result) {
                 .win => .{ .lower, evaluation.tbWin(self.ply) },
                 .loss => .{ .upper, evaluation.tbLoss(self.ply) },
@@ -1117,8 +1119,10 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         .upper => " upperbound",
     };
     var nodes: u64 = 0;
+    var tbhits: u64 = 0;
     for (engine.searchers) |searcher| {
         nodes += searcher.nodes;
+        tbhits += searcher.tbhits;
     }
     var pv_buf: [6 * 256 + 32]u8 = undefined;
     var fixed_buffer_pv_writer = std.io.fixedBufferStream(&pv_buf);
@@ -1136,8 +1140,9 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
             hashfull += @intFromBool(self.tt[i].flags.age == self.ttage);
         }
     }
+
     const normalized_score = if (self.normalize) root.wdl.normalize(score, root_board.classicalMaterial()) else score;
-    write("info depth {} seldepth {} score {s}{s} nodes {} nps {} hashfull {} time {} pv {s}\n", .{
+    write("info depth {} seldepth {} score {s}{s} nodes {} nps {} hashfull {} tbhits {} time {} pv {s}\n", .{
         depth,
         self.seldepth,
         evaluation.formatScore(normalized_score).slice(),
@@ -1145,6 +1150,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
         hashfull,
+        tbhits,
         (elapsed + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
         std.mem.trim(u8, fixed_buffer_pv_writer.getWritten(), &std.ascii.whitespace),
     });
@@ -1187,6 +1193,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.ply = 0;
     self.stop.store(false, .release);
     self.nodes = 0;
+    self.tbhits = 0;
     const board = params.board;
     self.previous_hashes.len = 0;
     self.normalize = params.normalize;
