@@ -10,9 +10,9 @@
 <br>
 <br>
 
-|         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][cegt 40/20] | [ipman r9 list][ipman 10+1] |
-|:-----------------------:|:------------:|:------------------------:|:------------------------:|:------------------------:|:---------------------------:|
-| [1.8][v1.8]             |  2025-07-22  |           3570*          |           3680*          |           3550*          |             3480*           |
+|         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][cegt 40/20] | [ipman r9 list][ipman 10+1] | [Chess324 Top15][324top15] |
+|:-----------------------:|:------------:|:------------------------:|:------------------------:|:------------------------:|:---------------------------:|:---------------------------:|
+| [1.8][v1.8]             |  2025-07-22  |           3570*          |           3680*          |           3550*          |             3480*           |          3680 (#12)         |
 | [1.7][v1.7]             |  2025-05-31  |           3528           |           3642           |           3491           |             3448            |
 | [1.6.1][v1.6.1]         |  2025-05-15  |           3500*          |           3622           |           3440*          |
 | [1.6][v1.6]             |  2025-04-27  |           3490           |           3600*          |           3433           |
@@ -82,7 +82,9 @@ The Makefile is only intended to be used for testing on Openbench.
 [v1.6.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.6.1
 [v1.7]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7
 [v1.7.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7.2
+[v1.8]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.8
 
+[324top15]:https://e4e6.com/324/
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
 [ccrl Blitz]:https://www.computerchess.org.uk/ccrl/404/cgi/compare_engines.cgi?family=pawnocchio
 [cegt 40/20]:http://www.cegt.net/40_40%20Rating%20List/40_40%20SingleVersion/rangliste.html
