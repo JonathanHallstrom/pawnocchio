@@ -96,6 +96,8 @@ const tunable_defaults = struct {
     pub const quiet_pruning_weight: i32 = 1024;
     pub const pawn_ordering_weight: i32 = 1024;
     pub const pawn_pruning_weight: i32 = 0;
+    pub const root_ordering_weight: i32 = 1024;
+    pub const root_pruning_weight: i32 = 0;
     pub const cont1_ordering_weight: i32 = 1024;
     pub const cont1_pruning_weight: i32 = 1024;
     pub const cont2_ordering_weight: i32 = 1024;
@@ -225,6 +227,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "quiet_pruning_weight", .default = tunable_defaults.quiet_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "pawn_ordering_weight", .default = tunable_defaults.pawn_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "pawn_pruning_weight", .default = tunable_defaults.pawn_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "root_ordering_weight", .default = tunable_defaults.root_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "root_pruning_weight", .default = tunable_defaults.root_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont1_ordering_weight", .default = tunable_defaults.cont1_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont1_pruning_weight", .default = tunable_defaults.cont1_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont2_ordering_weight", .default = tunable_defaults.cont2_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
@@ -354,6 +358,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var quiet_pruning_weight = tunable_defaults.quiet_pruning_weight;
     pub var pawn_ordering_weight = tunable_defaults.pawn_ordering_weight;
     pub var pawn_pruning_weight = tunable_defaults.pawn_pruning_weight;
+    pub var root_ordering_weight = tunable_defaults.root_ordering_weight;
+    pub var root_pruning_weight = tunable_defaults.root_pruning_weight;
     pub var cont1_ordering_weight = tunable_defaults.cont1_ordering_weight;
     pub var cont1_pruning_weight = tunable_defaults.cont1_pruning_weight;
     pub var cont2_ordering_weight = tunable_defaults.cont2_ordering_weight;

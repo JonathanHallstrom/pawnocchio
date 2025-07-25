@@ -221,6 +221,7 @@ pub const ContHistory = struct {
 
 pub const HistoryTable = struct {
     quiet: QuietHistory,
+    root: QuietHistory,
     pawn: PawnHistory,
     noisy: NoisyHistory,
     countermove: ContHistory,
@@ -232,6 +233,7 @@ pub const HistoryTable = struct {
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
+        self.root.reset();
         self.pawn.reset();
         self.noisy.reset();
         self.countermove.reset();
@@ -247,22 +249,23 @@ pub const HistoryTable = struct {
         board: *const Board,
         move: Move,
         moves: ConthistMoves,
+        is_root: bool,
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
+        if (is_root) {
+            res += tunable_constants.root_pruning_weight * self.root.read(board, typed);
+        }
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_pruning_weight,
             tunable_constants.cont2_pruning_weight,
-                // tunable_constants.cont4_pruning_weight,
         };
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-        // res += tunable_constants.cont1_pruning_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), moves[0]);
-        // res += tunable_constants.cont2_pruning_weight * self.countermove.read(board.stm, typed, board.stm, moves[1]);
 
         return @divTrunc(res, 1024);
     }
@@ -272,22 +275,23 @@ pub const HistoryTable = struct {
         board: *const Board,
         move: Move,
         moves: ConthistMoves,
+        is_root: bool,
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
+        if (is_root) {
+            res += tunable_constants.root_ordering_weight * self.root.read(board, typed);
+        }
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_ordering_weight,
             tunable_constants.cont2_ordering_weight,
-                // tunable_constants.cont4_ordering_weight,
         };
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-        // res += tunable_constants.cont1_ordering_weight * self.countermove.read(board.stm, typed, board.stm.flipped(), moves[0]);
-        // res += tunable_constants.cont2_ordering_weight * self.countermove.read(board.stm, typed, board.stm, moves[1]);
 
         return @divTrunc(res, 1024);
     }
@@ -299,10 +303,14 @@ pub const HistoryTable = struct {
         moves: ConthistMoves,
         depth: i32,
         is_bonus: bool,
+        is_root: bool,
     ) void {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus);
         self.pawn.update(board, typed, depth, is_bonus);
+        if (is_root) {
+            self.root.update(board, typed, depth, is_bonus);
+        }
         // inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
         //     const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
         //     self.countermove.update(board.stm, typed, stm, moves[i], depth, is_bonus);
