@@ -92,6 +92,7 @@ const tunable_defaults = struct {
     pub const noisy_history_penalty_mult: i32 = 226;
     pub const noisy_history_penalty_offs: i32 = 196;
     pub const noisy_history_penalty_max: i32 = 2372;
+    pub const high_eval_offs: i32 = 50;
     pub const quiet_ordering_weight: i32 = 1024;
     pub const quiet_pruning_weight: i32 = 1024;
     pub const pawn_ordering_weight: i32 = 1024;
@@ -144,6 +145,7 @@ const tunable_defaults = struct {
     pub const history_pruning_offs: i32 = 655;
     pub const history_pruning_mult: i32 = -2653;
     pub const qs_futility_margin: i32 = 107;
+    pub const qs_hp_margin: i32 = -4000;
     pub const corrhist_pawn_weight: i32 = 654;
     pub const corrhist_nonpawn_weight: i32 = 740;
     pub const corrhist_countermove_weight: i32 = 956;
@@ -194,6 +196,8 @@ const tunable_defaults = struct {
     pub const singular_depth_mult: i32 = 531;
     pub const singular_depth_offs: i32 = 825;
     pub const singular_dext_margin: i32 = 15;
+    pub const singular_dext_pv_margin: i32 = 20;
+    pub const singular_text_margin: i32 = 100;
 };
 
 pub const tunables = [_]Tunable{
@@ -221,6 +225,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "noisy_history_penalty_mult", .default = tunable_defaults.noisy_history_penalty_mult, .min = -10, .max = 530, .c_end = 20 },
     .{ .name = "noisy_history_penalty_offs", .default = tunable_defaults.noisy_history_penalty_offs, .min = -10, .max = 435, .c_end = 17 },
     .{ .name = "noisy_history_penalty_max", .default = tunable_defaults.noisy_history_penalty_max, .min = -10, .max = 4965, .c_end = 198 },
+    .{ .name = "high_eval_offs", .default = tunable_defaults.high_eval_offs },
     .{ .name = "quiet_ordering_weight", .default = tunable_defaults.quiet_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "quiet_pruning_weight", .default = tunable_defaults.quiet_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "pawn_ordering_weight", .default = tunable_defaults.pawn_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
@@ -273,6 +278,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin, .min = -10, .max = 305, .c_end = 11 },
+    .{ .name = "qs_hp_margin", .default = tunable_defaults.qs_hp_margin, .min = -10, .max = 6000, .c_end = 400 },
     .{ .name = "corrhist_pawn_weight", .default = tunable_defaults.corrhist_pawn_weight, .min = -10, .max = 1825, .c_end = 72 },
     .{ .name = "corrhist_nonpawn_weight", .default = tunable_defaults.corrhist_nonpawn_weight, .min = -10, .max = 1500, .c_end = 59 },
     .{ .name = "corrhist_countermove_weight", .default = tunable_defaults.corrhist_countermove_weight, .min = -10, .max = 2875, .c_end = 114 },
@@ -323,6 +329,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult, .min = 10, .max = 1565, .c_end = 62 },
     .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs, .min = 10, .max = 1837, .c_end = 73 },
     .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin, .min = 0, .max = 50, .c_end = 1 },
+    .{ .name = "singular_dext_pv_margin", .default = tunable_defaults.singular_dext_pv_margin, .min = 0, .max = 50, .c_end = 1 },
+    .{ .name = "singular_text_margin", .default = tunable_defaults.singular_text_margin, .min = 0, .max = 200, .c_end = 5 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -350,6 +358,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var noisy_history_penalty_mult = tunable_defaults.noisy_history_penalty_mult;
     pub var noisy_history_penalty_offs = tunable_defaults.noisy_history_penalty_offs;
     pub var noisy_history_penalty_max = tunable_defaults.noisy_history_penalty_max;
+    pub var high_eval_offs = tunable_defaults.high_eval_offs;
     pub var quiet_ordering_weight = tunable_defaults.quiet_ordering_weight;
     pub var quiet_pruning_weight = tunable_defaults.quiet_pruning_weight;
     pub var pawn_ordering_weight = tunable_defaults.pawn_ordering_weight;
@@ -402,6 +411,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var history_pruning_offs = tunable_defaults.history_pruning_offs;
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
+    pub var qs_hp_margin = tunable_defaults.qs_hp_margin;
     pub var corrhist_pawn_weight = tunable_defaults.corrhist_pawn_weight;
     pub var corrhist_nonpawn_weight = tunable_defaults.corrhist_nonpawn_weight;
     pub var corrhist_countermove_weight = tunable_defaults.corrhist_countermove_weight;
@@ -452,6 +462,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
     pub var singular_depth_offs = tunable_defaults.singular_depth_offs;
     pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
+    pub var singular_dext_pv_margin = tunable_defaults.singular_dext_pv_margin;
+    pub var singular_text_margin = tunable_defaults.singular_text_margin;
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {

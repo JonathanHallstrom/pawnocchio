@@ -439,7 +439,7 @@ fn qsearch(
             const history_score = self.histories.readNoisy(board, move);
             if (!is_in_check and
                 num_searched >= 2 and
-                history_score < -4000)
+                history_score < tunable_constants.qs_hp_margin)
             {
                 break;
             }
@@ -894,10 +894,10 @@ fn search(
             if (s_score < s_beta) {
                 extension += 1;
 
-                if (s_score < s_beta - (tunable_constants.singular_dext_margin + if (is_pv) 20 else 0)) {
+                if (s_score < s_beta - (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0)) {
                     extension += 1;
 
-                    if (!is_pv and s_score < s_beta - 100) {
+                    if (!is_pv and s_score < s_beta - tunable_constants.singular_text_margin) {
                         extension += 1;
                     }
                 }
@@ -1043,7 +1043,7 @@ fn search(
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
-                const hist_depth = depth + @as(i32, if (score >= beta + 50) 1 else 0);
+                const hist_depth = depth + @as(i32, if (score >= beta + tunable_constants.high_eval_offs) 1 else 0);
                 score_type = .lower;
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
