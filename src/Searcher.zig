@@ -413,7 +413,7 @@ fn qsearch(
         &self.histories,
         tt_entry.move,
         self.getUsableMoves(),
-        is_root,
+        self.ply,
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
@@ -781,7 +781,7 @@ fn search(
         if (is_singular_search) cur.excluded else tt_entry.move,
         self.getUsableMoves(),
         is_singular_search,
-        is_root,
+        self.ply,
     );
     defer mp.deinit();
     var best_move = Move.init();
@@ -819,7 +819,7 @@ fn search(
             board,
             move,
             self.getUsableMoves(),
-            is_root,
+            self.ply,
         ) else self.histories.readNoisy(board, move);
 
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
@@ -1052,14 +1052,14 @@ fn search(
                 const usable_moves = self.getUsableMoves();
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, is_root);
+                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, self.ply);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, is_root);
+                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, self.ply);
                         }
                     }
-                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, is_root);
+                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, self.ply);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, is_root);
+                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, self.ply);
                     }
                 } else {
                     self.histories.updateNoisy(board, move, hist_depth, true);

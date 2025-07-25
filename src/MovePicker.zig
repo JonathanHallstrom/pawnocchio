@@ -41,7 +41,7 @@ histories: *const history.HistoryTable,
 ttmove: Move,
 moves: history.ConthistMoves,
 last_bad_noisy: usize = 0,
-is_root: bool,
+ply: u8,
 next_func: *const fn (*MovePicker) ScoredMove,
 
 pub const Stage = enum {
@@ -61,7 +61,7 @@ pub fn init(
     ttmove_: Move,
     moves_: history.ConthistMoves,
     is_singular_search: bool,
-    is_root_: bool,
+    ply_: u8,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -76,7 +76,7 @@ pub fn init(
         .histories = histories_,
         .ttmove = ttmove_,
         .moves = moves_,
-        .is_root = is_root_,
+        .ply = ply_,
     };
 }
 
@@ -86,7 +86,7 @@ pub fn initQs(
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
     moves_: history.ConthistMoves,
-    is_root_: bool,
+    ply_: u8,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -101,7 +101,7 @@ pub fn initQs(
         .histories = histories_,
         .ttmove = ttmove_,
         .moves = moves_,
-        .is_root = is_root_,
+        .ply = ply_,
     };
 }
 
@@ -231,7 +231,7 @@ fn generateQuiets(self: *MovePicker) ScoredMove {
         inline else => |stm| {
             movegen.generateAllQuiets(stm, self.board, self.movelist);
             for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
-                scored_move.score = self.histories.readQuietOrdering(self.board, scored_move.move, self.moves, self.is_root);
+                scored_move.score = self.histories.readQuietOrdering(self.board, scored_move.move, self.moves, self.ply);
             }
         },
     }

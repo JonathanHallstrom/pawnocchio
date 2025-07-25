@@ -55,7 +55,6 @@ const SHIFT = @ctz(MAX_HISTORY);
 pub const CONTHIST_OFFSETS = [_]comptime_int{
     0,
     1,
-    // 3,
 };
 pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
 pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
@@ -221,7 +220,7 @@ pub const ContHistory = struct {
 
 pub const HistoryTable = struct {
     quiet: QuietHistory,
-    root: QuietHistory,
+    low_ply: QuietHistory,
     pawn: PawnHistory,
     noisy: NoisyHistory,
     countermove: ContHistory,
@@ -233,7 +232,7 @@ pub const HistoryTable = struct {
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
-        self.root.reset();
+        self.low_ply.reset();
         self.pawn.reset();
         self.noisy.reset();
         self.countermove.reset();
@@ -249,14 +248,14 @@ pub const HistoryTable = struct {
         board: *const Board,
         move: Move,
         moves: ConthistMoves,
-        is_root: bool,
+        ply: u8,
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
-        if (is_root) {
-            res += tunable_constants.root_pruning_weight * self.root.read(board, typed);
+        if (ply < 3) {
+            res += tunable_constants.root_pruning_weight * self.low_ply.read(board, typed) >> @intCast(ply);
         }
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_pruning_weight,
@@ -275,14 +274,14 @@ pub const HistoryTable = struct {
         board: *const Board,
         move: Move,
         moves: ConthistMoves,
-        is_root: bool,
+        ply: u8,
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
-        if (is_root) {
-            res += tunable_constants.root_ordering_weight * self.root.read(board, typed);
+        if (ply < 3) {
+            res += tunable_constants.root_ordering_weight * self.low_ply.read(board, typed) >> @intCast(ply);
         }
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_ordering_weight,
@@ -303,18 +302,14 @@ pub const HistoryTable = struct {
         moves: ConthistMoves,
         depth: i32,
         is_bonus: bool,
-        is_root: bool,
+        ply: u8,
     ) void {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus);
         self.pawn.update(board, typed, depth, is_bonus);
-        if (is_root) {
-            self.root.update(board, typed, depth, is_bonus);
+        if (ply < 3) {
+            self.low_ply.update(board, typed, depth, is_bonus);
         }
-        // inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
-        //     const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-        //     self.countermove.update(board.stm, typed, stm, moves[i], depth, is_bonus);
-        // }
         self.countermove.update(board.stm, typed, board.stm.flipped(), moves[0], depth, is_bonus);
         self.countermove.update(board.stm, typed, board.stm, moves[1], depth, is_bonus);
     }
