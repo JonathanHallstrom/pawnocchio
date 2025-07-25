@@ -433,7 +433,7 @@ fn qsearch(
         {
             std.debug.assert(board.isNoisy(move));
         }
-        const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
+        const skip_see_pruning = mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, move);
@@ -812,7 +812,7 @@ fn search(
         {
             std.debug.assert(!is_quiet);
         }
-        const skip_see_pruning = !std.debug.runtime_safety and mp.stage == .good_noisies;
+        const skip_see_pruning = mp.stage == .good_noisies;
         const history_score = if (is_quiet) self.histories.readQuietPruning(
             board,
             move,
