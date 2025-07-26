@@ -5,8 +5,8 @@
   alt="Pawnocchio Logo"
   src="assets/main_pawnocchio-A.png">
  
-<h3>Pawnocchio</h3>
-<b>Strongest UCI Chess engine written in zig</b>
+<h3>pawnocchio</h3>
+<b>Strongest UCI chess engine written in zig</b>
 <br>
 <br>
 
