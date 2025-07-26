@@ -68,136 +68,136 @@ pub fn setMax() void {
 }
 
 const tunable_defaults = struct {
-    pub const quiet_history_bonus_mult: i32 = 452;
-    pub const quiet_history_bonus_offs: i32 = 435;
-    pub const quiet_history_bonus_max: i32 = 2882;
-    pub const quiet_history_penalty_mult: i32 = 204;
-    pub const quiet_history_penalty_offs: i32 = 324;
-    pub const quiet_history_penalty_max: i32 = 1555;
-    pub const pawn_history_bonus_mult: i32 = 413;
-    pub const pawn_history_bonus_offs: i32 = 397;
-    pub const pawn_history_bonus_max: i32 = 2688;
-    pub const pawn_history_penalty_mult: i32 = 231;
-    pub const pawn_history_penalty_offs: i32 = 340;
-    pub const pawn_history_penalty_max: i32 = 1609;
-    pub const cont_history_bonus_mult: i32 = 469;
-    pub const cont_history_bonus_offs: i32 = 231;
-    pub const cont_history_bonus_max: i32 = 3079;
-    pub const cont_history_penalty_mult: i32 = 210;
-    pub const cont_history_penalty_offs: i32 = 259;
-    pub const cont_history_penalty_max: i32 = 1986;
-    pub const noisy_history_bonus_mult: i32 = 302;
-    pub const noisy_history_bonus_offs: i32 = 360;
-    pub const noisy_history_bonus_max: i32 = 2413;
-    pub const noisy_history_penalty_mult: i32 = 226;
-    pub const noisy_history_penalty_offs: i32 = 196;
-    pub const noisy_history_penalty_max: i32 = 2372;
-    pub const high_eval_offs: i32 = 50;
-    pub const quiet_ordering_weight: i32 = 1024;
-    pub const quiet_pruning_weight: i32 = 1024;
-    pub const pawn_ordering_weight: i32 = 1024;
-    pub const pawn_pruning_weight: i32 = 0;
-    pub const cont1_ordering_weight: i32 = 1024;
-    pub const cont1_pruning_weight: i32 = 1024;
-    pub const cont2_ordering_weight: i32 = 1024;
-    pub const cont2_pruning_weight: i32 = 1024;
-    pub const cont4_ordering_weight: i32 = 256;
-    pub const cont4_pruning_weight: i32 = 0;
-    pub const noisy_ordering_weight: i32 = 1024;
-    pub const noisy_pruning_weight: i32 = 1024;
-    pub const rfp_base: i32 = 42;
-    pub const rfp_mult: i32 = 64;
-    pub const rfp_improving_margin: i32 = 69;
+    pub const quiet_history_bonus_mult: i32 = 419;
+    pub const quiet_history_bonus_offs: i32 = 425;
+    pub const quiet_history_bonus_max: i32 = 3030;
+    pub const quiet_history_penalty_mult: i32 = 198;
+    pub const quiet_history_penalty_offs: i32 = 355;
+    pub const quiet_history_penalty_max: i32 = 1588;
+    pub const pawn_history_bonus_mult: i32 = 415;
+    pub const pawn_history_bonus_offs: i32 = 378;
+    pub const pawn_history_bonus_max: i32 = 2686;
+    pub const pawn_history_penalty_mult: i32 = 229;
+    pub const pawn_history_penalty_offs: i32 = 344;
+    pub const pawn_history_penalty_max: i32 = 1651;
+    pub const cont_history_bonus_mult: i32 = 452;
+    pub const cont_history_bonus_offs: i32 = 227;
+    pub const cont_history_bonus_max: i32 = 2997;
+    pub const cont_history_penalty_mult: i32 = 206;
+    pub const cont_history_penalty_offs: i32 = 252;
+    pub const cont_history_penalty_max: i32 = 1786;
+    pub const noisy_history_bonus_mult: i32 = 310;
+    pub const noisy_history_bonus_offs: i32 = 347;
+    pub const noisy_history_bonus_max: i32 = 2620;
+    pub const noisy_history_penalty_mult: i32 = 236;
+    pub const noisy_history_penalty_offs: i32 = 193;
+    pub const noisy_history_penalty_max: i32 = 2314;
+    pub const high_eval_offs: i32 = 51;
+    pub const quiet_ordering_weight: i32 = 1051;
+    pub const quiet_pruning_weight: i32 = 1039;
+    pub const pawn_ordering_weight: i32 = 928;
+    pub const pawn_pruning_weight: i32 = 106;
+    pub const cont1_ordering_weight: i32 = 1082;
+    pub const cont1_pruning_weight: i32 = 1076;
+    pub const cont2_ordering_weight: i32 = 1023;
+    pub const cont2_pruning_weight: i32 = 966;
+    pub const cont4_ordering_weight: i32 = 280;
+    pub const cont4_pruning_weight: i32 = 57;
+    pub const noisy_ordering_weight: i32 = 1099;
+    pub const noisy_pruning_weight: i32 = 926;
+    pub const rfp_base: i32 = 41;
+    pub const rfp_mult: i32 = 66;
+    pub const rfp_improving_margin: i32 = 72;
     pub const rfp_worsening_margin: i32 = 15;
     pub const rfp_cutnode_margin: i32 = 18;
-    pub const rfp_corrplexity_mult: i32 = 18;
-    pub const aspiration_score_mult: i32 = 1068;
-    pub const aspiration_initial: i32 = 9531;
-    pub const aspiration_multiplier: i32 = 1278;
-    pub const lmr_quiet_base: i32 = 3417;
-    pub const lmr_noisy_base: i32 = 2053;
+    pub const rfp_corrplexity_mult: i32 = 19;
+    pub const aspiration_score_mult: i32 = 1083;
+    pub const aspiration_initial: i32 = 9822;
+    pub const aspiration_multiplier: i32 = 1182;
+    pub const lmr_quiet_base: i32 = 3553;
+    pub const lmr_noisy_base: i32 = 1937;
     pub const lmr_quiet_log_mult: i32 = 215;
-    pub const lmr_noisy_log_mult: i32 = 232;
-    pub const lmr_quiet_depth_mult: i32 = 808;
-    pub const lmr_noisy_depth_mult: i32 = 792;
-    pub const lmr_quiet_depth_offs: i32 = -116;
-    pub const lmr_noisy_depth_offs: i32 = 153;
-    pub const lmr_quiet_legal_mult: i32 = 939;
-    pub const lmr_noisy_legal_mult: i32 = 972;
-    pub const lmr_quiet_legal_offs: i32 = 51;
-    pub const lmr_noisy_legal_offs: i32 = -121;
-    pub const lmr_quiet_history_mult: i32 = 596;
-    pub const lmr_noisy_history_mult: i32 = 1024;
-    pub const lmr_corrhist_mult: i32 = 9221;
-    pub const lmr_dodeeper_margin: i32 = 56;
+    pub const lmr_noisy_log_mult: i32 = 226;
+    pub const lmr_quiet_depth_mult: i32 = 813;
+    pub const lmr_noisy_depth_mult: i32 = 769;
+    pub const lmr_quiet_depth_offs: i32 = -120;
+    pub const lmr_noisy_depth_offs: i32 = 157;
+    pub const lmr_quiet_legal_mult: i32 = 1004;
+    pub const lmr_noisy_legal_mult: i32 = 960;
+    pub const lmr_quiet_legal_offs: i32 = 58;
+    pub const lmr_noisy_legal_offs: i32 = -130;
+    pub const lmr_quiet_history_mult: i32 = 614;
+    pub const lmr_noisy_history_mult: i32 = 1022;
+    pub const lmr_corrhist_mult: i32 = 8872;
+    pub const lmr_dodeeper_margin: i32 = 54;
     pub const lmr_dodeeper_mult: i32 = 2;
-    pub const nmp_base: i32 = 55914;
-    pub const nmp_mult: i32 = 997;
+    pub const nmp_base: i32 = 53349;
+    pub const nmp_mult: i32 = 996;
     pub const nmp_eval_reduction_scale: i32 = 29;
-    pub const nmp_eval_reduction_max: i32 = 29364;
-    pub const fp_base: i32 = 304;
-    pub const fp_mult: i32 = 79;
-    pub const fp_hist_mult: i32 = 105;
-    pub const qs_see_threshold: i32 = -80;
-    pub const see_quiet_pruning_mult: i32 = -81;
-    pub const see_noisy_pruning_mult: i32 = -52;
-    pub const razoring_margin: i32 = 218;
-    pub const history_pruning_offs: i32 = 655;
-    pub const history_pruning_mult: i32 = -2653;
+    pub const nmp_eval_reduction_max: i32 = 29286;
+    pub const fp_base: i32 = 288;
+    pub const fp_mult: i32 = 83;
+    pub const fp_hist_mult: i32 = 98;
+    pub const qs_see_threshold: i32 = -86;
+    pub const see_quiet_pruning_mult: i32 = -79;
+    pub const see_noisy_pruning_mult: i32 = -51;
+    pub const razoring_margin: i32 = 221;
+    pub const history_pruning_offs: i32 = 601;
+    pub const history_pruning_mult: i32 = -2569;
     pub const qs_futility_margin: i32 = 107;
-    pub const qs_hp_margin: i32 = -4000;
-    pub const corrhist_pawn_weight: i32 = 654;
-    pub const corrhist_nonpawn_weight: i32 = 740;
-    pub const corrhist_countermove_weight: i32 = 956;
-    pub const corrhist_major_weight: i32 = 1187;
-    pub const corrhist_minor_weight: i32 = 1059;
-    pub const lmp_standard_base: i32 = 2505;
-    pub const lmp_improving_base: i32 = 3528;
-    pub const lmp_standard_linear_mult: i32 = -356;
-    pub const lmp_improving_linear_mult: i32 = 229;
-    pub const lmp_standard_quadratic_mult: i32 = 502;
-    pub const lmp_improving_quadratic_mult: i32 = 1139;
-    pub const good_noisy_ordering_base: i32 = 52;
-    pub const good_noisy_ordering_mult: i32 = 863;
-    pub const see_pawn_pruning: i32 = 78;
-    pub const see_knight_pruning: i32 = 272;
-    pub const see_bishop_pruning: i32 = 296;
-    pub const see_rook_pruning: i32 = 509;
-    pub const see_queen_pruning: i32 = 877;
-    pub const see_pawn_ordering: i32 = 88;
-    pub const see_knight_ordering: i32 = 291;
-    pub const see_bishop_ordering: i32 = 279;
-    pub const see_rook_ordering: i32 = 542;
-    pub const see_queen_ordering: i32 = 869;
-    pub const mvv_mult: i32 = 991;
-    pub const material_scaling_base: i32 = 10124;
-    pub const material_scaling_pawn: i32 = 16;
-    pub const material_scaling_knight: i32 = 350;
-    pub const material_scaling_bishop: i32 = 393;
-    pub const material_scaling_rook: i32 = 392;
-    pub const material_scaling_queen: i32 = 862;
-    pub const multicut_fail_medium: i32 = 28;
-    pub const rfp_fail_medium: i32 = 555;
-    pub const tt_fail_medium: i32 = 7;
-    pub const qs_tt_fail_medium: i32 = 2;
-    pub const standpat_fail_medium: i32 = 24;
-    pub const nodetm_base: i32 = 1510;
-    pub const nodetm_mult: i32 = 1093;
+    pub const qs_hp_margin: i32 = -4052;
+    pub const corrhist_pawn_weight: i32 = 707;
+    pub const corrhist_nonpawn_weight: i32 = 802;
+    pub const corrhist_countermove_weight: i32 = 853;
+    pub const corrhist_major_weight: i32 = 1093;
+    pub const corrhist_minor_weight: i32 = 1048;
+    pub const lmp_standard_base: i32 = 2394;
+    pub const lmp_improving_base: i32 = 3574;
+    pub const lmp_standard_linear_mult: i32 = -320;
+    pub const lmp_improving_linear_mult: i32 = 233;
+    pub const lmp_standard_quadratic_mult: i32 = 377;
+    pub const lmp_improving_quadratic_mult: i32 = 1158;
+    pub const good_noisy_ordering_base: i32 = 48;
+    pub const good_noisy_ordering_mult: i32 = 933;
+    pub const see_pawn_pruning: i32 = 82;
+    pub const see_knight_pruning: i32 = 274;
+    pub const see_bishop_pruning: i32 = 289;
+    pub const see_rook_pruning: i32 = 490;
+    pub const see_queen_pruning: i32 = 888;
+    pub const see_pawn_ordering: i32 = 90;
+    pub const see_knight_ordering: i32 = 296;
+    pub const see_bishop_ordering: i32 = 293;
+    pub const see_rook_ordering: i32 = 573;
+    pub const see_queen_ordering: i32 = 868;
+    pub const mvv_mult: i32 = 929;
+    pub const material_scaling_base: i32 = 10233;
+    pub const material_scaling_pawn: i32 = 21;
+    pub const material_scaling_knight: i32 = 376;
+    pub const material_scaling_bishop: i32 = 407;
+    pub const material_scaling_rook: i32 = 414;
+    pub const material_scaling_queen: i32 = 863;
+    pub const multicut_fail_medium: i32 = 66;
+    pub const rfp_fail_medium: i32 = 582;
+    pub const tt_fail_medium: i32 = 67;
+    pub const qs_tt_fail_medium: i32 = 52;
+    pub const standpat_fail_medium: i32 = 103;
+    pub const nodetm_base: i32 = 1535;
+    pub const nodetm_mult: i32 = 1097;
     pub const eval_stab_margin: i32 = 21;
-    pub const eval_stab_base: i32 = 1341;
-    pub const eval_stab_offs: i32 = 56;
-    pub const move_stab_base: i32 = 1279;
+    pub const eval_stab_base: i32 = 1348;
+    pub const eval_stab_offs: i32 = 55;
+    pub const move_stab_base: i32 = 1301;
     pub const move_stab_offs: i32 = 45;
     pub const soft_limit_base: i32 = 48;
-    pub const soft_limit_incr: i32 = 688;
-    pub const hard_limit_phase_mult: i32 = 119;
-    pub const hard_limit_base: i32 = 224;
-    pub const singular_beta_mult: i32 = 461;
-    pub const singular_depth_mult: i32 = 531;
-    pub const singular_depth_offs: i32 = 825;
+    pub const soft_limit_incr: i32 = 719;
+    pub const hard_limit_phase_mult: i32 = 116;
+    pub const hard_limit_base: i32 = 228;
+    pub const singular_beta_mult: i32 = 442;
+    pub const singular_depth_mult: i32 = 539;
+    pub const singular_depth_offs: i32 = 862;
     pub const singular_dext_margin: i32 = 15;
     pub const singular_dext_pv_margin: i32 = 20;
-    pub const singular_text_margin: i32 = 100;
+    pub const singular_text_margin: i32 = 99;
 };
 
 pub const tunables = [_]Tunable{
@@ -513,102 +513,102 @@ const factorized_lmr_defaults = struct {
     }
 
     pub const one = [N]i32{
-        -1150,
-        1247,
-        -551,
-        691,
-        -730,
-        193,
-        -1023,
-        695,
+        -1117,
+        1230,
+        -562,
+        700,
+        -805,
+        148,
+        -912,
+        676,
     };
     pub const two: [N * (N - 1) / 2]i32 = .{
-        6,
-        -40,
-        114,
-        -130,
-        153,
-        90,
-        51,
-        97,
-        147,
-        -64,
-        -112,
-        163,
-        151,
-        -34,
-        -18,
-        232,
-        174,
+        46,
+        -134,
+        35,
+        -139,
+        169,
+        74,
+        11,
+        98,
+        166,
+        -219,
+        -88,
+        142,
+        179,
+        -9,
+        -37,
+        222,
+        219,
+        -26,
+        -180,
+        -121,
+        -46,
+        -221,
+        85,
+        152,
+        -4,
+        60,
+        -54,
         0,
-        -146,
-        -61,
-        -75,
-        -76,
-        134,
-        204,
-        5,
-        55,
-        -194,
-        15,
     };
     pub const three: [N * (N - 1) * (N - 2) / 6]i32 = .{
-        137,
-        39,
-        -83,
-        240,
-        133,
-        3,
-        -193,
-        173,
-        -57,
-        -188,
-        111,
-        24,
-        -136,
-        75,
-        43,
-        -60,
-        -34,
-        7,
-        -84,
-        -112,
-        -104,
-        74,
-        111,
-        -28,
-        -155,
-        67,
-        -176,
-        269,
+        203,
+        55,
+        -219,
+        179,
+        53,
+        -65,
+        -184,
         234,
-        -139,
-        -45,
-        -140,
-        -103,
-        72,
-        47,
-        10,
-        -99,
+        -89,
+        -129,
+        142,
+        -48,
+        -85,
         59,
-        -91,
-        -62,
-        -84,
-        -91,
-        26,
-        76,
-        -232,
-        31,
-        -35,
-        -100,
-        -106,
-        124,
+        24,
+        13,
+        -174,
+        100,
+        -133,
+        -143,
+        -127,
+        41,
+        163,
+        -32,
+        -119,
+        11,
+        -173,
+        320,
+        214,
+        -74,
+        -73,
+        -141,
+        -139,
+        132,
+        37,
+        -14,
+        -137,
+        -6,
+        -45,
+        -47,
+        -187,
+        -2,
+        147,
+        16,
         -159,
-        97,
-        -237,
-        -18,
-        -79,
-        58,
+        -34,
+        -82,
+        -64,
+        -201,
+        176,
+        -202,
+        82,
+        -289,
+        77,
+        -107,
+        59,
     };
 };
 
