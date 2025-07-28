@@ -43,6 +43,7 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
     var iter = std.mem.tokenizeScalar(u8, input, '\n');
     var mated = false;
     while (iter.next()) |line| {
+        std.debug.print("{s}\n", .{line});
         if (line.len == 0) {
             continue;
         }
@@ -93,7 +94,10 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
                     mated = true;
                 }
                 if (!mated) {
-                    var score = try std.fmt.parseFloat(f64, score_str);
+                    var score = std.fmt.parseFloat(f64, score_str) catch |e| {
+                        std.debug.print("failed to parse score '{s}' in line '{s}'\n", .{ score_str, line });
+                        return e;
+                    };
                     if (@abs(score) < 100) {
                         if (board.stm == .black) score = -score;
                         try game.addMove(move, @intFromFloat(score * 100));
