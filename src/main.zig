@@ -363,6 +363,7 @@ pub fn main() !void {
     var min_depth: i32 = 0;
     var normalize: bool = true;
     var softnodes: bool = false;
+    var weird_tcs: bool = false;
     loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
@@ -394,6 +395,7 @@ pub fn main() !void {
             write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
             write("option name NormalizeEval type check default true\n", .{});
             write("option name SoftNodes type check default false\n", .{});
+            write("option name EnableWeirdTCs type check default false\n", .{});
             if (root.tuning.do_tuning) {
                 for (root.tuning.tunables) |tunable| {
                     write(
@@ -513,6 +515,15 @@ pub fn main() !void {
                 root.tuning.setMin();
             }
 
+            if (std.ascii.eqlIgnoreCase("EnableWeirdTCs", option_name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    weird_tcs = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    weird_tcs = false;
+                }
+            }
+
             if (std.ascii.eqlIgnoreCase("SetMax", option_name)) {
                 root.tuning.setMax();
             }
@@ -595,6 +606,7 @@ pub fn main() !void {
             var black_increment: u64 = 0 * std.time.ns_per_s;
             var mate_score_opt: ?i16 = null;
             var move_time_opt: ?u64 = null;
+            var cyclic_tc = false;
 
             while (parts.next()) |command_part| {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
@@ -771,6 +783,20 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "infinite")) {
                     // engine.setInfinite();
                 }
+                if (std.ascii.eqlIgnoreCase(command_part, "movestogo")) {
+                    const moves = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
+                    _ = std.time.ns_per_ms * (std.fmt.parseInt(u64, moves, 10) catch {
+                        writeLog("invalid movestogo: '{s}'\n", .{moves});
+                        continue;
+                    });
+
+                    cyclic_tc = true;
+                }
+            }
+            if (cyclic_tc and !weird_tcs) {
+                write("info string please use the EnableWeirdTCs UCI option if you REALLY want to use a cycyclic time control. it's untested and not really supported so you will get poor performance, but if you insist you can enable it using the aforementioned option.\n", .{});
+                write("bestmove 0000\n", .{});
+                continue :loop;
             }
             const my_time = if (board.stm == .white) white_time else black_time;
             const my_increment = if (board.stm == .white) white_increment else black_increment;
