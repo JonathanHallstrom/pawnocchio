@@ -26,7 +26,7 @@ pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atom
 pub var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
 var num_finished_threads: std.atomic.Value(usize) align(std.atomic.cache_line) = std.atomic.Value(usize).init(0);
 var current_num_threads: usize align(std.atomic.cache_line) = 0; // 0 for uninitialized
-pub var searchers: []align(std.atomic.cache_line) Searcher align(std.atomic.cache_line) = &.{};
+pub var searchers: []*Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
@@ -62,7 +62,6 @@ fn resetTT() void {
 
 pub fn reset() void {
     resetTT();
-    @memset(std.mem.sliceAsBytes(searchers), 0);
     needs_full_reset = true;
 }
 
@@ -82,16 +81,29 @@ pub fn setThreadCount(thread_count: usize) !void {
             .allocator = std.heap.page_allocator,
             .n_jobs = @intCast(thread_count),
         });
+        for (searchers) |s| {
+            std.heap.page_allocator.destroy(s);
+        }
         searchers = std.heap.page_allocator.realloc(searchers, thread_count) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
+        for (searchers) |*s| {
+            s.* = std.heap.page_allocator.create(Searcher) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
+        }
+        needs_full_reset = true;
     }
 }
 
 pub fn deinit() void {
     std.heap.page_allocator.free(tt);
+    for (searchers) |searcher| {
+        std.heap.page_allocator.destroy(searcher);
+    }
     std.heap.page_allocator.free(searchers);
 }
 
 fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {
+    if (needs_full_reset) {
+        @memset(std.mem.asBytes(searchers[i]), 0);
+    }
     searchers[i].tt = tt;
     searchers[i].startSearch(settings, i == 0, quiet);
     // _ = num_finished_threads.rmw(.Add, 1, .seq_cst);
@@ -346,7 +358,7 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: std.io.AnyWri
 
 pub fn querySearchedNodes() u64 {
     var res: u64 = 0;
-    for (searchers) |*searcher| {
+    for (searchers) |searcher| {
         res += searcher.nodes;
     }
     return res;
@@ -354,7 +366,7 @@ pub fn querySearchedNodes() u64 {
 
 pub fn stopSearch() void {
     stop_searching.store(true, .seq_cst);
-    for (searchers) |*searcher| {
+    for (searchers) |searcher| {
         searcher.stop.store(true, .release);
     }
 }
