@@ -793,13 +793,13 @@ pub fn main() !void {
                     cyclic_tc = true;
                 }
             }
-            if (cyclic_tc and !weird_tcs) {
-                write("info string please use the EnableWeirdTCs UCI option if you REALLY want to use a cycyclic time control. it's untested and not really supported so you will get poor performance, but if you insist you can enable it using the aforementioned option.\n", .{});
+            const my_time = if (board.stm == .white) white_time else black_time;
+            const my_increment = if (board.stm == .white) white_increment else black_increment;
+            if ((cyclic_tc or (my_time != 0 and my_increment == 0)) and !weird_tcs) {
+                write("info string Use the EnableWeirdTCs UCI option if you REALLY want to use a {s}. it's untested and not really supported so you will get poor performance, but if you insist you can enable it using the aforementioned option.\n", .{if (cyclic_tc) "cyclic time control" else "time control without increment"});
                 write("bestmove 0000\n", .{});
                 continue :loop;
             }
-            const my_time = if (board.stm == .white) white_time else black_time;
-            const my_increment = if (board.stm == .white) white_increment else black_increment;
 
             var limits = root.Limits.initStandard(
                 &board,
