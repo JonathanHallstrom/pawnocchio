@@ -58,6 +58,7 @@ pub const CONTHIST_OFFSETS = [_]comptime_int{
 };
 pub const CONTCORR_OFFSETS = [_]comptime_int{
     1,
+    2,
 };
 pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
 pub const NUM_CONTCORRS = CONTCORR_OFFSETS.len;
