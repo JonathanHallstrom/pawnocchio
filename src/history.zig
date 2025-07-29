@@ -245,6 +245,7 @@ pub const HistoryTable = struct {
         @memset(std.mem.asBytes(&self.minor_corrhist), 0);
         @memset(std.mem.asBytes(&self.nonpawn_corrhist), 0);
         @memset(std.mem.asBytes(&self.previous_corrhist), 0);
+        @memset(std.mem.asBytes(&self.countermove_corrhist), 0);
     }
 
     pub inline fn readQuietPruning(
