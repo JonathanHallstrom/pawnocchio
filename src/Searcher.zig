@@ -1056,10 +1056,6 @@ fn search(
                             self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
                         }
                     }
-                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
-                    for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
-                    }
                 } else {
                     self.histories.updateNoisy(board, move, hist_depth, true);
                 }
