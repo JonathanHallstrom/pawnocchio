@@ -187,17 +187,20 @@ fn datagenWorker(
             if (move_idx == 0 and @abs(adjusted_normalized) > 400) {
                 continue :datagen_loop;
             }
-            if (adjusted_normalized > 800) {
+            if (adjusted_normalized > 600) {
                 num_adj_win += 1;
             } else {
                 num_adj_win = 0;
             }
-            if (adjusted_normalized < -800) {
+            if (adjusted_normalized < -600) {
                 num_adj_loss += 1;
             } else {
                 num_adj_loss = 0;
             }
-            if (@abs(adjusted_normalized) < 10 and board.plies > 50) {
+            if (@abs(adjusted_normalized) < 50 and
+                board.plies > 50 and
+                board.phase() < 20)
+            {
                 num_adj_draw += 1;
             } else {
                 num_adj_draw = 0;
