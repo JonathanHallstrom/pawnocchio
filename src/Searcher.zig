@@ -201,7 +201,6 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = 0;
-        self.failhighs = 0;
         self.usable_moves = usable_moves_;
     }
 };
@@ -940,6 +939,9 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                if (self.ply < MAX_PLY - 1 and self.stackEntry(1).failhighs > 2) {
+                    reduction += 512;
+                }
                 reduction += lmrConvolve(8, .{
                     is_pv,
                     cutnode,
