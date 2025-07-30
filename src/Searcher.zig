@@ -102,6 +102,8 @@ eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: Move,
 root_score: i16,
+full_width_score: i16,
+full_width_score_normalized: i16,
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
@@ -1230,7 +1232,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var completed_depth: i32 = 0;
     var eval_stability: i32 = 0;
     var move_stability: i32 = 0;
-    var last_full_width_score: i16 = 0;
     var average_score: i64 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
@@ -1280,7 +1281,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         }
                     }
                 } else {
-                    last_full_width_score = score;
+                    self.full_width_score = score;
+                    self.full_width_score_normalized = root.wdl.normalize(score, self.searchStackRoot()[0].board.classicalMaterial());
                     break;
                 }
             },
@@ -1303,7 +1305,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         completed_depth = depth;
         if (is_main_thread) {
             if (!quiet) {
-                self.writeInfo(last_full_width_score, depth, .completed);
+                self.writeInfo(self.full_width_score, depth, .completed);
             }
         }
         if (self.stop.load(.acquire) or self.limits.checkRoot(

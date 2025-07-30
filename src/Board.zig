@@ -1188,10 +1188,10 @@ pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
                         }
                         break :blk pst_score - material + piece_score;
                     },
-                    .castling => 20000,
-                    .ep => 20000,
-                    .promotion => 20000,
-                } + rng.uintLessThanBiased(u16, 10000);
+                    .castling => 10000,
+                    .ep => 10000,
+                    .promotion => 10000,
+                } + rng.uintLessThanBiased(u16, 30000);
             }
             std.sort.pdq(root.ScoredMove, ml.vals.slice(), void{}, root.ScoredMove.desc);
             var found_legal = false;
