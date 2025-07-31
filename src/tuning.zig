@@ -142,6 +142,8 @@ const tunable_defaults = struct {
     pub const razoring_margin: i32 = 211;
     pub const history_pruning_offs: i32 = 625;
     pub const history_pruning_mult: i32 = -2632;
+    pub const noisy_history_pruning_offs: i32 = 625;
+    pub const noisy_history_pruning_mult: i32 = -2632;
     pub const qs_futility_margin: i32 = 108;
     pub const qs_hp_margin: i32 = -3995;
     pub const corrhist_pawn_weight: i32 = 706;
@@ -273,6 +275,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin, .min = -10, .max = 572, .c_end = 22 },
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
+    .{ .name = "noisy_history_pruning_offs", .default = tunable_defaults.noisy_history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
+    .{ .name = "noisy_history_pruning_mult", .default = tunable_defaults.noisy_history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin, .min = -10, .max = 305, .c_end = 11 },
     .{ .name = "qs_hp_margin", .default = tunable_defaults.qs_hp_margin, .min = -6000, .max = 0, .c_end = 400 },
     .{ .name = "corrhist_pawn_weight", .default = tunable_defaults.corrhist_pawn_weight, .min = -10, .max = 1825, .c_end = 72 },
@@ -330,7 +334,7 @@ pub const tunables = [_]Tunable{
 };
 
 pub const tunable_constants = if (do_tuning) struct {
-    pub var quiet_history_bonus_mult = tunable_defaults.quiet_history_bonus_mult;
+    pub var quiet_noisy_history_bonus_mult = tunable_defaults.quiet_noisy_history_bonus_mult;
     pub var quiet_history_bonus_offs = tunable_defaults.quiet_history_bonus_offs;
     pub var quiet_history_bonus_max = tunable_defaults.quiet_history_bonus_max;
     pub var quiet_history_penalty_mult = tunable_defaults.quiet_history_penalty_mult;
@@ -404,6 +408,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var razoring_margin = tunable_defaults.razoring_margin;
     pub var history_pruning_offs = tunable_defaults.history_pruning_offs;
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
+    pub var noisy_history_pruning_offs = tunable_defaults.noisy_history_pruning_offs;
+    pub var noisy_history_pruning_mult = tunable_defaults.noisy_history_pruning_mult;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
     pub var qs_hp_margin = tunable_defaults.qs_hp_margin;
     pub var corrhist_pawn_weight = tunable_defaults.corrhist_pawn_weight;

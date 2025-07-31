@@ -843,7 +843,10 @@ fn search(
                     continue;
                 }
 
-                if (depth <= 4 and history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs) {
+                if (depth <= 4 and history_score < depth *
+                    tunable_constants.history_pruning_mult +
+                    tunable_constants.history_pruning_offs)
+                {
                     mp.skip_quiets = true;
                     continue;
                 }
@@ -854,6 +857,14 @@ fn search(
                     eval + tunable_constants.fp_base +
                         lmr_depth * tunable_constants.fp_mult +
                         @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096) <= alpha)
+                {
+                    mp.skip_quiets = true;
+                    continue;
+                }
+            } else {
+                if (depth <= 4 and history_score < depth *
+                    tunable_constants.noisy_history_pruning_mult +
+                    tunable_constants.noisy_history_pruning_offs)
                 {
                     mp.skip_quiets = true;
                     continue;
