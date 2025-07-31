@@ -186,6 +186,7 @@ pub const StackEntry = struct {
     static_eval: i16,
     failhighs: u8,
     usable_moves: u8,
+    history_score: i32,
 
     pub fn init(
         self: *StackEntry,
@@ -203,6 +204,7 @@ pub const StackEntry = struct {
         self.static_eval = 0;
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
+        self.history_score = 0;
     }
 };
 
@@ -731,7 +733,8 @@ fn search(
                 tunable_constants.rfp_improving_margin * @intFromBool(improving) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
+                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32) +
+                @divTrunc(if (board.isQuiet(cur.move.move)) cur.history_score else 0, 200))
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
@@ -925,6 +928,7 @@ fn search(
         }
 
         self.makeMove(stm, move);
+        self.stackEntry(0).history_score = history_score;
 
         const gives_check = self.stackEntry(0).board.checkers != 0;
         const score = blk: {
