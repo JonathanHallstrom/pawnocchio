@@ -712,7 +712,7 @@ fn search(
             cur.static_eval = corrected_static_eval;
         }
     }
-    const eval = cur.static_eval;
+    const eval: i32 = cur.static_eval;
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
@@ -831,6 +831,7 @@ fn search(
             reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrplexity >> 32);
 
             const lmr_depth = @max(0, depth - (reduction >> 10));
+            const lmr_depth_fractional: i64 = @max(0, (depth << 10) - reduction);
             if (is_quiet) {
                 const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
@@ -851,21 +852,21 @@ fn search(
                 }
 
                 if (!is_in_check and
-                    lmr_depth <= 6 and
+                    lmr_depth_fractional <= 6144 and
                     @abs(alpha) < 2000 and
-                    eval + tunable_constants.fp_base +
-                        lmr_depth * tunable_constants.fp_mult +
-                        @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096) <= alpha)
+                    eval * 1024 + tunable_constants.fp_base +
+                        lmr_depth_fractional * tunable_constants.fp_mult +
+                        @divTrunc(history_score * tunable_constants.fp_hist_mult, 4) <= alpha * 1024)
                 {
                     mp.skip_quiets = true;
                     continue;
                 }
             }
 
-            const see_pruning_thresh = if (is_quiet)
-                tunable_constants.see_quiet_pruning_mult * lmr_depth
+            const see_pruning_thresh: i32 = @intCast(if (is_quiet)
+                tunable_constants.see_quiet_pruning_mult * lmr_depth_fractional >> 10
             else
-                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth;
+                tunable_constants.see_noisy_pruning_mult * lmr_depth_fractional * lmr_depth >> 10);
 
             if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, see_pruning_thresh, .pruning))

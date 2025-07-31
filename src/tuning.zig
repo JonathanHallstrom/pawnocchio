@@ -25,8 +25,8 @@ pub const Tunable = struct {
     max: ?i32 = null,
     c_end: ?f64 = null,
 
-    fn margin(self: Tunable) i32 {
-        return 10 + (self.default * std.math.sign(self.default) >> 1);
+    fn margin(_: Tunable) i32 {
+        return 10;
     }
 
     pub fn getMin(self: Tunable) i32 {
@@ -133,7 +133,7 @@ const tunable_defaults = struct {
     pub const nmp_mult: i32 = 989;
     pub const nmp_eval_reduction_scale: i32 = 29;
     pub const nmp_eval_reduction_max: i32 = 29800;
-    pub const fp_base: i32 = 331;
+    pub const fp_base: i32 = 338944;
     pub const fp_mult: i32 = 79;
     pub const fp_hist_mult: i32 = 105;
     pub const qs_see_threshold: i32 = -77;
@@ -264,10 +264,10 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult, .min = -10, .max = 2317, .c_end = 92 },
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale, .min = -10, .max = 97, .c_end = 3 },
     .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max, .min = -10, .max = 62215, .c_end = 2488 },
-    .{ .name = "fp_base", .default = tunable_defaults.fp_base, .min = -10, .max = 747, .c_end = 29 },
-    .{ .name = "fp_mult", .default = tunable_defaults.fp_mult, .min = -10, .max = 242, .c_end = 9 },
-    .{ .name = "fp_hist_mult", .default = tunable_defaults.fp_hist_mult, .min = -10, .max = 512, .c_end = 16 },
-    .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold, .min = -230, .max = 10, .c_end = 8 },
+    .{ .name = "fp_base", .default = tunable_defaults.fp_base },
+    .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
+    .{ .name = "fp_hist_mult", .default = tunable_defaults.fp_hist_mult },
+    .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold },
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -185, .max = 10, .c_end = 7 },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -135, .max = 10, .c_end = 5 },
     .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin, .min = -10, .max = 572, .c_end = 22 },
