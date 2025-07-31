@@ -823,12 +823,14 @@ fn search(
             self.getUsableMoves(),
         ) else self.histories.readNoisy(board, move);
 
+        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move);
         if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-            var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
-            base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
+            var reduction = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
+            reduction -= @intCast(history_lmr_mult * history_score >> 13);
+            reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrplexity >> 32);
 
-            const lmr_depth = @max(0, depth - (base_lmr >> 10));
+            const lmr_depth = @max(0, depth - (reduction >> 10));
             if (is_quiet) {
                 const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
@@ -931,15 +933,13 @@ fn search(
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move);
-
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
             if (depth >= 3 and num_searched > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
-                reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrplexity >> 32);
                 reduction += lmrConvolve(8, .{
                     is_pv,
                     cutnode,
