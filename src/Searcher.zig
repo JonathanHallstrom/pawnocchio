@@ -752,11 +752,16 @@ fn search(
         if (depth >= 4 and
             eval >= beta and
             non_pk != 0 and
-            !cur.move.move.isNull())
+            !cur.move.move.isNull() and
+            cutnode)
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
+            nmp_reduction -= @intFromBool(!improving) * @as(i32, 8192);
+            if (has_tt_move and board.isNoisy(tt_entry.move)) {
+                nmp_reduction += 8192;
+            }
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
