@@ -455,7 +455,7 @@ fn qsearch(
             }
 
             if (!is_in_check and
-                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)))
+                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold + @divTrunc(history_score, 128), .pruning)))
             {
                 continue;
             }
