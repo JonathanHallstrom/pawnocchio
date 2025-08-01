@@ -851,8 +851,7 @@ fn search(
                     continue;
                 }
 
-                if (!is_pv and
-                    !is_in_check and
+                if (!is_in_check and
                     lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
                     eval + tunable_constants.fp_base +
