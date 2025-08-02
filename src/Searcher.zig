@@ -979,8 +979,14 @@ fn search(
                     const do_deeper_search = s > best_score + tunable_constants.lmr_dodeeper_margin + tunable_constants.lmr_dodeeper_mult * new_depth;
                     const do_shallower_search = s < best_score + new_depth;
 
+                    const do_even_deeper_search = s > alpha + 150 + 50 * new_depth;
+                    const do_even_shallower_search = s < alpha + 10;
+
                     new_depth += @intFromBool(do_deeper_search);
                     new_depth -= @intFromBool(do_shallower_search);
+
+                    new_depth += @intFromBool(do_even_deeper_search);
+                    new_depth -= @intFromBool(do_even_shallower_search);
 
                     s = -self.search(
                         false,
