@@ -43,7 +43,6 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
     var iter = std.mem.tokenizeScalar(u8, input, '\n');
     var mated = false;
     while (iter.next()) |line| {
-        std.debug.print("{s}\n", .{line});
         if (line.len == 0) {
             continue;
         }
