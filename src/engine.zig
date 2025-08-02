@@ -30,7 +30,7 @@ pub var searchers: []align(std.atomic.cache_line) Searcher align(std.atomic.cach
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
-var tt: []root.TTEntry = &.{};
+var tt: []root.TTCluster = &.{};
 
 pub const SearchSettings = struct {
     search_params: Searcher.Params,
@@ -67,7 +67,7 @@ pub fn reset() void {
 }
 
 pub fn setTTSize(new_size: usize) !void {
-    tt = try std.heap.page_allocator.realloc(tt, @intCast(new_size * @as(u128, 1 << 20) / @sizeOf(root.TTEntry)));
+    tt = try std.heap.page_allocator.realloc(tt, @intCast(new_size * @as(u128, 1 << 20) / @sizeOf(root.TTCluster)));
     resetTT();
 }
 
@@ -294,7 +294,7 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     var total_position_count = std.atomic.Value(usize).init(0);
     var total_game_count = std.atomic.Value(usize).init(0);
     for (0..current_num_threads) |i| {
-        searchers[i].tt = try std.heap.page_allocator.alloc(root.TTEntry, (16 << 20) / @sizeOf(root.TTEntry));
+        searchers[i].tt = try std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster));
         try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 1, num_nodes, &writer, &writer_mutex, &total_position_count, &total_game_count });
     }
 
