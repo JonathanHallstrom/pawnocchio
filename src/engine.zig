@@ -295,7 +295,7 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     var total_game_count = std.atomic.Value(usize).init(0);
     for (0..current_num_threads) |i| {
         searchers[i].tt = try std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster));
-        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 1, num_nodes, &writer, &writer_mutex, &total_position_count, &total_game_count });
+        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer, &writer_mutex, &total_position_count, &total_game_count });
     }
 
     var prev_positions: usize = 0;
