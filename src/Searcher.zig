@@ -37,6 +37,7 @@ const tunable_constants = root.tunable_constants;
 const write = root.write;
 const evaluate = evaluation.evaluate;
 const TTEntry = root.TTEntry;
+const TTCluster = root.TTCluster;
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -108,7 +109,7 @@ limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
-tt: []TTEntry,
+tt: []TTCluster,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
@@ -132,7 +133,7 @@ pub fn writeTT(
     depth: i32,
     raw_static_eval: i16,
 ) void {
-    const entry = &self.tt[self.ttIndex(hash)];
+    const entry = self.tt[self.ttIndex(hash)].write(TTEntry.compress(hash), self.ttage);
 
     if (!(score_type == .exact or
         !entry.hashEql(hash) or
@@ -173,7 +174,7 @@ pub fn prefetch(self: *const Searcher, move: Move) void {
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
-    return self.tt[self.ttIndex(hash)];
+    return self.tt[self.ttIndex(hash)].read(TTEntry.compress(hash));
 }
 
 pub const StackEntry = struct {
@@ -1143,8 +1144,15 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     }
     var hashfull: usize = 0;
     if (self.tt.len >= 1000) {
-        for (0..1000) |i| {
-            hashfull += @intFromBool(self.tt[i].flags.age == self.ttage);
+        var num_read: usize = 0;
+        outer: for (0..1000) |i| {
+            for (self.tt[i].entries) |entry| {
+                hashfull += @intFromBool(entry.flags.age == self.ttage);
+                num_read += 1;
+                if (num_read == 1000) {
+                    break :outer;
+                }
+            }
         }
     }
 

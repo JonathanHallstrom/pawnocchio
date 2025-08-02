@@ -450,7 +450,45 @@ pub const TTEntry = struct {
     pub fn hashEql(self: TTEntry, other_hash: u64) bool {
         return self.hash == compress(other_hash);
     }
+    inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
+        return self.depth - 4 * (32 + cur_age - self.flags.age & 31);
+    }
 };
+
+pub const TTCluster = struct {
+    entries: [3]TTEntry = .{TTEntry{}} ** 3,
+    _pad: u16 = 0,
+
+    pub inline fn read(self: TTCluster, hash: u16) TTEntry {
+        for (self.entries) |entry| {
+            if (entry.hash == hash) {
+                return entry;
+            }
+        }
+        return self.entries[0];
+    }
+
+    pub inline fn write(self: *TTCluster, hash: u16, cur_age: u8) *TTEntry {
+        var best_value: i32 = 100000;
+        var best_entry: *TTEntry = &self.entries[0];
+        for (&self.entries) |*entry| {
+            if (entry.hash == hash or entry.flags.score_type == .none) {
+                return entry;
+            }
+            const value = entry.getValue(cur_age);
+            if (value < best_value) {
+                best_value = value;
+                best_entry = entry;
+            }
+        }
+        return best_entry;
+    }
+};
+
+comptime {
+    assert(@sizeOf(TTEntry) == 10);
+    assert(@sizeOf(TTCluster) == 32);
+}
 
 var stdout: std.fs.File = undefined;
 var write_mutex: std.Thread.Mutex = .{};
