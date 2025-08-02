@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) !void {
     };
 
     const emit_symbols = b.option(bool, "emit_symbols", "force debug symbols not to be strippped") orelse false;
-    const use_tbs = true;
+    const use_tbs = b.option(bool, "use_tbs", "whether to enable tablebases") orelse true;
     const minimal_executable = switch (optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
