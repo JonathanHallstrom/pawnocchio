@@ -381,6 +381,9 @@ pub const HistoryTable = struct {
     }
 
     pub fn scaleEval(board: *const Board, eval: i16) i16 {
+        if (true) {
+            return eval;
+        }
         comptime var divisor = 1;
         const fifty_move_rule_scaled = @as(i64, eval) * (200 - board.halfmove);
         divisor *= 200;
