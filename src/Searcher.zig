@@ -893,7 +893,7 @@ fn search(
                 if (s_score < s_beta - (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0)) {
                     extension += 1;
 
-                    if (!is_pv and s_score < s_beta - tunable_constants.singular_text_margin) {
+                    if (!is_pv and is_quiet and s_score < s_beta - tunable_constants.singular_text_margin) {
                         extension += 1;
                     }
                 }
