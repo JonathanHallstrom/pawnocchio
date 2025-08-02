@@ -598,10 +598,8 @@ pub fn main() !void {
             var soft_nodes_opt: ?u64 = null;
             var hard_nodes_opt: ?u64 = null;
 
-            // by default assume each player has 1000s
-            // completely arbitrarily chosen value
-            var white_time: u64 = 1000_000_000 * std.time.ns_per_s;
-            var black_time: u64 = 1000_000_000 * std.time.ns_per_s;
+            var white_time: ?u64 = null;
+            var black_time: ?u64 = null;
             var white_increment: u64 = 0 * std.time.ns_per_s;
             var black_increment: u64 = 0 * std.time.ns_per_s;
             var mate_score_opt: ?i16 = null;
@@ -793,13 +791,14 @@ pub fn main() !void {
                     cyclic_tc = true;
                 }
             }
-            const my_time = if (board.stm == .white) white_time else black_time;
+            const my_time_opt = if (board.stm == .white) white_time else black_time;
             const my_increment = if (board.stm == .white) white_increment else black_increment;
-            if ((cyclic_tc or (my_time != 0 and my_increment == 0)) and !weird_tcs) {
+            if ((cyclic_tc or (my_time_opt != null and my_increment == 0)) and !weird_tcs) {
                 write("info string Use the EnableWeirdTCs UCI option if you REALLY want to use a {s}. it's untested and not really supported so you will get poor performance, but if you insist you can enable it using the aforementioned option.\n", .{if (cyclic_tc) "cyclic time control" else "time control without increment"});
                 write("bestmove 0000\n", .{});
                 continue :loop;
             }
+            const my_time = my_time_opt orelse 1_000_000_000 * std.time.ns_per_s;
 
             var limits = root.Limits.initStandard(
                 &board,

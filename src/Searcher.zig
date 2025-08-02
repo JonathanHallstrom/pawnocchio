@@ -102,6 +102,8 @@ eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: Move,
 root_score: i16,
+full_width_score: i16,
+full_width_score_normalized: i16,
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
@@ -722,7 +724,7 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        if (depth <= 6 and
+        if (depth <= 9 and
             eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth -
@@ -821,7 +823,7 @@ fn search(
             self.getUsableMoves(),
         ) else self.histories.readNoisy(board, move);
 
-        if (!is_root and !is_pv and best_score >= evaluation.matedIn(MAX_PLY)) {
+        if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
@@ -832,21 +834,25 @@ fn search(
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
                 const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 const granularity: i32 = 978;
-                if (num_searched * granularity >=
-                    lmp_base +
-                        lmp_linear_mult * depth +
-                        lmp_quadratic_mult * depth * depth)
+                if (!is_pv and
+                    num_searched * granularity >=
+                        lmp_base +
+                            lmp_linear_mult * depth +
+                            lmp_quadratic_mult * depth * depth)
                 {
                     mp.skip_quiets = true;
                     continue;
                 }
 
-                if (depth <= 4 and history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs) {
+                if (depth <= 4 and
+                    history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
+                {
                     mp.skip_quiets = true;
                     continue;
                 }
 
-                if (!is_in_check and
+                if (!is_pv and
+                    !is_in_check and
                     lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
                     eval + tunable_constants.fp_base +
@@ -863,7 +869,8 @@ fn search(
             else
                 tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth;
 
-            if (!skip_see_pruning and
+            if (!is_pv and
+                !skip_see_pruning and
                 !SEE.scoreMove(board, move, see_pruning_thresh, .pruning))
             {
                 continue;
@@ -1230,7 +1237,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var completed_depth: i32 = 0;
     var eval_stability: i32 = 0;
     var move_stability: i32 = 0;
-    var last_full_width_score: i16 = 0;
     var average_score: i64 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
@@ -1280,7 +1286,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         }
                     }
                 } else {
-                    last_full_width_score = score;
+                    self.full_width_score = score;
+                    self.full_width_score_normalized = root.wdl.normalize(score, self.searchStackRoot()[0].board.classicalMaterial());
                     break;
                 }
             },
@@ -1303,7 +1310,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         completed_depth = depth;
         if (is_main_thread) {
             if (!quiet) {
-                self.writeInfo(last_full_width_score, depth, .completed);
+                self.writeInfo(self.full_width_score, depth, .completed);
             }
         }
         if (self.stop.load(.acquire) or self.limits.checkRoot(

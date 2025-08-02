@@ -1188,10 +1188,10 @@ pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
                         }
                         break :blk pst_score - material + piece_score;
                     },
-                    .castling => 20000,
-                    .ep => 20000,
-                    .promotion => 20000,
-                } + rng.uintLessThanBiased(u16, 10000);
+                    .castling => 10000,
+                    .ep => 10000,
+                    .promotion => 10000,
+                } + rng.uintLessThanBiased(u16, 30000);
             }
             std.sort.pdq(root.ScoredMove, ml.vals.slice(), void{}, root.ScoredMove.desc);
             var found_legal = false;
@@ -1249,14 +1249,7 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
         return false;
     }
     const need_to_be_unattacked = Bitboard.queenRayBetween(king_from, king_to);
-    var iter = Bitboard.iterator(need_to_be_unattacked);
-    while (iter.next()) |sq| {
-        const attackers = movegen.attackersFor(stm.flipped(), self, sq, occ_without_king_rook);
-        if (attackers != 0) {
-            return false;
-        }
-    }
-    return true;
+    return need_to_be_unattacked & self.threats[stm.flipped().toInt()] == 0;
 }
 
 pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {

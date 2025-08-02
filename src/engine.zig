@@ -143,6 +143,7 @@ fn datagenWorker(
     total_position_count: *std.atomic.Value(usize),
     total_game_count: *std.atomic.Value(usize),
 ) void {
+    const searcher = searchers[i];
     const viriformat = root.viriformat;
     var seed: u64 = 0;
     std.posix.getrandom(std.mem.asBytes(&seed)) catch {
@@ -172,12 +173,15 @@ fn datagenWorker(
             hashes.append(board.hash) catch @panic("failed to append hash");
         }
         var game: viriformat.Game = viriformat.Game.from(board, fba.allocator());
+        var num_adj_win: u8 = 0;
+        var num_adj_draw: u8 = 0;
+        var num_adj_loss: u8 = 0;
         game_loop: for (0..2000) |move_idx| {
             var limits = root.Limits.initFixedTime(std.time.ns_per_s);
             limits.soft_nodes = node_count;
             limits.hard_nodes = 100 * node_count;
             limits.min_depth = min_depth;
-            searchers[i].startSearch(
+            searcher.startSearch(
                 root.Searcher.Params{
                     .board = board,
                     .limits = limits,
@@ -188,11 +192,30 @@ fn datagenWorker(
                 false,
                 true,
             );
-            const search_move = searchers[i].root_move;
-            const search_score = searchers[i].root_score;
+            const search_move = searcher.root_move;
+            const search_score = searcher.full_width_score;
             const adjusted = if (board.stm == .white) search_score else -search_score;
-            if (move_idx == 0 and @abs(adjusted) > 2000) {
+            const adjusted_normalized = if (board.stm == .white) searcher.full_width_score_normalized else -searcher.full_width_score_normalized;
+            if (move_idx == 0 and @abs(adjusted_normalized) > 400) {
                 continue :datagen_loop;
+            }
+            if (adjusted_normalized > 600) {
+                num_adj_win += 1;
+            } else {
+                num_adj_win = 0;
+            }
+            if (adjusted_normalized < -600) {
+                num_adj_loss += 1;
+            } else {
+                num_adj_loss = 0;
+            }
+            if (@abs(adjusted_normalized) < 50 and
+                board.plies > 50 and
+                board.phase() < 20)
+            {
+                num_adj_draw += 1;
+            } else {
+                num_adj_draw = 0;
             }
             // const fen = board.toFen();
             // var buf: [1024]u8 = undefined;
@@ -247,6 +270,18 @@ fn datagenWorker(
                 }
                 break :game_loop;
             }
+            if (num_adj_win >= 5) {
+                game.setOutCome(.win);
+                break :game_loop;
+            }
+            if (num_adj_loss >= 5) {
+                game.setOutCome(.loss);
+                break :game_loop;
+            }
+            if (num_adj_draw >= 10) {
+                game.setOutCome(.draw);
+                break :game_loop;
+            }
         }
 
         if (game.moves.items.len == 0) {
@@ -272,7 +307,7 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
     var total_game_count = std.atomic.Value(usize).init(0);
     for (0..current_num_threads) |i| {
         searchers[i].tt = try std.heap.page_allocator.alloc(root.TTEntry, (16 << 20) / @sizeOf(root.TTEntry));
-        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 9, num_nodes, &writer, &writer_mutex, &total_position_count, &total_game_count });
+        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 1, num_nodes, &writer, &writer_mutex, &total_position_count, &total_game_count });
     }
 
     var prev_positions: usize = 0;
