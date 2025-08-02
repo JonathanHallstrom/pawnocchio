@@ -207,11 +207,21 @@ pub const StackEntry = struct {
     }
 };
 
-inline fn getUsableMoves(self: *const Searcher) history.ConthistMoves {
+inline fn getContHistMoves(self: *const Searcher) history.ConthistMoves {
     var res: history.ConthistMoves = undefined;
     const usable = self.stackEntry(0).usable_moves;
     std.debug.assert(usable <= self.ply);
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
+        res[j] = if (i < usable) self.stackEntry(-i).move else TypedMove.init();
+    }
+    return res;
+}
+
+inline fn getContCorrMoves(self: *const Searcher) history.ContcorrMoves {
+    var res: history.ContcorrMoves = undefined;
+    const usable = self.stackEntry(0).usable_moves;
+    std.debug.assert(usable <= self.ply);
+    inline for (.{0} ++ history.CONTCORR_OFFSETS, 0..) |i, j| {
         res[j] = if (i < usable) self.stackEntry(-i).move else TypedMove.init();
     }
     return res;
@@ -378,7 +388,7 @@ fn qsearch(
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, self.getContCorrMoves(), self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -416,7 +426,7 @@ fn qsearch(
         &cur.movelist,
         &self.histories,
         tt_entry.move,
-        self.getUsableMoves(),
+        self.getContHistMoves(),
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
@@ -683,7 +693,7 @@ fn search(
     var corrected_static_eval = raw_static_eval;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, self.getContCorrMoves(), self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -706,7 +716,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move);
+        const corrplexity = self.histories.squaredCorrectionTerms(board, self.getContCorrMoves());
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
@@ -769,7 +779,7 @@ fn search(
         &cur.movelist,
         &self.histories,
         if (is_singular_search) cur.excluded else tt_entry.move,
-        self.getUsableMoves(),
+        self.getContHistMoves(),
         is_singular_search,
     );
     defer mp.deinit();
@@ -807,7 +817,7 @@ fn search(
         const history_score = if (is_quiet) self.histories.readQuietPruning(
             board,
             move,
-            self.getUsableMoves(),
+            self.getContHistMoves(),
         ) else self.histories.readNoisy(board, move);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
@@ -923,7 +933,7 @@ fn search(
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move);
+            const corrhists_squared = self.histories.squaredCorrectionTerms(board, self.getContCorrMoves());
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
@@ -1042,7 +1052,7 @@ fn search(
                 const hist_depth = depth + @as(i32, if (score >= beta + tunable_constants.high_eval_offs) 1 else 0);
                 score_type = .lower;
                 cur.failhighs += 1;
-                const usable_moves = self.getUsableMoves();
+                const usable_moves = self.getContHistMoves();
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
                         self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
@@ -1091,7 +1101,7 @@ fn search(
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
-                self.histories.updateCorrection(board, cur.move, corrected_static_eval, best_score, depth);
+                self.histories.updateCorrection(board, self.getContCorrMoves(), corrected_static_eval, best_score, depth);
             }
         }
     }
@@ -1114,7 +1124,8 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     };
     var nodes: u64 = 0;
     var tbhits: u64 = 0;
-    for (engine.searchers) |searcher| {
+
+    for (engine.searchers) |*searcher| {
         nodes += searcher.nodes;
         tbhits += searcher.tbhits;
     }

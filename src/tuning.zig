@@ -146,7 +146,8 @@ const tunable_defaults = struct {
     pub const qs_hp_margin: i32 = -3995;
     pub const corrhist_pawn_weight: i32 = 706;
     pub const corrhist_nonpawn_weight: i32 = 804;
-    pub const corrhist_countermove_weight: i32 = 827;
+    pub const corrhist_previous_weight: i32 = 827;
+    pub const corrhist_countermove_weight: i32 = 800;
     pub const corrhist_major_weight: i32 = 989;
     pub const corrhist_minor_weight: i32 = 996;
     pub const lmp_standard_base: i32 = 2486;
@@ -277,6 +278,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "qs_hp_margin", .default = tunable_defaults.qs_hp_margin, .min = -6000, .max = 0, .c_end = 400 },
     .{ .name = "corrhist_pawn_weight", .default = tunable_defaults.corrhist_pawn_weight, .min = -10, .max = 1825, .c_end = 72 },
     .{ .name = "corrhist_nonpawn_weight", .default = tunable_defaults.corrhist_nonpawn_weight, .min = -10, .max = 1500, .c_end = 59 },
+    .{ .name = "corrhist_previous_weight", .default = tunable_defaults.corrhist_previous_weight, .min = -10, .max = 2875, .c_end = 114 },
     .{ .name = "corrhist_countermove_weight", .default = tunable_defaults.corrhist_countermove_weight, .min = -10, .max = 2875, .c_end = 114 },
     .{ .name = "corrhist_major_weight", .default = tunable_defaults.corrhist_major_weight, .min = -10, .max = 2952, .c_end = 117 },
     .{ .name = "corrhist_minor_weight", .default = tunable_defaults.corrhist_minor_weight, .min = -10, .max = 2315, .c_end = 92 },
@@ -408,6 +410,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var qs_hp_margin = tunable_defaults.qs_hp_margin;
     pub var corrhist_pawn_weight = tunable_defaults.corrhist_pawn_weight;
     pub var corrhist_nonpawn_weight = tunable_defaults.corrhist_nonpawn_weight;
+    pub var corrhist_previous_weight = tunable_defaults.corrhist_previous_weight;
     pub var corrhist_countermove_weight = tunable_defaults.corrhist_countermove_weight;
     pub var corrhist_major_weight = tunable_defaults.corrhist_major_weight;
     pub var corrhist_minor_weight = tunable_defaults.corrhist_minor_weight;
