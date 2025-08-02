@@ -618,21 +618,7 @@ fn search(
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
         if (board.halfmove >= 100) {
             if (is_in_check) {
-                var rec: movegen.MoveListReceiver = .{};
-                movegen.generateAllQuiets(stm, board, &rec);
-                movegen.generateAllNoisies(stm, board, &rec);
-                var has_legal = false;
-                for (rec.vals.slice()) |move| {
-                    if (board.isLegal(stm, move)) {
-                        has_legal = true;
-                        break;
-                    }
-                }
-                if (has_legal) {
-                    return 0;
-                } else {
-                    return evaluation.matedIn(self.ply);
-                }
+                return if (board.hasLegalMove()) 0 else evaluation.matedIn(self.ply);
             } else {
                 return 0;
             }
