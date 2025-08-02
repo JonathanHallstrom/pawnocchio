@@ -698,7 +698,7 @@ fn search(
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
-        improving = cur.evals.improving(stm) or corrected_static_eval >= beta + 50;
+        improving = cur.evals.improving(stm) or corrected_static_eval >= beta + 200;
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
         if (tt_hit and evaluation.checkTTBound(
