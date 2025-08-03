@@ -821,6 +821,7 @@ fn search(
             move,
             self.getUsableMoves(),
         ) else self.histories.readNoisy(board, move);
+        const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
@@ -902,7 +903,10 @@ fn search(
             if (s_score < s_beta) {
                 extension += 1;
 
-                if (s_score < s_beta - (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0)) {
+                var dext: i64 = (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0);
+                dext -= @min(corrhists_squared >> 23, 10);
+
+                if (s_score < s_beta - dext) {
                     extension += 1;
 
                     if (!is_pv and s_score < s_beta - tunable_constants.singular_text_margin) {
@@ -934,8 +938,6 @@ fn search(
         const score = blk: {
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
-
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move);
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
