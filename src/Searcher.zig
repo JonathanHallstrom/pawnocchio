@@ -252,8 +252,7 @@ fn evalStateRoot(self: *Searcher) [*]evaluation.State {
 
 fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
     _ = stm;
-    _ = self;
-    return 0;
+    return @intCast((self.nodes & 7) - 3);
 }
 
 fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
