@@ -278,9 +278,28 @@ fn datagenWorker(
     }
 }
 
-pub fn datagen(num_nodes: u64, filename: []const u8) !void {
+fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
+    var fbs = std.io.fixedBufferStream(buf);
+
+    var random_buf: [32]u8 align(32) = undefined;
+    try std.posix.getrandom(&random_buf);
+
+    var net_name = @import("build_options").net_path;
+    if (std.mem.lastIndexOfAny(u8, net_name, "/\\")) |separator| {
+        net_name = net_name[separator + 1 ..];
+    }
+    if (std.mem.lastIndexOfAny(u8, net_name, ".")) |separator| {
+        net_name = net_name[0..separator];
+    }
+
+    try fbs.writer().print("outfile_{s}_{}nodes_{x}.vf", .{ net_name, nodes, @as(u256, @bitCast(random_buf)) });
+    return fbs.getWritten();
+}
+
+pub fn datagen(num_nodes: u64, positions: u64) !void {
+    var buf: [1024]u8 = undefined;
     var timer = try std.time.Timer.start();
-    var out_file = try std.fs.cwd().createFile(filename, .{});
+    var out_file = try std.fs.cwd().createFile(try getFileName(num_nodes, &buf), .{});
     var buf_writer = std.io.bufferedWriter(out_file.writer());
     const writer = buf_writer.writer();
     var writer_mutex = std.Thread.Mutex{};
@@ -302,24 +321,27 @@ pub fn datagen(num_nodes: u64, filename: []const u8) !void {
         }
         try buf_writer.flush();
         writer_mutex.unlock();
-        const positions = total_position_count.load(.seq_cst);
+        const cur_positions = total_position_count.load(.seq_cst);
+        if (cur_positions >= positions) {
+            std.process.exit(0);
+        }
         const time = timer.read();
-        if (positions == prev_positions) {
+        if (cur_positions == prev_positions) {
             continue;
         }
         defer {
-            prev_positions = positions;
+            prev_positions = cur_positions;
             prev_time = time;
         }
         // u64 because if we're able to generate >2^64 positions per second then this program makes no sense
-        const pps: u64 = @intCast(@as(u128, positions - prev_positions) * std.time.ns_per_s / @max(1, time - prev_time));
+        const pps: u64 = @intCast(@as(u128, cur_positions - prev_positions) * std.time.ns_per_s / @max(1, time - prev_time));
         const lower_bound = if (pps_ema_opt) |pps_ema| pps_ema / 2 -| 1000 else pps;
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
         pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 19 + clamped_pps) / 20 else pps;
         std.debug.print("games:{} positions:{} positions/s:{}\n", .{
             total_game_count.load(.seq_cst),
-            positions,
+            cur_positions,
             pps_ema_opt.?,
         });
     }

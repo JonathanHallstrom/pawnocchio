@@ -42,13 +42,12 @@ pub fn main() !void {
         const bench_depth_default: i32 = 11;
         const datagen_nodes_default: u64 = 7000;
         const datagen_threads_default: usize = std.Thread.getCpuCount() catch 1;
-        const datagen_file_default: []const u8 = "outfile.vf";
         var do_bench = false;
         var bench_depth = bench_depth_default;
         var do_datagen = false;
         var datagen_nodes = datagen_nodes_default;
         var datagen_threads = datagen_threads_default;
-        var datagen_file = datagen_file_default;
+        var datagen_positions: ?u64 = null;
         var do_genfens = false;
         var genfens_seed: u64 = 0;
         var genfens_count: usize = 0;
@@ -67,9 +66,9 @@ pub fn main() !void {
                     \\      Defaults: BENCH_DEPTH={d}
                     \\      Example: pawnocchio bench 12
                     \\
-                    \\  datagen [threads=<COUNT>] [nodes=<NODE_COUNT>] [file=<FILEPATH>]
+                    \\  datagen [threads=<COUNT>] [nodes=<NODE_COUNT>] [positions=<POS_COUNT>]
                     \\      Generate training data.
-                    \\      Defaults: threads={d} (all CPU cores), nodes={d}, file="{s}"
+                    \\      Defaults: threads={d} (all CPU cores), nodes={d}
                     \\      Example: pawnocchio datagen threads=4 nodes=100000
                     \\
                     \\  help
@@ -102,7 +101,7 @@ pub fn main() !void {
                     \\  bullet_evals        - Display NNUE evaluations for predefined FENs.
                     \\  hceval              - Display HCE evaluation for current position.
                     \\
-                , .{ VERSION_STRING, bench_depth_default, datagen_threads_default, datagen_nodes_default, datagen_file_default });
+                , .{ VERSION_STRING, bench_depth_default, datagen_threads_default, datagen_nodes_default });
                 return;
             }
             if (std.ascii.eqlIgnoreCase(arg, "bench")) {
@@ -119,13 +118,15 @@ pub fn main() !void {
                     datagen_threads = thread_count;
                 } else |_| {}
             }
+            if (std.mem.count(u8, arg, "positions=") > 0) {
+                if (std.fmt.parseInt(u64, arg["positions=".len..], 10)) |positions| {
+                    datagen_positions = positions;
+                } else |_| {}
+            }
             if (std.mem.count(u8, arg, "nodes=") > 0) {
                 if (std.fmt.parseInt(u64, arg["nodes=".len..], 10)) |node_count| {
                     datagen_nodes = node_count;
                 } else |_| {}
-            }
-            if (std.mem.count(u8, arg, "file=") > 0) {
-                datagen_file = arg["file=".len..];
             }
             if (std.mem.count(u8, arg, "genfens") > 0) {
                 var genfens_args = std.mem.tokenizeScalar(u8, arg, ' ');
@@ -183,7 +184,11 @@ pub fn main() !void {
         if (do_datagen) {
             std.debug.print("datagenning with {} threads\n", .{datagen_threads});
             try root.engine.setThreadCount(datagen_threads);
-            try root.engine.datagen(datagen_nodes, datagen_file);
+            if (datagen_positions) |positions| {
+                try root.engine.datagen(datagen_nodes, positions);
+            } else {
+                std.debug.panic("Need to specify positions with `positions=N` to specify how many positions to generage.", .{});
+            }
         }
         if (do_bench) {
             var total_nodes: u64 = 0;
