@@ -211,24 +211,9 @@ fn datagenWorker(
             } else {
                 num_adj_draw = 0;
             }
-            // const fen = board.toFen();
-            // var buf: [1024]u8 = undefined;
-            // const dbg_log = std.fmt.bufPrint(&buf, "{s} {} {s} {}\n", .{
-            //     fen.slice(),
-            //     adjusted,
-            //     search_move.toString(&board).slice(),
-            //     board.hash,
-            // }) catch unreachable;
-
             switch (board.stm) {
                 inline else => |stm| {
-                    // std.debug.print("{s} {s}\n", .{
-                    //     board.toFen().slice(),
-                    //     searchers[i].root_move.toString(&board).slice(),
-                    // });
                     if (search_move.isNull()) {
-                        // std.debug.print("{s}", .{dbg_log});
-                        // std.debug.print("ended due to null move from search\n", .{});
                         break :game_loop;
                     }
                     board.makeMove(stm, search_move, root.Board.NullEvalState{});
@@ -239,16 +224,9 @@ fn datagenWorker(
                 repetitions += @intFromBool(prev_hash == board.hash);
             }
             if (repetitions >= 3) {
-                // std.debug.print("{s}", .{dbg_log});
-                // std.debug.print("ended due to repetiton\n", .{});
-                // std.debug.print("hashes: {any}\n", .{hashes.items});
-
-                // std.debug.print("hash after move: {}\n", .{board.hash});
                 break :game_loop;
             }
             if (board.halfmove >= 100) {
-                // std.debug.print("{s}", .{dbg_log});
-                // std.debug.print("ended due to halfmove limit exceeded\n", .{});
                 break :game_loop;
             }
             if (board.halfmove == 0) {
