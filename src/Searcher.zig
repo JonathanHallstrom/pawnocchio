@@ -904,7 +904,7 @@ fn search(
                 extension += 1;
 
                 var dext: i64 = (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0);
-                dext -= @min(corrhists_squared >> 24, 20);
+                dext -= @min(corrhists_squared >> 25, 15);
 
                 if (s_score < s_beta - dext) {
                     extension += 1;
