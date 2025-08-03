@@ -193,7 +193,7 @@ const tunable_defaults = struct {
     pub const singular_beta_mult: i32 = 426;
     pub const singular_depth_mult: i32 = 551;
     pub const singular_depth_offs: i32 = 850;
-    pub const singular_dext_margin: i32 = 15;
+    pub const singular_dext_margin: i32 = 25;
     pub const singular_dext_pv_margin: i32 = 21;
     pub const singular_text_margin: i32 = 95;
 };
