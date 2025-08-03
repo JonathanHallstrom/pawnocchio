@@ -155,9 +155,6 @@ fn datagenWorker(
         const write_buffer = fba.allocator().alloc(u8, 1 << 16) catch @panic("failed to allocate write buffer");
         defer fba.allocator().free(write_buffer);
 
-        var fbs = std.io.fixedBufferStream(write_buffer);
-        const local_writer = fbs.writer();
-
         var hashes = std.BoundedArray(u64, 200){};
         const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
         for (0..random_move_count) |_| {
@@ -264,17 +261,9 @@ fn datagenWorker(
         _ = total_game_count.fetchAdd(1, .seq_cst);
         num_positions_written += game.moves.items.len;
 
-        game.serializeInto(local_writer) catch {
-            writer_mutex.lock();
-            writer.writeAll(fbs.getWritten()) catch @panic("failed to flush buffer");
-            writer_mutex.unlock();
-            fbs.reset();
-            game.serializeInto(local_writer) catch {
-                writer_mutex.lock();
-                game.serializeInto(writer) catch @panic("failed to write game");
-                writer_mutex.unlock();
-            };
-        };
+        writer_mutex.lock();
+        game.serializeInto(writer) catch @panic("failed to write game");
+        writer_mutex.unlock();
     }
 }
 
