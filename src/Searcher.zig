@@ -117,6 +117,7 @@ ttage: u5 = 0,
 syzygy_depth: u8 = 1,
 normalize: bool = false,
 tbhits: u64 = 0,
+min_nmp_ply: u8 = 0,
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -739,6 +740,7 @@ fn search(
         if (depth >= 4 and
             eval >= beta and
             non_pk != 0 and
+            self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull())
         {
             self.prefetch(Move.init());
@@ -759,7 +761,17 @@ fn search(
             self.unmakeNullMove(stm);
 
             if (nmp_score >= beta) {
-                return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                if (depth <= 15 or self.min_nmp_ply != 0) {
+                    return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                }
+
+                self.min_nmp_ply = @intCast(std.math.clamp(self.ply + @divTrunc(nmp_reduction * 3, 4), 0, MAX_PLY));
+                const verif_score = self.search(false, false, stm, beta - 1, beta, depth - nmp_reduction, cutnode);
+                self.min_nmp_ply = 0;
+
+                if (verif_score >= beta) {
+                    return verif_score;
+                }
             }
         }
     }
