@@ -101,6 +101,8 @@ const tunable_defaults = struct {
     pub const cont1_pruning_weight: i32 = 1037;
     pub const cont2_ordering_weight: i32 = 1040;
     pub const cont2_pruning_weight: i32 = 960;
+    pub const cont4_ordering_weight: i32 = 1024;
+    pub const cont4_pruning_weight: i32 = 0;
     pub const noisy_ordering_weight: i32 = 1121;
     pub const noisy_pruning_weight: i32 = 1007;
     pub const rfp_base: i32 = 43;
@@ -232,6 +234,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont1_pruning_weight", .default = tunable_defaults.cont1_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont2_ordering_weight", .default = tunable_defaults.cont2_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont2_pruning_weight", .default = tunable_defaults.cont2_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont4_ordering_weight", .default = tunable_defaults.cont4_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "noisy_ordering_weight", .default = tunable_defaults.noisy_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "noisy_pruning_weight", .default = tunable_defaults.noisy_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 147, .c_end = 5 },
@@ -363,6 +367,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var cont1_pruning_weight = tunable_defaults.cont1_pruning_weight;
     pub var cont2_ordering_weight = tunable_defaults.cont2_ordering_weight;
     pub var cont2_pruning_weight = tunable_defaults.cont2_pruning_weight;
+    pub var cont4_ordering_weight = tunable_defaults.cont4_ordering_weight;
+    pub var cont4_pruning_weight = tunable_defaults.cont4_pruning_weight;
     pub var noisy_ordering_weight = tunable_defaults.noisy_ordering_weight;
     pub var noisy_pruning_weight = tunable_defaults.noisy_pruning_weight;
     pub var rfp_base = tunable_defaults.rfp_base;
