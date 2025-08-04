@@ -904,7 +904,7 @@ fn search(
                 extension += 1;
 
                 var dext: i64 = (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0);
-                dext -= @intCast(@min(std.math.sqrt(@abs(corrhists_squared)) >> 10, 10));
+                dext -= @intCast(@min(std.math.sqrt(@abs(corrhists_squared)) >> 10, 11));
 
                 // const globals = struct {
                 //     var sum: i64 = 0;
