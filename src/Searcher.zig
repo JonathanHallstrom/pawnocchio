@@ -904,7 +904,16 @@ fn search(
                 extension += 1;
 
                 var dext: i64 = (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0);
-                dext -= @min(corrhists_squared >> 25, 15);
+                dext -= @intCast(@min(std.math.sqrt(@abs(corrhists_squared)) >> 10, 10));
+
+                // const globals = struct {
+                //     var sum: i64 = 0;
+                //     var count: u32 = 0;
+                // };
+                // globals.sum += @intCast(@min(std.math.sqrt(@abs(corrhists_squared)) >> 10, 10));
+                // globals.count += 1;
+                //
+                // std.debug.print("{} {}\n", .{ globals.sum, globals.count });
 
                 if (s_score < s_beta - dext) {
                     extension += 1;
