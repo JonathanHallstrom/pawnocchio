@@ -188,6 +188,7 @@ pub const StackEntry = struct {
     static_eval: i16,
     failhighs: u8,
     usable_moves: u8,
+    reduction: i32 = 0,
 
     pub fn init(
         self: *StackEntry,
@@ -707,6 +708,10 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
+        if (cur.reduction >= 4096 and opponent_worsening) {
+            depth += 1;
+        }
+
         const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
@@ -955,6 +960,7 @@ fn search(
                     self.stackEntry(-1).failhighs > 2,
                 });
 
+                self.stackEntry(0).reduction = reduction;
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
@@ -969,6 +975,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
+                cur.reduction = 0;
                 if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
