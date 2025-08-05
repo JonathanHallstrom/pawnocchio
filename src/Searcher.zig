@@ -1243,16 +1243,17 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var completed_depth: i32 = 0;
     var eval_stability: i32 = 0;
     var move_stability: i32 = 0;
-    var average_score: i64 = 0;
+    var average_squared_score: i64 = 0;
+    var average_score: i32 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
-        var quantized_window: i64 = tunable_constants.aspiration_initial + (average_score * tunable_constants.aspiration_score_mult >> 14);
+        var quantized_window: i64 = tunable_constants.aspiration_initial + (average_squared_score * tunable_constants.aspiration_score_mult >> 14);
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
         }
-        var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -evaluation.inf_score));
-        var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.inf_score));
+        var aspiration_lower: i32 = @intCast(@max(average_score - (quantized_window >> 10), -evaluation.inf_score));
+        var aspiration_upper: i32 = @intCast(@min(average_score + (quantized_window >> 10), evaluation.inf_score));
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
@@ -1311,7 +1312,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         previous_score = score;
         previous_move = self.root_move;
 
-        average_score = if (d == 1) score else @divTrunc(average_score + @as(i64, score) * score, 2);
+        average_squared_score = if (d == 1) score else @divTrunc(average_squared_score + @as(i64, score) * score, 2);
+        average_score = if (d == 1) score else @divTrunc(average_score + score, 2);
 
         completed_depth = depth;
         if (is_main_thread) {
