@@ -959,7 +959,7 @@ fn search(
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
 
-                const reduced_depth = depth + extension - clamped_reduction;
+                const reduced_depth = depth + extension - clamped_reduction + @intFromBool(is_pv);
                 s = -self.search(
                     false,
                     false,
