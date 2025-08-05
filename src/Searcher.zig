@@ -708,7 +708,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        if (cur.reduction >= 4096 and opponent_worsening) {
+        if (cur.reduction >= 4096 and !opponent_worsening) {
             depth += 1;
         }
 
