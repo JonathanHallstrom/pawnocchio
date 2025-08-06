@@ -450,8 +450,9 @@ pub const TTEntry = struct {
     pub fn hashEql(self: TTEntry, other_hash: u64) bool {
         return self.hash == compress(other_hash);
     }
+
     inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
-        return self.depth - 4 * (32 + cur_age - self.flags.age & 31);
+        return self.depth + @as(i32, if (self.flags.is_pv) 1 else 0) - 4 * (32 + cur_age - self.flags.age & 31);
     }
 };
 
