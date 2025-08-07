@@ -120,6 +120,14 @@ pub fn startSearch(settings: SearchSettings) void {
     needs_full_reset = false; // don't clear state unnecessarily
 }
 
+const DatagenStats = struct {
+    positions: std.atomic.Value(usize) = .init(0),
+    games: std.atomic.Value(usize) = .init(0),
+    wins: std.atomic.Value(usize) = .init(0),
+    draws: std.atomic.Value(usize) = .init(0),
+    losses: std.atomic.Value(usize) = .init(0),
+};
+
 fn datagenWorker(
     i: usize,
     random_move_count_low: u8,
@@ -128,8 +136,7 @@ fn datagenWorker(
     node_count: u64,
     writer: anytype,
     writer_mutex: *std.Thread.Mutex,
-    total_position_count: *std.atomic.Value(usize),
-    total_game_count: *std.atomic.Value(usize),
+    stats: *DatagenStats,
 ) void {
     const searcher = &searchers[i];
     const viriformat = root.viriformat;
@@ -257,12 +264,19 @@ fn datagenWorker(
             continue :datagen_loop;
         }
 
-        _ = total_position_count.fetchAdd(game.moves.items.len, .seq_cst);
-        _ = total_game_count.fetchAdd(1, .seq_cst);
+        _ = stats.positions.fetchAdd(game.moves.items.len, .seq_cst);
+        _ = stats.games.fetchAdd(1, .seq_cst);
         num_positions_written += game.moves.items.len;
 
+        _ = switch (game.initial_position.wdl) {
+            0 => stats.losses.fetchAdd(1, .seq_cst),
+            1 => stats.draws.fetchAdd(1, .seq_cst),
+            2 => stats.wins.fetchAdd(1, .seq_cst),
+            else => {},
+        };
         writer_mutex.lock();
         game.serializeInto(writer) catch @panic("failed to write game");
+
         writer_mutex.unlock();
     }
 }
@@ -292,11 +306,10 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     var buf_writer = std.io.bufferedWriter(out_file.writer());
     const writer = buf_writer.writer();
     var writer_mutex = std.Thread.Mutex{};
-    var total_position_count = std.atomic.Value(usize).init(0);
-    var total_game_count = std.atomic.Value(usize).init(0);
+    var stats = DatagenStats{};
     for (0..current_num_threads) |i| {
         searchers[i].tt = try std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster));
-        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer, &writer_mutex, &total_position_count, &total_game_count });
+        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer, &writer_mutex, &stats });
     }
 
     var prev_positions: usize = 0;
@@ -310,7 +323,7 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
         }
         try buf_writer.flush();
         writer_mutex.unlock();
-        const cur_positions = total_position_count.load(.seq_cst);
+        const cur_positions = stats.positions.load(.seq_cst);
         if (cur_positions >= positions) {
             std.process.exit(0);
         }
@@ -328,8 +341,11 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
         pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 19 + clamped_pps) / 20 else pps;
-        std.debug.print("games:{} positions:{} positions/s:{}\n", .{
-            total_game_count.load(.seq_cst),
+        std.debug.print("games:{} wins:{} draws:{} losses:{} positions:{} positions/s:{}\n", .{
+            stats.games.load(.seq_cst),
+            stats.wins.load(.seq_cst),
+            stats.draws.load(.seq_cst),
+            stats.losses.load(.seq_cst),
             cur_positions,
             pps_ema_opt.?,
         });
