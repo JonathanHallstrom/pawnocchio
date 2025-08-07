@@ -1,6 +1,6 @@
 import os
 
-VERSION = "1.8"
+VERSION = "1.8.2"
 
 
 builds = [
