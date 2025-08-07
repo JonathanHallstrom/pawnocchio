@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.8.1";
+const VERSION_STRING = "1.8.2";
 
 pub fn main() !void {
     root.init();
@@ -541,8 +541,11 @@ pub fn main() !void {
             }
 
             if (root.use_tbs) {
-                if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name)) {
-                    var dir = try std.fs.openDirAbsolute(value, .{ .iterate = true });
+                if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name) and !std.ascii.eqlIgnoreCase("<empty>", value) and value.len > 0) {
+                    var dir = std.fs.openDirAbsolute(value, .{ .iterate = true }) catch {
+                        write("info string Failed to open specified directory for Syzygy Tablebases '{s}'\n", .{value});
+                        continue;
+                    };
 
                     var num_files: usize = 0;
                     var iter = dir.iterate();
