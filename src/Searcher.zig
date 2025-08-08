@@ -1055,16 +1055,21 @@ fn search(
                 score_type = .lower;
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
+                const extra = blk: {
+                    const cur_eval = cur.evals.curFor(stm) orelse break :blk 0;
+                    const prev_eval = cur.evals.curFor(stm.flipped()) orelse break :blk 0;
+                    break :blk std.math.clamp(-10 * (cur_eval + prev_eval), -1000, 1000);
+                };
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
+                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, extra);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
+                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, extra);
                         }
                     }
-                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
+                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, extra);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
+                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, extra);
                     }
                 } else {
                     self.histories.updateNoisy(board, move, hist_depth, true);
