@@ -724,7 +724,7 @@ fn search(
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
-        if (depth <= 3 and eval + tunable_constants.razoring_margin * depth + 50 <= alpha) {
+        if (depth <= 3 and eval + tunable_constants.razoring_margin * depth + 25 <= alpha) {
             const razor_score = self.qsearch(
                 is_root,
                 is_pv,
