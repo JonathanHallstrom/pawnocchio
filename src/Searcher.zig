@@ -1058,7 +1058,7 @@ fn search(
                 const extra = blk: {
                     const cur_eval = cur.evals.curFor(stm) orelse break :blk 0;
                     const prev_eval = cur.evals.curFor(stm.flipped()) orelse break :blk 0;
-                    break :blk std.math.clamp(-10 * (cur_eval + prev_eval), -1500, 1000) + 300;
+                    break :blk std.math.clamp(cur_eval + prev_eval, -150, 100) + 30;
                 };
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
