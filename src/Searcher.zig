@@ -1257,7 +1257,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         var score = -evaluation.inf_score;
         switch (params.board.stm) {
             inline else => |stm| while (true) {
-                defer quantized_window = quantized_window * tunable_constants.aspiration_multiplier >> 10;
+                defer quantized_window = quantized_window * (tunable_constants.aspiration_multiplier + (8 - move_stability) * 16) >> 10;
 
                 self.seldepth = 0;
                 score = self.search(
