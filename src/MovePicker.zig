@@ -216,8 +216,9 @@ fn goodNoises(self: *MovePicker) ScoredMove {
 
 fn generateQuiets(self: *MovePicker) ScoredMove {
     if (self.skip_quiets) {
-        self.next_func = &quiets;
-        return @call(call_modifier, &quiets, .{self});
+        self.stage = .bad_noisy_prep;
+        self.next_func = &badNoisyPrep;
+        return @call(call_modifier, &badNoisyPrep, .{self});
     }
     self.first = self.movelist.vals.len;
     switch (self.board.stm) {
