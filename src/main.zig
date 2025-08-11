@@ -429,7 +429,7 @@ pub fn main() !void {
                         @as(f64, @floatFromInt(tunable.default)),
                         @as(f64, @floatFromInt(tunable.getMin())),
                         @as(f64, @floatFromInt(tunable.getMax())),
-                        tunable.getCend(),
+                        tunable.getCend() / 2,
                     },
                 );
             }
