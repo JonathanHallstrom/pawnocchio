@@ -108,12 +108,32 @@ fn computeMoveStabilityFactor(_: *const Limits, stab: i32) u64 {
     return @intCast(@max(1, tunable_constants.move_stab_base - tunable_constants.move_stab_offs * stab));
 }
 
+fn computeComplexityFactor(
+    _: *const Limits,
+    depth: i32,
+    score: i32,
+    eval: i32,
+) u64 {
+    if (depth <= 4 or
+        root.evaluation.isTBScore(score) or
+        root.evaluation.isTBScore(eval))
+    {
+        return 1024;
+    }
+
+    const base: f64 = 0.8;
+    const complexity: f64 = base * @log(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(@abs(score - eval)));
+    const scale_base: f64 = 0.7;
+    return @intFromFloat((scale_base + std.math.clamp(complexity, 0, 200) / 400.0) * 1024);
+}
+
 pub fn checkRoot(
     self: *Limits,
     nodes: u64,
     depth: i32,
     move: Move,
     score: i16,
+    eval: i16,
     eval_stability: i32,
     move_stability: i32,
 ) bool {
@@ -141,6 +161,7 @@ pub fn checkRoot(
         var adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
         adjusted_limit = adjusted_limit * self.computeEvalStabilityFactor(eval_stability) >> 10;
         adjusted_limit = adjusted_limit * self.computeMoveStabilityFactor(move_stability) >> 10;
+        adjusted_limit = adjusted_limit * self.computeComplexityFactor(depth, score, eval) >> 10;
         if (curr_time >= adjusted_limit) {
             return true;
         }

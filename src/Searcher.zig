@@ -202,7 +202,7 @@ pub const StackEntry = struct {
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
-        self.static_eval = 0;
+        self.static_eval = evaluation.inf_score;
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
     }
@@ -1324,6 +1324,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             depth,
             self.root_move,
             score,
+            self.searchStackRoot()[0].static_eval,
             eval_stability,
             move_stability,
         )) {
