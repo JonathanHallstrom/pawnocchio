@@ -123,7 +123,7 @@ fn computeComplexityFactor(
 
     const base: f64 = 0.8;
     const complexity: f64 = base * @log(@as(f64, @floatFromInt(depth))) * @as(f64, @floatFromInt(@abs(score - eval)));
-    const scale_base: f64 = 0.7;
+    const scale_base: f64 = 0.8;
     return @intFromFloat((scale_base + std.math.clamp(complexity, 0, 200) / 400.0) * 1024);
 }
 
