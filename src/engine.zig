@@ -94,7 +94,6 @@ pub fn deinit() void {
 fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {
     searchers[i].tt = tt;
     searchers[i].startSearch(settings, i == 0, quiet);
-    // _ = num_finished_threads.rmw(.Add, 1, .seq_cst);
     _ = num_finished_threads.fetchAdd(1, .seq_cst);
     if (num_finished_threads.load(.seq_cst) == current_num_threads) {
         is_searching.store(false, .seq_cst);
@@ -179,11 +178,12 @@ fn datagenWorker(
             limits.soft_nodes = node_count;
             limits.hard_nodes = 100 * node_count;
             limits.min_depth = min_depth;
+            board.hash ^= 13345022705723281337; // hack to make tt not shared
             searcher.startSearch(
                 root.Searcher.Params{
                     .board = board,
                     .limits = limits,
-                    .needs_full_reset = move_idx == 0,
+                    .needs_full_reset = false,
                     .previous_hashes = hashes,
                     .normalize = false,
                 },
