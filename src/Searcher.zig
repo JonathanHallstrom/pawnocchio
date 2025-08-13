@@ -861,6 +861,16 @@ fn search(
                     mp.skip_quiets = true;
                     continue;
                 }
+            } else {
+                if (!is_pv and
+                    !is_in_check and
+                    depth <= 6 and
+                    mp.stage == .bad_noisies and
+                    @abs(alpha) < 2000 and
+                    eval + 200 + 200 * depth <= alpha)
+                {
+                    break;
+                }
             }
 
             const see_pruning_thresh = if (is_quiet)
