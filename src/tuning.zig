@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -141,7 +141,8 @@ const tunable_defaults = struct {
     pub const qs_see_threshold: i32 = -80;
     pub const see_quiet_pruning_mult: i32 = -81;
     pub const see_noisy_pruning_mult: i32 = -52;
-    pub const razoring_margin: i32 = 204;
+    pub const razoring_mult: i32 = 204;
+    pub const razoring_offs: i32 = 0;
     pub const history_pruning_offs: i32 = 570;
     pub const history_pruning_mult: i32 = -2688;
     pub const qs_futility_margin: i32 = 129;
@@ -198,6 +199,13 @@ const tunable_defaults = struct {
     pub const singular_dext_margin: i32 = 15;
     pub const singular_dext_pv_margin: i32 = 22;
     pub const singular_text_margin: i32 = 89;
+    pub const ttpick_depth_weight: i32 = 1024;
+    pub const ttpick_age_weight: i32 = 4096;
+    pub const ttpick_pv_weight: i32 = 0;
+    pub const ttpick_lower_weight: i32 = 0;
+    pub const ttpick_upper_weight: i32 = 0;
+    pub const ttpick_exact_weight: i32 = 0;
+    pub const ttpick_move_weight: i32 = 0;
 };
 
 pub const tunables = [_]Tunable{
@@ -274,7 +282,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold, .min = -230, .max = 10, .c_end = 8 },
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -185, .max = 10, .c_end = 7 },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -135, .max = 10, .c_end = 5 },
-    .{ .name = "razoring_margin", .default = tunable_defaults.razoring_margin, .min = -10, .max = 572, .c_end = 22 },
+    .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult, .min = -10, .max = 572, .c_end = 22 },
+    .{ .name = "razoring_offs", .default = tunable_defaults.razoring_offs, .min = -1024, .max = 1024, .c_end = 32 },
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin, .min = -10, .max = 305, .c_end = 11 },
@@ -331,6 +340,13 @@ pub const tunables = [_]Tunable{
     .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin, .min = 0, .max = 50, .c_end = 1 },
     .{ .name = "singular_dext_pv_margin", .default = tunable_defaults.singular_dext_pv_margin, .min = 0, .max = 50, .c_end = 1 },
     .{ .name = "singular_text_margin", .default = tunable_defaults.singular_text_margin, .min = 0, .max = 200, .c_end = 5 },
+    .{ .name = "ttpick_depth_weight", .default = tunable_defaults.ttpick_depth_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "ttpick_age_weight", .default = tunable_defaults.ttpick_age_weight, .min = 0, .max = 8192, .c_end = 256 },
+    .{ .name = "ttpick_pv_weight", .default = tunable_defaults.ttpick_pv_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "ttpick_lower_weight", .default = tunable_defaults.ttpick_lower_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "ttpick_upper_weight", .default = tunable_defaults.ttpick_upper_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "ttpick_exact_weight", .default = tunable_defaults.ttpick_exact_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "ttpick_move_weight", .default = tunable_defaults.ttpick_move_weight, .min = 0, .max = 8192, .c_end = 256 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -407,7 +423,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
     pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
-    pub var razoring_margin = tunable_defaults.razoring_margin;
+    pub var razoring_mult = tunable_defaults.razoring_mult;
+    pub var razoring_offs = tunable_defaults.razoring_offs;
     pub var history_pruning_offs = tunable_defaults.history_pruning_offs;
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
@@ -464,6 +481,13 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
     pub var singular_dext_pv_margin = tunable_defaults.singular_dext_pv_margin;
     pub var singular_text_margin = tunable_defaults.singular_text_margin;
+    pub var ttpick_depth_weight = tunable_defaults.ttpick_depth_weight;
+    pub var ttpick_age_weight = tunable_defaults.ttpick_age_weight;
+    pub var ttpick_pv_weight = tunable_defaults.ttpick_pv_weight;
+    pub var ttpick_lower_weight = tunable_defaults.ttpick_lower_weight;
+    pub var ttpick_upper_weight = tunable_defaults.ttpick_upper_weight;
+    pub var ttpick_exact_weight = tunable_defaults.ttpick_exact_weight;
+    pub var ttpick_move_weight = tunable_defaults.ttpick_move_weight;
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {
