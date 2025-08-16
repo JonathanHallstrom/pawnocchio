@@ -866,7 +866,7 @@ fn search(
             const see_pruning_thresh = if (is_quiet)
                 tunable_constants.see_quiet_pruning_mult * lmr_depth
             else
-                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth + @divTrunc(history_score - 2000, 32);
+                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth + @divTrunc(history_score, 64);
 
             // const globals = struct {
             //     var sum_normal: i64 = 0;
