@@ -700,7 +700,7 @@ fn search(
             cur.static_eval = corrected_static_eval;
         }
     }
-    const eval = cur.static_eval;
+    var eval = cur.static_eval;
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
@@ -771,6 +771,8 @@ fn search(
 
                 if (verif_score >= beta) {
                     return verif_score;
+                } else {
+                    eval = verif_score;
                 }
             }
         }
