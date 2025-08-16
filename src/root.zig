@@ -451,7 +451,17 @@ pub const TTEntry = struct {
         return self.hash == compress(other_hash);
     }
     inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
-        return self.depth - 4 * (32 + cur_age - self.flags.age & 31);
+        const depth_val = tunable_constants.ttpick_depth_weight * self.depth;
+        const age_val = tunable_constants.ttpick_age_weight * (32 + cur_age - self.flags.age & 31);
+        const pv_val = tunable_constants.ttpick_pv_weight * @intFromBool(self.flags.is_pv);
+        const type_val = switch (self.flags.score_type) {
+            .exact => tunable_constants.ttpick_exact_weight,
+            .lower => tunable_constants.ttpick_lower_weight,
+            .upper => tunable_constants.ttpick_upper_weight,
+            .none => 0,
+        };
+        const move_val = tunable_constants.ttpick_move_weight * @intFromBool(!self.move.isNull());
+        return depth_val - age_val + pv_val + type_val + move_val;
     }
 };
 
