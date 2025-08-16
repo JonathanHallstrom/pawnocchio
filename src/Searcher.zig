@@ -866,14 +866,35 @@ fn search(
             const see_pruning_thresh = if (is_quiet)
                 tunable_constants.see_quiet_pruning_mult * lmr_depth
             else
-                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth;
+                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth + @divTrunc(history_score - 2000, 32);
+
+            // const globals = struct {
+            //     var sum_normal: i64 = 0;
+            //     var sum_pruned: i64 = 0;
+            //     var count_normal: u32 = 0;
+            //     var count_pruned: u32 = 0;
+            // };
 
             if (!is_pv and
                 !skip_see_pruning and
                 !SEE.scoreMove(board, move, see_pruning_thresh, .pruning))
             {
+                // if (!is_quiet) {
+                //     globals.sum_pruned += history_score;
+                //     globals.count_pruned += 1;
+                // }
                 continue;
+            } else {
+                // if (!is_quiet) {
+                //     globals.sum_normal += history_score;
+                //     globals.count_normal += 1;
+                // }
             }
+            // std.debug.print("{} {} {}\n", .{
+            //     @divTrunc(globals.sum_normal, globals.count_normal + 1),
+            //     @divTrunc(globals.sum_pruned, globals.count_pruned + 1),
+            //     @divTrunc(globals.sum_normal + globals.sum_pruned, globals.count_normal + globals.count_pruned + 1),
+            // });
         }
 
         var extension: i32 = 0;
