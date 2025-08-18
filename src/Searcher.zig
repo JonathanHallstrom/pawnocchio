@@ -866,7 +866,7 @@ fn search(
             const see_pruning_thresh = if (is_quiet)
                 tunable_constants.see_quiet_pruning_mult * lmr_depth
             else
-                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth;
+                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth + @max(0, @divTrunc(history_score - 2500, 64));
 
             if (!is_pv and
                 !skip_see_pruning and
