@@ -854,7 +854,7 @@ fn search(
                     !is_in_check and
                     lmr_depth <= 6 and
                     @abs(alpha) < 2000 and
-                    eval + tunable_constants.fp_base +
+                    eval + @as(i32, if (board.isNoisy(tt_entry.move)) 50 else 0) + tunable_constants.fp_base +
                         lmr_depth * tunable_constants.fp_mult +
                         @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096) <= alpha)
                 {
