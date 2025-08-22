@@ -449,8 +449,8 @@ fn qsearch(
                 break;
             }
             if (!is_in_check and futility <= alpha and
-                !SEE.scoreMove(board, move, 1, .pruning) and
-                !is_recapture)
+                !is_recapture and
+                !SEE.scoreMove(board, move, 1, .pruning))
             {
                 best_score = @intCast(@max(best_score, futility));
                 continue;
