@@ -164,7 +164,7 @@ pub fn main() !void {
 
                 const stat = try input_file.stat();
                 const input_bytes = if (@import("builtin").target.os.tag == .windows)
-                    try input_file.readToEndAlloc(allocator, 1 << 30)
+                    try input_file.readToEndAlloc(allocator, std.math.maxInt(usize))
                 else
                     try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
 
