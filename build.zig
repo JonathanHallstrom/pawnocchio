@@ -29,13 +29,16 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{
         .name = name,
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/main.zig"),
-        .omit_frame_pointer = minimal_executable,
-        .strip = minimal_executable,
-        .link_libc = target.result.os.tag == .windows or use_tbs,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .omit_frame_pointer = minimal_executable,
+            .strip = minimal_executable,
+            .link_libc = target.result.os.tag == .windows or use_tbs,
+        }),
     });
+
     const exe_options = b.addOptions();
     exe_options.addOption(bool, "use_tbs", use_tbs);
     exe_options.addOption(bool, "runtime_net", runtime_net);
@@ -70,18 +73,22 @@ pub fn build(b: *std.Build) !void {
     test_options.addOption([]const u8, "net_path", net);
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe_unit_tests.root_module.addImport("net", net_module);
     exe_unit_tests.root_module.addOptions("build_options", test_options);
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     lib_unit_tests.root_module.addImport("net", net_module);
     lib_unit_tests.root_module.addOptions("build_options", test_options);
