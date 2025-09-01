@@ -490,7 +490,7 @@ pub const tunable_constants = if (do_tuning) struct {
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {
-    const N = 8;
+    pub const N = 8;
     pub fn biggerTables(comptime amount: usize) void {
         comptime var two_idx_old = 0;
         comptime var three_idx_old = 0;
@@ -642,6 +642,7 @@ pub const factorized_lmr_params = struct {
 };
 
 pub const factorized_lmr = if (do_tuning) struct {
+    pub const N = factorized_lmr_defaults.N;
     pub var one = factorized_lmr_defaults.one;
     pub var two = factorized_lmr_defaults.two;
     pub var three = factorized_lmr_defaults.three;

@@ -152,7 +152,12 @@ pub fn main() !void {
                 return;
             }
             if (std.mem.count(u8, arg, "pgntovf") > 0) {
-                const input = args.next() orelse "";
+                var input = args.next() orelse "";
+                var skip_broken_games = false;
+                if (std.ascii.eqlIgnoreCase(input, "--skip-broken-games")) {
+                    skip_broken_games = true;
+                    input = args.next() orelse "";
+                }
                 const extension_len = std.mem.indexOf(u8, input, ".pgn") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
                 const output_base = args.next() orelse input[0..extension_len];
 
@@ -164,7 +169,7 @@ pub fn main() !void {
 
                 const stat = try input_file.stat();
                 const input_bytes = if (@import("builtin").target.os.tag == .windows)
-                    try input_file.readToEndAlloc(allocator, 1 << 30)
+                    try input_file.readToEndAlloc(allocator, std.math.maxInt(usize))
                 else
                     try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
 
@@ -176,7 +181,7 @@ pub fn main() !void {
                 var output_file = try std.fs.cwd().createFile(output, .{});
                 defer output_file.close();
 
-                try @import("pgn_to_vf.zig").convert(input_bytes, output_file.writer(), std.heap.smp_allocator);
+                try @import("pgn_to_vf.zig").convert(input_bytes, skip_broken_games, output_file.writer(), std.heap.smp_allocator);
 
                 return;
             }

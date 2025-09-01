@@ -449,8 +449,8 @@ fn qsearch(
                 break;
             }
             if (!is_in_check and futility <= alpha and
-                !SEE.scoreMove(board, move, 1, .pruning) and
-                !is_recapture)
+                !is_recapture and
+                !SEE.scoreMove(board, move, 1, .pruning))
             {
                 best_score = @intCast(@max(best_score, futility));
                 continue;
@@ -553,22 +553,51 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
     }
 }
 
-inline fn lmrConvolve(comptime N: usize, params: [N]bool) i32 {
-    var res: i32 = 0;
+inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
+    var res: i16 = 0;
     comptime var two = 0;
     comptime var three = 0;
     inline for (0..N) |i| {
-        res += root.tuning.factorized_lmr.one[i] * @intFromBool(params[i]);
+        res += weights.one[i] * @intFromBool(params[i]);
         inline for (i + 1..N) |j| {
-            res += root.tuning.factorized_lmr.two[two] * @intFromBool(params[i] and params[j]);
+            res += weights.two[two] * @intFromBool(params[i] and params[j]);
             inline for (j + 1..N) |k| {
-                res += root.tuning.factorized_lmr.three[three] * @intFromBool(params[i] and params[j] and params[k]);
+                res += weights.three[three] * @intFromBool(params[i] and params[j] and params[k]);
                 three += 1;
             }
             two += 1;
         }
     }
     return res;
+}
+
+const precomp_lmr_factorised = if (!root.tuning.do_tuning)
+blk: {
+    @setEvalBranchQuota(1 << 30);
+    const N = root.tuning.factorized_lmr.N;
+    var res: [1 << N]i16 = undefined;
+
+    for (&res, 0..) |*val, i| {
+        var params: [N]bool = undefined;
+        for (0..N) |j| {
+            params[j] = i >> j & 1 != 0;
+        }
+        val.* = convolve(N, params, root.tuning.factorized_lmr);
+    }
+
+    break :blk res;
+} else void{};
+
+inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
+    if (root.tuning.do_tuning) {
+        return convolve(N, params, root.tuning.factorized_lmr);
+    } else {
+        var i: usize = 0;
+        inline for (0..N) |j| {
+            i |= @as(usize, @intFromBool(params[j])) << j;
+        }
+        return precomp_lmr_factorised[i];
+    }
 }
 
 fn search(
@@ -944,7 +973,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += lmrConvolve(8, .{
+                reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
                     improving,
@@ -954,7 +983,6 @@ fn search(
                     gives_check,
                     self.stackEntry(-1).failhighs > 2,
                 });
-
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);

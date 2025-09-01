@@ -32,7 +32,7 @@ fn endOfInfo(line: []const u8, i: usize) usize {
     return line.len;
 }
 
-pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem.Allocator) !void {
+pub fn convert(input: []const u8, skip_broken_games: bool, output_unbuffered: anytype, allocator: std.mem.Allocator) !void {
     var bw = std.io.bufferedWriter(output_unbuffered);
 
     var start_stm = root.Colour.white;
@@ -41,20 +41,24 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
     var position_count: usize = 0;
     var timer = try std.time.Timer.start();
     var iter = std.mem.tokenizeScalar(u8, input, '\n');
-    var mated = false;
-    while (iter.next()) |line| {
+    var skip_game = false;
+    outer_loop: while (iter.next()) |line| {
         if (line.len == 0) {
             continue;
         }
 
+        // std.debug.print("{s}\n", .{line});
         if (std.mem.indexOf(u8, line, "FEN")) |offs| {
             const fen = std.mem.trim(u8, line[offs + 3 ..], " \"[]");
             board = try Board.parseFen(fen, true);
             game.reset(board);
             start_stm = board.stm;
-            mated = false;
+            skip_game = false;
             continue;
         }
+
+        if (skip_game) continue;
+
         if (line[0] == '[') {
             continue;
         }
@@ -80,9 +84,29 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
                 break;
             }
 
-            const chars_in_move = std.mem.indexOfScalar(u8, line[i..], ' ').?;
-            const move_str = line[i .. i + chars_in_move];
+            var chars_in_move = std.mem.indexOfScalar(u8, line[i..], ' ').?;
+            var move_str = line[i .. i + chars_in_move];
+            if (std.ascii.isDigit(move_str[0])) {
+                // std.debug.print("discarded '{s}'\n", .{move_str});
+                i += chars_in_move + 1;
+                chars_in_move = std.mem.indexOfScalar(u8, line[i..], ' ').?;
+                move_str = line[i .. i + chars_in_move];
+            }
+
+            if (line[i + chars_in_move + 1] != '{') {
+                std.debug.print("move '{s}' is missing info block in '{s}' \n", .{ move_str, line });
+
+                if (skip_broken_games) {
+                    skip_game = true;
+                    continue :outer_loop;
+                } else {
+                    return error.InvalidInfoBlock;
+                }
+            }
+
             if (board.parseSANMove(move_str)) |move| {
+                var mated = false;
+                var winning = false;
                 const chars_in_score = std.mem.indexOfScalar(u8, line[i + chars_in_move + 2 ..], ' ').?;
                 const score_str = std.mem.trim(
                     u8,
@@ -91,25 +115,38 @@ pub fn convert(input: []const u8, output_unbuffered: anytype, allocator: std.mem
                 );
                 if (std.mem.count(u8, score_str, "M") > 0) {
                     mated = true;
+                    winning = std.mem.count(u8, score_str, "-") == 0;
                 }
-                if (!mated) {
-                    var score = std.fmt.parseFloat(f64, score_str) catch |e| {
-                        std.debug.print("failed to parse score '{s}' in line '{s}'\n", .{ score_str, line });
-                        return e;
-                    };
-                    if (@abs(score) < 100) {
-                        if (board.stm == .black) score = -score;
-                        try game.addMove(move, @intFromFloat(score * 100));
-                        position_count += 1;
+                // std.debug.print("'{s}'->{s} '{s}' {}\n", .{ move_str, move.toString(&board).slice(), score_str, mated });
+
+                var score: f64 = if (mated) (if (winning) 1000 else -1000) else std.fmt.parseFloat(f64, score_str) catch |e| {
+                    std.debug.print("failed to parse score '{s}' in line '{s}'\n", .{ score_str, line });
+                    if (skip_broken_games) {
+                        skip_game = true;
+                        continue :outer_loop;
                     } else {
-                        mated = true;
+                        return e;
                     }
-                }
+                };
+                if (board.stm == .black) score = -score;
+
+                try game.addMove(move, @intFromFloat(std.math.clamp(
+                    score * 100,
+                    std.math.minInt(i16),
+                    std.math.maxInt(i16),
+                )));
+                position_count += 1;
                 switch (board.stm) {
                     inline else => |stm| board.makeMove(stm, move, &Board.NullEvalState{}),
                 }
             } else {
-                std.debug.panic("failed to parse {s} in position {s}\n", .{ move_str, board.toFen().slice() });
+                std.debug.print("failed to parse {s} in position {s}\n", .{ move_str, board.toFen().slice() });
+                if (skip_broken_games) {
+                    skip_game = true;
+                    continue :outer_loop;
+                } else {
+                    return error.InvalidMove;
+                }
             }
         }
         if (game.moves.items.len > 0) {
