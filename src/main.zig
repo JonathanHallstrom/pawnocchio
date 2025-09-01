@@ -148,7 +148,7 @@ pub fn main() !void {
                         genfens_book = path;
                     }
                 }
-                try root.engine.genfens(genfens_book, genfens_count, genfens_seed, std.io.getStdOut().writer().any(), allocator);
+                try root.engine.genfens(genfens_book, genfens_count, genfens_seed, &root.stdout_writer, allocator);
                 return;
             }
             if (std.mem.count(u8, arg, "pgntovf") > 0) {
@@ -167,21 +167,21 @@ pub fn main() !void {
                 var input_file = std.fs.cwd().openFile(input, .{}) catch try std.fs.openFileAbsolute(input, .{});
                 defer input_file.close();
 
-                const stat = try input_file.stat();
-                const input_bytes = if (@import("builtin").target.os.tag == .windows)
-                    try input_file.readToEndAlloc(allocator, std.math.maxInt(usize))
-                else
-                    try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
-
-                defer if (@import("builtin").target.os.tag == .windows)
-                    allocator.free(input_bytes)
-                else
-                    std.posix.munmap(input_bytes);
-
                 var output_file = try std.fs.cwd().createFile(output, .{});
                 defer output_file.close();
 
-                try @import("pgn_to_vf.zig").convert(input_bytes, skip_broken_games, output_file.writer(), std.heap.smp_allocator);
+                var input_buf: [4096]u8 = undefined;
+                var output_buf: [4096]u8 = undefined;
+
+                var input_reader = input_file.reader(&input_buf);
+                var output_writer = output_file.writer(&output_buf);
+
+                try @import("pgn_to_vf.zig").convert(
+                    &input_reader.interface,
+                    skip_broken_games,
+                    &output_writer.interface,
+                    std.heap.smp_allocator,
+                );
 
                 return;
             }
@@ -363,8 +363,13 @@ pub fn main() !void {
 
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);
-    const reader = std.io.getStdIn().reader();
-    var previous_hashes = std.BoundedArray(u64, 200){};
+    var line_writer = std.Io.Writer.fixed(line_buf);
+
+    var stdin_buf: [4096]u8 = undefined;
+    var stdin = std.fs.File.stdin();
+    var reader = stdin.reader(&stdin_buf);
+
+    var previous_hashes = root.BoundedArray(u64, 200){};
 
     var board = Board.startpos();
     try previous_hashes.append(board.hash);
@@ -374,14 +379,16 @@ pub fn main() !void {
     var normalize: bool = true;
     var softnodes: bool = false;
     var weird_tcs: bool = false;
-    loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
+    loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
             std.debug.print("WARNING: encountered '{any}'\n", .{e});
-            break :blk "";
+            break :blk 0;
         },
-    }) |line_raw| {
-        const line = std.mem.trim(u8, line_raw, &std.ascii.whitespace);
+    }) |line_len| {
+        defer _ = line_writer.consumeAll();
+        std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
+        const line = std.mem.trim(u8, line_buf[0..line_len], &std.ascii.whitespace);
         for (line) |c| {
             if (!std.ascii.isPrint(c)) {
                 continue :loop;
@@ -390,6 +397,7 @@ pub fn main() !void {
         var parts = std.mem.tokenizeScalar(u8, line, ' ');
 
         const command = parts.next() orelse {
+            try std.Thread.yield();
             continue; // empty command
         };
 

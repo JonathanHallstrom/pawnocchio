@@ -155,9 +155,9 @@ const MoveEvalPair = struct {
 
 pub const Game = struct {
     initial_position: MarlinPackedBoard,
-    moves: std.ArrayList(MoveEvalPair),
+    moves: std.array_list.Managed(MoveEvalPair),
 
-    pub fn serializeInto(self: Game, writer: anytype) !void {
+    pub fn serializeInto(self: Game, writer: *std.Io.Writer) !void {
         // std.debug.print("{any}\n", .{std.mem.asBytes(&self.initial_position)});
         try writer.writeAll(std.mem.asBytes(&self.initial_position));
         for (self.moves.items) |move_eval_pair| {
@@ -181,14 +181,14 @@ pub const Game = struct {
     }
 
     pub fn reset(self: *Game, board: Board) void {
-        self.initial_position = MarlinPackedBoard.from(board, 1, 0);
+        self.initial_position = .from(board, 1, 0);
         self.moves.clearRetainingCapacity();
     }
 
     pub fn from(board: Board, allocator: Allocator) Game {
         return Game{
-            .initial_position = MarlinPackedBoard.from(board, 1, 0),
-            .moves = std.ArrayList(MoveEvalPair).init(allocator),
+            .initial_position = .from(board, 1, 0),
+            .moves = .init(allocator),
         };
     }
 
@@ -214,9 +214,9 @@ fn viriformatTest(fen: []const u8, move: Move, expected: u32) !void {
     defer game.deinit();
     try game.addMove(move, 0);
     var buf: [40]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try game.serializeInto(fbs.writer());
-    try std.testing.expectEqual(expected, std.mem.readInt(u32, fbs.getWritten()[32..][0..4], .little));
+    var fbs = std.Io.Writer.fixed(&buf);
+    try game.serializeInto(&fbs);
+    try std.testing.expectEqual(expected, std.mem.readInt(u32, fbs.buffered()[32..][0..4], .little));
 }
 
 test "viriformat moves" {
@@ -238,12 +238,12 @@ test "all edge cases i could think of in one position" {
     try game.addMove(Move.promo(.a7, .a8, .queen), 0);
 
     var buf: [64]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try game.serializeInto(fbs.writer());
+    var fbs = std.Io.Writer.fixed(&buf);
+    try game.serializeInto(&fbs);
 
     // var file = try std.fs.cwd().createFile("tmp.bin", .{});
     // defer file.close();
     // try file.writeAll(fbs.getWritten());
 
-    try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.getWritten());
+    try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.buffered());
 }
