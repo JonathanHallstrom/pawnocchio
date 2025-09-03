@@ -978,7 +978,7 @@ fn search(
                     tt_entry.depth >= depth + 3 and
                     tt_move_hist >= 4000 and
                     !is_in_check and !is_singular_search;
-                reduction -= @intCast((tunable_constants.lmr_corrhist_mult + @intFromBool(has_good_ttmove) * @as(i16, 2000)) * corrhists_squared >> 32);
+                reduction -= @intCast((tunable_constants.lmr_corrhist_mult - 1000 + @intFromBool(has_good_ttmove) * @as(i16, 2000)) * corrhists_squared >> 32);
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
