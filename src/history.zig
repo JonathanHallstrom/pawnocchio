@@ -61,7 +61,7 @@ pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
 pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
 
 pub const QuietHistory = struct {
-    vals: [2 * 64 * 64 * 2 * 2]i16,
+    vals: [2 * 64 * 64 * 8]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -86,10 +86,14 @@ pub const QuietHistory = struct {
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
         const threats = board.threats[board.stm.flipped().toInt()];
+        const defenses = board.threats[board.stm.toInt()];
         const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
         const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
+        const from_defended_offs: usize = @intFromBool(defenses & move.move.from().toBitboard() != 0);
 
-        return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + from_offs * 64 * 2 * 2 + to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
+        const threat_def_offs = from_threatened_offs + to_threatened_offs * 2 + from_defended_offs * 4;
+
+        return &(&self.vals)[col_offs * 64 * 64 * 16 + from_offs * 64 * 16 + to_offs * 16 + threat_def_offs];
     }
 
     inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
