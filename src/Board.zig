@@ -847,8 +847,8 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     var lesser_threatened: u64 = 0;
 
     const pins = self.pinned[col.toInt()];
-    const vertical_pins = Bitboard.move(pins, 1, 0) & Bitboard.move(pins, -1, 0);
-    const horizontal_pins = Bitboard.move(pins, 0, 1) & Bitboard.move(pins, 0, -1);
+    const vertical_pins = pins & Bitboard.move(pins, 1, 0) | pins & Bitboard.move(pins, -1, 0);
+    const horizontal_pins = pins & Bitboard.move(pins, 0, 1) | pins & Bitboard.move(pins, 0, -1);
     const ortho_pins = vertical_pins | horizontal_pins;
     const diag_pins = pins & ~ortho_pins;
 
