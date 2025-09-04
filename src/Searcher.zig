@@ -975,10 +975,10 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 const has_good_ttmove = has_tt_move and
-                    tt_entry.depth >= depth + 3 and
-                    tt_move_hist >= 4000 and
+                    tt_entry.depth + 3 >= depth and
+                    tt_move_hist >= 3000 and
                     !is_in_check and !is_singular_search;
-                reduction -= @intCast((tunable_constants.lmr_corrhist_mult - 1000 + @intFromBool(has_good_ttmove) * @as(i16, 2000)) * corrhists_squared >> 32);
+                reduction -= @intCast((tunable_constants.lmr_corrhist_mult + @intFromBool(has_good_ttmove) * @as(i16, 2000)) * corrhists_squared >> 32);
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
