@@ -846,17 +846,23 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     var threatened: u64 = 0;
     var lesser_threatened: u64 = 0;
 
-    threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
+    const pins = self.pinned[col.toInt()];
+    const vertical_pins = Bitboard.move(pins, 1, 0) & Bitboard.move(pins, -1, 0);
+    const horizontal_pins = Bitboard.move(pins, 0, 1) & Bitboard.move(pins, 0, -1);
+    const ortho_pins = vertical_pins | horizontal_pins;
+    const diag_pins = pins & ~ortho_pins;
+
+    threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col) & ~vertical_pins;
     lesser_threatened |= (self.knights() | self.bishops()) & threatened;
 
-    threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
-    var iter = Bitboard.iterator(self.bishopsFor(col));
+    threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col) & ~pins);
+    var iter = Bitboard.iterator(self.bishopsFor(col) & ~ortho_pins);
     while (iter.next()) |sq| {
         threatened |= attacks.getBishopAttacks(sq, occ);
     }
     lesser_threatened |= self.rooks() & threatened;
 
-    iter = Bitboard.iterator(self.rooksFor(col));
+    iter = Bitboard.iterator(self.rooksFor(col) & ~diag_pins);
     while (iter.next()) |sq| {
         threatened |= attacks.getRookAttacks(sq, occ);
     }
@@ -864,10 +870,14 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
 
     iter = Bitboard.iterator(self.queensFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.getBishopAttacks(sq, occ) | attacks.getRookAttacks(sq, occ);
-    }
+        const rook_mask: u64 = if (Bitboard.contains(diag_pins, sq)) 0 else std.math.maxInt(u64);
+        threatened |= attacks.getRookAttacks(sq, occ) & rook_mask;
 
+        const bishop_mask: u64 = if (Bitboard.contains(ortho_pins, sq)) 0 else std.math.maxInt(u64);
+        threatened |= attacks.getBishopAttacks(sq, occ) & bishop_mask;
+    }
     threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
+
     self.threats[col.toInt()] = threatened;
     self.lesser_threats[col.toInt()] = lesser_threatened;
 }
