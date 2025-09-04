@@ -806,6 +806,7 @@ fn search(
         }
     }
 
+    const winning_threat_mask = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()];
     var mp = MovePicker.init(
         board,
         &cur.movelist,
@@ -974,6 +975,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                reduction -= @as(i32, 1024) * @intFromBool(move.from().toBitboard() & winning_threat_mask != 0);
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
