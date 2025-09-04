@@ -853,10 +853,20 @@ fn search(
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
-            var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
-            base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
+            var reduction = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
+            reduction -= @intCast(history_lmr_mult * history_score >> 13);
+            reduction += getFactorisedLmr(8, .{
+                is_pv,
+                cutnode,
+                improving,
+                has_tt_move,
+                tt_pv,
+                is_quiet,
+                board.givesCheckApproximate(stm, move),
+                self.stackEntry(-1).failhighs > 2,
+            });
 
-            const lmr_depth = @max(0, depth - (base_lmr >> 10));
+            const lmr_depth = @max(0, depth - (reduction >> 10));
             if (is_quiet) {
                 const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
