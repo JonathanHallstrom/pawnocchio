@@ -162,6 +162,10 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     return res;
 }
 
+fn quietValue(self: MovePicker, move: Move) i32 {
+    return self.histories.readQuietOrdering(self.board, move, self.moves);
+}
+
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug) .auto else .always_tail;
 
 fn tt(self: *MovePicker) ScoredMove {
@@ -226,7 +230,7 @@ fn generateQuiets(self: *MovePicker) ScoredMove {
         inline else => |stm| {
             movegen.generateAllQuiets(stm, self.board, self.movelist);
             for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
-                scored_move.score = self.histories.readQuietOrdering(self.board, scored_move.move, self.moves);
+                scored_move.score = self.quietValue(scored_move.move);
             }
         },
     }
