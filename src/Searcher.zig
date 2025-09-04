@@ -621,7 +621,7 @@ fn search(
     }
 
     const cur: *StackEntry = self.stackEntry(0);
-    const board = &cur.board;
+    const board: *Board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
@@ -741,11 +741,12 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
+        const has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
         if (depth <= 9 and
             eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth -
-                tunable_constants.rfp_improving_margin * @intFromBool(improving) -
+                tunable_constants.rfp_improving_margin * @intFromBool(improving and !has_easy_capture) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))

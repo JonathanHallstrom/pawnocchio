@@ -56,6 +56,7 @@ pinned: [2]u64 = .{0} ** 2,
 // pinner: [2]u64 = .{0} ** 2,
 checkers: u64 = 0,
 threats: [2]u64 = .{0} ** 2,
+lesser_threats: [2]u64 = .{0} ** 2,
 
 pub inline fn occupancyFor(self: Board, col: Colour) u64 {
     return if (col == .white) self.white else self.black;
@@ -843,19 +844,32 @@ pub inline fn updatePins(noalias self: *Board, comptime col: Colour) void {
 pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     const occ = self.occupancy();
     var threatened: u64 = 0;
+    var lesser_threatened: u64 = 0;
 
     threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
+    lesser_threatened |= (self.knights() | self.bishops()) & threatened;
+
     threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
-    threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
-    var iter = Bitboard.iterator(self.bishopsFor(col) | self.queensFor(col));
+    var iter = Bitboard.iterator(self.bishopsFor(col));
     while (iter.next()) |sq| {
         threatened |= attacks.getBishopAttacks(sq, occ);
     }
-    iter = Bitboard.iterator(self.rooksFor(col) | self.queensFor(col));
+    lesser_threatened |= self.rooks() & threatened;
+
+    iter = Bitboard.iterator(self.rooksFor(col));
     while (iter.next()) |sq| {
         threatened |= attacks.getRookAttacks(sq, occ);
     }
+    lesser_threatened |= self.queens() & threatened;
+
+    iter = Bitboard.iterator(self.queensFor(col));
+    while (iter.next()) |sq| {
+        threatened |= attacks.getBishopAttacks(sq, occ) | attacks.getRookAttacks(sq, occ);
+    }
+
+    threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
     self.threats[col.toInt()] = threatened;
+    self.lesser_threats[col.toInt()] = lesser_threatened;
 }
 
 pub fn updateMasks(self: *Board, col: Colour) void {
