@@ -870,11 +870,8 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
 
     iter = Bitboard.iterator(self.queensFor(col));
     while (iter.next()) |sq| {
-        const rook_mask: u64 = if (Bitboard.contains(diag_pins, sq)) 0 else std.math.maxInt(u64);
-        threatened |= attacks.getRookAttacks(sq, occ) & rook_mask;
-
-        const bishop_mask: u64 = if (Bitboard.contains(ortho_pins, sq)) 0 else std.math.maxInt(u64);
-        threatened |= attacks.getBishopAttacks(sq, occ) & bishop_mask;
+        threatened |= attacks.getRookAttacks(sq, occ);
+        threatened |= attacks.getBishopAttacks(sq, occ);
     }
     threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
 
