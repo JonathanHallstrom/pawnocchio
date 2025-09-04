@@ -1270,7 +1270,19 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
         return false;
     }
     const need_to_be_unattacked = Bitboard.queenRayBetween(king_from, king_to);
-    return need_to_be_unattacked & self.threats[stm.flipped().toInt()] == 0;
+    if (need_to_be_unattacked & self.threats[stm.flipped().toInt()] != 0) {
+        return false;
+    }
+    var iter = Bitboard.iterator(need_to_be_unattacked);
+    while (iter.next()) |sq| {
+        const attackers = movegen.slidingAttackersFor(stm.flipped(), self, sq, occ_without_king_rook);
+
+        if (attackers != 0) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
