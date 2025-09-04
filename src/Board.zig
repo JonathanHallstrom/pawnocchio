@@ -56,7 +56,6 @@ pinned: [2]u64 = .{0} ** 2,
 // pinner: [2]u64 = .{0} ** 2,
 checkers: u64 = 0,
 threats: [2]u64 = .{0} ** 2,
-threats_no_pin: [2]u64 = .{0} ** 2,
 lesser_threats: [2]u64 = .{0} ** 2,
 
 pub inline fn occupancyFor(self: Board, col: Colour) u64 {
@@ -845,7 +844,6 @@ pub inline fn updatePins(noalias self: *Board, comptime col: Colour) void {
 pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     const occ = self.occupancy();
     var threatened: u64 = 0;
-    var threatened_non_pin: u64 = 0;
     var lesser_threatened: u64 = 0;
 
     const pins = self.pinned[col.toInt()];
@@ -855,23 +853,15 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     const diag_pins = pins & ~ortho_pins;
 
     threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col) & ~vertical_pins, col);
-    threatened_non_pin |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
 
     lesser_threatened |= (self.knights() | self.bishops()) & threatened;
 
     threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col) & ~pins);
-    threatened_non_pin |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
 
     var iter = Bitboard.iterator(self.bishopsFor(col) & ~ortho_pins);
     while (iter.next()) |sq| {
         const bishop_attacks = attacks.getBishopAttacks(sq, occ);
         threatened |= bishop_attacks;
-        threatened_non_pin |= bishop_attacks;
-    }
-    iter = Bitboard.iterator(self.bishopsFor(col) & ortho_pins);
-    while (iter.next()) |sq| {
-        const bishop_attacks = attacks.getBishopAttacks(sq, occ);
-        threatened_non_pin |= bishop_attacks;
     }
     lesser_threatened |= self.rooks() & threatened;
 
@@ -879,12 +869,6 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     while (iter.next()) |sq| {
         const rook_attacks = attacks.getRookAttacks(sq, occ);
         threatened |= rook_attacks;
-        threatened_non_pin |= rook_attacks;
-    }
-    iter = Bitboard.iterator(self.rooksFor(col) & diag_pins);
-    while (iter.next()) |sq| {
-        const rook_attacks = attacks.getRookAttacks(sq, occ);
-        threatened_non_pin |= rook_attacks;
     }
 
     lesser_threatened |= self.queens() & threatened;
@@ -893,15 +877,12 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     while (iter.next()) |sq| {
         const queen_attacks = attacks.getRookAttacks(sq, occ) | attacks.getBishopAttacks(sq, occ);
         threatened |= queen_attacks;
-        threatened_non_pin |= queen_attacks;
     }
     const king_attacks = Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
     threatened |= king_attacks;
-    threatened_non_pin |= king_attacks;
 
     self.threats[col.toInt()] = threatened;
     self.lesser_threats[col.toInt()] = lesser_threatened;
-    self.threats_no_pin[col.toInt()] = threatened_non_pin;
 }
 
 pub fn updateMasks(self: *Board, col: Colour) void {
@@ -1296,7 +1277,36 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
     }
     const need_to_be_unattacked = Bitboard.queenRayBetween(king_from, king_to);
 
-    return need_to_be_unattacked & self.threats_no_pin[stm.flipped().toInt()] == 0;
+    if (need_to_be_unattacked & self.threats[stm.flipped().toInt()] != 0) {
+        return false;
+    }
+
+    const pinned = self.pinned[stm.flipped().toInt()];
+
+    var attackers: u64 = 0;
+
+    var iter = Bitboard.iterator(self.knightsFor(stm.flipped()) & pinned);
+    if (iter.next()) |knight_sq| {
+        attackers |= Bitboard.knightMoves(knight_sq);
+    }
+
+    attackers |= Bitboard.pawnAttackBitBoard(self.pawnsFor(stm.flipped()), stm.flipped());
+    attackers |= Bitboard.kingMoves(@ctz(self.kingFor(stm.flipped())));
+
+    if (attackers & need_to_be_unattacked != 0) {
+        return false;
+    }
+
+    iter = Bitboard.iterator(need_to_be_unattacked);
+    while (iter.next()) |sq| {
+        const from_empty_attackers = movegen.slidingAttackersFor(stm.flipped(), self, sq, occ_without_king_rook);
+
+        if (from_empty_attackers != 0) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
