@@ -163,7 +163,20 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
 }
 
 fn quietValue(self: MovePicker, move: Move) i32 {
-    return self.histories.readQuietOrdering(self.board, move, self.moves);
+    var res: i32 = self.histories.readQuietOrdering(self.board, move, self.moves);
+
+    const board = self.board;
+    const danger_mask = board.lesser_threats[board.stm.flipped().toInt()];
+    const threatened_mask = board.threats[board.stm.flipped().toInt()];
+
+    const moved_type: i32 = board.pieceOn(move.from()).?.toInt();
+    if (danger_mask & move.from().toBitboard() != 0) {
+        res += (moved_type + 1) * 2000;
+    }
+    if (threatened_mask & move.to().toBitboard() != 0) {
+        res -= (moved_type + 1) * 1000;
+    }
+    return res;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug) .auto else .always_tail;
