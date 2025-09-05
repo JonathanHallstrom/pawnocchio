@@ -711,6 +711,7 @@ fn search(
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
+    var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
@@ -724,6 +725,7 @@ fn search(
             corrected_static_eval,
             tt_entry.flags.score_type,
         )) {
+            is_tt_corrected_eval = true;
             cur.static_eval = tt_score;
         } else {
             cur.static_eval = corrected_static_eval;
@@ -753,8 +755,13 @@ fn search(
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
-        if (depth <= 3 and eval + tunable_constants.razoring_offs + tunable_constants.razoring_mult * depth <= alpha) {
-            const razor_score = self.qsearch(
+
+        if (depth <= 3 and
+            eval +
+                tunable_constants.razoring_offs +
+                tunable_constants.razoring_mult * depth <= alpha)
+        {
+            const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
                 is_pv,
                 stm,
