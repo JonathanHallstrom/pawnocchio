@@ -756,8 +756,10 @@ fn search(
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         if (depth <= 3 and
-            !we_have_easy_capture and
-            eval + tunable_constants.razoring_offs + tunable_constants.razoring_mult * depth <= alpha)
+            eval +
+                tunable_constants.razoring_offs +
+                tunable_constants.razoring_mult * depth +
+                @intFromBool(we_have_easy_capture) * @as(i32, 200) <= alpha)
         {
             const razor_score = self.qsearch(
                 is_root,
