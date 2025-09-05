@@ -759,7 +759,7 @@ fn search(
             eval +
                 tunable_constants.razoring_offs +
                 tunable_constants.razoring_mult * depth +
-                @intFromBool(we_have_easy_capture) * @as(i32, 100) <= alpha)
+                @intFromBool(we_have_easy_capture) * @as(i32, 50) <= alpha)
         {
             const razor_score = self.qsearch(
                 is_root,
