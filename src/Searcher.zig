@@ -991,6 +991,9 @@ fn search(
                     gives_check,
                     self.stackEntry(-1).failhighs > 2,
                 });
+                if (self.stackEntry(1).failhighs > 2) {
+                    reduction += 512;
+                }
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
