@@ -756,7 +756,7 @@ fn search(
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
-        if (depth <= 3 and
+        if (depth <= 5 and
             eval +
                 tunable_constants.razoring_offs +
                 tunable_constants.razoring_mult * depth <= alpha)
