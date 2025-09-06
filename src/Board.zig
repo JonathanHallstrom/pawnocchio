@@ -426,16 +426,16 @@ pub fn toFen(self: Board) std.BoundedArray(u8, 128) {
         out.appendAssumeCapacity('-');
     } else {
         if (self.castling_rights.kingsideCastlingFor(.white)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.kingsideRookFileFor(.white).toAsciiLetter()) else 'K');
+            out.appendAssumeCapacity('K');
         }
         if (self.castling_rights.queensideCastlingFor(.white)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.queensideRookFileFor(.white).toAsciiLetter()) else 'Q');
+            out.appendAssumeCapacity('Q');
         }
         if (self.castling_rights.kingsideCastlingFor(.black)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.kingsideRookFileFor(.black).toAsciiLetter()) else 'k');
+            out.appendAssumeCapacity('k');
         }
         if (self.castling_rights.queensideCastlingFor(.black)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.queensideRookFileFor(.black).toAsciiLetter()) else 'q');
+            out.appendAssumeCapacity('q');
         }
     }
     out.appendAssumeCapacity(' ');

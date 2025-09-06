@@ -652,62 +652,17 @@ pub fn main() !void {
                         continue;
                     };
                     defer epd_parser.deinit();
-                    var timer = std.time.Timer.start() catch unreachable;
-
-                    var thread_safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = allocator };
-                    var tp: std.Thread.Pool = undefined;
-
-                    tp.init(.{ .allocator = thread_safe_allocator.allocator() }) catch |e| {
-                        writeLog("thread pool creation failed with error: {}\n", .{e});
-                        continue :loop;
-                    };
-                    var wg: std.Thread.WaitGroup = .{};
-                    var stop_perft = false;
-                    var nodes: u64 = 0;
-                    const workerFn = struct {
-                        fn impl(pos: anytype, node_counter: *u64, stop: *bool) void {
-                            defer pos.deinit();
-                            if (@atomicLoad(bool, stop, .seq_cst)) return;
-                            const perft_board = Board.parseFen(pos.fen, true) catch {
-                                writeLog("invalid position: {s}\n", .{pos.fen});
-                                @atomicStore(bool, stop, true, .seq_cst);
-                                return;
-                            };
-                            for (pos.node_counts.slice()) |node_count| {
-                                const expected = node_count.nodes;
-                                const actual = perft_board.perft(true, node_count.depth);
-                                if (@atomicLoad(bool, stop, .seq_cst)) return;
-                                if (expected != actual) {
-                                    writeLog(
-                                        \\error at depth: {}
-                                        \\for position {s}
-                                        \\got: {} expected: {}
-                                    , .{
-                                        node_count.depth,
-                                        pos.fen,
-                                        actual,
-                                        expected,
-                                    });
-                                    @atomicStore(bool, stop, true, .seq_cst);
-                                    return;
-                                }
-                                _ = @atomicRmw(u64, node_counter, .Add, actual, .seq_cst);
-                            }
-                            write("completed {s}\n", .{pos.fen});
-                        }
-                    }.impl;
 
                     while (epd_parser.next() catch continue :loop) |position| {
-                        std.debug.print("{s} {any}\n", .{ position.fen, position.node_counts.slice() });
-                        tp.spawnWg(&wg, workerFn, .{ position, &nodes, &stop_perft });
-                        if (@atomicLoad(bool, &stop_perft, .seq_cst)) continue :loop;
+                        defer allocator.free(position.fen);
+                        const tmp_board = try Board.parseFen(position.fen, true);
+                        write("{s}", .{tmp_board.toFen().slice()});
+                        for (position.node_counts.slice()) |part| {
+                            write(" ;D{} {}", .{ part.depth, part.nodes });
+                        }
+                        write("\n", .{});
                     }
-                    writeLog("spawned jobs\n", .{});
-                    tp.waitAndWork(&wg);
 
-                    const actual_nodes = @atomicLoad(u64, &nodes, .seq_cst);
-                    const elapsed_ns = timer.read();
-                    write("Nodes: {} in {}ms ({} nps)\n", .{ actual_nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, actual_nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "perft_nnue")) {
