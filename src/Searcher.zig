@@ -898,6 +898,12 @@ fn search(
                     mp.skip_quiets = true;
                     continue;
                 }
+            } else {
+                if (depth <= 4 and
+                    history_score < depth * -2048 - 1024)
+                {
+                    continue;
+                }
             }
 
             const see_pruning_thresh = if (is_quiet)
