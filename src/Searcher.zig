@@ -880,7 +880,7 @@ fn search(
                     continue;
                 }
 
-                if (depth <= 4 and
+                if (lmr_depth <= 3 and
                     history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
                 {
                     mp.skip_quiets = true;
