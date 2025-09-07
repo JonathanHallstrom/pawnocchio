@@ -901,6 +901,13 @@ fn search(
                     mp.skip_quiets = true;
                     continue;
                 }
+            } else {
+                if (!is_pv and
+                    depth <= 4 and
+                    history_score < depth * -1536 - 1024)
+                {
+                    continue;
+                }
             }
 
             const see_pruning_thresh = if (is_quiet)
