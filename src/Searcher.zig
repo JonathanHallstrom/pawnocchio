@@ -744,7 +744,7 @@ fn search(
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
-        if (depth <= 9 and
+        if (depth <= 12 and
             eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth +
