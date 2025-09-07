@@ -902,9 +902,8 @@ fn search(
                     continue;
                 }
             } else {
-                if (!is_pv and
-                    depth <= 4 and
-                    history_score < depth * -1536 - 1024)
+                if (depth <= 4 and
+                    history_score < depth * -1536 - 1024 - @as(i32, 1024) * @intFromBool(is_pv))
                 {
                     continue;
                 }
