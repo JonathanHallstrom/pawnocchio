@@ -106,7 +106,8 @@ const tunable_defaults = struct {
     pub const noisy_ordering_weight: i32 = 1169;
     pub const noisy_pruning_weight: i32 = 1176;
     pub const rfp_base: i32 = 49;
-    pub const rfp_mult: i32 = 70;
+    pub const rfp_mult: i32 = 40;
+    pub const rfp_quad: i32 = 6;
     pub const rfp_improving_margin: i32 = 83;
     pub const rfp_worsening_margin: i32 = 15;
     pub const rfp_cutnode_margin: i32 = 19;
@@ -247,8 +248,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "noisy_ordering_weight", .default = tunable_defaults.noisy_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "noisy_pruning_weight", .default = tunable_defaults.noisy_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 147, .c_end = 5 },
-    .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 145, .c_end = 5 },
+    .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 100, .c_end = 5 },
+    .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 100 },
+    .{ .name = "rfp_quad", .default = tunable_defaults.rfp_quad, .min = -10, .max = 30 },
     .{ .name = "rfp_improving_margin", .default = tunable_defaults.rfp_improving_margin, .min = -10, .max = 195, .c_end = 7 },
     .{ .name = "rfp_worsening_margin", .default = tunable_defaults.rfp_worsening_margin, .min = -10, .max = 45, .c_end = 1 },
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
@@ -391,6 +393,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var noisy_pruning_weight = tunable_defaults.noisy_pruning_weight;
     pub var rfp_base = tunable_defaults.rfp_base;
     pub var rfp_mult = tunable_defaults.rfp_mult;
+    pub var rfp_quad = tunable_defaults.rfp_quad;
     pub var rfp_improving_margin = tunable_defaults.rfp_improving_margin;
     pub var rfp_worsening_margin = tunable_defaults.rfp_worsening_margin;
     pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
