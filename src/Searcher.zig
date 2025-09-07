@@ -743,12 +743,12 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        const has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
+        const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
         if (depth <= 9 and
             eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth -
-                tunable_constants.rfp_improving_margin * @intFromBool(improving and !has_easy_capture) -
+                tunable_constants.rfp_improving_margin * @intFromBool(improving and !opponent_has_easy_capture) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
@@ -756,10 +756,12 @@ fn search(
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
+        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         if (depth <= 3 and
             eval +
                 tunable_constants.razoring_offs +
-                tunable_constants.razoring_mult * depth <= alpha)
+                tunable_constants.razoring_mult * depth +
+                @intFromBool(we_have_easy_capture) * @as(i32, 100) <= alpha)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
