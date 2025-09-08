@@ -758,7 +758,7 @@ fn search(
         }
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
-        if (depth <= 3 and
+        if (depth <= 5 and
             eval +
                 tunable_constants.razoring_offs +
                 tunable_constants.razoring_mult * depth +
