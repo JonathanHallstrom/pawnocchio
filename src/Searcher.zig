@@ -744,6 +744,7 @@ fn search(
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
+        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         if (depth <= 9 and
             eval >= beta +
                 tunable_constants.rfp_base +
@@ -751,13 +752,13 @@ fn search(
                 tunable_constants.rfp_quad * depth * depth -
                 tunable_constants.rfp_improving_margin * @intFromBool(improving and !opponent_has_easy_capture) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
+                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) -
+                @as(i32, 30) * @intFromBool(we_have_easy_capture) +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         if (depth <= 3 and
             eval +
                 tunable_constants.razoring_offs +
