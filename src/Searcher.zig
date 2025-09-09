@@ -863,26 +863,26 @@ fn search(
         ) else self.histories.readNoisy(board, move);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
+            const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
+            const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
+            const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
+            const granularity: i32 = 978;
+            if (!is_pv and
+                num_searched * granularity >=
+                    lmp_base +
+                        lmp_linear_mult * depth +
+                        lmp_quadratic_mult * depth * depth)
+            {
+                mp.skip_quiets = true;
+                continue;
+            }
+
             const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
 
             const lmr_depth = @max(0, depth - (base_lmr >> 10));
             if (is_quiet) {
-                const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
-                const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
-                const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
-                const granularity: i32 = 978;
-                if (!is_pv and
-                    num_searched * granularity >=
-                        lmp_base +
-                            lmp_linear_mult * depth +
-                            lmp_quadratic_mult * depth * depth)
-                {
-                    mp.skip_quiets = true;
-                    continue;
-                }
-
                 if (depth <= 4 and
                     history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
                 {
