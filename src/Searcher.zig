@@ -788,7 +788,7 @@ fn search(
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
-            nmp_reduction += tt_move_hist;
+            nmp_reduction += @divTrunc(tt_move_hist, 2);
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
