@@ -890,7 +890,8 @@ fn search(
                     continue;
                 }
 
-                const futility_value = eval + tunable_constants.fp_base +
+                const futility_value = eval +
+                    tunable_constants.fp_base +
                     lmr_depth * tunable_constants.fp_mult +
                     @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096);
                 if (!is_pv and
