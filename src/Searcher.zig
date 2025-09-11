@@ -780,7 +780,7 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
-            eval >= beta + 250 - 25 * depth and
+            eval >= beta + tunable_constants.nmp_margin_base - tunable_constants.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull())
@@ -788,7 +788,7 @@ fn search(
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
-            nmp_reduction += @divTrunc(tt_move_hist, 2);
+            nmp_reduction += @divTrunc(tunable_constants.nmp_history_mult * tt_move_hist, 1024);
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
