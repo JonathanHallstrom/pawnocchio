@@ -735,7 +735,7 @@ fn search(
         }
     }
     const eval = cur.static_eval;
-    cutnode = cutnode or (eval >= beta + 100);
+    cutnode = cutnode or (eval >= beta + 100 and tt_move_hist >= 8000);
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
