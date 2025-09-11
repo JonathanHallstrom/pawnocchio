@@ -607,12 +607,13 @@ fn search(
     comptime stm: Colour,
     alpha_original: i32,
     beta_original: i32,
-    depth_: i32,
-    cutnode: bool,
+    depth_original: i32,
+    cutnode_original: bool,
 ) i16 {
-    var depth = depth_;
+    var depth = depth_original;
     var alpha = alpha_original;
     var beta = beta_original;
+    var cutnode = cutnode_original;
 
     self.nodes += 1;
     if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
@@ -734,6 +735,7 @@ fn search(
         }
     }
     const eval = cur.static_eval;
+    cutnode = cutnode or (eval >= beta + 100);
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
