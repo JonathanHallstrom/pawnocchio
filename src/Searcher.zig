@@ -992,6 +992,9 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                if (!best_move.isNull()) {
+                    reduction += 1024;
+                }
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
@@ -1120,9 +1123,6 @@ fn search(
                     self.histories.updateNoisy(board, searched_move, hist_depth, false);
                 }
                 break;
-            }
-            if (2 <= depth and depth <= 12) {
-                depth -= 1;
             }
         }
     }
