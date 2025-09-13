@@ -869,7 +869,7 @@ fn search(
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
 
-            const lmr_depth = @max(0, depth - (base_lmr >> 10));
+            const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
             if (is_quiet) {
                 const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
@@ -885,20 +885,20 @@ fn search(
                     continue;
                 }
 
-                if (depth <= 4 and
+                if (lmr_depth <= tunable_constants.history_pruning_depth_limit and
                     history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
                 {
                     mp.skip_quiets = true;
                     continue;
                 }
 
-                const futility_value = eval +
+                const futility_value = @as(i32, eval) * 1024 +
                     tunable_constants.fp_base +
                     lmr_depth * tunable_constants.fp_mult +
-                    @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096);
+                    @divTrunc(history_score * tunable_constants.fp_hist_mult, 4) >> 10;
                 if (!is_pv and
                     !is_in_check and
-                    lmr_depth <= 6 and
+                    lmr_depth <= tunable_constants.fp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
                 {
@@ -911,13 +911,13 @@ fn search(
             }
 
             const see_pruning_thresh = if (is_quiet)
-                tunable_constants.see_quiet_pruning_mult * lmr_depth
+                @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth >> 10
             else
-                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth;
+                @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
 
             if (!is_pv and
                 !skip_see_pruning and
-                !SEE.scoreMove(board, move, see_pruning_thresh, .pruning))
+                !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
             {
                 continue;
             }
