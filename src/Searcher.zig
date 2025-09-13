@@ -834,6 +834,7 @@ fn search(
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
+    var alpha_raises: u16 = 0;
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
     while (mp.next()) |scored_move| {
@@ -991,9 +992,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                if (!best_move.isNull()) {
-                    reduction += 1024;
-                }
+                reduction += alpha_raises * 1024;
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
@@ -1098,6 +1097,9 @@ fn search(
                 self.updatePv(move);
             }
             alpha = score;
+            if (2 <= depth - alpha_raises and depth - alpha_raises <= 12) {
+                alpha_raises += 1;
+            }
             score_type = .exact;
             if (score >= beta) {
                 const hist_depth = depth + @as(i32, if (score >= beta + tunable_constants.high_eval_offs) 1 else 0);
