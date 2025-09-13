@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = false;
+pub const do_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
