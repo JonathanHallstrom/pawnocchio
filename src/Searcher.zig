@@ -672,13 +672,13 @@ fn search(
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
-    const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
+    // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
-                    if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
+                    if (tt_score >= beta and !evaluation.isMateScore(tt_score) and board.halfmove <= 90) {
                         return @intCast(tt_score + @divTrunc((beta - tt_score) * tunable_constants.tt_fail_medium, 1024));
                     }
 
@@ -746,7 +746,7 @@ fn search(
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
-        if (depth <= 9 and
+        if (depth <= 12 and
             eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth +
@@ -788,7 +788,6 @@ fn search(
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
             nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
-            nmp_reduction += @divTrunc(tunable_constants.nmp_history_mult * tt_move_hist, 1024);
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
@@ -959,10 +958,10 @@ fn search(
                 }
             } else if (s_beta >= beta) {
                 return @intCast(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
-            } else if (tt_entry.score >= beta) {
-                extension -= 2;
             } else if (cutnode) {
                 extension -= 3;
+            } else if (tt_entry.score >= beta) {
+                extension -= 2;
             }
         }
         num_searched += 1;
