@@ -899,7 +899,7 @@ fn search(
                     @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096);
                 if (!is_pv and
                     !is_in_check and
-                    lmr_depth <= 6 and
+                    lmr_depth_fractional <= 6144 and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
                 {
