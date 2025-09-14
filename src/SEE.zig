@@ -126,7 +126,7 @@ const psqts: [6][64]i16 = .{
 
 fn valuePSQT(stm: Colour, pt: PieceType, sqi: Square, comptime mode: Mode) i16 {
     var sq = sqi;
-    if (stm == .white) {
+    if (stm == .black) {
         sq = sq.flipRank();
     }
     return value(pt, mode) + psqts[pt.toInt()][sq.toInt()];
