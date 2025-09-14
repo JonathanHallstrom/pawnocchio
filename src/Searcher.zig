@@ -204,7 +204,7 @@ pub const StackEntry = struct {
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
-        self.static_eval = 0;
+        self.static_eval = evaluation.inf_score;
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
     }
@@ -738,8 +738,11 @@ fn search(
     const eval = cur.static_eval;
 
     if (!is_root and self.stackEntry(-1).board.checkers == 0 and !cur.move_is_noisy) {
-        const update = std.math.clamp(50 - (@as(i32, self.stackEntry(-1).static_eval) + cur.static_eval), -100, 100);
-        self.histories.quiet.updateRaw(board, cur.move, update);
+        const previous_eval = self.stackEntry(-1).static_eval;
+        if (previous_eval != evaluation.inf_score and eval != evaluation.inf_score) {
+            const update = std.math.clamp(50 - (previous_eval + eval), -100, 100);
+            self.histories.quiet.updateRaw(board, cur.move, update);
+        }
     }
 
     if (!is_pv and
