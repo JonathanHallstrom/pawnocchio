@@ -139,6 +139,7 @@ const tunable_defaults = struct {
     pub const nmp_eval_reduction_scale: i32 = 24;
     pub const nmp_eval_reduction_max: i32 = 30376;
     pub const nmp_history_mult: i32 = 512;
+    pub const fp_depth_limit: i32 = 6144;
     pub const fp_base: i32 = 311;
     pub const fp_mult: i32 = 76;
     pub const fp_hist_mult: i32 = 116;
@@ -148,6 +149,7 @@ const tunable_defaults = struct {
     pub const razoring_mult: i32 = 209;
     pub const razoring_offs: i32 = 51;
     pub const razoring_easy_capture: i32 = 98;
+    pub const history_pruning_depth_limit: i32 = 4095;
     pub const history_pruning_offs: i32 = 792;
     pub const history_pruning_mult: i32 = -2912;
     pub const qs_futility_margin: i32 = 134;
@@ -285,6 +287,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale, .min = -10, .max = 97, .c_end = 3 },
     .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max, .min = -10, .max = 62215, .c_end = 2488 },
     .{ .name = "nmp_history_mult", .default = tunable_defaults.nmp_history_mult, .min = 0, .max = 1536, .c_end = 51 },
+    .{ .name = "fp_depth_limit", .default = tunable_defaults.fp_depth_limit },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base, .min = -10, .max = 747, .c_end = 29 },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult, .min = -10, .max = 242, .c_end = 9 },
     .{ .name = "fp_hist_mult", .default = tunable_defaults.fp_hist_mult, .min = -10, .max = 512, .c_end = 16 },
@@ -294,6 +297,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult, .min = -10, .max = 572, .c_end = 22 },
     .{ .name = "razoring_offs", .default = tunable_defaults.razoring_offs, .min = -1024, .max = 1024, .c_end = 10 },
     .{ .name = "razoring_easy_capture", .default = tunable_defaults.razoring_easy_capture, .min = -1024, .max = 1024, .c_end = 10 },
+    .{ .name = "history_pruning_depth_limit", .default = tunable_defaults.history_pruning_depth_limit },
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin, .min = -10, .max = 305, .c_end = 11 },
