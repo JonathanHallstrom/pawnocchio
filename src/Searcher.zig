@@ -737,7 +737,7 @@ fn search(
     }
     const eval = cur.static_eval;
 
-    if (!is_root and self.stackEntry(-1).board.checkers == 0 and !cur.move_is_noisy) {
+    if (!is_root and self.stackEntry(-1).board.checkers == 0 and !cur.move_is_noisy and !is_in_check) {
         const previous_eval = self.stackEntry(-1).static_eval;
         if (previous_eval != evaluation.inf_score and eval != evaluation.inf_score) {
             const update = std.math.clamp(50 - (previous_eval + eval), -100, 100);
