@@ -182,6 +182,7 @@ pub const StackEntry = struct {
     board: Board,
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
+    move_is_noisy: bool,
     prev: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
@@ -199,6 +200,7 @@ pub const StackEntry = struct {
     ) void {
         self.board = board_.*;
         self.move = move_;
+        self.move_is_noisy = board_.isNoisy(move_.move);
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
@@ -734,6 +736,11 @@ fn search(
         }
     }
     const eval = cur.static_eval;
+
+    if (!is_root and self.stackEntry(-1).board.checkers == 0 and !cur.move_is_noisy) {
+        const update = std.math.clamp(50 - (@as(i32, self.stackEntry(-1).static_eval) + cur.static_eval), -100, 100);
+        self.histories.quiet.updateRaw(board, cur.move, update);
+    }
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
