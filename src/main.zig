@@ -455,6 +455,22 @@ pub fn main() !void {
                     );
                 }
             }
+
+            for (0..6) |pt| {
+                for (0..64) |sq| {
+                    write(
+                        "see_psqt_{}_{}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                        .{
+                            pt,
+                            sq,
+                            root.tuning.see_psqts[pt][sq],
+                            -512,
+                            512,
+                            50,
+                        },
+                    );
+                }
+            }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
             previous_hashes = .{};
@@ -588,6 +604,17 @@ pub fn main() !void {
                         const name = std.fmt.comptimePrint("factorized_{}_{}", .{ i, j });
                         if (std.ascii.eqlIgnoreCase(name, option_name)) {
                             val_ptr.* = std.fmt.parseInt(i16, value, 10) catch {
+                                writeLog("invalid constant: '{s}'\n", .{value});
+                                continue :loop;
+                            };
+                        }
+                    }
+                }
+                inline for (0..6) |pt| {
+                    inline for (0..64) |sq| {
+                        const name = std.fmt.comptimePrint("see_psqt_{}_{}", .{ pt, sq });
+                        if (std.ascii.eqlIgnoreCase(name, option_name)) {
+                            root.tuning.see_psqts[pt][sq] = std.fmt.parseInt(i16, value, 10) catch {
                                 writeLog("invalid constant: '{s}'\n", .{value});
                                 continue :loop;
                             };
