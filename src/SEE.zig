@@ -129,7 +129,7 @@ fn valuePSQT(stm: Colour, pt: PieceType, sqi: Square, comptime mode: Mode) i16 {
     if (stm == .white) {
         sq = sq.flipRank();
     }
-    return value(pt, mode) + @divTrunc(psqts[pt.toInt()][sq.toInt()], 2);
+    return value(pt, mode) + @divTrunc(psqts[pt.toInt()][sq.toInt()], 4);
 }
 
 fn pickFirstScalar(pieces: *const [6]u64, mask: u64) u8 {
