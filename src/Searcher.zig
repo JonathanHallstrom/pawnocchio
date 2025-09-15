@@ -672,8 +672,8 @@ fn search(
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
-    // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
+    const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
@@ -705,7 +705,7 @@ fn search(
 
     if (depth >= 4 and
         (is_pv or cutnode) and
-        !has_tt_move)
+        (!has_tt_move or tt_move_hist <= -1024))
     {
         depth -= 1;
     }
