@@ -1127,7 +1127,7 @@ fn search(
     }
 
     if (num_legal == 0) {
-        const mated_score = evaluation.matedIn(self.ply);
+        const mated_score: i16 = @intCast(if (is_singular_search) alpha else evaluation.matedIn(self.ply));
         return if (is_in_check) mated_score else 0;
     }
 
