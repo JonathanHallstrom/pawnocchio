@@ -388,9 +388,7 @@ pub const HistoryTable = struct {
             tunable_constants.corrhist_major_weight * major_correction +
             tunable_constants.corrhist_minor_weight * minor_correction) >> 18;
 
-        const scaled = scaleEval(board, static_eval);
-
-        return evaluation.clampScore(scaled + correction);
+        return evaluation.clampScore(static_eval + correction);
     }
 
     pub fn scaleEval(board: *const Board, eval: i16) i16 {

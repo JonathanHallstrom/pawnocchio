@@ -713,24 +713,26 @@ fn search(
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
+    var scaled_static_eval = raw_static_eval;
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
-        cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+        scaled_static_eval = history.HistoryTable.scaleEval(board, corrected_static_eval);
+        cur.evals = cur.evals.updateWith(stm, scaled_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
         if (tt_hit and evaluation.checkTTBound(
             tt_score,
-            corrected_static_eval,
-            corrected_static_eval,
+            scaled_static_eval,
+            scaled_static_eval,
             tt_entry.flags.score_type,
         )) {
             is_tt_corrected_eval = true;
             cur.static_eval = tt_score;
         } else {
-            cur.static_eval = corrected_static_eval;
+            cur.static_eval = scaled_static_eval;
         }
     }
     const eval = cur.static_eval;
@@ -923,6 +925,7 @@ fn search(
             }
         }
 
+        const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move);
         var extension: i32 = 0;
         if (!is_root and
             depth >= 6 and
@@ -952,7 +955,9 @@ fn search(
                 if (s_score < s_beta - (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0)) {
                     extension += 1;
 
-                    if (!is_pv and s_score < s_beta - tunable_constants.singular_text_margin) {
+                    const corrplexity_margin: i64 = @abs(corrected_static_eval - raw_static_eval) / 8;
+
+                    if (!is_pv and s_score < s_beta - tunable_constants.singular_text_margin + corrplexity_margin) {
                         extension += 1;
                     }
                 }
@@ -981,8 +986,6 @@ fn search(
         const score = blk: {
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
-
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move);
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
@@ -1146,10 +1149,10 @@ fn search(
         );
 
         if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
-            if (corrected_static_eval != best_score and
-                evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
+            if (scaled_static_eval != best_score and
+                evaluation.checkTTBound(best_score, scaled_static_eval, scaled_static_eval, score_type))
             {
-                self.histories.updateCorrection(board, cur.move, corrected_static_eval, best_score, depth);
+                self.histories.updateCorrection(board, cur.move, scaled_static_eval, best_score, depth);
             }
         }
     }
