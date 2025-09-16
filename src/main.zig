@@ -480,7 +480,7 @@ pub fn main() !void {
                             root.tuning.see_psqts[pt][sq],
                             -512,
                             512,
-                            50,
+                            10,
                         },
                     );
                 }
