@@ -424,6 +424,20 @@ pub fn main() !void {
                     }
                 }
             }
+            for (0..6) |pt| {
+                for (0..64) |sq| {
+                    write(
+                        "option name see_psqt_{}_{} type spin default {} min {} max {}\n",
+                        .{
+                            pt,
+                            sq,
+                            root.tuning.see_psqts[pt][sq],
+                            -512,
+                            512,
+                        },
+                    );
+                }
+            }
             write("uciok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             for (root.tuning.tunables) |tunable| {
