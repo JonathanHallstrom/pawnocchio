@@ -595,7 +595,7 @@ pub fn main() !void {
                     inline for (arr, 0..) |*val_ptr, j| {
                         const name = std.fmt.comptimePrint("factorized_{}_{}", .{ i, j });
                         if (std.ascii.eqlIgnoreCase(name, option_name)) {
-                            val_ptr.* = std.fmt.parseInt(i32, value, 10) catch {
+                            val_ptr.* = std.fmt.parseInt(i16, value, 10) catch {
                                 writeLog("invalid constant: '{s}'\n", .{value});
                                 continue :loop;
                             };

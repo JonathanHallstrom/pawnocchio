@@ -92,8 +92,12 @@ pub const QuietHistory = struct {
         return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + from_offs * 64 * 2 * 2 + to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
+    pub inline fn updateRaw(self: *QuietHistory, board: *const Board, move: TypedMove, upd: i32) void {
+        gravityUpdate(self.entry(board, move), upd);
+    }
+
     inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(board, move), if (is_bonus) bonus(depth) else -penalty(depth));
+        self.updateRaw(board, move, if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const QuietHistory, board: *const Board, move: TypedMove) i16 {
@@ -131,8 +135,12 @@ pub const PawnHistory = struct {
         return &(&self.vals)[hash_offs * 2 * 6 * 64 + col_offs * 6 * 64 + tp_offs * 64 + to_offs];
     }
 
+    pub inline fn updateRaw(self: *PawnHistory, board: *const Board, move: TypedMove, upd: i32) void {
+        gravityUpdate(self.entry(board, move), upd);
+    }
+
     inline fn update(self: *PawnHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(board, move), if (is_bonus) bonus(depth) else -penalty(depth));
+        self.updateRaw(board, move, if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const PawnHistory, board: *const Board, move: TypedMove) i16 {
@@ -172,8 +180,12 @@ pub const NoisyHistory = struct {
         return &(&self.vals)[from_offs * 64 * 13 * 2 * 2 + to_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
+    pub inline fn updateRaw(self: *NoisyHistory, board: *const Board, move: TypedMove, upd: i32) void {
+        gravityUpdate(self.entry(board, move), upd);
+    }
+
     inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(board, move), if (is_bonus) bonus(depth) else -penalty(depth));
+        self.updateRaw(board, move, if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const NoisyHistory, board: *const Board, move: TypedMove) i16 {
@@ -210,8 +222,12 @@ pub const ContHistory = struct {
         return &(&self.vals)[col_offs * 6 * 64 * 2 * 6 * 64 + prev_offs * 2 * 6 * 64 + move_offs * 2 + prev_col_offs];
     }
 
+    pub inline fn updateRaw(self: *ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove, upd: i32) void {
+        gravityUpdate(self.entry(col, move, prev_col, prev), upd);
+    }
+
     inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove, depth: i32, is_bonus: bool) void {
-        gravityUpdate(self.entry(col, move, prev_col, prev), if (is_bonus) bonus(depth) else -penalty(depth));
+        self.updateRaw(col, move, prev_col, prev, if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove) i16 {

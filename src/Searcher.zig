@@ -183,6 +183,7 @@ pub const StackEntry = struct {
     board: Board,
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
+    move_is_noisy: bool,
     prev: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
@@ -200,10 +201,11 @@ pub const StackEntry = struct {
     ) void {
         self.board = board_.*;
         self.move = move_;
+        self.move_is_noisy = board_.isNoisy(move_.move);
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
-        self.static_eval = 0;
+        self.static_eval = evaluation.inf_score;
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
     }
@@ -622,7 +624,7 @@ fn search(
     }
 
     const cur: *StackEntry = self.stackEntry(0);
-    const board = &cur.board;
+    const board: *Board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
@@ -673,11 +675,13 @@ fn search(
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
+    // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
-                    if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
+                    if (tt_score >= beta and !evaluation.isMateScore(tt_score) and board.halfmove <= 90) {
                         return @intCast(tt_score + @divTrunc((beta - tt_score) * tunable_constants.tt_fail_medium, 1024));
                     }
 
@@ -712,6 +716,7 @@ fn search(
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
+    var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
@@ -725,6 +730,7 @@ fn search(
             corrected_static_eval,
             tt_entry.flags.score_type,
         )) {
+            is_tt_corrected_eval = true;
             cur.static_eval = tt_score;
         } else {
             cur.static_eval = corrected_static_eval;
@@ -742,19 +748,28 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        if (depth <= 9 and
+        const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
+        if (depth <= 12 and
             eval >= beta +
                 tunable_constants.rfp_base +
-                tunable_constants.rfp_mult * depth -
-                tunable_constants.rfp_improving_margin * @intFromBool(improving) -
+                tunable_constants.rfp_mult * depth +
+                tunable_constants.rfp_quad * depth * depth -
+                tunable_constants.rfp_improving_margin * @intFromBool(improving and !opponent_has_easy_capture) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
-        if (depth <= 3 and eval + tunable_constants.razoring_offs + tunable_constants.razoring_mult * depth <= alpha) {
-            const razor_score = self.qsearch(
+
+        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
+        if (depth <= 3 and
+            eval +
+                tunable_constants.razoring_offs +
+                tunable_constants.razoring_mult * depth +
+                tunable_constants.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
+        {
+            const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
                 is_pv,
                 stm,
@@ -768,7 +783,7 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
-            eval >= beta and
+            eval >= beta + tunable_constants.nmp_margin_base - tunable_constants.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull())
@@ -857,7 +872,7 @@ fn search(
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
 
-            const lmr_depth = @max(0, depth - (base_lmr >> 10));
+            const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
             if (is_quiet) {
                 const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
@@ -873,34 +888,39 @@ fn search(
                     continue;
                 }
 
-                if (depth <= 4 and
+                if (lmr_depth <= tunable_constants.history_pruning_depth_limit and
                     history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
                 {
                     mp.skip_quiets = true;
                     continue;
                 }
 
+                const futility_value = eval +
+                    tunable_constants.fp_base +
+                    @divTrunc(lmr_depth * tunable_constants.fp_mult +
+                        @divTrunc(history_score * tunable_constants.fp_hist_mult, 4), 1024);
                 if (!is_pv and
                     !is_in_check and
-                    lmr_depth <= 6 and
+                    lmr_depth <= tunable_constants.fp_depth_limit and
                     @abs(alpha) < 2000 and
-                    eval + tunable_constants.fp_base +
-                        lmr_depth * tunable_constants.fp_mult +
-                        @divTrunc(history_score * tunable_constants.fp_hist_mult, 4096) <= alpha)
+                    futility_value <= alpha)
                 {
+                    if (!evaluation.isTBScore(best_score)) {
+                        best_score = @intCast(@max(best_score, futility_value));
+                    }
                     mp.skip_quiets = true;
                     continue;
                 }
             }
 
             const see_pruning_thresh = if (is_quiet)
-                tunable_constants.see_quiet_pruning_mult * lmr_depth
+                @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth >> 10
             else
-                tunable_constants.see_noisy_pruning_mult * lmr_depth * lmr_depth;
+                @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
 
             if (!is_pv and
                 !skip_see_pruning and
-                !SEE.scoreMove(board, move, see_pruning_thresh, .pruning))
+                !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
             {
                 continue;
             }
@@ -941,10 +961,10 @@ fn search(
                 }
             } else if (s_beta >= beta) {
                 return @intCast(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
-            } else if (tt_entry.score >= beta) {
-                extension -= 2;
             } else if (cutnode) {
                 extension -= 3;
+            } else if (tt_entry.score >= beta) {
+                extension -= 2;
             }
         }
         num_searched += 1;

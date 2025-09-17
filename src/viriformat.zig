@@ -66,11 +66,13 @@ const MarlinPackedBoard = extern struct {
             var i: usize = 0;
             var iter = Bitboard.iterator(occ);
             while (iter.next()) |sq| : (i += 1) {
-                const piece_type = board.mailbox[sq.toInt()].toColouredPieceType().toPieceType();
+                const piece_type = board.pieceOn(sq).?;
                 const side: Colour = if (Bitboard.contains(board.white, sq)) .white else .black;
                 const starting_rank: Rank = if (side == .white) .first else .eighth;
 
                 var piece_code: u4 = @intCast(piece_type.toInt());
+
+                // if yoinking and not doing FRC u can skip this
                 if (piece_type == .rook and sq.getRank() == starting_rank) {
                     const can_kingside_castle = board.castling_rights.kingsideCastlingFor(side);
                     const can_queenside_castle = board.castling_rights.queensideCastlingFor(side);
@@ -176,6 +178,9 @@ pub const Game = struct {
         return @sizeOf(MarlinPackedBoard) + @sizeOf(MoveEvalPair) * (1 + self.moves.items.len);
     }
 
+    /// WDL has to be from whites perspective
+    /// if white won its .win
+    /// if black won its .loss
     pub fn setOutCome(self: *Game, wdl: WDL) void {
         self.initial_position.wdl = wdl.toInt();
     }
@@ -196,6 +201,7 @@ pub const Game = struct {
         self.moves.deinit();
     }
 
+    /// score has to be from whites perspective
     pub fn addMove(self: *Game, move: Move, score: i16) !void {
         try self.moves.append(MoveEvalPair{
             .eval = LittleEndian(i16).fromNative(score),
