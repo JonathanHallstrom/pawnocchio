@@ -182,6 +182,7 @@ pub const StackEntry = struct {
     board: Board,
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
+    move_is_noisy: bool,
     prev: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
@@ -199,10 +200,11 @@ pub const StackEntry = struct {
     ) void {
         self.board = board_.*;
         self.move = move_;
+        self.move_is_noisy = board_.isNoisy(move_.move);
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
-        self.static_eval = 0;
+        self.static_eval = evaluation.inf_score;
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
     }
