@@ -739,7 +739,7 @@ fn search(
     }
     const eval = cur.static_eval;
 
-    var refutation_move = TypedMove.init();
+    var refutation = history.Refutation.init();
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check and
@@ -805,7 +805,7 @@ fn search(
                 depth - nmp_reduction,
                 !cutnode,
             );
-            refutation_move = self.stackEntry(1).best_move;
+            refutation = .{ .move = self.stackEntry(1).best_move, .severity = beta - nmp_score };
             self.unmakeNullMove(stm);
 
             if (nmp_score >= beta) {
@@ -829,7 +829,7 @@ fn search(
         &cur.movelist,
         &self.histories,
         if (is_singular_search) cur.excluded else tt_entry.move,
-        refutation_move,
+        refutation,
         self.getUsableMoves(),
         is_singular_search,
     );
@@ -1111,14 +1111,14 @@ fn search(
                 const usable_moves = self.getUsableMoves();
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
-                        self.histories.updateQuiet(board, move, refutation_move, usable_moves, hist_depth, true);
+                        self.histories.updateQuiet(board, move, refutation, usable_moves, hist_depth, true);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, refutation_move, usable_moves, hist_depth, false);
+                            self.histories.updateQuiet(board, searched_move, refutation, usable_moves, hist_depth, false);
                         }
                     }
-                    self.histories.updateQuiet(board, move, refutation_move, usable_moves, hist_depth, true);
+                    self.histories.updateQuiet(board, move, refutation, usable_moves, hist_depth, true);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, refutation_move, usable_moves, hist_depth, false);
+                        self.histories.updateQuiet(board, searched_move, refutation, usable_moves, hist_depth, false);
                     }
                 } else {
                     self.histories.updateNoisy(board, move, hist_depth, true);

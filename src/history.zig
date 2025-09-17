@@ -26,6 +26,24 @@ const Board = root.Board;
 const evaluation = root.evaluation;
 const tunable_constants = root.tunable_constants;
 
+pub const Refutation = struct {
+    move: TypedMove,
+    severity: i32,
+
+    pub fn init() Refutation {
+        return .{
+            .move = .init(),
+            .severity = 0,
+        };
+    }
+
+    pub fn computeFactor(self: Refutation) i64 {
+        const MAX = 2591;
+        const SCALE: i64 = 41 * 1024;
+        return @divTrunc(std.math.clamp(self.severity * SCALE, 0, MAX * SCALE), MAX);
+    }
+};
+
 pub const TypedMove = struct {
     move: Move,
     tp: PieceType,
@@ -169,28 +187,29 @@ pub const RefutationHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    inline fn entry(self: anytype, board: *const Board, move: TypedMove, refutation: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove, refutation: Refutation) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = board.stm.toInt();
         const tp_offs: usize = move.tp.toInt();
         const to_offs: usize = move.move.to().toInt();
-        const ref_tp_offs: usize = refutation.tp.toInt();
-        const ref_to_offs: usize = refutation.move.to().toInt();
+        const ref_tp_offs: usize = refutation.move.tp.toInt();
+        const ref_to_offs: usize = refutation.move.move.to().toInt();
+
         return &(&self.vals)[
             tp_offs * 64 + to_offs +
-                (col_offs + ref_tp_offs * 64 + ref_to_offs) * 2 * 6 * 64
+                (col_offs * 6 * 64 + ref_tp_offs * 64 + ref_to_offs) * 6 * 64
         ];
     }
 
-    pub inline fn updateRaw(self: *RefutationHistory, board: *const Board, move: TypedMove, refutation: TypedMove, upd: i32) void {
+    pub inline fn updateRaw(self: *RefutationHistory, board: *const Board, move: TypedMove, refutation: Refutation, upd: i32) void {
         gravityUpdate(self.entry(board, move, refutation), upd);
     }
 
-    inline fn update(self: *RefutationHistory, board: *const Board, move: TypedMove, refutation: TypedMove, depth: i32, is_bonus: bool) void {
+    inline fn update(self: *RefutationHistory, board: *const Board, move: TypedMove, refutation: Refutation, depth: i32, is_bonus: bool) void {
         self.updateRaw(board, move, refutation, if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
-    inline fn read(self: *const RefutationHistory, board: *const Board, move: TypedMove, refutation: TypedMove) i16 {
-        return self.entry(board, move, refutation).*;
+    inline fn read(self: *const RefutationHistory, board: *const Board, move: TypedMove, refutation: Refutation) i32 {
+        return @intCast(@divTrunc(self.entry(board, move, refutation).* * refutation.computeFactor(), 1024));
     }
 };
 
@@ -333,7 +352,7 @@ pub const HistoryTable = struct {
         self: *const HistoryTable,
         board: *const Board,
         move: Move,
-        ref: TypedMove,
+        ref: Refutation,
         moves: ConthistMoves,
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
@@ -349,8 +368,8 @@ pub const HistoryTable = struct {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-        if (!ref.move.isNull()) {
-            res += 1024 * self.refutation.read(board, typed, ref);
+        if (!ref.move.move.isNull()) {
+            res += @as(i32, 1024) * self.refutation.read(board, typed, ref);
         }
         return @divTrunc(res, 1024);
     }
@@ -359,7 +378,7 @@ pub const HistoryTable = struct {
         self: *HistoryTable,
         board: *const Board,
         move: Move,
-        ref: TypedMove,
+        ref: Refutation,
         moves: ConthistMoves,
         depth: i32,
         is_bonus: bool,
@@ -371,7 +390,7 @@ pub const HistoryTable = struct {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             self.countermove.update(board.stm, typed, stm, moves[i], depth, is_bonus);
         }
-        if (!ref.move.isNull()) {
+        if (!ref.move.move.isNull()) {
             self.refutation.update(board, typed, ref, depth, is_bonus);
         }
     }

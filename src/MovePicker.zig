@@ -40,7 +40,7 @@ stage: Stage,
 skip_quiets: bool,
 histories: *const history.HistoryTable,
 ttmove: Move,
-refutation: TypedMove = .init(),
+refutation: history.Refutation = .init(),
 moves: history.ConthistMoves,
 next_func: *const fn (*MovePicker) ScoredMove,
 
@@ -59,7 +59,7 @@ pub fn init(
     movelist_: *MoveReceiver,
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
-    refutation_: TypedMove,
+    refutation_: history.Refutation,
     moves_: history.ConthistMoves,
     is_singular_search: bool,
 ) MovePicker {
