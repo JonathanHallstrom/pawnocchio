@@ -148,6 +148,52 @@ pub const PawnHistory = struct {
     }
 };
 
+pub const RefutationHistory = struct {
+    vals: [2 * 6 * 64 * 6 * 64]i16,
+
+    fn bonus(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.quiet_history_bonus_mult + tunable_constants.quiet_history_bonus_offs,
+            tunable_constants.quiet_history_bonus_max,
+        ));
+    }
+
+    fn penalty(depth: i32) i16 {
+        return @intCast(@min(
+            depth * tunable_constants.quiet_history_penalty_mult + tunable_constants.quiet_history_penalty_offs,
+            tunable_constants.quiet_history_penalty_max,
+        ));
+    }
+
+    inline fn reset(self: *RefutationHistory) void {
+        @memset(std.mem.asBytes(&self.vals), 0);
+    }
+
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove, refutation: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = board.stm.toInt();
+        const tp_offs: usize = move.tp.toInt();
+        const to_offs: usize = move.move.to().toInt();
+        const ref_tp_offs: usize = refutation.tp.toInt();
+        const ref_to_offs: usize = refutation.move.to().toInt();
+        return &(&self.vals)[
+            tp_offs * 64 + to_offs +
+                (col_offs + ref_tp_offs * 64 + ref_to_offs) * 2 * 6 * 64
+        ];
+    }
+
+    pub inline fn updateRaw(self: *RefutationHistory, board: *const Board, move: TypedMove, refutation: TypedMove, upd: i32) void {
+        gravityUpdate(self.entry(board, move, refutation), upd);
+    }
+
+    inline fn update(self: *RefutationHistory, board: *const Board, move: TypedMove, refutation: TypedMove, depth: i32, is_bonus: bool) void {
+        self.updateRaw(board, move, refutation, if (is_bonus) bonus(depth) else -penalty(depth));
+    }
+
+    inline fn read(self: *const RefutationHistory, board: *const Board, move: TypedMove, refutation: TypedMove) i16 {
+        return self.entry(board, move, refutation).*;
+    }
+};
+
 pub const NoisyHistory = struct {
     vals: [64 * 64 * 13 * 2 * 2]i16,
 
@@ -240,6 +286,7 @@ pub const HistoryTable = struct {
     pawn: PawnHistory,
     noisy: NoisyHistory,
     countermove: ContHistory,
+    refutation: RefutationHistory,
     pawn_corrhist: [16384][2]CorrhistEntry,
     major_corrhist: [16384][2]CorrhistEntry,
     minor_corrhist: [16384][2]CorrhistEntry,
@@ -251,6 +298,7 @@ pub const HistoryTable = struct {
         self.pawn.reset();
         self.noisy.reset();
         self.countermove.reset();
+        self.refutation.reset();
         @memset(std.mem.asBytes(&self.pawn_corrhist), 0);
         @memset(std.mem.asBytes(&self.major_corrhist), 0);
         @memset(std.mem.asBytes(&self.minor_corrhist), 0);
@@ -285,6 +333,7 @@ pub const HistoryTable = struct {
         self: *const HistoryTable,
         board: *const Board,
         move: Move,
+        ref: TypedMove,
         moves: ConthistMoves,
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
@@ -300,7 +349,9 @@ pub const HistoryTable = struct {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-
+        if (!ref.move.isNull()) {
+            res += self.refutation.read(board, typed, ref);
+        }
         return @divTrunc(res, 1024);
     }
 
@@ -308,6 +359,7 @@ pub const HistoryTable = struct {
         self: *HistoryTable,
         board: *const Board,
         move: Move,
+        ref: TypedMove,
         moves: ConthistMoves,
         depth: i32,
         is_bonus: bool,
@@ -318,6 +370,9 @@ pub const HistoryTable = struct {
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             self.countermove.update(board.stm, typed, stm, moves[i], depth, is_bonus);
+        }
+        if (!ref.move.isNull()) {
+            self.refutation.update(board, typed, ref, depth, is_bonus);
         }
     }
 

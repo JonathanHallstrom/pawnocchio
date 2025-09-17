@@ -32,15 +32,16 @@ const Historytable = history.HistoryTable;
 const MovePicker = @This();
 
 movelist: *MoveReceiver,
-first: usize,
-last: usize,
+first: usize = 0,
+last: usize = 0,
+last_bad_noisy: usize = 0,
 board: *const Board,
 stage: Stage,
 skip_quiets: bool,
 histories: *const history.HistoryTable,
 ttmove: Move,
+refutation: TypedMove = .init(),
 moves: history.ConthistMoves,
-last_bad_noisy: usize = 0,
 next_func: *const fn (*MovePicker) ScoredMove,
 
 pub const Stage = enum {
@@ -58,6 +59,7 @@ pub fn init(
     movelist_: *MoveReceiver,
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
+    refutation_: TypedMove,
     moves_: history.ConthistMoves,
     is_singular_search: bool,
 ) MovePicker {
@@ -66,14 +68,13 @@ pub fn init(
     return .{
         .movelist = movelist_,
         .board = board_,
-        .first = 0,
-        .last = 0,
         .stage = if (is_singular_search) .generate_noisies else .tt,
         .next_func = if (is_singular_search) &generateNoisies else &tt,
         .skip_quiets = false,
         .histories = histories_,
         .ttmove = ttmove_,
         .moves = moves_,
+        .refutation = refutation_,
     };
 }
 
@@ -89,8 +90,6 @@ pub fn initQs(
     return .{
         .movelist = movelist_,
         .board = board_,
-        .first = 0,
-        .last = 0,
         .stage = .tt,
         .next_func = &tt,
         .skip_quiets = board_.checkers == 0,
@@ -163,7 +162,7 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
 }
 
 fn quietValue(self: MovePicker, move: Move) i32 {
-    return self.histories.readQuietOrdering(self.board, move, self.moves);
+    return self.histories.readQuietOrdering(self.board, move, self.refutation, self.moves);
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug) .auto else .always_tail;
