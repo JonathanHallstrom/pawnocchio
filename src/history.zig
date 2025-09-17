@@ -209,7 +209,7 @@ pub const RefutationHistory = struct {
     }
 
     inline fn read(self: *const RefutationHistory, board: *const Board, move: TypedMove, refutation: Refutation) i32 {
-        return @intCast(@divTrunc(self.entry(board, move, refutation).* * refutation.computeFactor(), 1024));
+        return @intCast(self.entry(board, move, refutation).* * refutation.computeFactor());
     }
 };
 
@@ -369,7 +369,7 @@ pub const HistoryTable = struct {
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
         if (!ref.move.move.isNull()) {
-            res += @as(i32, 1024) * self.refutation.read(board, typed, ref);
+            res += self.refutation.read(board, typed, ref);
         }
         return @divTrunc(res, 1024);
     }
