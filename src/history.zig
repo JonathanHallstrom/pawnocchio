@@ -38,8 +38,8 @@ pub const Refutation = struct {
     }
 
     pub fn computeFactor(self: Refutation) i64 {
-        const MAX = 2591;
-        const SCALE: i64 = 41 * 1024;
+        const MAX = 250;
+        const SCALE: i64 = 1024;
         return @divTrunc(std.math.clamp(self.severity * SCALE, 0, MAX * SCALE), MAX);
     }
 };
