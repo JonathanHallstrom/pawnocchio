@@ -350,7 +350,7 @@ pub const HistoryTable = struct {
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
         if (!ref.move.isNull()) {
-            res += self.refutation.read(board, typed, ref);
+            res += 1024 * self.refutation.read(board, typed, ref);
         }
         return @divTrunc(res, 1024);
     }
