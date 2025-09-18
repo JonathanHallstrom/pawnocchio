@@ -450,7 +450,8 @@ fn qsearch(
             {
                 break;
             }
-            if (!is_in_check and futility <= alpha and
+            if (!is_in_check and
+                futility <= alpha and
                 !is_recapture and
                 !SEE.scoreMove(board, move, 1, .pruning))
             {
