@@ -445,6 +445,7 @@ fn qsearch(
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, move);
             if (!is_in_check and
+                !is_recapture and
                 num_searched >= 2 and
                 history_score < tunable_constants.qs_hp_margin)
             {
