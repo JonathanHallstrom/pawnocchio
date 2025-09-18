@@ -103,9 +103,9 @@ pub fn isTBScore(score: i32) bool {
     return @abs(score) > highest_non_TB_score;
 }
 
-pub fn formatScore(score: i16) std.BoundedArray(u8, 15) {
+pub fn formatScore(score: i16) root.BoundedArray(u8, 15) {
     var print_buf: [15]u8 = undefined;
-    var res: std.BoundedArray(u8, 15) = .{};
+    var res: root.BoundedArray(u8, 15) = .{};
     if (isMateScore(score)) {
         const plies_to_mate = if (score > 0) checkmate_score - score else checkmate_score + score;
         const moves_to_mate = @divTrunc(plies_to_mate + 1, 2);
