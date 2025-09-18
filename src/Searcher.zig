@@ -490,6 +490,10 @@ fn qsearch(
         }
     }
 
+    if (!best_move.isNull()) {
+        self.histories.updateNoisy(board, best_move, 0, true);
+    }
+
     self.writeTT(
         tt_pv,
         tt_hash,
