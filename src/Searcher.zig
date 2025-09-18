@@ -386,9 +386,12 @@ fn qsearch(
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
             static_eval = tt_score;
         }
-        const opponent_has_easy_captures = @popCount(board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()]);
+        const opponent_easy_captures = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()];
 
-        if (static_eval >= beta + opponent_has_easy_captures * @as(i32, 100)) {
+        // const factor: i64 = @intCast(root.Bitboard.pext(opponent_has_easy_captures, opponent_has_easy_captures));
+        const factor: i64 = @intFromBool(opponent_easy_captures != 0);
+
+        if (static_eval >= beta + factor * @as(i32, 25)) {
             return @intCast(static_eval + @divTrunc((beta - static_eval) * tunable_constants.standpat_fail_medium, 1024));
         }
         if (static_eval > alpha) {
