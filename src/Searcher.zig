@@ -490,7 +490,7 @@ fn qsearch(
         }
     }
 
-    if (!best_move.isNull()) {
+    if (!best_move.isNull() and num_searched > 1) {
         self.histories.updateNoisy(board, best_move, 0, true);
     }
 
