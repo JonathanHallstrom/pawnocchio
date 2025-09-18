@@ -490,8 +490,8 @@ fn qsearch(
         }
     }
 
-    if (!best_move.isNull() and num_searched > 1) {
-        self.histories.updateNoisy(board, best_move, 0, true);
+    if (!best_move.isNull()) {
+        self.histories.noisy.updateRaw(board, TypedMove.fromBoard(board, best_move), 50);
     }
 
     self.writeTT(
