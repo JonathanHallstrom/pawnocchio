@@ -376,7 +376,7 @@ pub fn main() !void {
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
-    var normalize: bool = true;
+    const normalize: bool = false;
     var softnodes: bool = false;
     var weird_tcs: bool = false;
     loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
@@ -411,7 +411,6 @@ pub fn main() !void {
             write("option name MinDepth type spin default 0 min 0 max 255\n", .{});
             write("option name SyzygyPath type string default <empty>\n", .{});
             write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
-            write("option name NormalizeEval type check default true\n", .{});
             write("option name SoftNodes type check default false\n", .{});
             write("option name EnableWeirdTCs type check default false\n", .{});
             if (root.tuning.do_tuning) {
@@ -508,15 +507,6 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase("false", value)) {
                     board.frc = false;
-                }
-            }
-
-            if (std.ascii.eqlIgnoreCase("NormalizeEval", option_name)) {
-                if (std.ascii.eqlIgnoreCase("true", value)) {
-                    normalize = true;
-                }
-                if (std.ascii.eqlIgnoreCase("false", value)) {
-                    normalize = false;
                 }
             }
 
