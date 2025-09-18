@@ -386,9 +386,9 @@ fn qsearch(
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
             static_eval = tt_score;
         }
-        const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
+        const opponent_has_easy_captures = @popCount(board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()]);
 
-        if (static_eval >= beta + @intFromBool(opponent_has_easy_capture) * @as(i32, 50)) {
+        if (static_eval >= beta + opponent_has_easy_captures * @as(i32, 100)) {
             return @intCast(static_eval + @divTrunc((beta - static_eval) * tunable_constants.standpat_fail_medium, 1024));
         }
         if (static_eval > alpha) {
