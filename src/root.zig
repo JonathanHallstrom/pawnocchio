@@ -441,7 +441,6 @@ pub const TTEntry = struct {
     flags: TTFlags = .{},
     move: Move = Move.init(),
     depth: u8 = 0,
-    raw_static_eval: i16 = 0,
 
     pub fn compress(h: u64) u16 {
         return @intCast(h & 0xffff);
@@ -466,8 +465,7 @@ pub const TTEntry = struct {
 };
 
 pub const TTCluster = struct {
-    entries: [3]TTEntry = .{TTEntry{}} ** 3,
-    _pad: u16 = 0,
+    entries: [4]TTEntry = .{TTEntry{}} ** 4,
 
     pub inline fn read(self: TTCluster, hash: u16) TTEntry {
         for (self.entries) |entry| {
@@ -496,7 +494,7 @@ pub const TTCluster = struct {
 };
 
 comptime {
-    assert(@sizeOf(TTEntry) == 10);
+    assert(@sizeOf(TTEntry) == 8);
     assert(@sizeOf(TTCluster) == 32);
 }
 
