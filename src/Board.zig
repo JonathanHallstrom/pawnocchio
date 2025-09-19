@@ -886,6 +886,8 @@ pub fn updateMasks(self: *Board, col: Colour) void {
     self.updatePins(.black);
     self.updateThreats(.white);
     self.updateThreats(.black);
+    self.lesser_threats[0] |= self.threats[0] & ~self.threats[1];
+    self.lesser_threats[1] |= self.threats[1] & ~self.threats[0];
     self.checkers = switch (col) {
         inline else => |col_comptime| movegen.attackersFor(
             col_comptime.flipped(),
