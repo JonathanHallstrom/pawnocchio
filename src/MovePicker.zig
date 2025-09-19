@@ -164,8 +164,13 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
 
 fn quietValue(self: MovePicker, move: Move) i32 {
     var res: i32 = self.histories.readQuietOrdering(self.board, move, self.moves);
+    const board = self.board;
+    const threats = board.threats[board.stm.flipped().toInt()];
 
-    if (self.board.givesCheckApproximate(self.board.stm, move)) {
+    if (@intFromBool(root.Bitboard.contains(threats, move.to())) <=
+        @intFromBool(root.Bitboard.contains(threats, move.from())) and
+        self.board.givesCheckApproximate(self.board.stm, move))
+    {
         res += 1024;
     }
 
