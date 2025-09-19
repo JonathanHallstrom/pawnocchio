@@ -940,7 +940,7 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     // dont call updateMasks since there has been no change in the position, especially not checkers
 }
 
-pub inline fn givesCheckApproximate(noalias self: *const Board, comptime stm: Colour, move: Move) bool {
+pub inline fn givesCheckApproximate(noalias self: *const Board, stm: Colour, move: Move) bool {
     const from = move.from();
     const to = move.to();
     const them_king = self.kingFor(stm.flipped());
