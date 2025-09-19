@@ -911,24 +911,6 @@ pub fn resetHash(self: *Board) void {
     }
 }
 
-fn resetHashDbg(self: *Board) !void {
-    self.hash = 0;
-    self.updateEPHash();
-    self.updateCastlingHash();
-    if (self.stm == .black)
-        self.updateTurnHash();
-    inline for (0..6) |p| {
-        const pt = PieceType.fromInt(@intCast(p));
-        var iter = Bitboard.iterator(self.pieces[p]);
-        while (iter.next()) |sq| {
-            if (self.mailbox[sq.toInt()] == null) {
-                return error.Broken;
-            }
-            self.hash ^= root.zobrist.piece(self.mailbox[sq.toInt()].?.toColour(), pt, sq);
-        }
-    }
-}
-
 pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     self.updateEPHash();
     self.updateTurnHash();
@@ -940,7 +922,7 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     // dont call updateMasks since there has been no change in the position, especially not checkers
 }
 
-pub inline fn givesCheckApproximate(noalias self: *const Board, comptime stm: Colour, move: Move) bool {
+pub inline fn givesCheckApproximate(noalias self: *const Board, stm: Colour, move: Move) bool {
     const from = move.from();
     const to = move.to();
     const them_king = self.kingFor(stm.flipped());
