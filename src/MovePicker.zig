@@ -187,7 +187,7 @@ fn quietValue(self: MovePicker, move: Move) i32 {
     var res = self.histories.readQuietOrdering(self.board, move, self.moves);
 
     if (@popCount(targets & attacks) > 1) {
-        res += 100000;
+        res += 8192;
     }
 
     return res;
