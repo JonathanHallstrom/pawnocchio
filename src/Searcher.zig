@@ -939,7 +939,7 @@ fn search(
             cur.excluded = move;
             const s_score = self.search(
                 false,
-                is_pv,
+                false,
                 stm,
                 s_beta - 1,
                 s_beta,
