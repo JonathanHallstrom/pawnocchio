@@ -272,8 +272,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const new_eval_state: *evaluation.State = self.evalState(1);
     const board = &prev_stack_entry.board;
 
-    new_eval_state.* = prev_eval_state.*;
-    new_eval_state.update(board, &old_stack_entry.board);
+    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
@@ -300,8 +299,8 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const new_stack_entry = self.stackEntry(1);
     const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
-    new_eval_state.* = prev_eval_state.*;
-    new_eval_state.update(board, &old_stack_entry.board);
+
+    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
         TypedMove.init(),

@@ -199,10 +199,10 @@ const Accumulator = struct {
         }
     }
 
-    pub fn update(self: *Accumulator, board: *const Board, old_board: *const Board) void {
+    pub fn update(noalias self: *Accumulator, other: *const Accumulator, board: *const Board, old_board: *const Board) void {
         switch (board.stm) {
             inline else => |stm| {
-                self.applyUpdate(stm.flipped(), board, old_board);
+                self.applyUpdate(.copy, other, stm.flipped(), board, old_board);
             },
         }
     }
@@ -257,11 +257,58 @@ const Accumulator = struct {
                 hiddenLayerWeightsVector()[sub2_idx + i];
         }
     }
+    inline fn doAddCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
+        const add_idx = vecIdx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
+
+        for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
+            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
+                hiddenLayerWeightsVector()[add_idx + i];
+        }
+    }
+
+    inline fn doAddSubCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
+        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
+        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
+
+        for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
+            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
+                hiddenLayerWeightsVector()[add_idx + i] -
+                hiddenLayerWeightsVector()[sub_idx + i];
+        }
+    }
+
+    inline fn doAddSubSubCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
+        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
+        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
+        const opp_sub_idx = vecIdx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
+        for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
+            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
+                hiddenLayerWeightsVector()[add_idx + i] -
+                hiddenLayerWeightsVector()[sub_idx + i] -
+                hiddenLayerWeightsVector()[opp_sub_idx + i];
+        }
+    }
+
+    inline fn doAddAddSubSubCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
+        const add1_idx = vecIdx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
+        const sub1_idx = vecIdx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
+        const add2_idx = vecIdx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
+        const sub2_idx = vecIdx(acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc));
+
+        for (0..HIDDEN_SIZE / VEC_SIZE) |i| {
+            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
+                hiddenLayerWeightsVector()[add1_idx + i] -
+                hiddenLayerWeightsVector()[sub1_idx + i] +
+                hiddenLayerWeightsVector()[add2_idx + i] -
+                hiddenLayerWeightsVector()[sub2_idx + i];
+        }
+    }
 
     pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, old_board: *const Board) i16 {
         // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)[0..10]});
         // std.debug.print("{any}\n", .{(&weights.output_biases)[0..BUCKET_COUNT]});
-        self.applyUpdate(stm.flipped(), board, old_board);
+
+        self.applyUpdate(.inplace, null, stm.flipped(), board, old_board);
         // std.debug.print("{any}\n", .{self.white[0..10]});
         // std.debug.print("{any}\n", .{self.black[0..10]});
         // if (std.debug.runtime_safety) {
@@ -331,8 +378,17 @@ const Accumulator = struct {
         return whichInputBucket(stm, from) != whichInputBucket(stm, to);
     }
 
-    fn applyUpdate(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, old_board: *const Board) void {
+    fn applyUpdate(noalias self: *Accumulator, comptime mode: enum { copy, inplace }, noalias other: if (mode == .inplace) @TypeOf(null) else *const Accumulator, comptime stm: Colour, board: *const Board, old_board: *const Board) void {
+        if (mode == .copy) {
+            self.white_mirrored = other.white_mirrored;
+            self.black_mirrored = other.black_mirrored;
+            self.dirty_piece = other.dirty_piece;
+            @memcpy(self.accFor(stm), other.accFor(stm));
+        }
         if (self.dirty_piece.adds.len | self.dirty_piece.subs.len == 0) {
+            if (mode == .copy) {
+                @memcpy(self.accFor(stm.flipped()), other.accFor(stm.flipped()));
+            }
             return;
         }
         defer self.dirty_piece = .{};
@@ -351,13 +407,14 @@ const Accumulator = struct {
         //     self.initInPlace(board);
         //     return;
         // }
+        const copy = if (mode == .inplace) self else other;
         const us_king_sq = Square.fromBitboard(board.kingFor(stm));
         const them_king_sq = Square.fromBitboard(board.kingFor(stm.flipped()));
         if (self.dirty_piece.adds.len == 1 and self.dirty_piece.subs.len == 1) {
             const add1 = self.dirty_piece.adds.slice()[0];
             const sub1 = self.dirty_piece.subs.slice()[0];
             // std.debug.print("{} {}\n", .{ add1, sub1 });
-            self.doAddSub(stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq);
+            self.doAddSubCopy(copy, stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq);
             if (add1.pt == .king and needsRefresh(stm, add1.sq, sub1.sq)) {
                 // std.debug.print("refresh\n", .{});
                 // self.mirrorFor(col: Colour)
@@ -365,19 +422,19 @@ const Accumulator = struct {
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
                 refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
-                self.doAddSub(stm, stm, us_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq);
+                self.doAddSubCopy(copy, stm, stm, us_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq);
             }
         } else if (self.dirty_piece.adds.len == 1 and self.dirty_piece.subs.len == 2) {
             const add1 = self.dirty_piece.adds.slice()[0];
             const sub1 = self.dirty_piece.subs.slice()[0];
             const sub2 = self.dirty_piece.subs.slice()[1];
-            self.doAddSubSub(stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
+            self.doAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             if (add1.pt == .king and needsRefresh(stm, add1.sq, sub1.sq)) {
                 refresh_cache.store(stm, old_board, self.accFor(stm));
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
                 refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
-                self.doAddSubSub(stm, stm, us_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
+                self.doAddSubSubCopy(copy, stm, stm, us_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             }
         } else if (self.dirty_piece.adds.len == 2 and self.dirty_piece.subs.len == 2) {
             const add1 = self.dirty_piece.adds.slice()[0];
@@ -385,7 +442,7 @@ const Accumulator = struct {
             const sub1 = self.dirty_piece.subs.slice()[0];
             const sub2 = self.dirty_piece.subs.slice()[1];
             // std.debug.print("{} {}\n", .{ add1.sq, sub1.sq });
-            self.doAddAddSubSub(stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
+            self.doAddAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             if (needsRefresh(stm, add1.sq, sub1.sq)) {
                 // std.debug.print("castling refresh\n", .{});
                 // std.debug.print("{} {s}\n", .{stm, old_board.toFen().slice()});
@@ -393,7 +450,7 @@ const Accumulator = struct {
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
                 refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
-                self.doAddAddSubSub(stm, stm, us_king_sq, add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
+                self.doAddAddSubSubCopy(copy, stm, stm, us_king_sq, add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             }
         } else {
             unreachable;
