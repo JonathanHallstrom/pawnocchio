@@ -163,7 +163,34 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
 }
 
 fn quietValue(self: MovePicker, move: Move) i32 {
-    return self.histories.readQuietOrdering(self.board, move, self.moves);
+    const board = self.board;
+    const pt = board.pieceOn(move.from()).?;
+    const stm = board.stm;
+    const attacks = switch (pt) {
+        .pawn => root.Bitboard.pawnAttacks(move.to(), stm.flipped()),
+        .knight => root.Bitboard.knightMoves(move.to()),
+        .bishop => root.attacks.getBishopAttacks(move.to(), board.occupancy()),
+        .rook => root.attacks.getRookAttacks(move.to(), board.occupancy()),
+        .queen => root.attacks.getBishopAttacks(move.to(), board.occupancy()) |
+            root.attacks.getRookAttacks(move.to(), board.occupancy()),
+        .king => root.Bitboard.kingMoves(move.to()),
+    };
+
+    var targets: u64 = ~board.threats[stm.flipped().toInt()];
+    var more_valuable_pt = pt.toInt() + 1;
+
+    while (more_valuable_pt < PieceType.king.toInt()) : (more_valuable_pt += 1) {
+        targets |= board.pieces[more_valuable_pt];
+    }
+    targets &= board.occupancyFor(stm.flipped());
+
+    var res = self.histories.readQuietOrdering(self.board, move, self.moves);
+
+    if (targets & attacks != 0) {
+        res += 1024;
+    }
+
+    return res;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug) .auto else .always_tail;
