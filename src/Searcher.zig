@@ -937,6 +937,7 @@ fn search(
             const s_depth = depth * tunable_constants.singular_depth_mult - tunable_constants.singular_depth_offs >> 10;
 
             cur.excluded = move;
+            cur.static_eval = corrected_static_eval;
             const s_score = self.search(
                 false,
                 is_pv,
@@ -946,6 +947,7 @@ fn search(
                 s_depth,
                 cutnode,
             );
+            cur.static_eval = eval;
             cur.excluded = Move.init();
 
             if (s_score < s_beta) {
