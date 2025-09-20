@@ -761,7 +761,7 @@ fn search(
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
+        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & (board.lesser_threats[stm.toInt()] | board.threats[stm.toInt()] & ~board.threats[stm.flipped().toInt()]) != 0;
         if (depth <= 3 and
             eval +
                 tunable_constants.razoring_offs +
