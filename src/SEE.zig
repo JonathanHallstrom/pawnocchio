@@ -294,18 +294,22 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         }
 
         if (attacker == .pawn or attacker == .bishop or attacker == .queen) {
-            const new_attacks = getAttacks(undefined, .bishop, to, occ) & bishop_likes;
+            const new_attacks = ~attackers & getAttacks(undefined, .bishop, to, occ) & bishop_likes;
 
-            add_pieces(stm.flipped(), .bishop, new_attacks & bishops & board.occupancyFor(stm), ntm_piece_list);
-            add_pieces(stm.flipped(), .queen, new_attacks & queens & board.occupancyFor(stm), ntm_piece_list);
+            add_pieces(stm, .bishop, new_attacks & bishops & board.occupancyFor(stm), stm_piece_list);
+            add_pieces(stm, .queen, new_attacks & queens & board.occupancyFor(stm), stm_piece_list);
+            add_pieces(stm.flipped(), .bishop, new_attacks & bishops & board.occupancyFor(stm.flipped()), ntm_piece_list);
+            add_pieces(stm.flipped(), .queen, new_attacks & queens & board.occupancyFor(stm.flipped()), ntm_piece_list);
 
             attackers |= new_attacks;
         }
         if (attacker == .rook or attacker == .queen) {
-            const new_attacks = getAttacks(undefined, .rook, to, occ) & rook_likes;
+            const new_attacks = ~attackers & getAttacks(undefined, .rook, to, occ) & rook_likes;
 
-            add_pieces(stm.flipped(), .rook, new_attacks & rooks & board.occupancyFor(stm), ntm_piece_list);
-            add_pieces(stm.flipped(), .queen, new_attacks & queens & board.occupancyFor(stm), ntm_piece_list);
+            add_pieces(stm, .rook, new_attacks & rooks & board.occupancyFor(stm), stm_piece_list);
+            add_pieces(stm, .queen, new_attacks & queens & board.occupancyFor(stm), stm_piece_list);
+            add_pieces(stm.flipped(), .rook, new_attacks & rooks & board.occupancyFor(stm.flipped()), ntm_piece_list);
+            add_pieces(stm.flipped(), .queen, new_attacks & queens & board.occupancyFor(stm.flipped()), ntm_piece_list);
 
             attackers |= new_attacks;
         }
