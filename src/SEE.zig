@@ -113,14 +113,14 @@ const psqts: [6][64]i16 = .{
         -3,  -20, -11, 8,   -17, -27, -33, -52,
     },
     .{
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
+        -49, 39, 32,  1,   -40, -18, 18,  29,
+        45,  15, -4,  9,   8,   12,  -22, -13,
+        7,   40, 18,  0,   -4,  22,  38,  -6,
+        -1,  -4, 4,   -11, -14, -9,  2,   -20,
+        -33, 15, -11, -23, -30, -28, -17, -35,
+        2,   2,  -6,  -30, -28, -14, 1,   -11,
+        17,  23, 8,   -48, -27, 0,   25,  24,
+        1,   52, 28,  -38, 24,  -12, 40,  30,
     },
 };
 
@@ -153,7 +153,33 @@ fn pickFirstVectorized(pieces: *const [6]u64, mask: u64) u8 {
 // if we have SIMD support use it otherwise use the scalar version
 const pickFirst = if (std.simd.suggestVectorLength(u8) orelse 0 >= 1) pickFirstVectorized else pickFirstScalar;
 
+const Entry = packed struct {
+    value: i16,
+    square: Square,
+    pt: PieceType,
+
+    fn toComparableU32(self: Entry) u32 {
+        _ = self;
+        return 0;
+    }
+};
+
+fn pickLeastAndPutLast(pieces: []Entry) Entry {
+    var picked: usize = 0;
+    var i: usize = 1;
+    while (i < pieces.len) : (i += 1) {
+        if (pieces[i].value < pieces[picked].value) {
+            picked = i;
+        }
+    }
+
+    std.mem.swap(Entry, &pieces[picked], &pieces[pieces.len - 1]);
+
+    return pieces[pieces.len - 1];
+}
+
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
+    // std.debug.print("{s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
     const from = move.from();
     const to = move.to();
     const from_type = (&board.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
@@ -185,11 +211,11 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
     var occ = board.occupancy() & ~from.toBitboard() & ~to.toBitboard();
     const kings = board.kings();
     const queens = board.queens();
-    const rooks = board.rooks() | queens;
-    const bishops = board.bishops() | queens;
+    const rooks = board.rooks();
+    const bishops = board.bishops();
     const knights = board.knights();
-
-    var stm = board.stm.flipped();
+    const rook_likes = board.rooks() | queens;
+    const bishop_likes = board.bishops() | queens;
 
     const all_pinned = board.pinned[0] | board.pinned[1];
 
@@ -203,17 +229,49 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
 
     const allowed = ~all_pinned | allowed_pinned;
 
-    var attackers =
-        (getAttacks(undefined, .king, to, occ) & kings) |
-        (getAttacks(undefined, .knight, to, occ) & knights) |
-        (getAttacks(undefined, .bishop, to, occ) & bishops) |
-        (getAttacks(undefined, .rook, to, occ) & rooks) |
-        (getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.black)) |
-        (getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.white));
-
-    attackers &= allowed;
-
     var attacker: PieceType = undefined;
+    const add_pieces = struct {
+        inline fn impl(col: Colour, pt: PieceType, bb: u64, list: anytype) void {
+            var iter = Bitboard.iterator(bb);
+            while (iter.next()) |sq| {
+                list.appendAssumeCapacity(Entry{
+                    .value = valuePSQT(col, pt, sq, mode),
+                    .pt = pt,
+                    .square = sq,
+                });
+            }
+        }
+    }.impl;
+
+    var white_pieces: std.BoundedArray(Entry, 16) = .{};
+    var black_pieces: std.BoundedArray(Entry, 16) = .{};
+    var attackers: u64 = 0;
+
+    {
+        const white_occ = board.occupancyFor(.white);
+        const black_occ = board.occupancyFor(.black);
+        const white_pawn_attacks = getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.white);
+        const black_pawn_attacks = getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.black);
+        attackers |= white_pawn_attacks | black_pawn_attacks;
+        add_pieces(.white, .pawn, white_pawn_attacks, &white_pieces);
+        add_pieces(.black, .pawn, black_pawn_attacks, &black_pieces);
+        const bishop_attacks = getAttacks(undefined, .bishop, to, occ);
+        const rook_attacks = getAttacks(undefined, .rook, to, occ);
+        inline for (.{
+            getAttacks(undefined, .knight, to, occ) & knights,
+            bishop_attacks & bishops,
+            rook_attacks & rooks,
+            (bishop_attacks | rook_attacks) & queens,
+            getAttacks(undefined, .king, to, occ) & kings,
+        }, [_]PieceType{ .knight, .bishop, .rook, .queen, .king }) |bb, pt| {
+            add_pieces(.white, pt, bb & white_occ & allowed, &white_pieces);
+            add_pieces(.black, pt, bb & black_occ & allowed, &black_pieces);
+            attackers |= bb;
+        }
+        attackers &= allowed;
+    }
+
+    var stm = board.stm.flipped();
     while (true) {
         if (attackers & board.occupancyFor(stm) == 0) {
             break;
@@ -222,18 +280,35 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         const attacker_i = pickFirst(&board.pieces, our_attackers);
         const attacker_bb = board.pieces[attacker_i] & our_attackers;
         const chosen_attacker = attacker_bb & -%attacker_bb;
+        attacker = PieceType.fromInt(attacker_i);
+        // std.debug.print("{} {}\n", .{ attacker, our_attackers });
+        const stm_piece_list = if (stm == .white) &white_pieces else &black_pieces;
+        const ntm_piece_list = if (stm == .black) &white_pieces else &black_pieces;
+        const picked = pickLeastAndPutLast(stm_piece_list.slice());
+        _ = &picked;
         occ ^= chosen_attacker;
 
-        attacker = PieceType.fromInt(attacker_i);
         // if our last attacker is the king, and they still have an attacker, we can't actually recapture
         if (attacker == .king and attackers & board.occupancyFor(stm.flipped()) != 0) {
             break;
         }
 
-        if (attacker == .pawn or attacker == .bishop or attacker == .queen)
-            attackers |= getAttacks(undefined, .bishop, to, occ) & bishops;
-        if (attacker == .rook or attacker == .queen)
-            attackers |= getAttacks(undefined, .rook, to, occ) & rooks;
+        if (attacker == .pawn or attacker == .bishop or attacker == .queen) {
+            const new_attacks = getAttacks(undefined, .bishop, to, occ) & bishop_likes;
+
+            add_pieces(stm.flipped(), .bishop, new_attacks & bishops & board.occupancyFor(stm), ntm_piece_list);
+            add_pieces(stm.flipped(), .queen, new_attacks & queens & board.occupancyFor(stm), ntm_piece_list);
+
+            attackers |= new_attacks;
+        }
+        if (attacker == .rook or attacker == .queen) {
+            const new_attacks = getAttacks(undefined, .rook, to, occ) & rook_likes;
+
+            add_pieces(stm.flipped(), .rook, new_attacks & rooks & board.occupancyFor(stm), ntm_piece_list);
+            add_pieces(stm.flipped(), .queen, new_attacks & queens & board.occupancyFor(stm), ntm_piece_list);
+
+            attackers |= new_attacks;
+        }
 
         attackers &= occ;
         score = -score - 1 - valuePSQT(stm, attacker, Square.fromBitboard(chosen_attacker), mode);

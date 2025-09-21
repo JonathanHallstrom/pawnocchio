@@ -234,7 +234,7 @@ pub const Rank = enum {
     }
 };
 
-pub const PieceType = enum {
+pub const PieceType = enum(u8) {
     pawn,
     knight,
     bishop,
