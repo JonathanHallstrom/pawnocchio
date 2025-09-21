@@ -182,6 +182,7 @@ pub const StackEntry = struct {
     board: Board,
     movelist: FilteringScoredMoveReceiver,
     move: TypedMove,
+    move_is_noisy: bool,
     prev: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
@@ -199,10 +200,11 @@ pub const StackEntry = struct {
     ) void {
         self.board = board_.*;
         self.move = move_;
+        self.move_is_noisy = board_.isNoisy(move_.move);
         self.prev = prev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
-        self.static_eval = 0;
+        self.static_eval = evaluation.inf_score;
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
     }
@@ -270,8 +272,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const new_eval_state: *evaluation.State = self.evalState(1);
     const board = &prev_stack_entry.board;
 
-    new_eval_state.* = prev_eval_state.*;
-    new_eval_state.update(board, &old_stack_entry.board);
+    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
@@ -298,8 +299,8 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const new_stack_entry = self.stackEntry(1);
     const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
-    new_eval_state.* = prev_eval_state.*;
-    new_eval_state.update(board, &old_stack_entry.board);
+
+    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
         TypedMove.init(),
@@ -448,7 +449,8 @@ fn qsearch(
             {
                 break;
             }
-            if (!is_in_check and futility <= alpha and
+            if (!is_in_check and
+                futility <= alpha and
                 !is_recapture and
                 !SEE.scoreMove(board, move, 1, .pruning))
             {
