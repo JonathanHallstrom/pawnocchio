@@ -789,7 +789,20 @@ fn search(
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
-            nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
+            // nmp_reduction +=
+            //     @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
+            // const globals = struct {
+            //     var sum: i64 = 0;
+            //     var count: u32 = 0;
+            // };
+            // globals.sum +=
+            //     @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
+            // globals.count += 1;
+            // if (globals.count % 1024 == 0) {
+            //     std.debug.print("{}\n", .{1024 * @divTrunc(globals.sum, globals.count)});
+            // }
+            nmp_reduction += 5976064 / 1024;
+
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
@@ -937,6 +950,7 @@ fn search(
             const s_depth = depth * tunable_constants.singular_depth_mult - tunable_constants.singular_depth_offs >> 10;
 
             cur.excluded = move;
+            cur.static_eval = corrected_static_eval;
             const s_score = self.search(
                 false,
                 is_pv,
@@ -946,6 +960,7 @@ fn search(
                 s_depth,
                 cutnode,
             );
+            cur.static_eval = eval;
             cur.excluded = Move.init();
 
             if (s_score < s_beta) {
