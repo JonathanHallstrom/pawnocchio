@@ -159,9 +159,9 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         }
 
         if (attacker == .pawn or attacker == .bishop or attacker == .queen)
-            attackers |= getAttacks(undefined, .bishop, to, occ) & bishops;
+            attackers |= getAttacks(undefined, .bishop, to, occ) & bishops & allowed;
         if (attacker == .rook or attacker == .queen)
-            attackers |= getAttacks(undefined, .rook, to, occ) & rooks;
+            attackers |= getAttacks(undefined, .rook, to, occ) & rooks & allowed;
 
         attackers &= occ;
         score = -score - 1 - value(attacker, mode);
