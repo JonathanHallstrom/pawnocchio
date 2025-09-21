@@ -130,7 +130,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
 
     const allowed_pinned = all_pinned & (white_allowed_pinned | black_allowed_pinned);
 
-    const allowed = ~all_pinned | allowed_pinned;
+    var allowed = ~all_pinned | allowed_pinned;
 
     var attackers =
         (getAttacks(undefined, .king, to, occ) & kings) |
@@ -150,7 +150,9 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         const our_attackers = board.occupancyFor(stm) & attackers;
         const attacker_i = pickFirst(&board.pieces, our_attackers);
         const attacker_bb = board.pieces[attacker_i] & our_attackers;
-        occ ^= attacker_bb & -%attacker_bb;
+        const chosen_attacker = attacker_bb & -%attacker_bb;
+        const chosen_sq = Square.fromBitboard(chosen_attacker);
+        occ ^= chosen_attacker;
 
         attacker = PieceType.fromInt(attacker_i);
         // if our last attacker is the king, and they still have an attacker, we can't actually recapture
@@ -158,10 +160,22 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             break;
         }
 
-        if (attacker == .pawn or attacker == .bishop or attacker == .queen)
+        if (attacker == .pawn or attacker == .bishop or attacker == .queen) {
+            if (attacker != .pawn) {
+                allowed |= Bitboard.queenRayBetweenExclusive(
+                    Square.fromBitboard(board.kingFor(stm.flipped())),
+                    chosen_sq,
+                );
+            }
             attackers |= getAttacks(undefined, .bishop, to, occ) & bishops & allowed;
-        if (attacker == .rook or attacker == .queen)
+        }
+        if (attacker == .rook or attacker == .queen) {
+            allowed |= Bitboard.queenRayBetweenExclusive(
+                Square.fromBitboard(board.kingFor(stm.flipped())),
+                chosen_sq,
+            );
             attackers |= getAttacks(undefined, .rook, to, occ) & rooks & allowed;
+        }
 
         attackers &= occ;
         score = -score - 1 - value(attacker, mode);
