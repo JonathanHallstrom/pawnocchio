@@ -1007,7 +1007,9 @@ fn search(
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
-                reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                if (!is_in_check) {
+                    reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                }
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
