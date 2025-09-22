@@ -674,13 +674,17 @@ fn search(
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
     // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
                     if (tt_score >= beta and !evaluation.isMateScore(tt_score) and board.halfmove <= 90) {
+                        if (tt_move_quiet) {
+                            self.histories.updateQuiet(board, tt_entry.move, self.getUsableMoves(), depth, true);
+                        }
+
                         return @intCast(tt_score + @divTrunc((beta - tt_score) * tunable_constants.tt_fail_medium, 1024));
                     }
 
