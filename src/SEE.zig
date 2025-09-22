@@ -178,7 +178,7 @@ fn pickLeastAndPutLast(pieces: []Entry) Entry {
 }
 
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
-    // std.debug.print("{s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
+    std.debug.print("{s} {s} {}\n", .{ board.toFen().slice(), move.toString(board).slice(), threshold });
     const from = move.from();
     const to = move.to();
     const from_type = (&board.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
@@ -231,11 +231,13 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
     var attacker: PieceType = undefined;
     const add_pieces = struct {
         fn impl(col: Colour, pt: PieceType, bb: u64, list: anytype) void {
-            // std.debug.print("adding {} {} ", .{ col, pt });
+            if (bb != 0) {
+                std.debug.print("adding {} {} ", .{ col, pt });
+            }
 
             var iter = Bitboard.iterator(bb);
             while (iter.next()) |sq| {
-                // std.debug.print("{s} ", .{sq.toString()});
+                std.debug.print("{s} ", .{sq.toString()});
                 list.appendAssumeCapacity(Entry{
                     .value = valuePSQT(col, pt, sq, mode),
                     .pt = pt,
@@ -243,7 +245,9 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
                 });
             }
 
-            // std.debug.print("\n", .{});
+            if (bb != 0) {
+                std.debug.print("\n", .{});
+            }
         }
     }.impl;
 
@@ -292,7 +296,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         _ = stm_piece_list.pop().?;
         _ = &picked;
         attacker = picked.pt;
-        // std.debug.print("{} {}\n", .{ attacker, picked.square });
+        std.debug.print("{} {} {}\n", .{ attacker, picked.square, picked.value });
 
         occ ^= picked.square.toBitboard();
 
@@ -333,12 +337,14 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             break;
         }
     }
+    std.debug.print("success: {}\n", .{stm != board.stm});
     return stm != board.stm;
 }
 
 test scoreMove {
     root.init();
-    try std.testing.expect(!scoreMove(&(Board.parseFen("1b2k2r/p6p/3b2P1/5p2/7Q/2P2q2/PP2PP1P/R1B1KB2 w Qk - 0 6", false) catch unreachable), Move.capture(.c1, .f4), 0, .pruning));
+    // try std.testing.expect(!scoreMove(&(Board.parseFen("1b2k2r/p6p/3b2P1/5p2/7Q/2P2q2/PP2PP1P/R1B1KB2 w Qk - 0 6", false) catch unreachable), Move.quiet(.c1, .f4), 0, .pruning));
+    try std.testing.expect(scoreMove(&(Board.parseFen("rnbqk1nr/ppp1bppp/4p3/3p4/3PP3/2N5/PPP2PPP/R1BQKBNR w KQkq - 0 4", false) catch unreachable), Move.quiet(.f1, .d3), -50, .pruning));
     //     try std.testing.expect(!scoreMove(&(Board.parseFen("k6b/8/8/8/8/2p5/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), value(.pawn, .pruning), .pruning));
     //     try std.testing.expect(!scoreMove(&(Board.parseFen("k7/8/8/8/8/2p5/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), value(.pawn, .pruning), .pruning));
     //     try std.testing.expect(scoreMove(&(Board.parseFen("k7/8/8/8/8/2q5/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), value(.pawn, .pruning), .pruning));

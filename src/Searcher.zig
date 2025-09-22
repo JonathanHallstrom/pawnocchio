@@ -441,6 +441,7 @@ fn qsearch(
         }
         const skip_see_pruning = mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
+        var wouldve_been_see_pruned = false;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, move);
             if (!is_in_check and
@@ -461,7 +462,7 @@ fn qsearch(
             if (!is_in_check and
                 (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)))
             {
-                continue;
+                wouldve_been_see_pruned = true;
             }
         }
 
@@ -473,7 +474,16 @@ fn qsearch(
             return 0;
         }
 
+        if (score < best_score - 5 and !wouldve_been_see_pruned) {
+            if (wouldve_been_see_pruned) {
+                std.debug.print("SEE WAS WRONG (it was really bad) {s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
+            }
+        }
+
         if (score > best_score) {
+            if (wouldve_been_see_pruned) {
+                std.debug.print("SEE WAS WRONG (it was fine) {s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
+            }
             best_score = score;
             if (score > evaluation.matedIn(MAX_PLY)) {
                 mp.skip_quiets = true;
