@@ -226,7 +226,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
 
     const allowed_pinned = all_pinned & (white_allowed_pinned | black_allowed_pinned);
 
-    const allowed = (~all_pinned | allowed_pinned) & ~move.from().toBitboard();
+    const allowed = ~all_pinned | allowed_pinned;
 
     var attacker: PieceType = undefined;
     const add_pieces = struct {
@@ -272,7 +272,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             add_pieces(.black, pt, bb & black_occ & allowed, &black_pieces);
             attackers |= bb;
         }
-        attackers &= allowed;
+        attackers &= allowed & occ;
     }
 
     var all_attackers = attackers;
