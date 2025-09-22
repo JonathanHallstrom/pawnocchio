@@ -130,7 +130,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
 
     const allowed_pinned = all_pinned & (white_allowed_pinned | black_allowed_pinned);
 
-    const allowed = (~all_pinned | allowed_pinned) & ~move.from().toBitboard();
+    const allowed = ~all_pinned | allowed_pinned;
 
     var attackers =
         (getAttacks(undefined, .king, to, occ) & kings) |
@@ -140,7 +140,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         (getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.black)) |
         (getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.white));
 
-    attackers &= allowed;
+    attackers &= allowed & occ;
 
     var attacker: PieceType = undefined;
     while (true) {
