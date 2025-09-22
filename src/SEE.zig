@@ -140,7 +140,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         (getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.black)) |
         (getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.white));
 
-    attackers &= allowed;
+    attackers &= allowed & occ;
 
     var attacker: PieceType = undefined;
     while (true) {
