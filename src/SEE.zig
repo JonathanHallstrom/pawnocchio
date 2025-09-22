@@ -226,7 +226,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
 
     const allowed_pinned = all_pinned & (white_allowed_pinned | black_allowed_pinned);
 
-    const allowed = ~all_pinned | allowed_pinned;
+    const allowed = (~all_pinned | allowed_pinned) & ~move.from().toBitboard();
 
     var attacker: PieceType = undefined;
     const add_pieces = struct {
@@ -235,7 +235,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
 
             var iter = Bitboard.iterator(bb);
             while (iter.next()) |sq| {
-                std.debug.print("{} ", .{sq});
+                std.debug.print("{s} ", .{sq.toString()});
                 list.appendAssumeCapacity(Entry{
                     .value = valuePSQT(col, pt, sq, mode),
                     .pt = pt,
@@ -275,6 +275,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         attackers &= allowed;
     }
 
+    var all_attackers = attackers;
     var stm = board.stm.flipped();
     while (true) {
         if (attackers & board.occupancyFor(stm) == 0) {
@@ -301,7 +302,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         }
 
         if (attacker == .pawn or attacker == .bishop or attacker == .queen) {
-            const new_attacks = ~attackers & getAttacks(undefined, .bishop, to, occ) & bishop_likes;
+            std.debug.print("{}\n", .{all_attackers});
+            const new_attacks = ~all_attackers & getAttacks(undefined, .bishop, to, occ) & bishop_likes;
 
             add_pieces(stm, .bishop, new_attacks & bishops & board.occupancyFor(stm), stm_piece_list);
             add_pieces(stm, .queen, new_attacks & queens & board.occupancyFor(stm), stm_piece_list);
@@ -309,9 +311,10 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             add_pieces(stm.flipped(), .queen, new_attacks & queens & board.occupancyFor(stm.flipped()), ntm_piece_list);
 
             attackers |= new_attacks;
+            all_attackers |= new_attacks;
         }
         if (attacker == .rook or attacker == .queen) {
-            const new_attacks = ~attackers & getAttacks(undefined, .rook, to, occ) & rook_likes;
+            const new_attacks = ~all_attackers & getAttacks(undefined, .rook, to, occ) & rook_likes;
 
             add_pieces(stm, .rook, new_attacks & rooks & board.occupancyFor(stm), stm_piece_list);
             add_pieces(stm, .queen, new_attacks & queens & board.occupancyFor(stm), stm_piece_list);
@@ -319,6 +322,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             add_pieces(stm.flipped(), .queen, new_attacks & queens & board.occupancyFor(stm.flipped()), ntm_piece_list);
 
             attackers |= new_attacks;
+            all_attackers |= new_attacks;
         }
 
         attackers &= occ;

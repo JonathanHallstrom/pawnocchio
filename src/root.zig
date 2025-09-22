@@ -163,6 +163,10 @@ pub const Square = enum(u8) {
         return @enumFromInt(rank * 8 + file);
     }
 
+    pub fn toString(self: Square) [2]u8 {
+        return .{ @as(u8, self.getFile().toInt()) + 'a', @as(u8, self.getRank().toInt()) + '1' };
+    }
+
     pub fn flipRank(self: Square) Square {
         return fromInt(self.toInt() ^ 0b111000);
     }
