@@ -789,20 +789,6 @@ fn search(
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
-            // nmp_reduction +=
-            //     @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
-            // const globals = struct {
-            //     var sum: i64 = 0;
-            //     var count: u32 = 0;
-            // };
-            // globals.sum +=
-            //     @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
-            // globals.count += 1;
-            // if (globals.count % 1024 == 0) {
-            //     std.debug.print("{}\n", .{1024 * @divTrunc(globals.sum, globals.count)});
-            // }
-            nmp_reduction += 5976064 / 1024;
-
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
