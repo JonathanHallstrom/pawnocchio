@@ -178,7 +178,7 @@ fn pickLeastAndPutLast(pieces: []Entry) Entry {
 }
 
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
-    std.debug.print("{s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
+    // std.debug.print("{s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
     const from = move.from();
     const to = move.to();
     const from_type = (&board.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
@@ -231,11 +231,11 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
     var attacker: PieceType = undefined;
     const add_pieces = struct {
         fn impl(col: Colour, pt: PieceType, bb: u64, list: anytype) void {
-            std.debug.print("adding {} {} ", .{ col, pt });
+            // std.debug.print("adding {} {} ", .{ col, pt });
 
             var iter = Bitboard.iterator(bb);
             while (iter.next()) |sq| {
-                std.debug.print("{s} ", .{sq.toString()});
+                // std.debug.print("{s} ", .{sq.toString()});
                 list.appendAssumeCapacity(Entry{
                     .value = valuePSQT(col, pt, sq, mode),
                     .pt = pt,
@@ -243,7 +243,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
                 });
             }
 
-            std.debug.print("\n", .{});
+            // std.debug.print("\n", .{});
         }
     }.impl;
 
@@ -257,8 +257,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         const white_pawn_attacks = getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.white);
         const black_pawn_attacks = getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.black);
         attackers |= white_pawn_attacks | black_pawn_attacks;
-        add_pieces(.white, .pawn, white_pawn_attacks, &white_pieces);
-        add_pieces(.black, .pawn, black_pawn_attacks, &black_pieces);
+        add_pieces(.white, .pawn, occ & white_pawn_attacks, &white_pieces);
+        add_pieces(.black, .pawn, occ & black_pawn_attacks, &black_pieces);
         const bishop_attacks = getAttacks(undefined, .bishop, to, occ);
         const rook_attacks = getAttacks(undefined, .rook, to, occ);
         inline for (.{
@@ -268,8 +268,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             (bishop_attacks | rook_attacks) & queens,
             getAttacks(undefined, .king, to, occ) & kings,
         }, [_]PieceType{ .knight, .bishop, .rook, .queen, .king }) |bb, pt| {
-            add_pieces(.white, pt, bb & white_occ & allowed, &white_pieces);
-            add_pieces(.black, pt, bb & black_occ & allowed, &black_pieces);
+            add_pieces(.white, pt, occ & bb & white_occ & allowed, &white_pieces);
+            add_pieces(.black, pt, occ & bb & black_occ & allowed, &black_pieces);
             attackers |= bb;
         }
         attackers &= allowed & occ;
@@ -292,7 +292,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         _ = stm_piece_list.pop().?;
         _ = &picked;
         attacker = picked.pt;
-        std.debug.print("{} {}\n", .{ attacker, picked.square });
+        // std.debug.print("{} {}\n", .{ attacker, picked.square });
 
         occ ^= picked.square.toBitboard();
 
@@ -302,8 +302,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         }
 
         if (attacker == .pawn or attacker == .bishop or attacker == .queen) {
-            std.debug.print("{}\n", .{all_attackers});
-            const new_attacks = ~all_attackers & getAttacks(undefined, .bishop, to, occ) & bishop_likes;
+            // std.debug.print("{}\n", .{all_attackers});
+            const new_attacks = occ & ~all_attackers & getAttacks(undefined, .bishop, to, occ) & bishop_likes;
 
             add_pieces(stm, .bishop, new_attacks & bishops & board.occupancyFor(stm), stm_piece_list);
             add_pieces(stm, .queen, new_attacks & queens & board.occupancyFor(stm), stm_piece_list);
@@ -314,7 +314,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             all_attackers |= new_attacks;
         }
         if (attacker == .rook or attacker == .queen) {
-            const new_attacks = ~all_attackers & getAttacks(undefined, .rook, to, occ) & rook_likes;
+            const new_attacks = occ & ~all_attackers & getAttacks(undefined, .rook, to, occ) & rook_likes;
 
             add_pieces(stm, .rook, new_attacks & rooks & board.occupancyFor(stm), stm_piece_list);
             add_pieces(stm, .queen, new_attacks & queens & board.occupancyFor(stm), stm_piece_list);
