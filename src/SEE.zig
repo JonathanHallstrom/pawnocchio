@@ -130,7 +130,7 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
 
     const allowed_pinned = all_pinned & (white_allowed_pinned | black_allowed_pinned);
 
-    const allowed = ~all_pinned | allowed_pinned;
+    const allowed = (~all_pinned | allowed_pinned) & ~move.from().toBitboard();
 
     var attackers =
         (getAttacks(undefined, .king, to, occ) & kings) |
