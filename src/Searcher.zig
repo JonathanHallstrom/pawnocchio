@@ -805,7 +805,7 @@ fn search(
 
             if (nmp_score >= beta) {
                 if (depth <= 15 or self.min_nmp_ply != 0) {
-                    return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                    return @intCast(@divTrunc(beta + if (evaluation.isMateScore(nmp_score)) beta else nmp_score, 2));
                 }
 
                 self.min_nmp_ply = @intCast(std.math.clamp(self.ply + @divTrunc(nmp_reduction * 3, 4), 0, MAX_PLY));
@@ -813,7 +813,7 @@ fn search(
                 self.min_nmp_ply = 0;
 
                 if (verif_score >= beta) {
-                    return verif_score;
+                    return @intCast(@divTrunc(verif_score + beta, 2));
                 }
             }
         }
