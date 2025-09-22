@@ -765,8 +765,9 @@ fn search(
         if (depth <= 3 and
             eval +
                 tunable_constants.razoring_offs +
-                tunable_constants.razoring_mult * depth +
-                tunable_constants.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
+                (tunable_constants.razoring_mult +
+                    tunable_constants.razoring_easy_capture * @intFromBool(we_have_easy_capture)) *
+                    depth <= alpha)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
