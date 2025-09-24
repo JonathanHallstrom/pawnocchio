@@ -967,6 +967,10 @@ fn search(
                 extension -= 2;
             }
         }
+        if (!is_pv and extension < 0) {
+            depth += extension;
+            extension = 0;
+        }
         num_searched += 1;
 
         if (std.debug.runtime_safety) {
