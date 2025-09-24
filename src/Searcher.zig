@@ -962,14 +962,11 @@ fn search(
             } else if (s_beta >= beta) {
                 return @intCast(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
             } else if (cutnode) {
-                extension -= 3;
+                extension -= 2;
+                depth -= 1;
             } else if (tt_entry.score >= beta) {
                 extension -= 2;
             }
-        }
-        if (!is_pv and extension < 0) {
-            depth += extension;
-            extension = 0;
         }
         num_searched += 1;
 
