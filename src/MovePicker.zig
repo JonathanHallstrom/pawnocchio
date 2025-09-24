@@ -41,6 +41,9 @@ histories: *const history.HistoryTable,
 ttmove: Move,
 moves: history.ConthistMoves,
 last_bad_noisy: usize = 0,
+is_pv: bool = false,
+prev_pv: ?*const [64]u64 = null,
+
 next_func: *const fn (*MovePicker) ScoredMove,
 
 pub const Stage = enum {
@@ -60,6 +63,8 @@ pub fn init(
     ttmove_: Move,
     moves_: history.ConthistMoves,
     is_singular_search: bool,
+    is_pv_: bool,
+    prev_pv_: *const [64]u64,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -74,6 +79,8 @@ pub fn init(
         .histories = histories_,
         .ttmove = ttmove_,
         .moves = moves_,
+        .is_pv = is_pv_,
+        .prev_pv = prev_pv_,
     };
 }
 
@@ -163,7 +170,12 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
 }
 
 fn quietValue(self: MovePicker, move: Move) i32 {
-    return self.histories.readQuietOrdering(self.board, move, self.moves);
+    var res = self.histories.readQuietOrdering(self.board, move, self.moves);
+    if (self.is_pv and self.prev_pv.?[move.from().toInt()] & move.to().toBitboard() != 0) {
+        res = @divTrunc(res, 4);
+        res += 8192;
+    }
+    return res;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug) .auto else .always_tail;

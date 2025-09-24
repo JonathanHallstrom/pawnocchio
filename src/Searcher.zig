@@ -118,6 +118,7 @@ syzygy_depth: u8 = 1,
 normalize: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
+prev_pv: [64]u64 = .{0} ** 64,
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -826,6 +827,8 @@ fn search(
         if (is_singular_search) cur.excluded else tt_entry.move,
         self.getUsableMoves(),
         is_singular_search,
+        is_pv,
+        &self.prev_pv,
     );
     defer mp.deinit();
     var best_move = Move.init();
@@ -1293,6 +1296,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var eval_stability: i32 = 0;
     var move_stability: i32 = 0;
     var average_score: i64 = 0;
+    @memset(&self.prev_pv, 0);
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
@@ -1377,6 +1381,11 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             move_stability,
         )) {
             break;
+        }
+
+        @memset(&self.prev_pv, 0);
+        for (self.pvs[0].slice()) |pv_move| {
+            self.prev_pv[pv_move.from().toInt()] |= pv_move.to().toBitboard();
         }
     }
 
