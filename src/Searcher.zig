@@ -380,7 +380,7 @@ fn qsearch(
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
+        corrected_static_eval, _ = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -715,10 +715,11 @@ fn search(
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
+    var correction: i16 = 0;
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
+        corrected_static_eval, correction = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -742,21 +743,19 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
         if (depth <= 12 and
-            eval >= beta +
+            eval - @max(correction, 0) >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth +
                 tunable_constants.rfp_quad * depth * depth -
                 tunable_constants.rfp_improving_margin * @intFromBool(improving and !opponent_has_easy_capture) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
+                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
