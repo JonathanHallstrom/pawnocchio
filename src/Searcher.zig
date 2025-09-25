@@ -386,8 +386,9 @@ fn qsearch(
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
             static_eval = tt_score;
         }
+        const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
 
-        if (static_eval >= beta) {
+        if (static_eval >= beta + @intFromBool(opponent_has_easy_capture) * @as(i32, 50)) {
             return @intCast(static_eval + @divTrunc((beta - static_eval) * tunable_constants.standpat_fail_medium, 1024));
         }
         if (static_eval > alpha) {
@@ -499,6 +500,11 @@ fn qsearch(
         0,
         raw_static_eval,
     );
+
+    if (best_score >= beta and !evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta) and !is_pv) {
+        return @intCast(@divTrunc(best_score + beta, 2));
+    }
+
     return best_score;
 }
 
