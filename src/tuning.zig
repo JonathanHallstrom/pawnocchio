@@ -136,9 +136,6 @@ const tunable_defaults = struct {
     pub const nmp_margin_mult: i32 = 25;
     pub const nmp_base: i32 = 61914;
     pub const nmp_mult: i32 = 1093;
-    pub const nmp_eval_reduction_scale: i32 = 24;
-    pub const nmp_eval_reduction_max: i32 = 30376;
-    pub const nmp_history_mult: i32 = 512;
     pub const fp_depth_limit: i32 = 6144;
     pub const fp_base: i32 = 311;
     pub const fp_mult: i32 = 80;
@@ -284,9 +281,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_margin_mult", .default = tunable_defaults.nmp_margin_mult, .min = -100, .max = 100, .c_end = 5 },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base, .min = -10, .max = 126747, .c_end = 5069 },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult, .min = -10, .max = 2317, .c_end = 92 },
-    .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale, .min = -10, .max = 97, .c_end = 3 },
-    .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max, .min = -10, .max = 62215, .c_end = 2488 },
-    .{ .name = "nmp_history_mult", .default = tunable_defaults.nmp_history_mult, .min = 0, .max = 1536, .c_end = 51 },
     .{ .name = "fp_depth_limit", .default = tunable_defaults.fp_depth_limit },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base, .min = -10, .max = 747, .c_end = 29 },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult, .min = -10, .max = 242, .c_end = 9 },
@@ -432,9 +426,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nmp_margin_mult = tunable_defaults.nmp_margin_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
-    pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
-    pub var nmp_eval_reduction_max = tunable_defaults.nmp_eval_reduction_max;
-    pub var nmp_history_mult = tunable_defaults.nmp_history_mult;
     pub var fp_depth_limit = tunable_defaults.fp_depth_limit;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
