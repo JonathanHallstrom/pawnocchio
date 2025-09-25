@@ -176,8 +176,7 @@ pub const NoisyHistory = struct {
         const captured_offs = if (captured.opt()) |capt| capt.toInt() else 12;
         const threats = board.threats[board.stm.flipped().toInt()];
         const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
-        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
-        return &(&self.vals)[from_offs * 64 * 13 * 2 * 2 * 2 + to_offs * 13 * 2 * 2 * 2 + captured_offs * 2 * 2 * 2 + from_threatened_offs * 2 * 2 + to_threatened_offs * 2 + @intFromBool(good_see)];
+        return &(&self.vals)[from_offs * 64 * 13 * 2 * 2 + to_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + @intFromBool(good_see)];
     }
 
     pub inline fn updateRaw(self: *NoisyHistory, board: *const Board, move: TypedMove, good_see: bool, upd: i32) void {
