@@ -149,7 +149,7 @@ pub const PawnHistory = struct {
 };
 
 pub const NoisyHistory = struct {
-    vals: [64 * 64 * 13 * 2 * 2]i16,
+    vals: [6 * 64 * 13 * 2 * 2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -170,7 +170,7 @@ pub const NoisyHistory = struct {
     }
 
     inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
-        const from_offs: usize = move.move.from().toInt();
+        const from_offs: usize = move.tp.toInt();
         const to_offs: usize = move.move.to().toInt();
         const captured = (&board.mailbox)[to_offs];
         const captured_offs = if (captured.opt()) |capt| capt.toInt() else 12;
