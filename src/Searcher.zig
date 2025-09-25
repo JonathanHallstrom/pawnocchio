@@ -366,7 +366,10 @@ fn qsearch(
         tt_entry = .{};
     }
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
+    if (!is_pv and
+        (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type) or
+            tt_score > beta + 300))
+    {
         if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
             return @intCast(tt_score + @divTrunc((beta - tt_score) * tunable_constants.qs_tt_fail_medium, 1024));
         }
