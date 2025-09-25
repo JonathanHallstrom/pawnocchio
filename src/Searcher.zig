@@ -735,20 +735,31 @@ fn search(
             cur.static_eval = corrected_static_eval;
         }
     }
-    const eval = cur.static_eval;
+    var eval = cur.static_eval;
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
-        !is_in_check and
         !is_singular_search)
     {
+        const use_tt_score = is_in_check and tt_hit and !evaluation.isTBScore(tt_score) and !evaluation.isTBScore(beta) and evaluation.checkTTBound(
+            tt_score,
+            alpha,
+            beta,
+            tt_entry.flags.score_type,
+        );
+
+        if (use_tt_score) {
+            eval = tt_score;
+        }
+
         const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
-        if (depth <= 12 and
+        if ((!is_in_check or use_tt_score) and
+            depth <= 12 and
             eval >= beta +
                 tunable_constants.rfp_base +
                 tunable_constants.rfp_mult * depth +
@@ -762,7 +773,8 @@ fn search(
         }
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
-        if (depth <= 3 and
+        if (!is_in_check and
+            depth <= 3 and
             eval +
                 tunable_constants.razoring_offs +
                 tunable_constants.razoring_mult * depth +
@@ -781,7 +793,8 @@ fn search(
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
-        if (depth >= 4 and
+        if (!is_in_check and
+            depth >= 4 and
             eval >= beta + tunable_constants.nmp_margin_base - tunable_constants.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
