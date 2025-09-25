@@ -831,7 +831,7 @@ fn search(
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
     var searched_quiets: std.BoundedArray(Move, 64) = .{};
-    var searched_noisies: std.BoundedArray(Move, 64) = .{};
+    var searched_noisies: std.BoundedArray(ScoredMove, 64) = .{};
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
@@ -970,7 +970,7 @@ fn search(
         num_searched += 1;
 
         if (std.debug.runtime_safety) {
-            if (std.mem.count(Move, searched_noisies.slice(), &.{move}) != 0) {
+            if (std.mem.count(ScoredMove, searched_noisies.slice(), &.{scored_move}) != 0) {
                 unreachable;
             }
             if (std.mem.count(Move, searched_quiets.slice(), &.{move}) != 0) {
@@ -1080,7 +1080,7 @@ fn search(
             if (is_quiet) {
                 searched_quiets.append(move) catch {};
             } else {
-                searched_noisies.append(move) catch {};
+                searched_noisies.append(scored_move) catch {};
             }
         }
 
@@ -1119,7 +1119,7 @@ fn search(
                     self.histories.updateNoisy(board, move, scored_move.good_see, hist_depth, true);
                 }
                 for (searched_noisies.slice()) |searched_move| {
-                    self.histories.updateNoisy(board, searched_move, scored_move.good_see, hist_depth, false);
+                    self.histories.updateNoisy(board, searched_move.move, searched_move.good_see, hist_depth, false);
                 }
                 break;
             }
