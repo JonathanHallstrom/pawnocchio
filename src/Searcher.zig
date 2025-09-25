@@ -876,11 +876,11 @@ fn search(
                 const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
                 const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 const granularity: i32 = 978;
-                if (!is_pv and
-                    num_searched * granularity >=
+                if (num_searched * granularity >=
+                    (if (is_pv) 2 * granularity else 0) +
                         lmp_base +
-                            lmp_linear_mult * depth +
-                            lmp_quadratic_mult * depth * depth)
+                        lmp_linear_mult * depth +
+                        lmp_quadratic_mult * depth * depth)
                 {
                     mp.skip_quiets = true;
                     continue;
