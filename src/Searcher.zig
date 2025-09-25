@@ -909,6 +909,27 @@ fn search(
                     mp.skip_quiets = true;
                     continue;
                 }
+            } else {
+                var captured_value: u16 = 0;
+                if (board.pieceOn(move.to())) |pt| {
+                    captured_value += @intCast(SEE.value(pt, .pruning));
+                }
+                const futility_value = eval +
+                    @as(i32, 100) +
+                    captured_value +
+                    lmr_depth / 10;
+
+                if (!is_in_check and
+                    lmr_depth <= 6144 and
+                    mp.stage == .bad_noisies and
+                    futility_value <= alpha)
+                {
+                    if (!evaluation.isTBScore(best_score)) {
+                        best_score = @intCast(@max(best_score, futility_value));
+                    }
+
+                    break;
+                }
             }
 
             const see_pruning_thresh = if (is_quiet)
