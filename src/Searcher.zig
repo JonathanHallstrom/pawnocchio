@@ -689,7 +689,7 @@ fn search(
             }
         }
 
-        if (tt_entry.flags.score_type != .upper and tt_entry.depth >= depth - 5 and tt_entry.score >= beta + 400 + 20 * depth) {
+        if (tt_entry.flags.score_type != .upper and tt_entry.depth >= depth - 3 and tt_entry.score >= beta + 400 + 20 * depth) {
             return tt_score;
         }
     }
