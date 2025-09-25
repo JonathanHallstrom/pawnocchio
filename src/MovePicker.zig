@@ -215,7 +215,7 @@ fn goodNoises(self: *MovePicker) ScoredMove {
         return res;
     } else {
         res.good_see = false;
-        res.score = self.histories.readNoisy(self.board, res.move, false);
+        res.score += self.histories.readNoisy(self.board, res.move, false) - history_score;
     }
     self.movelist.vals.slice()[self.last_bad_noisy] = res;
     self.last_bad_noisy += 1;
