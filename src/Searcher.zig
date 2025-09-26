@@ -1006,9 +1006,7 @@ fn search(
                 });
                 reduction >>= 10;
 
-                const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
-
-                const reduced_depth = depth + extension - clamped_reduction;
+                const reduced_depth = std.math.clamp(depth + extension - reduction, 0, new_depth);
                 s = -self.search(
                     false,
                     false,
@@ -1022,7 +1020,7 @@ fn search(
                     break :blk 0;
                 }
 
-                if (s > alpha and clamped_reduction > 1) {
+                if (s > alpha and reduced_depth < new_depth) {
                     const do_deeper_search = s > best_score + tunable_constants.lmr_dodeeper_margin + tunable_constants.lmr_dodeeper_mult * new_depth;
                     const do_shallower_search = s < best_score + new_depth;
 
