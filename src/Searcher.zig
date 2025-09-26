@@ -915,9 +915,9 @@ fn search(
                     captured_value += @intCast(SEE.value(pt, .pruning));
                 }
                 const futility_value = eval +
-                    @as(i32, 100) +
+                    @as(i32, 150) +
                     captured_value +
-                    lmr_depth / 10;
+                    lmr_depth / 8;
 
                 if (!is_in_check and
                     lmr_depth <= 6144 and
