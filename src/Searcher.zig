@@ -740,9 +740,10 @@ fn search(
     const eval = cur.static_eval;
     const prev_eval = self.stackEntry(-1).static_eval;
 
-    if (eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
+    if (!tt_pv and
+        eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
-        cur.reduction >= 4096 and
+        cur.reduction >= 3072 and
         eval + prev_eval < 0)
     {
         depth += 1;
