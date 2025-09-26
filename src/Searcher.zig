@@ -1006,7 +1006,7 @@ fn search(
                 });
                 reduction >>= 10;
 
-                const reduced_depth = std.math.clamp(depth + extension - reduction, 0, new_depth);
+                const reduced_depth = std.math.clamp(depth + extension - reduction, 1, new_depth);
                 s = -self.search(
                     false,
                     false,
