@@ -189,6 +189,7 @@ pub const StackEntry = struct {
     static_eval: i16,
     failhighs: u8,
     usable_moves: u8,
+    reduction: i32,
 
     pub fn init(
         self: *StackEntry,
@@ -207,6 +208,7 @@ pub const StackEntry = struct {
         self.static_eval = evaluation.inf_score;
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
+        self.reduction = 0;
     }
 };
 
@@ -713,7 +715,7 @@ fn search(
     }
     var improving = false;
     var opponent_worsening = false;
-    var raw_static_eval: i16 = evaluation.matedIn(self.ply);
+    var raw_static_eval: i16 = evaluation.inf_score;
     var corrected_static_eval = raw_static_eval;
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
@@ -736,6 +738,15 @@ fn search(
         }
     }
     const eval = cur.static_eval;
+    const prev_eval = self.stackEntry(-1).static_eval;
+
+    if (eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
+        !is_singular_search and
+        cur.reduction >= 4096 and
+        eval + prev_eval < 0)
+    {
+        depth += 1;
+    }
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
@@ -1004,6 +1015,7 @@ fn search(
                     gives_check,
                     cur.failhighs > 2,
                 });
+                self.stackEntry(0).reduction = std.math.clamp(reduction, 1024, (depth - 1) * 1024);
                 reduction >>= 10;
 
                 const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
@@ -1018,6 +1030,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
+                self.stackEntry(0).reduction = 0;
                 if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
