@@ -1002,7 +1002,7 @@ fn search(
                     tt_pv,
                     is_quiet,
                     gives_check,
-                    self.stackEntry(-1).failhighs > 2,
+                    cur.failhighs > 2,
                 });
                 reduction >>= 10;
 
