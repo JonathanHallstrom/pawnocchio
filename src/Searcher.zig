@@ -997,6 +997,7 @@ fn search(
 
                 if (!evaluation.isTBScore(alpha) and
                     !is_in_check and
+                    is_quiet and
                     eval + 100 + depth * 50 <= alpha)
                 {
                     reduction += 512;
