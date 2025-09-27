@@ -866,9 +866,9 @@ fn search(
         ) else self.histories.readNoisy(board, move);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
-            const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
+            const lmr_history_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
-            base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
+            base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
 
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
             if (is_quiet) {
