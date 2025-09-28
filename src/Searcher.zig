@@ -109,6 +109,7 @@ full_width_score_normalized: i16,
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
+should_stop: std.atomic.Value(bool),
 previous_hashes: BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTCluster,
 pvs: [MAX_PLY]BoundedArray(Move, 256),
@@ -273,8 +274,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const new_eval_state: *evaluation.State = self.evalState(1);
     const board = &prev_stack_entry.board;
 
-    new_eval_state.* = prev_eval_state.*;
-    new_eval_state.update(board, &old_stack_entry.board);
+    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
@@ -301,8 +301,8 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const new_stack_entry = self.stackEntry(1);
     const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
-    new_eval_state.* = prev_eval_state.*;
-    new_eval_state.update(board, &old_stack_entry.board);
+
+    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
         TypedMove.init(),
@@ -451,7 +451,8 @@ fn qsearch(
             {
                 break;
             }
-            if (!is_in_check and futility <= alpha and
+            if (!is_in_check and
+                futility <= alpha and
                 !is_recapture and
                 !SEE.scoreMove(board, move, 1, .pruning))
             {
@@ -618,7 +619,7 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+    if (!(is_root and self.is_main_thread and self.root_move.isNull()) and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
         self.stop.store(true, .release);
         return 0;
     }
@@ -790,7 +791,6 @@ fn search(
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
-            nmp_reduction += @min(tunable_constants.nmp_eval_reduction_max, (eval - beta) * tunable_constants.nmp_eval_reduction_scale);
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
@@ -848,6 +848,9 @@ fn search(
         if (!board.isLegal(stm, move)) {
             continue;
         }
+        if (is_root and self.root_move.isNull()) {
+            self.root_move = move;
+        }
         num_legal += 1;
 
         if (is_root and !board.isPseudoLegal(stm, move)) {
@@ -868,9 +871,9 @@ fn search(
         ) else self.histories.readNoisy(board, move);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
-            const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
+            const lmr_history_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
-            base_lmr -= @intCast(history_lmr_mult * history_score >> 13);
+            base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
 
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
             if (is_quiet) {
@@ -938,6 +941,7 @@ fn search(
             const s_depth = depth * tunable_constants.singular_depth_mult - tunable_constants.singular_depth_offs >> 10;
 
             cur.excluded = move;
+            cur.static_eval = corrected_static_eval;
             const s_score = self.search(
                 false,
                 is_pv,
@@ -947,6 +951,7 @@ fn search(
                 s_depth,
                 cutnode,
             );
+            cur.static_eval = eval;
             cur.excluded = Move.init();
 
             if (s_score < s_beta) {
@@ -1002,13 +1007,11 @@ fn search(
                     tt_pv,
                     is_quiet,
                     gives_check,
-                    self.stackEntry(-1).failhighs > 2,
+                    cur.failhighs > 2,
                 });
                 reduction >>= 10;
 
-                const clamped_reduction = std.math.clamp(reduction, 1, depth - 1);
-
-                const reduced_depth = depth + extension - clamped_reduction;
+                const reduced_depth = std.math.clamp(depth + extension - reduction, 1, new_depth + @intFromBool(is_pv));
                 s = -self.search(
                     false,
                     false,
@@ -1022,7 +1025,7 @@ fn search(
                     break :blk 0;
                 }
 
-                if (s > alpha and clamped_reduction > 1) {
+                if (s > alpha and reduced_depth < new_depth) {
                     const do_deeper_search = s > best_score + tunable_constants.lmr_dodeeper_margin + tunable_constants.lmr_dodeeper_mult * new_depth;
                     const do_shallower_search = s < best_score + new_depth;
 
@@ -1175,7 +1178,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     };
     var nodes: u64 = 0;
     var tbhits: u64 = 0;
-    for (engine.searchers) |searcher| {
+    for (engine.searchers) |*searcher| {
         nodes += searcher.nodes;
         tbhits += searcher.tbhits;
     }
@@ -1253,6 +1256,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.syzygy_depth = params.syzygy_depth;
     self.is_main_thread = is_main_thread;
     self.ply = 0;
+    self.should_stop.store(false, .release);
     self.stop.store(false, .release);
     self.nodes = 0;
     self.tbhits = 0;
@@ -1318,9 +1322,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
-                if (self.stop.load(.acquire)) {
-                    break;
-                }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
                 if (score >= aspiration_upper) {
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
@@ -1368,21 +1369,61 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.full_width_score, depth, .completed);
             }
         }
-        if (self.stop.load(.acquire) or self.limits.checkRoot(
+
+        if (self.limits.checkRoot(
             self.nodes,
             depth,
-            self.root_move,
             score,
+        )) {
+            break;
+        }
+        if (self.limits.checkRootTime(
+            self.root_move,
             eval_stability,
             move_stability,
         )) {
+            self.should_stop.store(true, .release);
+            var stopped: usize = 0;
+
+            for (engine.searchers) |*searcher| {
+                stopped += @intFromBool(searcher.should_stop.load(.acquire));
+            }
+
+            if (stopped * 2 >= engine.searchers.len) {
+                engine.stopSearch();
+            }
+        }
+        if (self.stop.load(.acquire) or engine.shouldStopSearching()) {
             break;
         }
     }
 
     if (is_main_thread) {
         if (!quiet) {
-            write("bestmove {s}\n", .{self.root_move.toString(&params.board).slice()});
+            var move = self.root_move;
+            const board: Board = self.stackEntry(0).board;
+            if (move.isNull()) {
+                const tt_entry = self.readTT(board.hash);
+                switch (board.stm) {
+                    inline else => |stm| {
+                        if (tt_entry.hashEql(board.hash) and
+                            board.isPseudoLegal(stm, tt_entry.move) and
+                            board.isLegal(stm, tt_entry.move))
+                        {
+                            move = tt_entry.move;
+                        }
+                    },
+                }
+
+                if (move.isNull()) {
+                    var list = movegen.MoveListReceiver{};
+                    movegen.generateAll(&board, &list);
+                    if (list.vals.len > 0) {
+                        move = list.vals.slice()[0];
+                    }
+                }
+            }
+            write("bestmove {s}\n", .{move.toString(&board).slice()});
         }
         engine.stopSearch();
     }

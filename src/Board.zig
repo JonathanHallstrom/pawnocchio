@@ -848,6 +848,9 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     var lesser_threatened: u64 = 0;
 
     threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
+
+    // threatened now has all pieces attacked by pawns
+    // so knights and bishops would be worth more
     lesser_threatened |= (self.knights() | self.bishops()) & threatened;
 
     threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
@@ -855,12 +858,18 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     while (iter.next()) |sq| {
         threatened |= attacks.getBishopAttacks(sq, occ);
     }
+
+    // threatened now has all pieces attacked by pawns or by knights or bishops
+    // so rooks are worth more than the attacking pieces
     lesser_threatened |= self.rooks() & threatened;
 
     iter = Bitboard.iterator(self.rooksFor(col));
     while (iter.next()) |sq| {
         threatened |= attacks.getRookAttacks(sq, occ);
     }
+
+    // threatened now has all pieces attacked by pawns or by knights or bishops or rooks
+    // so queens are worth more than the attacking pieces
     lesser_threatened |= self.queens() & threatened;
 
     iter = Bitboard.iterator(self.queensFor(col));

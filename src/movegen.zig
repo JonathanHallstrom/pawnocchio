@@ -42,6 +42,15 @@ pub const CountReceiver = struct {
     }
 };
 
+pub inline fn generateAll(noalias board: *const Board, noalias move_receiver: anytype) void {
+    switch (board.stm) {
+        inline else => |stm| {
+            generateAllNoisies(stm, board, move_receiver);
+            generateAllQuiets(stm, board, move_receiver);
+        },
+    }
+}
+
 pub inline fn generateAllQuiets(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
     var check_mask = ~@as(u64, 0);
     if (board.checkers != 0) {

@@ -134,11 +134,8 @@ const tunable_defaults = struct {
     pub const lmr_dodeeper_mult: i32 = 2;
     pub const nmp_margin_base: i32 = 250;
     pub const nmp_margin_mult: i32 = 25;
-    pub const nmp_base: i32 = 56078;
+    pub const nmp_base: i32 = 61914;
     pub const nmp_mult: i32 = 1093;
-    pub const nmp_eval_reduction_scale: i32 = 24;
-    pub const nmp_eval_reduction_max: i32 = 30376;
-    pub const nmp_history_mult: i32 = 512;
     pub const fp_depth_limit: i32 = 6144;
     pub const fp_base: i32 = 311;
     pub const fp_mult: i32 = 80;
@@ -284,9 +281,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_margin_mult", .default = tunable_defaults.nmp_margin_mult, .min = -100, .max = 100, .c_end = 5 },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base, .min = -10, .max = 126747, .c_end = 5069 },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult, .min = -10, .max = 2317, .c_end = 92 },
-    .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale, .min = -10, .max = 97, .c_end = 3 },
-    .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max, .min = -10, .max = 62215, .c_end = 2488 },
-    .{ .name = "nmp_history_mult", .default = tunable_defaults.nmp_history_mult, .min = 0, .max = 1536, .c_end = 51 },
     .{ .name = "fp_depth_limit", .default = tunable_defaults.fp_depth_limit },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base, .min = -10, .max = 747, .c_end = 29 },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult, .min = -10, .max = 242, .c_end = 9 },
@@ -307,11 +301,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "corrhist_countermove_weight", .default = tunable_defaults.corrhist_countermove_weight, .min = -10, .max = 2875, .c_end = 114 },
     .{ .name = "corrhist_major_weight", .default = tunable_defaults.corrhist_major_weight, .min = -10, .max = 2952, .c_end = 117 },
     .{ .name = "corrhist_minor_weight", .default = tunable_defaults.corrhist_minor_weight, .min = -10, .max = 2315, .c_end = 92 },
-    .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base, .min = 10, .max = 9345, .c_end = 200 },
-    .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base, .min = 10, .max = 7580, .c_end = 200 },
-    .{ .name = "lmp_standard_linear_mult", .default = tunable_defaults.lmp_standard_linear_mult, .min = -1024, .max = 1024, .c_end = 100 },
-    .{ .name = "lmp_improving_linear_mult", .default = tunable_defaults.lmp_improving_linear_mult, .min = -1024, .max = 1024, .c_end = 100 },
-    .{ .name = "lmp_standard_quadratic_mult", .default = tunable_defaults.lmp_standard_quadratic_mult, .min = -10, .max = 2177, .c_end = 100 },
+    .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base, .min = 10, .max = 9345, .c_end = 300 },
+    .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base, .min = 10, .max = 7580, .c_end = 300 },
+    .{ .name = "lmp_standard_linear_mult", .default = tunable_defaults.lmp_standard_linear_mult, .min = -1024, .max = 1024, .c_end = 50 },
+    .{ .name = "lmp_improving_linear_mult", .default = tunable_defaults.lmp_improving_linear_mult, .min = -1024, .max = 1024, .c_end = 50 },
+    .{ .name = "lmp_standard_quadratic_mult", .default = tunable_defaults.lmp_standard_quadratic_mult, .min = -10, .max = 2177, .c_end = 40 },
     .{ .name = "lmp_improving_quadratic_mult", .default = tunable_defaults.lmp_improving_quadratic_mult, .min = -10, .max = 2717, .c_end = 100 },
     .{ .name = "good_noisy_ordering_base", .default = tunable_defaults.good_noisy_ordering_base, .min = -2048, .max = 2048, .c_end = 32 },
     .{ .name = "good_noisy_ordering_mult", .default = tunable_defaults.good_noisy_ordering_mult, .min = -10, .max = 2570, .c_end = 102 },
@@ -432,9 +426,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nmp_margin_mult = tunable_defaults.nmp_margin_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
-    pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
-    pub var nmp_eval_reduction_max = tunable_defaults.nmp_eval_reduction_max;
-    pub var nmp_history_mult = tunable_defaults.nmp_history_mult;
     pub var fp_depth_limit = tunable_defaults.fp_depth_limit;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
