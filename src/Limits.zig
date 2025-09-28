@@ -96,7 +96,7 @@ fn computeNodeCountFactor(self: *const Limits, move: Move) u128 {
         }
     }
     const best_move_count = @max(1, self.node_counts[move.from().toInt()][move.to().toInt()]);
-    const node_fraction = @as(u128, best_move_count) * 1024 / total_nodes;
+    const node_fraction = @as(u128, best_move_count) * 1024 / @max(1, total_nodes);
     return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
 }
 
@@ -112,10 +112,7 @@ pub fn checkRoot(
     self: *Limits,
     nodes: u64,
     depth: i32,
-    move: Move,
     score: i16,
-    eval_stability: i32,
-    move_stability: i32,
 ) bool {
     if (nodes >= @min(self.hard_nodes, self.soft_nodes)) {
         return true;
@@ -134,8 +131,21 @@ pub fn checkRoot(
     if (curr_time >= self.hard_time) {
         return true;
     }
-    if (self.root_depth < self.min_depth) {
-        return false;
+    if (root.engine.shouldStopSearching()) {
+        return true;
+    }
+    return false;
+}
+
+pub fn checkRootTime(
+    self: *Limits,
+    move: Move,
+    eval_stability: i32,
+    move_stability: i32,
+) bool {
+    const curr_time = self.timer.read();
+    if (curr_time >= self.hard_time) {
+        return true;
     }
     if (self.soft_time) |st| {
         var adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
@@ -144,9 +154,6 @@ pub fn checkRoot(
         if (curr_time >= adjusted_limit) {
             return true;
         }
-    }
-    if (root.engine.shouldStopSearching()) {
-        return true;
     }
     return false;
 }
