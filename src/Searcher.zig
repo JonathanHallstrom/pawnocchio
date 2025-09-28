@@ -108,6 +108,7 @@ full_width_score_normalized: i16,
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
+should_stop: std.atomic.Value(bool),
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTCluster,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
@@ -1173,7 +1174,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     };
     var nodes: u64 = 0;
     var tbhits: u64 = 0;
-    for (engine.searchers) |searcher| {
+    for (engine.searchers) |*searcher| {
         nodes += searcher.nodes;
         tbhits += searcher.tbhits;
     }
@@ -1366,7 +1367,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 self.writeInfo(self.full_width_score, depth, .completed);
             }
         }
-        if (self.stop.load(.acquire) or self.limits.checkRoot(
+
+        if (self.limits.checkRoot(
             self.nodes,
             depth,
             self.root_move,
@@ -1374,6 +1376,20 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             eval_stability,
             move_stability,
         )) {
+            self.should_stop.store(true, .release);
+        }
+        if (is_main_thread) {
+            var stopped: usize = 0;
+            const total = engine.searchers.len;
+            for (engine.searchers) |*searcher| {
+                stopped += @intFromBool(searcher.should_stop.load(.acquire));
+            }
+
+            if (stopped * 2 >= total) {
+                break;
+            }
+        }
+        if (self.stop.load(.acquire)) {
             break;
         }
     }
