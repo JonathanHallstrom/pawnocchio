@@ -745,7 +745,7 @@ fn search(
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
         cur.reduction <= 1024 and
-        eval + prev_eval > 75)
+        eval + prev_eval > 100)
     {
         depth -= 1;
     }
