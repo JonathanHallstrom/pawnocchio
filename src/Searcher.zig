@@ -190,6 +190,7 @@ pub const StackEntry = struct {
     static_eval: i16,
     failhighs: u8,
     usable_moves: u8,
+    reduction: i32,
 
     pub fn init(
         self: *StackEntry,
@@ -208,6 +209,7 @@ pub const StackEntry = struct {
         self.static_eval = evaluation.inf_score;
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
+        self.reduction = 0;
     }
 };
 
@@ -714,7 +716,7 @@ fn search(
     }
     var improving = false;
     var opponent_worsening = false;
-    var raw_static_eval: i16 = evaluation.matedIn(self.ply);
+    var raw_static_eval: i16 = evaluation.inf_score;
     var corrected_static_eval = raw_static_eval;
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
@@ -737,6 +739,16 @@ fn search(
         }
     }
     const eval = cur.static_eval;
+    const prev_eval = self.stackEntry(-1).static_eval;
+
+    if (!tt_pv and
+        eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
+        !is_singular_search and
+        cur.reduction >= 3072 and
+        eval + prev_eval < 0)
+    {
+        depth += 1;
+    }
 
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
@@ -1008,9 +1020,15 @@ fn search(
                     gives_check,
                     cur.failhighs > 2,
                 });
-                reduction >>= 10;
 
-                const reduced_depth = std.math.clamp(depth + extension - reduction, 1, new_depth + @intFromBool(is_pv));
+                const raw_reduced_depth = depth + extension - (reduction >> 10);
+                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
+                self.stackEntry(0).reduction =
+                    if (raw_reduced_depth == reduced_depth)
+                        reduction
+                    else
+                        1024 * (depth + extension - reduced_depth);
+
                 s = -self.search(
                     false,
                     false,
@@ -1020,6 +1038,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
+                self.stackEntry(0).reduction = 0;
                 if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
