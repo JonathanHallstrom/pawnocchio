@@ -1004,6 +1004,9 @@ fn search(
                     gives_check,
                     cur.failhighs > 2,
                 });
+                if (mp.skip_quiets) {
+                    reduction += 1024;
+                }
                 reduction >>= 10;
 
                 const reduced_depth = std.math.clamp(depth + extension - reduction, 1, new_depth + @intFromBool(is_pv));
