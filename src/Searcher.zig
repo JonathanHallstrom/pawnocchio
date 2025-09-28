@@ -618,8 +618,7 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    var can_stop = !(is_root and self.is_main_thread and self.root_move.isNull());
-    if (can_stop and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
+    if (!(is_root and self.is_main_thread and self.root_move.isNull()) and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
         self.stop.store(true, .release);
         return 0;
     }
@@ -848,6 +847,9 @@ fn search(
         if (!board.isLegal(stm, move)) {
             continue;
         }
+        if (is_root and self.root_move.isNull()) {
+            self.root_move = move;
+        }
         num_legal += 1;
 
         if (is_root and !board.isPseudoLegal(stm, move)) {
@@ -1018,7 +1020,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
-                if (can_stop and self.stop.load(.acquire)) {
+                if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
 
@@ -1038,7 +1040,7 @@ fn search(
                         new_depth,
                         !cutnode,
                     );
-                    if (can_stop and self.stop.load(.acquire)) {
+                    if (self.stop.load(.acquire)) {
                         break :blk 0;
                     }
                 }
@@ -1052,7 +1054,7 @@ fn search(
                     new_depth,
                     !cutnode,
                 );
-                if (can_stop and self.stop.load(.acquire)) {
+                if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
             }
@@ -1071,7 +1073,7 @@ fn search(
             break :blk s;
         };
         self.unmakeMove(stm, move);
-        if (can_stop and self.stop.load(.acquire)) {
+        if (self.stop.load(.acquire)) {
             return 0;
         }
 
@@ -1093,7 +1095,6 @@ fn search(
             if (is_root) {
                 self.root_move = move;
                 self.root_score = best_score;
-                can_stop = true;
             }
             if (is_pv) {
                 self.updatePv(move);
@@ -1371,8 +1372,12 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         if (self.limits.checkRoot(
             self.nodes,
             depth,
-            self.root_move,
             score,
+        )) {
+            break;
+        }
+        if (self.limits.checkRootTime(
+            self.root_move,
             eval_stability,
             move_stability,
         )) {
@@ -1383,18 +1388,43 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 stopped += @intFromBool(searcher.should_stop.load(.acquire));
             }
 
-            if (stopped * 2 >= engine.searchers.len) {
+            if (stopped * 2 >= engine.searchers.len
+                // and !engine.searchers[0].root_move.isNull()
+            ) {
                 engine.stopSearch();
             }
         }
-        if (self.stop.load(.acquire)) {
+        if (self.stop.load(.acquire) or engine.shouldStopSearching()) {
             break;
         }
     }
 
     if (is_main_thread) {
         if (!quiet) {
-            write("bestmove {s}\n", .{self.root_move.toString(&params.board).slice()});
+            var move = self.root_move;
+            const board: Board = self.stackEntry(0).board;
+            if (move.isNull()) {
+                const tt_entry = self.readTT(board.hash);
+                switch (board.stm) {
+                    inline else => |stm| {
+                        if (tt_entry.hashEql(board.hash) and
+                            board.isPseudoLegal(stm, tt_entry.move) and
+                            board.isLegal(stm, tt_entry.move))
+                        {
+                            move = tt_entry.move;
+                        }
+                    },
+                }
+
+                if (move.isNull()) {
+                    var list = movegen.MoveListReceiver{};
+                    movegen.generateAll(&board, &list);
+                    if (list.vals.len > 0) {
+                        move = list.vals.slice()[0];
+                    }
+                }
+            }
+            write("bestmove {s}\n", .{move.toString(&board).slice()});
         }
         engine.stopSearch();
     }
