@@ -1252,6 +1252,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.syzygy_depth = params.syzygy_depth;
     self.is_main_thread = is_main_thread;
     self.ply = 0;
+    self.should_stop.store(false, .release);
     self.stop.store(false, .release);
     self.nodes = 0;
     self.tbhits = 0;
