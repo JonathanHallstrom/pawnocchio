@@ -618,7 +618,8 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+    var can_stop = !(is_root and self.is_main_thread and self.root_move.isNull());
+    if (can_stop and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
         self.stop.store(true, .release);
         return 0;
     }
@@ -1017,7 +1018,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
-                if (self.stop.load(.acquire)) {
+                if (can_stop and self.stop.load(.acquire)) {
                     break :blk 0;
                 }
 
@@ -1037,7 +1038,7 @@ fn search(
                         new_depth,
                         !cutnode,
                     );
-                    if (self.stop.load(.acquire)) {
+                    if (can_stop and self.stop.load(.acquire)) {
                         break :blk 0;
                     }
                 }
@@ -1051,7 +1052,7 @@ fn search(
                     new_depth,
                     !cutnode,
                 );
-                if (self.stop.load(.acquire)) {
+                if (can_stop and self.stop.load(.acquire)) {
                     break :blk 0;
                 }
             }
@@ -1070,7 +1071,7 @@ fn search(
             break :blk s;
         };
         self.unmakeMove(stm, move);
-        if (self.stop.load(.acquire)) {
+        if (can_stop and self.stop.load(.acquire)) {
             return 0;
         }
 
@@ -1092,6 +1093,7 @@ fn search(
             if (is_root) {
                 self.root_move = move;
                 self.root_score = best_score;
+                can_stop = true;
             }
             if (is_pv) {
                 self.updatePv(move);
@@ -1318,9 +1320,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
-                if (self.stop.load(.acquire)) {
-                    break;
-                }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
                 if (score >= aspiration_upper) {
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
@@ -1378,16 +1377,14 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             move_stability,
         )) {
             self.should_stop.store(true, .release);
-        }
-        if (is_main_thread) {
             var stopped: usize = 0;
-            const total = engine.searchers.len;
+
             for (engine.searchers) |*searcher| {
                 stopped += @intFromBool(searcher.should_stop.load(.acquire));
             }
 
-            if (stopped * 2 >= total) {
-                break;
+            if (stopped * 2 >= engine.searchers.len) {
+                engine.stopSearch();
             }
         }
         if (self.stop.load(.acquire)) {
