@@ -1000,7 +1000,7 @@ fn search(
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
 
                 if (!is_in_check) {
-                    reduction += 8 * std.math.clamp(eval - (beta + 100 + 50 * depth), 0, 200);
+                    reduction += 6 * std.math.clamp(eval - (beta + 100 + 50 * depth), 0, 200);
                 }
 
                 reduction += getFactorisedLmr(8, .{
