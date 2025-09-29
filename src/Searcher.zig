@@ -1382,16 +1382,19 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             eval_stability,
             move_stability,
         )) {
-            self.should_stop.store(true, .release);
-            var stopped: usize = 0;
-
-            for (engine.searchers) |*searcher| {
-                stopped += @intFromBool(searcher.should_stop.load(.acquire));
+            if (is_main_thread) {
+                break;
             }
-
-            if (stopped * 2 >= engine.searchers.len) {
-                engine.stopSearch();
-            }
+            // self.should_stop.store(true, .release);
+            // var stopped: usize = 0;
+            //
+            // for (engine.searchers) |*searcher| {
+            //     stopped += @intFromBool(searcher.should_stop.load(.acquire));
+            // }
+            //
+            // if (stopped * 2 >= engine.searchers.len) {
+            //     engine.stopSearch();
+            // }
         }
         if (self.stop.load(.acquire) or engine.shouldStopSearching()) {
             break;
