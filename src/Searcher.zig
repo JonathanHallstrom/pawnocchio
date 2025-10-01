@@ -1403,14 +1403,16 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         )) {
             break;
         }
-        if (is_main_thread and self.nodes - nodes_last_soft_time > 4096) {
+        if (is_main_thread and self.nodes - nodes_last_soft_time > 128) {
             nodes_last_soft_time = self.nodes;
             var eval_stability: u32 = 0;
             var move_stability: u32 = 0;
             var node_counts = std.mem.zeroes([64][64]u64);
             for (engine.searchers) |*searcher| {
                 eval_stability += searcher.eval_stability;
-                move_stability += searcher.move_stability;
+                if (searcher.root_move == self.root_move) {
+                    move_stability += searcher.move_stability;
+                }
                 for (0..64) |i| {
                     for (0..64) |j| {
                         node_counts[i][j] += searcher.node_counts[i][j];
