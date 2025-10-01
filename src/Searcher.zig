@@ -105,6 +105,9 @@ root_move: Move,
 root_score: i16,
 full_width_score: i16,
 full_width_score_normalized: i16,
+nodes_prev_check: u64,
+eval_stability: i32,
+move_stability: i32,
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
@@ -1148,6 +1151,19 @@ fn search(
                 depth -= 1;
             }
         }
+        if (is_root and self.is_main_thread and self.nodes -% self.nodes_prev_check > 1000) {
+            self.nodes_prev_check = self.nodes;
+            var stopped: usize = 0;
+
+            for (engine.searchers) |*searcher| {
+                stopped += @intFromBool(searcher.should_stop.load(.acquire));
+            }
+
+            if (stopped * 2 >= engine.searchers.len) {
+                engine.stopSearch();
+                break;
+            }
+        }
     }
 
     if (num_legal == 0) {
@@ -1270,6 +1286,7 @@ fn fixupPreviousHashes(self: *Searcher) void {
 }
 
 fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
+    self.seldepth = 0;
     self.limits = params.limits;
     self.syzygy_depth = params.syzygy_depth;
     self.is_main_thread = is_main_thread;
@@ -1312,8 +1329,9 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var previous_score: i32 = 0;
     var previous_move: Move = Move.init();
     var completed_depth: i32 = 0;
-    var eval_stability: i32 = 0;
-    var move_stability: i32 = 0;
+    self.eval_stability = 0;
+    self.move_stability = 0;
+    self.full_width_score = 0;
     var average_score: i64 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
@@ -1330,7 +1348,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             inline else => |stm| while (true) {
                 defer quantized_window = quantized_window * tunable_constants.aspiration_multiplier >> 10;
 
-                self.seldepth = 0;
                 score = self.search(
                     true,
                     true,
@@ -1367,14 +1384,14 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             },
         }
         if (@abs(previous_score - score) < tunable_constants.eval_stab_margin) {
-            eval_stability = @min(eval_stability + 1, 8);
+            self.eval_stability = @min(self.eval_stability + 1, 8);
         } else {
-            eval_stability = 0;
+            self.eval_stability = 0;
         }
         if (previous_move == self.root_move) {
-            move_stability = @min(move_stability + 1, 8);
+            self.move_stability = @min(self.move_stability + 1, 8);
         } else {
-            move_stability = 0;
+            self.move_stability = 0;
         }
         previous_score = score;
         previous_move = self.root_move;
@@ -1397,26 +1414,18 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         }
         if (self.limits.checkRootTime(
             self.root_move,
-            eval_stability,
-            move_stability,
+            self.eval_stability,
+            self.move_stability,
         )) {
             if (is_main_thread) {
                 break;
             }
-            // self.should_stop.store(true, .release);
-            // var stopped: usize = 0;
-            //
-            // for (engine.searchers) |*searcher| {
-            //     stopped += @intFromBool(searcher.should_stop.load(.acquire));
-            // }
-            //
-            // if (stopped * 2 >= engine.searchers.len) {
-            //     engine.stopSearch();
-            // }
+            self.should_stop.store(true, .release);
         }
         if (self.stop.load(.acquire) or engine.shouldStopSearching()) {
             break;
         }
+        self.seldepth = 0;
     }
 
     if (is_main_thread) {
