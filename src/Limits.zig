@@ -97,7 +97,6 @@ fn computeNodeCountFactor(self: *const Limits, move: Move) u128 {
     }
     const best_move_count = @max(1, self.node_counts[move.from().toInt()][move.to().toInt()]);
     const node_fraction = @as(u128, best_move_count) * 1024 / @max(1, total_nodes);
-    std.debug.print("{d}%\n", .{@as(f64, @floatFromInt(node_fraction)) / 10.24});
     return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
 }
 

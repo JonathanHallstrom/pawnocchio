@@ -1417,9 +1417,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             self.eval_stability,
             self.move_stability,
         )) {
-            if (is_main_thread) {
-                break;
-            }
             self.should_stop.store(true, .release);
         }
         if (self.stop.load(.acquire) or engine.shouldStopSearching()) {
