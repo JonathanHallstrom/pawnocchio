@@ -1340,6 +1340,9 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
+                if (self.stop.load(.acquire)) {
+                    break;
+                }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
                 if (score >= aspiration_upper) {
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
