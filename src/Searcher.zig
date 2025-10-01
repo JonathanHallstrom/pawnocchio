@@ -105,6 +105,10 @@ root_move: Move,
 root_score: i16,
 full_width_score: i16,
 full_width_score_normalized: i16,
+nodes_prev_check: u64,
+eval_stability: u8,
+move_stability: u8,
+node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
@@ -999,7 +1003,9 @@ fn search(
         const gives_check = self.stackEntry(0).board.checkers != 0;
         const score = blk: {
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
-            defer if (is_root) self.limits.updateNodeCounts(move, self.nodes - node_count_before);
+            defer if (is_root) {
+                self.node_counts[move.from().toInt()][move.to().toInt()] += self.nodes - node_count_before;
+            };
 
             const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move);
 
@@ -1270,6 +1276,7 @@ fn fixupPreviousHashes(self: *Searcher) void {
 }
 
 fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
+    self.seldepth = 0;
     self.limits = params.limits;
     self.syzygy_depth = params.syzygy_depth;
     self.is_main_thread = is_main_thread;
@@ -1303,7 +1310,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     if (params.needs_full_reset) {
         self.histories.reset();
     }
-    self.limits.resetNodeCounts();
+    @memset(std.mem.asBytes(&self.node_counts), 0);
     evaluation.initThreadLocals();
 }
 
@@ -1312,9 +1319,11 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     var previous_score: i32 = 0;
     var previous_move: Move = Move.init();
     var completed_depth: i32 = 0;
-    var eval_stability: i32 = 0;
-    var move_stability: i32 = 0;
+    self.eval_stability = 0;
+    self.move_stability = 0;
+    self.full_width_score = 0;
     var average_score: i64 = 0;
+    var nodes_last_soft_time: u64 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
@@ -1330,7 +1339,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             inline else => |stm| while (true) {
                 defer quantized_window = quantized_window * tunable_constants.aspiration_multiplier >> 10;
 
-                self.seldepth = 0;
                 score = self.search(
                     true,
                     true,
@@ -1367,14 +1375,14 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             },
         }
         if (@abs(previous_score - score) < tunable_constants.eval_stab_margin) {
-            eval_stability = @min(eval_stability + 1, 8);
+            self.eval_stability = @min(self.eval_stability + 1, 8);
         } else {
-            eval_stability = 0;
+            self.eval_stability = 0;
         }
         if (previous_move == self.root_move) {
-            move_stability = @min(move_stability + 1, 8);
+            self.move_stability = @min(self.move_stability + 1, 8);
         } else {
-            move_stability = 0;
+            self.move_stability = 0;
         }
         previous_score = score;
         previous_move = self.root_move;
@@ -1395,28 +1403,35 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         )) {
             break;
         }
-        if (self.limits.checkRootTime(
-            self.root_move,
-            eval_stability,
-            move_stability,
-        )) {
-            if (is_main_thread) {
+        if (is_main_thread and self.nodes - nodes_last_soft_time > 4096) {
+            nodes_last_soft_time = self.nodes;
+            var eval_stability: u32 = 0;
+            var move_stability: u32 = 0;
+            var node_counts = std.mem.zeroes([64][64]u64);
+            for (engine.searchers) |*searcher| {
+                eval_stability += searcher.eval_stability;
+                move_stability += searcher.move_stability;
+                for (0..64) |i| {
+                    for (0..64) |j| {
+                        node_counts[i][j] += searcher.node_counts[i][j];
+                    }
+                }
+            }
+            const num_searchers: u32 = @intCast(engine.searchers.len);
+            if (self.limits.checkRootTime(
+                self.root_move,
+                eval_stability * 1024 / num_searchers,
+                move_stability * 1024 / num_searchers,
+                node_counts,
+            )) {
                 break;
             }
             // self.should_stop.store(true, .release);
-            // var stopped: usize = 0;
-            //
-            // for (engine.searchers) |*searcher| {
-            //     stopped += @intFromBool(searcher.should_stop.load(.acquire));
-            // }
-            //
-            // if (stopped * 2 >= engine.searchers.len) {
-            //     engine.stopSearch();
-            // }
         }
         if (self.stop.load(.acquire) or engine.shouldStopSearching()) {
             break;
         }
+        self.seldepth = 0;
     }
 
     if (is_main_thread) {

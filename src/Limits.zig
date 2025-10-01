@@ -28,7 +28,6 @@ soft_nodes: u64 = std.math.maxInt(u64),
 hard_nodes: u64 = std.math.maxInt(u64),
 timer: std.time.Timer,
 last_aspiration_print: u64 = 0,
-node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
 root_depth: i32 = 0,
 min_depth: i32 = 0,
 max_score: i16 = std.math.maxInt(i16),
@@ -88,24 +87,24 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
     return false;
 }
 
-fn computeNodeCountFactor(self: *const Limits, move: Move) u128 {
+fn computeNodeCountFactor(_: *const Limits, move: Move, node_counts: [64][64]u64) u128 {
     var total_nodes: u64 = 0;
-    for (self.node_counts) |counts| {
+    for (node_counts) |counts| {
         for (counts) |count| {
             total_nodes += count;
         }
     }
-    const best_move_count = @max(1, self.node_counts[move.from().toInt()][move.to().toInt()]);
+    const best_move_count = @max(1, node_counts[move.from().toInt()][move.to().toInt()]);
     const node_fraction = @as(u128, best_move_count) * 1024 / @max(1, total_nodes);
     return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
 }
 
-fn computeEvalStabilityFactor(_: *const Limits, stab: i32) u64 {
-    return @intCast(@max(1, tunable_constants.eval_stab_base - tunable_constants.eval_stab_offs * stab));
+fn computeEvalStabilityFactor(_: *const Limits, stab: i64) u64 {
+    return @intCast(@max(1, tunable_constants.eval_stab_base - @divTrunc(tunable_constants.eval_stab_offs * stab, 1024)));
 }
 
-fn computeMoveStabilityFactor(_: *const Limits, stab: i32) u64 {
-    return @intCast(@max(1, tunable_constants.move_stab_base - tunable_constants.move_stab_offs * stab));
+fn computeMoveStabilityFactor(_: *const Limits, stab: i64) u64 {
+    return @intCast(@max(1, tunable_constants.move_stab_base - @divTrunc(tunable_constants.move_stab_offs * stab, 1024)));
 }
 
 pub fn checkRoot(
@@ -140,15 +139,16 @@ pub fn checkRoot(
 pub fn checkRootTime(
     self: *Limits,
     move: Move,
-    eval_stability: i32,
-    move_stability: i32,
+    eval_stability: u32,
+    move_stability: u32,
+    node_counts: [64][64]u64,
 ) bool {
     const curr_time = self.timer.read();
     if (curr_time >= self.hard_time) {
         return true;
     }
     if (self.soft_time) |st| {
-        var adjusted_limit = st * self.computeNodeCountFactor(move) >> 20;
+        var adjusted_limit = st * self.computeNodeCountFactor(move, node_counts) >> 20;
         adjusted_limit = adjusted_limit * self.computeEvalStabilityFactor(eval_stability) >> 10;
         adjusted_limit = adjusted_limit * self.computeMoveStabilityFactor(move_stability) >> 10;
         if (curr_time >= adjusted_limit) {
@@ -165,12 +165,4 @@ pub fn shouldPrintInfoInAspiration(self: *Limits) bool {
         return true;
     }
     return false;
-}
-
-pub fn updateNodeCounts(self: *Limits, move: Move, nodes: u64) void {
-    self.node_counts[move.from().toInt()][move.to().toInt()] += nodes;
-}
-
-pub fn resetNodeCounts(self: *Limits) void {
-    @memset(std.mem.asBytes(&self.node_counts), 0);
 }
