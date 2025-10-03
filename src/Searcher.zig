@@ -1320,9 +1320,12 @@ fn pickBestMove() struct { i16, Move } {
     var best_score: i16 = -evaluation.inf_score;
     for (engine.searchers) |*searcher| {
         const move = searcher.root_move;
+        const score = searcher.full_width_score;
         const normalized = searcher.full_width_score_normalized;
+        const d = searcher.limits.root_depth;
 
-        const vote: i64 = 1024;
+        var vote: i64 = 32768 + d * 128;
+        vote += score;
 
         const entry = &votes[move.from().toInt()][move.to().toInt()];
         entry.* += vote;
