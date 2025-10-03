@@ -1333,7 +1333,7 @@ fn pickBestMove() struct { i16, Move } {
         if (evaluation.isTBScore(normalized) and normalized > best_score) {
             best_score = normalized;
             best_move = move;
-        } else if (best_score < 0 and ((evaluation.isTBScore(best_score) and normalized < best_score) or entry.* > votes[best_move.from().toInt()][best_move.to().toInt()])) {
+        } else if ((evaluation.isTBScore(best_score) and normalized > best_score) or entry.* > votes[best_move.from().toInt()][best_move.to().toInt()]) {
             best_score = normalized;
             best_move = move;
         }
