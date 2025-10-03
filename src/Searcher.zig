@@ -754,6 +754,15 @@ fn search(
         depth += 1;
     }
 
+    if (!tt_pv and
+        eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
+        !is_singular_search and
+        cur.reduction <= 1536 and
+        eval + prev_eval > 100)
+    {
+        depth -= 1;
+    }
+
     if (!is_pv and
         beta >= evaluation.matedIn(MAX_PLY) and
         !is_in_check and
