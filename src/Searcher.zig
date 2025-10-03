@@ -1026,6 +1026,12 @@ fn search(
                     gives_check,
                     cur.failhighs > 2,
                 });
+                if (mp.stage != .quiets and
+                    mp.stage != .bad_noisies and
+                    SEE.scoreMove(board, move, 100, .pruning))
+                {
+                    reduction -= 1024;
+                }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
