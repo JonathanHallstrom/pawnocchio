@@ -921,7 +921,8 @@ fn search(
                     !is_in_check and
                     lmr_depth <= tunable_constants.fp_depth_limit and
                     @abs(alpha) < 2000 and
-                    futility_value <= alpha)
+                    futility_value <= alpha and
+                    !board.givesCheckApproximate(stm, move))
                 {
                     if (!evaluation.isTBScore(best_score)) {
                         best_score = @intCast(@max(best_score, futility_value));
