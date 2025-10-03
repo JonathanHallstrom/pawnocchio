@@ -1323,7 +1323,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     self.move_stability = 0;
     self.full_width_score = 0;
     var average_score: i64 = 0;
-    var nodes_last_soft_time: u64 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
@@ -1406,32 +1405,28 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         )) {
             break;
         }
-        if (is_main_thread and self.nodes - nodes_last_soft_time > 128) {
-            nodes_last_soft_time = self.nodes;
+        if (is_main_thread and self.limits.soft_time != null) {
             var eval_stability: u32 = 0;
             var move_stability: u32 = 0;
-            var node_counts = std.mem.zeroes([64][64]u64);
+            var best_move_count: u64 = 0;
+            var total_nodes: u64 = 0;
             for (engine.searchers) |*searcher| {
                 eval_stability += searcher.eval_stability;
                 if (searcher.root_move == self.root_move) {
                     move_stability += searcher.move_stability;
                 }
-                for (0..64) |i| {
-                    for (0..64) |j| {
-                        node_counts[i][j] += searcher.node_counts[i][j];
-                    }
-                }
+                total_nodes += searcher.nodes;
+                best_move_count += searcher.node_counts[self.root_move.from().toInt()][self.root_move.to().toInt()];
             }
             const num_searchers: u32 = @intCast(engine.searchers.len);
             if (self.limits.checkRootTime(
-                self.root_move,
                 eval_stability * 1024 / num_searchers,
                 move_stability * 1024 / num_searchers,
-                node_counts,
+                best_move_count,
+                total_nodes,
             )) {
                 break;
             }
-            // self.should_stop.store(true, .release);
         }
         if (self.stop.load(.acquire) or engine.shouldStopSearching()) {
             break;

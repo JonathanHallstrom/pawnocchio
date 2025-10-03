@@ -87,14 +87,7 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
     return false;
 }
 
-fn computeNodeCountFactor(_: *const Limits, move: Move, node_counts: [64][64]u64) u128 {
-    var total_nodes: u64 = 0;
-    for (node_counts) |counts| {
-        for (counts) |count| {
-            total_nodes += count;
-        }
-    }
-    const best_move_count = @max(1, node_counts[move.from().toInt()][move.to().toInt()]);
+fn computeNodeCountFactor(_: *const Limits, best_move_count: u64, total_nodes: u64) u128 {
     const node_fraction = @as(u128, best_move_count) * 1024 / @max(1, total_nodes);
     return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
 }
@@ -138,17 +131,17 @@ pub fn checkRoot(
 
 pub fn checkRootTime(
     self: *Limits,
-    move: Move,
     eval_stability: u32,
     move_stability: u32,
-    node_counts: [64][64]u64,
+    best_move_count: u64,
+    total_nodes: u64,
 ) bool {
     const curr_time = self.timer.read();
     if (curr_time >= self.hard_time) {
         return true;
     }
     if (self.soft_time) |st| {
-        var adjusted_limit = st * self.computeNodeCountFactor(move, node_counts) >> 20;
+        var adjusted_limit = st * self.computeNodeCountFactor(best_move_count, total_nodes) >> 20;
         adjusted_limit = adjusted_limit * self.computeEvalStabilityFactor(eval_stability) >> 10;
         adjusted_limit = adjusted_limit * self.computeMoveStabilityFactor(move_stability) >> 10;
         if (curr_time >= adjusted_limit) {
