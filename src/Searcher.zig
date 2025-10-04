@@ -101,8 +101,6 @@ nodes: u64,
 hashes: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
-root_move: Move,
-root_score: i16,
 full_width_score: i16,
 full_width_score_normalized: i16,
 nodes_prev_check: u64,
@@ -123,6 +121,10 @@ syzygy_depth: u8 = 1,
 normalize: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
+root_lock: std.Thread.Mutex,
+root_move: Move,
+root_score: i16,
+root_pv: std.BoundedArray(Move, 256),
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -1193,7 +1195,7 @@ const InfoType = enum {
     upper,
 };
 
-fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
+fn writeInfo(self: *Searcher, score: i16, pv: std.BoundedArray(Move, 256), depth: i32, tp: InfoType) void {
     const elapsed = @max(1, self.limits.timer.read());
     const type_str = switch (tp) {
         .completed => "",
@@ -1211,7 +1213,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     const root_board = self.searchStackRoot()[0].board;
     {
         var board = root_board;
-        for (self.pvs[0].slice()) |pv_move| {
+        for (pv.slice()) |pv_move| {
             fixed_buffer_pv_writer.writer().print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
             board.stm = board.stm.flipped();
         }
@@ -1314,18 +1316,25 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     evaluation.initThreadLocals();
 }
 
-fn pickBestMove() struct { i16, Move } {
+fn pickBestMove() struct { Move, i16, std.BoundedArray(Move, 256) } {
     var votes = std.mem.zeroes([64][64]i64);
     var best_move = Move.init();
     var best_score: i16 = -evaluation.inf_score;
+    var best_pv: *std.BoundedArray(Move, 256) = undefined;
+    var total: i64 = 0;
+    for (engine.searchers) |*searcher| {
+        searcher.root_lock.lock();
+    }
     for (engine.searchers) |*searcher| {
         const move = searcher.root_move;
         const score = searcher.full_width_score;
         const normalized = searcher.full_width_score_normalized;
         const d = searcher.limits.root_depth;
+        const pv = &searcher.pvs[0];
 
         var vote: i64 = 32768 + d * 128;
         vote += score;
+        total += vote;
 
         const entry = &votes[move.from().toInt()][move.to().toInt()];
         entry.* += vote;
@@ -1334,13 +1343,22 @@ fn pickBestMove() struct { i16, Move } {
             if (normalized > best_score) {
                 best_score = normalized;
                 best_move = move;
+                best_pv = pv;
             }
         } else if (entry.* > votes[best_move.from().toInt()][best_move.to().toInt()]) {
             best_score = normalized;
             best_move = move;
+            best_pv = pv;
         }
     }
-    return .{ best_score, best_move };
+
+    const best_pv_copy = best_pv.*;
+    for (engine.searchers) |*searcher| {
+        searcher.root_lock.unlock();
+    }
+
+    std.debug.print("got {}% of the vote\n", .{@divTrunc(votes[best_move.from().toInt()][best_move.to().toInt()] * 100, total)});
+    return .{ best_move, best_score, best_pv_copy };
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
@@ -1386,7 +1404,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
                         if (!quiet and !evaluation.isMateScore(score)) {
-                            self.writeInfo(score, depth, .lower);
+                            self.writeInfo(score, self.pvs[0], depth, .lower);
                         }
                     }
                 } else if (score <= aspiration_lower) {
@@ -1395,35 +1413,43 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     failhigh_reduction >>= 1;
                     if (should_print) {
                         if (!quiet and !evaluation.isMateScore(score)) {
-                            self.writeInfo(score, depth, .upper);
+                            self.writeInfo(score, self.pvs[0], depth, .upper);
                         }
                     }
                 } else {
+                    self.root_lock.lock();
+                    defer self.root_lock.unlock();
                     self.full_width_score = score;
                     self.full_width_score_normalized = root.wdl.normalize(score, self.searchStackRoot()[0].board.classicalMaterial());
                     break;
                 }
             },
         }
-        if (@abs(previous_score - score) < tunable_constants.eval_stab_margin) {
-            self.eval_stability = @min(self.eval_stability + 1, 8);
-        } else {
-            self.eval_stability = 0;
+        {
+            self.root_lock.lock();
+            defer self.root_lock.unlock();
+            if (@abs(previous_score - score) < tunable_constants.eval_stab_margin) {
+                self.eval_stability = @min(self.eval_stability + 1, 8);
+            } else {
+                self.eval_stability = 0;
+            }
+            if (previous_move == self.root_move) {
+                self.move_stability = @min(self.move_stability + 1, 8);
+            } else {
+                self.move_stability = 0;
+            }
+            previous_score = score;
+            previous_move = self.root_move;
+            self.root_pv = self.pvs[0];
         }
-        if (previous_move == self.root_move) {
-            self.move_stability = @min(self.move_stability + 1, 8);
-        } else {
-            self.move_stability = 0;
-        }
-        previous_score = score;
-        previous_move = self.root_move;
 
         average_score = if (d == 1) score else @divTrunc(average_score + @as(i64, score) * score, 2);
 
         completed_depth = depth;
         if (is_main_thread) {
             if (!quiet) {
-                self.writeInfo(self.full_width_score, depth, .completed);
+                _, const picked_score, const pv = pickBestMove();
+                self.writeInfo(picked_score, pv, depth, .completed);
             }
         }
 
@@ -1465,8 +1491,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
 
     if (is_main_thread) {
         if (!quiet) {
-            const score, var move = pickBestMove();
-            _ = score;
+            var move, _, _ = pickBestMove();
             const board: Board = self.stackEntry(0).board;
             if (move.isNull()) {
                 const tt_entry = self.readTT(board.hash);
