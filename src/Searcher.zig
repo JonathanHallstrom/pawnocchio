@@ -759,6 +759,8 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
+        const us_non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
+        const them_non_pk = board.occupancyFor(stm.flipped()) & ~(board.pawns() | board.kings());
         const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
@@ -773,6 +775,7 @@ fn search(
                 tunable_constants.rfp_improving_margin * @intFromBool(improving and !opponent_has_easy_capture) -
                 tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
                 tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
+                @as(i32, 200) * @intFromBool(us_non_pk == 0 and them_non_pk != 0) +
                 (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
@@ -796,11 +799,9 @@ fn search(
             return razor_score;
         }
 
-        const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
-
         if (depth >= 4 and
             eval >= beta + tunable_constants.nmp_margin_base - tunable_constants.nmp_margin_mult * depth and
-            non_pk != 0 and
+            us_non_pk != 0 and
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull())
         {
