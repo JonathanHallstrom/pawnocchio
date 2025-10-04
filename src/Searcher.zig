@@ -1314,6 +1314,35 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     evaluation.initThreadLocals();
 }
 
+fn pickBestMove() struct { i16, Move } {
+    var votes = std.mem.zeroes([64][64]i64);
+    var best_move = Move.init();
+    var best_score: i16 = -evaluation.inf_score;
+    for (engine.searchers) |*searcher| {
+        const move = searcher.root_move;
+        const score = searcher.full_width_score;
+        const normalized = searcher.full_width_score_normalized;
+        const d = searcher.limits.root_depth;
+
+        var vote: i64 = 32768 + d * 128;
+        vote += score;
+
+        const entry = &votes[move.from().toInt()][move.to().toInt()];
+        entry.* += vote;
+
+        if (evaluation.isTBScore(normalized) or evaluation.isTBScore(best_score)) {
+            if (normalized > best_score) {
+                best_score = normalized;
+                best_move = move;
+            }
+        } else if (entry.* > votes[best_move.from().toInt()][best_move.to().toInt()]) {
+            best_score = normalized;
+            best_move = move;
+        }
+    }
+    return .{ best_score, best_move };
+}
+
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
     self.init(params, is_main_thread);
     var previous_score: i32 = 0;
@@ -1436,7 +1465,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
 
     if (is_main_thread) {
         if (!quiet) {
-            var move = self.root_move;
+            const score, var move = pickBestMove();
+            _ = score;
             const board: Board = self.stackEntry(0).board;
             if (move.isNull()) {
                 const tt_entry = self.readTT(board.hash);
@@ -1459,6 +1489,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     }
                 }
             }
+
             write("bestmove {s}\n", .{move.toString(&board).slice()});
         }
         engine.stopSearch();
