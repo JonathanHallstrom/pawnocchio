@@ -1084,6 +1084,9 @@ fn search(
                 }
             }
             if (is_pv and (num_searched == 1 or s > alpha)) {
+                if (move == tt_entry.move and tt_entry.depth >= 4) {
+                    new_depth = @max(1, new_depth);
+                }
                 s = -self.search(
                     false,
                     true,
