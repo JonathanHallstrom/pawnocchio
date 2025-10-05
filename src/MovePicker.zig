@@ -100,6 +100,28 @@ pub fn initQs(
     };
 }
 
+pub fn initProbcut(
+    board_: *const Board,
+    movelist_: *MoveReceiver,
+    histories_: *root.history.HistoryTable,
+    ttmove_: Move,
+) MovePicker {
+    movelist_.vals.len = 0;
+    movelist_.filter = ttmove_;
+    return .{
+        .movelist = movelist_,
+        .board = board_,
+        .first = 0,
+        .last = 0,
+        .stage = .tt,
+        .next_func = &tt,
+        .skip_quiets = true,
+        .histories = histories_,
+        .ttmove = ttmove_,
+        .moves = .{TypedMove.init()} ** history.NUM_CONTHISTS,
+    };
+}
+
 pub fn deinit(self: MovePicker) void {
     self.movelist.vals.len = 0;
 }

@@ -834,6 +834,66 @@ fn search(
                 }
             }
         }
+
+        const probcut_beta = beta + 200;
+        const probcut_depth = depth - 3;
+
+        if (!tt_pv and
+            cur.excluded.isNull() and
+            depth >= 6 and
+            !evaluation.isTBScore(beta) and
+            !(tt_hit and tt_entry.depth >= probcut_depth and tt_entry.score >= probcut_beta))
+        {
+            var mp = MovePicker.initProbcut(board, &cur.movelist, &self.histories, tt_entry.move);
+
+            while (mp.next()) |scored_move| {
+                const move = scored_move.move;
+                self.prefetch(move);
+                if (!board.isLegal(stm, move)) {
+                    continue;
+                }
+
+                if (!SEE.scoreMove(board, move, 100, .pruning)) {
+                    continue;
+                }
+
+                self.makeMove(stm, move);
+                var s = -self.qsearch(
+                    false,
+                    false,
+                    stm.flipped(),
+                    -probcut_beta,
+                    -probcut_beta + 1,
+                );
+
+                if (s >= probcut_beta) {
+                    s = -self.search(
+                        false,
+                        false,
+                        stm.flipped(),
+                        -probcut_beta,
+                        -probcut_beta + 1,
+                        probcut_depth - 1,
+                        !cutnode,
+                    );
+                }
+                self.unmakeMove(stm, move);
+
+                if (s >= probcut_beta) {
+                    self.writeTT(
+                        false,
+                        board.hash,
+                        move,
+                        s,
+                        .lower,
+                        probcut_depth,
+                        raw_static_eval,
+                    );
+
+                    return s;
+                }
+            }
+        }
     }
 
     var mp = MovePicker.init(
