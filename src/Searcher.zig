@@ -835,7 +835,7 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + 250;
+        const probcut_beta = beta + 450;
 
         if (!tt_pv and
             depth >= 6 and
