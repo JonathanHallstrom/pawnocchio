@@ -150,7 +150,7 @@ pub fn writeTT(
     }
 
     entry.* = TTEntry{
-        .score = score,
+        .score = evaluation.scoreToTt(score, self.ply),
         .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = self.ttage },
         .move = move,
         .hash = TTEntry.compress(hash),
@@ -501,7 +501,7 @@ fn qsearch(
         tt_pv,
         tt_hash,
         best_move,
-        evaluation.scoreToTt(best_score, self.ply),
+        best_score,
         score_type,
         0,
         raw_static_eval,
@@ -1169,7 +1169,7 @@ fn search(
             tt_pv,
             tt_hash,
             best_move,
-            evaluation.scoreToTt(best_score, self.ply),
+            best_score,
             score_type,
             depth,
             raw_static_eval,
