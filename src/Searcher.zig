@@ -835,12 +835,13 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + 450;
+        const probcut_beta = beta + 250;
+        const probcut_depth = depth - 3;
 
         if (!tt_pv and
             depth >= 6 and
             !evaluation.isTBScore(beta) and
-            !(tt_hit and tt_entry.depth + 3 >= depth and tt_entry.score >= probcut_beta))
+            !(tt_hit and tt_entry.depth >= probcut_depth and tt_entry.score < probcut_beta))
         {
             var mp = MovePicker.initProbcut(
                 board,
@@ -848,8 +849,6 @@ fn search(
                 &self.histories,
                 if (is_singular_search) cur.excluded else tt_entry.move,
             );
-
-            const probcut_depth = depth - 3;
 
             while (mp.next()) |scored_move| {
                 const move = scored_move.move;
