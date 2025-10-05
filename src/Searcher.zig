@@ -835,7 +835,7 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + 200;
+        const probcut_beta = beta + 400;
         const probcut_depth = depth - 3;
 
         if (!tt_pv and
@@ -844,16 +844,21 @@ fn search(
             !evaluation.isTBScore(beta) and
             !(tt_hit and tt_entry.depth >= probcut_depth and tt_entry.score >= probcut_beta))
         {
-            var mp = MovePicker.initProbcut(board, &cur.movelist, &self.histories, tt_entry.move);
+            var mp = MovePicker.initProbcut(
+                board,
+                &cur.movelist,
+                &self.histories,
+                tt_entry.move,
+            );
 
             while (mp.next()) |scored_move| {
-                if (mp.stage == .bad_noisies) {
-                    break;
-                }
-
                 const move = scored_move.move;
                 self.prefetch(move);
                 if (!board.isLegal(stm, move)) {
+                    continue;
+                }
+
+                if (!SEE.scoreMove(board, move, 100, .pruning)) {
                     continue;
                 }
 
