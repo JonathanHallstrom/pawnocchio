@@ -835,8 +835,8 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + 300;
-        const probcut_depth = depth - 3;
+        const probcut_beta = beta + 350;
+        const probcut_depth = depth - 4;
 
         if (!tt_pv and
             cur.excluded.isNull() and
