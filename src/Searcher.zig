@@ -835,30 +835,33 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + 350;
-        const probcut_depth = depth - 4;
+        const probcut_beta = beta + 250;
 
         if (!tt_pv and
-            cur.excluded.isNull() and
             depth >= 6 and
             !evaluation.isTBScore(beta) and
-            !(tt_hit and tt_entry.depth >= probcut_depth and tt_entry.score >= probcut_beta))
+            !(tt_hit and tt_entry.depth + 3 >= depth and tt_entry.score >= probcut_beta))
         {
             var mp = MovePicker.initProbcut(
                 board,
                 &cur.movelist,
                 &self.histories,
-                tt_entry.move,
+                if (is_singular_search) cur.excluded else tt_entry.move,
             );
+
+            const probcut_depth = depth - 3;
 
             while (mp.next()) |scored_move| {
                 const move = scored_move.move;
+                if (move == cur.excluded) {
+                    continue;
+                }
                 self.prefetch(move);
                 if (!board.isLegal(stm, move)) {
                     continue;
                 }
 
-                if (!SEE.scoreMove(board, move, 100, .pruning)) {
+                if (!SEE.scoreMove(board, move, probcut_beta - eval, .pruning)) {
                     continue;
                 }
 
