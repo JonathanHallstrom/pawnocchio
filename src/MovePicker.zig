@@ -301,7 +301,7 @@ fn probcutTt(self: *MovePicker) ScoredMove {
             }
         },
     }
-    return @call(call_modifier, &generateNoisies, .{self});
+    return @call(call_modifier, &probcutGenerateNoisies, .{self});
 }
 
 fn probcutGenerateNoisies(self: *MovePicker) ScoredMove {
