@@ -847,13 +847,13 @@ fn search(
             var mp = MovePicker.initProbcut(board, &cur.movelist, &self.histories, tt_entry.move);
 
             while (mp.next()) |scored_move| {
+                if (mp.stage == .bad_noisies) {
+                    break;
+                }
+
                 const move = scored_move.move;
                 self.prefetch(move);
                 if (!board.isLegal(stm, move)) {
-                    continue;
-                }
-
-                if (!SEE.scoreMove(board, move, 100, .pruning)) {
                     continue;
                 }
 
