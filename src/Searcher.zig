@@ -836,11 +836,11 @@ fn search(
         }
 
         const probcut_beta = beta + 300;
-        const probcut_depth = depth - 4;
+        const probcut_depth = depth - 3;
 
         if (!tt_pv and
             cur.excluded.isNull() and
-            depth >= 5 and
+            depth >= 6 and
             !evaluation.isTBScore(beta) and
             !(tt_hit and tt_entry.depth >= probcut_depth and tt_entry.score >= probcut_beta))
         {
