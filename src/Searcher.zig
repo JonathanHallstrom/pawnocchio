@@ -835,11 +835,11 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + 250;
-        const probcut_depth = depth - 3;
+        const probcut_beta = beta + 200 + 25 * depth;
+        const probcut_depth = depth - 4;
 
         if (!tt_pv and
-            depth >= 6 and
+            depth >= 5 and
             !evaluation.isTBScore(beta) and
             !(tt_hit and tt_entry.depth >= probcut_depth and tt_entry.score < probcut_beta))
         {
@@ -864,40 +864,41 @@ fn search(
                     continue;
                 }
 
-                self.makeMove(stm, move);
-                var s = -self.qsearch(
-                    false,
-                    false,
-                    stm.flipped(),
-                    -probcut_beta,
-                    -probcut_beta + 1,
-                );
-
-                if (s >= probcut_beta) {
-                    s = -self.search(
+                const score = blk: {
+                    self.makeMove(stm, move);
+                    defer self.unmakeMove(stm, move);
+                    var s = -self.qsearch(
                         false,
                         false,
                         stm.flipped(),
                         -probcut_beta,
                         -probcut_beta + 1,
-                        probcut_depth - 1,
-                        !cutnode,
                     );
-                }
-                self.unmakeMove(stm, move);
-
-                if (s >= probcut_beta) {
+                    if (s >= probcut_beta) {
+                        s = -self.search(
+                            false,
+                            false,
+                            stm.flipped(),
+                            -probcut_beta,
+                            -probcut_beta + 1,
+                            probcut_depth - 1,
+                            !cutnode,
+                        );
+                    }
+                    break :blk s;
+                };
+                if (score >= probcut_beta) {
                     self.writeTT(
                         false,
                         board.hash,
                         move,
-                        s,
+                        score,
                         .lower,
                         probcut_depth,
                         raw_static_eval,
                     );
 
-                    return s;
+                    return score;
                 }
             }
         }
