@@ -998,10 +998,11 @@ fn search(
             }
         }
 
-        self.makeMove(stm, move);
-
-        const gives_check = self.stackEntry(0).board.checkers != 0;
         const score = blk: {
+            self.makeMove(stm, move);
+            defer self.unmakeMove(stm, move);
+
+            const gives_check = self.stackEntry(0).board.checkers != 0;
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) {
                 self.node_counts[move.from().toInt()][move.to().toInt()] += self.nodes - node_count_before;
@@ -1097,7 +1098,6 @@ fn search(
 
             break :blk s;
         };
-        self.unmakeMove(stm, move);
         if (self.stop.load(.acquire)) {
             return 0;
         }
