@@ -755,7 +755,8 @@ fn search(
     }
 
     if (!is_pv and
-        beta >= evaluation.matedIn(MAX_PLY) and
+        !evaluation.isMateScore(alpha) and
+        !evaluation.isMateScore(beta) and
         !is_in_check and
         !is_singular_search)
     {
