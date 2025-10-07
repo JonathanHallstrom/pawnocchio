@@ -18,6 +18,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const root = @import("root.zig");
+const BoundedArray = root.BoundedArray;
 const Colour = root.Colour;
 const File = root.File;
 const Rank = root.Rank;
@@ -178,8 +179,8 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
 
     var white_king_square: ?Square = null;
     var black_king_square: ?Square = null;
-    var white_rooks_on_first_rank = try std.BoundedArray(File, 64).init(0);
-    var black_rooks_on_last_rank = try std.BoundedArray(File, 64).init(0);
+    var white_rooks_on_first_rank = try BoundedArray(File, 64).init(0);
+    var black_rooks_on_last_rank = try BoundedArray(File, 64).init(0);
     var self: Board = .{};
     for (0..8) |r| {
         var c: usize = 0;
@@ -393,8 +394,8 @@ pub fn parseFen(fen: []const u8, permissive: bool) !Board {
     return self;
 }
 
-pub fn toFen(self: Board) std.BoundedArray(u8, 128) {
-    var out = std.BoundedArray(u8, 128).init(0) catch unreachable;
+pub fn toFen(self: Board) BoundedArray(u8, 128) {
+    var out = BoundedArray(u8, 128).init(0) catch unreachable;
     inline for (0..8) |rr| {
         const r = 7 - rr;
         var num_unoccupied: u8 = 0;
@@ -1176,7 +1177,7 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
                 if (promo_type != null) {}
                 return ml.vals.slice()[0];
             }
-            std.debug.print("valid: {} {s} {} {} '{s}'\n", .{ valid_count, self.toFen().slice(), allowed_start_mask, destination, san_move });
+            // std.debug.print("valid: {} {s} {} {} '{s}'\n", .{ valid_count, self.toFen().slice(), allowed_start_mask, destination, san_move });
         },
     }
     return null;

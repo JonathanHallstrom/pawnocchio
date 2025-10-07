@@ -161,7 +161,7 @@ fn datagenWorker(
         const write_buffer = fba.allocator().alloc(u8, 1 << 16) catch @panic("failed to allocate write buffer");
         defer fba.allocator().free(write_buffer);
 
-        var hashes = std.BoundedArray(u64, 200){};
+        var hashes = root.BoundedArray(u64, 200){};
         const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
         for (0..random_move_count) |_| {
             if (!board.makeMoveDatagen(rng.random())) {
@@ -275,7 +275,7 @@ fn datagenWorker(
             else => {},
         };
         writer_mutex.lock();
-        game.serializeInto(writer) catch @panic("failed to write game");
+        game.serializeInto(&writer.interface) catch @panic("failed to write game");
 
         writer_mutex.unlock();
     }
@@ -300,11 +300,12 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
 }
 
 pub fn datagen(num_nodes: u64, positions: u64) !void {
-    var buf: [1024]u8 = undefined;
+    var buf: [4096]u8 = undefined;
     var timer = try std.time.Timer.start();
     var out_file = try std.fs.cwd().createFile(try getFileName(num_nodes, &buf), .{});
-    var buf_writer = std.io.bufferedWriter(out_file.writer());
-    const writer = buf_writer.writer();
+
+    var writer = out_file.writer(&buf);
+
     var writer_mutex = std.Thread.Mutex{};
     var stats = DatagenStats{};
     for (0..current_num_threads) |i| {
@@ -316,12 +317,12 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     var prev_time = timer.read();
     var pps_ema_opt: ?u64 = null;
     while (true) {
-        std.time.sleep(std.time.ns_per_s);
+        std.Thread.sleep(std.time.ns_per_s);
         if (!writer_mutex.tryLock()) {
-            std.time.sleep(std.time.ns_per_ms);
+            std.Thread.sleep(std.time.ns_per_ms);
             continue;
         }
-        try buf_writer.flush();
+        try writer.interface.flush();
         writer_mutex.unlock();
         const cur_positions = stats.positions.load(.seq_cst);
         if (cur_positions >= positions) {
@@ -352,9 +353,9 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     }
 }
 
-pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: std.io.AnyWriter, allocator: std.mem.Allocator) !void {
+pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allocator: std.mem.Allocator) !void {
     var rng = std.Random.DefaultPrng.init(seed);
-    var fens = std.ArrayList([]const u8).init(allocator);
+    var fens = std.array_list.Managed([]const u8).init(allocator);
     defer fens.deinit();
     defer for (fens.items) |fen| {
         allocator.free(fen);
@@ -362,12 +363,20 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: std.io.AnyWri
     if (path) |p| {
         var f = try std.fs.cwd().openFile(p, .{});
         defer f.close();
+        var reader_buf: [4096]u8 = undefined;
+        var reader = f.reader(&reader_buf);
 
-        var br = std.io.bufferedReader(f.reader());
-        while (br.reader().readUntilDelimiterAlloc(allocator, '\n', 128)) |fen| {
-            try fens.append(fen);
+        var line_buf: [128]u8 = undefined;
+        var line_writer = std.Io.Writer.fixed(&line_buf);
+
+        while (reader.interface.streamDelimiter(&line_writer, '\n')) |fen_size| {
+            std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
+            std.debug.assert(line_writer.buffered().len == fen_size);
+
+            try fens.append(try allocator.dupe(u8, line_writer.buffered()));
             const dfrc_pos = rng.random().uintLessThan(u20, 960 * 960);
             try fens.append(try allocator.dupe(u8, root.Board.dfrcPosition(dfrc_pos).toFen().slice()));
+            _ = line_writer.consumeAll();
         } else |_| {}
     }
     rng.random().shuffle([]const u8, fens.items);
@@ -394,7 +403,7 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: std.io.AnyWri
             continue :fen_loop;
         }
 
-        try writer.print("info string genfens {s}\n", .{board.toFen().slice()});
+        try writer.interface.print("info string genfens {s}\n", .{board.toFen().slice()});
         remaining -= 1;
     }
 }

@@ -16,6 +16,7 @@
 
 const std = @import("std");
 const root = @import("root.zig");
+const BoundedArray = root.BoundedArray;
 const Board = root.Board;
 const Square = root.Square;
 const PieceType = root.PieceType;
@@ -98,8 +99,8 @@ const SquarePieceType = struct {
 };
 
 const DirtyPiece = struct {
-    adds: std.BoundedArray(SquarePieceType, 2) = .{},
-    subs: std.BoundedArray(SquarePieceType, 2) = .{},
+    adds: BoundedArray(SquarePieceType, 2) = .{},
+    subs: BoundedArray(SquarePieceType, 2) = .{},
 };
 
 pub const MirroringType = if (HORIZONTAL_MIRRORING) struct {

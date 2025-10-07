@@ -18,6 +18,7 @@ const std = @import("std");
 
 const root = @import("root.zig");
 
+const BoundedArray = root.BoundedArray;
 const Square = root.Square;
 const PieceType = root.PieceType;
 const Colour = root.Colour;
@@ -110,7 +111,7 @@ pub const Move = enum(u16) {
         return self.to().move(if (col == .white) -1 else 1, 0);
     }
 
-    pub fn toString(self: Move, board: *const Board) std.BoundedArray(u8, 5) {
+    pub fn toString(self: Move, board: *const Board) BoundedArray(u8, 5) {
         switch (board.stm) {
             inline else => |stm| {
                 var buf: [5]u8 = undefined;
@@ -140,7 +141,7 @@ pub const Move = enum(u16) {
                     }) catch unreachable;
                 }
 
-                var res: std.BoundedArray(u8, 5) = .{};
+                var res: BoundedArray(u8, 5) = .{};
                 if (self.isNull()) {
                     res.appendSliceAssumeCapacity("0000");
                 } else {

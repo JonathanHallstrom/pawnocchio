@@ -20,18 +20,16 @@ const root = @import("root.zig");
 const PerftEPDParser = @This();
 const Allocator = std.mem.Allocator;
 
-const BufferSize = 4096;
-
 file: std.fs.File,
 allocator: Allocator,
-reader: std.io.BufferedReader(BufferSize, std.fs.File.Reader),
+buf: [4096]u8 = undefined,
+reader: ?std.fs.File.Reader = null,
 
 pub fn init(name: []const u8, alloc: Allocator) !PerftEPDParser {
     const file = try std.fs.cwd().openFile(name, .{});
     return .{
         .file = file,
         .allocator = alloc,
-        .reader = std.io.bufferedReaderSize(BufferSize, file.reader()),
     };
 }
 
@@ -46,7 +44,7 @@ pub const NodeCount = struct {
 
 pub const PerftPosition = struct {
     fen: []const u8,
-    node_counts: std.BoundedArray(NodeCount, 128) = .{},
+    node_counts: root.BoundedArray(NodeCount, 128) = .{},
     allocator: Allocator,
 
     pub fn deinit(self: PerftPosition) void {
@@ -55,8 +53,15 @@ pub const PerftPosition = struct {
 };
 
 pub fn next(self: *PerftEPDParser) !?PerftPosition {
-    const read = try self.file.reader().readUntilDelimiterOrEofAlloc(self.allocator, '\n', std.math.maxInt(usize)) orelse return null;
-    defer self.allocator.free(read);
+    if (self.reader == null) {
+        self.reader = self.file.reader(&self.buf);
+    }
+
+    var w = std.Io.Writer.Allocating.init(self.allocator);
+    defer w.deinit();
+
+    _ = try self.reader.?.interface.streamDelimiter(&w.writer, '\n');
+    const read = w.written();
     var iter = std.mem.tokenizeSequence(u8, read, ";D");
     var res: PerftPosition = .{
         .fen = try self.allocator.dupe(u8, iter.next() orelse return null),

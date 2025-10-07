@@ -18,6 +18,7 @@ const std = @import("std");
 
 const root = @import("root.zig");
 
+const BoundedArray = root.BoundedArray;
 const evaluation = root.evaluation;
 const movegen = root.movegen;
 const Move = root.Move;
@@ -44,7 +45,7 @@ pub const MAX_HALFMOVE = 100;
 pub const Params = struct {
     board: Board,
     limits: Limits,
-    previous_hashes: std.BoundedArray(u64, 200),
+    previous_hashes: BoundedArray(u64, 200),
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
     normalize: bool,
@@ -113,9 +114,9 @@ limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
 should_stop: std.atomic.Value(bool),
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
+previous_hashes: BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTCluster,
-pvs: [MAX_PLY]std.BoundedArray(Move, 256),
+pvs: [MAX_PLY]BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
@@ -847,8 +848,8 @@ fn search(
     defer mp.deinit();
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
-    var searched_quiets: std.BoundedArray(Move, 64) = .{};
-    var searched_noisies: std.BoundedArray(Move, 64) = .{};
+    var searched_quiets: BoundedArray(Move, 64) = .{};
+    var searched_noisies: BoundedArray(Move, 64) = .{};
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
