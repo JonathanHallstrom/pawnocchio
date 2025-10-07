@@ -1208,12 +1208,12 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         tbhits += searcher.tbhits;
     }
     var pv_buf: [6 * 256 + 32]u8 = undefined;
-    var fixed_buffer_pv_writer = std.io.fixedBufferStream(&pv_buf);
+    var fixed_buffer_pv_writer = std.Io.Writer.fixed(&pv_buf);
     const root_board = self.searchStackRoot()[0].board;
     {
         var board = root_board;
         for (self.pvs[0].slice()) |pv_move| {
-            fixed_buffer_pv_writer.writer().print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
+            fixed_buffer_pv_writer.print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
             board.stm = board.stm.flipped();
         }
     }
@@ -1242,7 +1242,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         hashfull,
         tbhits,
         (elapsed + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
-        std.mem.trim(u8, fixed_buffer_pv_writer.getWritten(), &std.ascii.whitespace),
+        std.mem.trim(u8, fixed_buffer_pv_writer.buffered(), &std.ascii.whitespace),
     });
 }
 

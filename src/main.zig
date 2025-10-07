@@ -913,8 +913,8 @@ pub fn main() !void {
                         m.unlock();
                         b.frc = true;
                         var buf: [256]u8 = undefined;
-                        var fbs = std.io.fixedBufferStream(&buf);
-                        fbs.writer().print("{s} ;D1 {}; D2 {}; D3 {}; D4 {}; D5 {}; D6 {}\n", .{
+                        var fbs = std.Io.Writer.fixed(&buf);
+                        fbs.print("{s} ;D1 {}; D2 {}; D3 {}; D4 {}; D5 {}; D6 {}\n", .{
                             b.toFen().slice(),
                             b.perft(true, 1),
                             b.perft(true, 2),
@@ -924,7 +924,7 @@ pub fn main() !void {
                             b.perft(true, 6),
                         }) catch unreachable;
                         m.lock();
-                        write("{s}", .{fbs.getWritten()});
+                        write("{s}", .{fbs.buffered()});
                         m.unlock();
                     }
                 }.impl;

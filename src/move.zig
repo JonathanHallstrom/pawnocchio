@@ -115,27 +115,27 @@ pub const Move = enum(u16) {
         switch (board.stm) {
             inline else => |stm| {
                 var buf: [5]u8 = undefined;
-                var bw = std.io.fixedBufferStream(&buf);
+                var bw = std.Io.Writer.fixed(&buf);
                 if (board.isCastling(self)) {
                     if (board.frc) {
-                        bw.writer().print("{s}{s}", .{
+                        bw.print("{s}{s}", .{
                             @tagName(self.from()),
                             @tagName(self.to()),
                         }) catch unreachable;
                     } else {
-                        bw.writer().print("{s}{s}", .{
+                        bw.print("{s}{s}", .{
                             @tagName(self.from()),
                             @tagName(board.castlingKingDestFor(self, stm)),
                         }) catch unreachable;
                     }
                 } else if (board.isPromo(self)) {
-                    bw.writer().print("{s}{s}{c}", .{
+                    bw.print("{s}{s}{c}", .{
                         @tagName(self.from()),
                         @tagName(self.to()),
                         self.promoType().toAsciiLetter(),
                     }) catch unreachable;
                 } else {
-                    bw.writer().print("{s}{s}", .{
+                    bw.print("{s}{s}", .{
                         @tagName(self.from()),
                         @tagName(self.to()),
                     }) catch unreachable;
@@ -145,7 +145,7 @@ pub const Move = enum(u16) {
                 if (self.isNull()) {
                     res.appendSliceAssumeCapacity("0000");
                 } else {
-                    res.appendSliceAssumeCapacity(bw.getWritten());
+                    res.appendSliceAssumeCapacity(bw.buffered());
                 }
                 return res;
             },

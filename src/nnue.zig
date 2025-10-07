@@ -535,26 +535,34 @@ pub fn init() !void {
         return;
     }
 
-    var fbs = std.io.fixedBufferStream(@embedFile("net"));
+    var fbs = std.Io.Reader.fixed(@embedFile("net"));
 
     // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
     for (0..(&weights.hidden_layer_weights).len) |i| {
-        (&weights.hidden_layer_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        var buf: [2]u8 = undefined;
+        std.debug.assert(fbs.readSliceShort(&buf) catch unreachable == 2);
+        (&weights.hidden_layer_weights)[i] = std.mem.readInt(i16, &buf, .little);
     }
 
     // then the biases for the first layer (there should be HIDDEN_SIZE of them)
     for (0..(&weights.hidden_layer_biases).len) |i| {
-        (&weights.hidden_layer_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        var buf: [2]u8 = undefined;
+        std.debug.assert(fbs.readSliceShort(&buf) catch unreachable == 2);
+        (&weights.hidden_layer_biases)[i] = std.mem.readInt(i16, &buf, .little);
     }
 
     // then the weights for the second layer (there should be HIDDEN_SIZE * 2 of them)
     for (0..(&weights.output_weights).len) |i| {
-        (&weights.output_weights)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        var buf: [2]u8 = undefined;
+        std.debug.assert(fbs.readSliceShort(&buf) catch unreachable == 2);
+        (&weights.output_weights)[i] = std.mem.readInt(i16, &buf, .little);
     }
 
     // then finally the bias(es)
     for (0..(&weights.output_biases).len) |i| {
-        (&weights.output_biases)[i] = fbs.reader().readInt(i16, .little) catch unreachable;
+        var buf: [2]u8 = undefined;
+        std.debug.assert(fbs.readSliceShort(&buf) catch unreachable == 2);
+        (&weights.output_biases)[i] = std.mem.readInt(i16, &buf, .little);
     }
     // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)});
 }

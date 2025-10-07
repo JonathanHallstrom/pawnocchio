@@ -282,7 +282,7 @@ fn datagenWorker(
 }
 
 fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
-    var fbs = std.io.fixedBufferStream(buf);
+    var fbs = std.Io.Writer.fixed(buf);
 
     var random_buf: [32]u8 align(32) = undefined;
     try std.posix.getrandom(&random_buf);
@@ -295,8 +295,8 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
         net_name = net_name[0..separator];
     }
 
-    try fbs.writer().print("outfile_{s}_{}nodes_{x}.vf", .{ net_name, nodes, @as(u256, @bitCast(random_buf)) });
-    return fbs.getWritten();
+    try fbs.print("outfile_{s}_{}nodes_{x}.vf", .{ net_name, nodes, @as(u256, @bitCast(random_buf)) });
+    return fbs.buffered();
 }
 
 pub fn datagen(num_nodes: u64, positions: u64) !void {
