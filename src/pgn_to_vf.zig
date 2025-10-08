@@ -26,7 +26,7 @@ const Square = root.Square;
 const PieceType = root.PieceType;
 
 fn parseScoreFromInfoBlock(info: []const u8) !i16 {
-    const end_score = std.mem.indexOfScalar(u8, info, ' ') orelse return error.BrokenInfoBlock;
+    const end_score = std.mem.indexOfAny(u8, info, " /") orelse return error.BrokenInfoBlock;
 
     const score_str = info[1..end_score];
     const raw_score: f64 =
