@@ -894,7 +894,7 @@ fn search(
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
             if (is_quiet) {
                 var lmp_linear_mult = if (improving or is_pv) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
-                var lmp_quadratic_mult = if (improving and !is_pv) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
+                var lmp_quadratic_mult = if (improving or is_pv) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
                 var lmp_base = if (improving or is_pv) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
 
                 if (is_pv) {
