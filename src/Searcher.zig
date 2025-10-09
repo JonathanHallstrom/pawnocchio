@@ -899,12 +899,12 @@ fn search(
 
                 if (is_pv) {
                     lmp_base += 3072;
-                    lmp_linear_mult += 640;
+                    lmp_linear_mult += 1536;
                     lmp_quadratic_mult += 512;
                 }
 
                 const granularity: i32 = 978;
-                if ((!is_pv or @abs(beta) < 2000) and
+                if (!(is_pv and history_score > -4000) and
                     num_searched * granularity >=
                         lmp_base +
                             lmp_linear_mult * depth +
