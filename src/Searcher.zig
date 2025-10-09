@@ -123,6 +123,7 @@ syzygy_depth: u8 = 1,
 normalize: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
+killers: [MAX_PLY]Move,
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -855,6 +856,7 @@ fn search(
     var num_searched: u8 = 0;
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
+    self.killers[self.ply + 1] = Move.init();
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -1018,6 +1020,10 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+
+                //                                              vvv ply is incremented in makemove
+                reduction -= @intFromBool(self.killers[self.ply - 1] == move) * @as(i32, 1024);
+
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
@@ -1128,6 +1134,7 @@ fn search(
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
+                self.killers[self.ply] = move;
                 const hist_depth = depth + @as(i32, if (score >= beta + tunable_constants.high_eval_offs) 1 else 0);
                 score_type = .lower;
                 cur.failhighs += 1;
@@ -1312,6 +1319,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
         self.histories.reset();
     }
     @memset(std.mem.asBytes(&self.node_counts), 0);
+    @memset(&self.killers, Move.init());
     evaluation.initThreadLocals();
 }
 
