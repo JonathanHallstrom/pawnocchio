@@ -893,21 +893,22 @@ fn search(
 
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
             if (is_quiet) {
+                var lmp_base = if (improving or is_pv) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
                 var lmp_linear_mult = if (improving or is_pv) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
                 var lmp_quadratic_mult = if (improving or is_pv) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
-                var lmp_base = if (improving or is_pv) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
 
                 if (is_pv) {
-                    lmp_base += 2048;
-                    lmp_linear_mult += 256;
-                    lmp_quadratic_mult += 256;
+                    lmp_base += 3072;
+                    lmp_linear_mult += 640;
+                    lmp_quadratic_mult += 512;
                 }
 
                 const granularity: i32 = 978;
-                if (num_searched * granularity >=
-                    lmp_base +
-                        lmp_linear_mult * depth +
-                        lmp_quadratic_mult * depth * depth)
+                if ((!is_pv or @abs(beta) < 2000) and
+                    num_searched * granularity >=
+                        lmp_base +
+                            lmp_linear_mult * depth +
+                            lmp_quadratic_mult * depth * depth)
                 {
                     mp.skip_quiets = true;
                     continue;
