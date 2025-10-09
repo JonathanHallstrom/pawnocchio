@@ -898,9 +898,9 @@ fn search(
                 var lmp_base = if (improving or is_pv) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
 
                 if (is_pv) {
-                    lmp_base += 1024;
-                    lmp_linear_mult += 128;
-                    lmp_quadratic_mult += 128;
+                    lmp_base += 2048;
+                    lmp_linear_mult += 256;
+                    lmp_quadratic_mult += 256;
                 }
 
                 const granularity: i32 = 978;
