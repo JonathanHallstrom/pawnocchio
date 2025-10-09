@@ -166,7 +166,7 @@ fn quietValue(self: MovePicker, move: Move) i32 {
     return self.histories.readQuietOrdering(self.board, move, self.moves);
 }
 
-const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug) .auto else .always_tail;
+const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;
 
 fn tt(self: *MovePicker) ScoredMove {
     self.stage = .generate_noisies;
