@@ -986,7 +986,7 @@ fn search(
 
                     var triple_ext_margin = tunable_constants.singular_text_margin;
                     if (!is_quiet) {
-                        triple_ext_margin += 60;
+                        triple_ext_margin += 80;
                     }
 
                     if (!is_pv and s_score < s_beta - triple_ext_margin) {
