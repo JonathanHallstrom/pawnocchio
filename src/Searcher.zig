@@ -973,10 +973,23 @@ fn search(
             if (s_score < s_beta) {
                 extension += 1;
 
-                if (s_score < s_beta - (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0)) {
+                var double_ext_margin = tunable_constants.singular_dext_margin;
+                if (is_pv) {
+                    double_ext_margin += tunable_constants.singular_dext_pv_margin;
+                }
+                if (!is_quiet) {
+                    double_ext_margin += 15;
+                }
+
+                if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
 
-                    if (!is_pv and s_score < s_beta - tunable_constants.singular_text_margin) {
+                    var triple_ext_margin = tunable_constants.singular_text_margin;
+                    if (!is_quiet) {
+                        triple_ext_margin += 60;
+                    }
+
+                    if (!is_pv and s_score < s_beta - triple_ext_margin) {
                         extension += 1;
                     }
                 }
