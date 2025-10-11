@@ -385,7 +385,7 @@ pub const HistoryTable = struct {
             minor_correction * minor_correction;
     }
 
-    pub fn correct(self: *const HistoryTable, board: *const Board, prev: TypedMove, static_eval: i16) i16 {
+    pub fn correct(self: *const HistoryTable, board: *const Board, prev: TypedMove, static_eval: i16) struct { i16, i32 } {
         const pawn_correction: i64 = (&self.pawn_corrhist)[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].val;
 
         const major_correction: i64 = (&self.major_corrhist)[board.major_hash % CORRHIST_SIZE][board.stm.toInt()].val;
@@ -406,7 +406,7 @@ pub const HistoryTable = struct {
 
         const scaled = scaleEval(board, static_eval);
 
-        return evaluation.clampScore(scaled + correction);
+        return .{ evaluation.clampScore(scaled + correction), @intCast(correction) };
     }
 
     pub fn scaleEval(board: *const Board, eval: i16) i16 {
