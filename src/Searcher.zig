@@ -836,12 +836,13 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + 200 + 25 * depth;
+        const probcut_beta = beta + 250;
         const probcut_depth = depth - 3;
 
-        if (!tt_pv and
-            depth >= 6 and
+        if (!is_pv and
+            depth >= 4 and
             !evaluation.isTBScore(beta) and
+            !evaluation.isTBScore(probcut_beta) and
             !(tt_hit and tt_entry.depth >= probcut_depth and tt_entry.score < probcut_beta))
         {
             var mp = MovePicker.initProbcut(
@@ -875,7 +876,7 @@ fn search(
                         -probcut_beta,
                         -probcut_beta + 1,
                     );
-                    if (s >= probcut_beta) {
+                    if (s >= probcut_beta and probcut_depth > 1) {
                         s = -self.search(
                             false,
                             false,
@@ -899,7 +900,7 @@ fn search(
                         raw_static_eval,
                     );
 
-                    return score;
+                    return @intCast(score - (probcut_beta - beta));
                 }
             }
         }
