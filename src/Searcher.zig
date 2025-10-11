@@ -756,7 +756,8 @@ fn search(
     }
 
     if (!is_pv and
-        beta >= evaluation.matedIn(MAX_PLY) and
+        !evaluation.isMateScore(alpha) and
+        !evaluation.isMateScore(beta) and
         !is_in_check and
         !is_singular_search)
     {
@@ -973,10 +974,23 @@ fn search(
             if (s_score < s_beta) {
                 extension += 1;
 
-                if (s_score < s_beta - (tunable_constants.singular_dext_margin + if (is_pv) tunable_constants.singular_dext_pv_margin else 0)) {
+                var double_ext_margin = if (is_quiet)
+                    tunable_constants.singular_dext_margin_quiet
+                else
+                    tunable_constants.singular_dext_margin_noisy;
+                if (is_pv) {
+                    double_ext_margin += tunable_constants.singular_dext_pv_margin;
+                }
+
+                if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
 
-                    if (!is_pv and s_score < s_beta - tunable_constants.singular_text_margin) {
+                    const triple_ext_margin = if (is_quiet)
+                        tunable_constants.singular_text_margin_quiet
+                    else
+                        tunable_constants.singular_text_margin_noisy;
+
+                    if (!is_pv and s_score < s_beta - triple_ext_margin) {
                         extension += 1;
                     }
                 }
