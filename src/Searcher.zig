@@ -751,7 +751,7 @@ fn search(
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
         cur.reduction >= 3072 and
-        @as(i32, eval) + prev_eval < @divTrunc(correction, 4))
+        @as(i32, eval) + prev_eval < @abs(correction) / 4)
     {
         depth += 1;
     }
