@@ -200,9 +200,11 @@ const tunable_defaults = struct {
     pub const singular_beta_mult: i32 = 450;
     pub const singular_depth_mult: i32 = 591;
     pub const singular_depth_offs: i32 = 822;
-    pub const singular_dext_margin: i32 = 15;
+    pub const singular_dext_margin_quiet: i32 = 15;
+    pub const singular_dext_margin_noisy: i32 = 15;
     pub const singular_dext_pv_margin: i32 = 22;
-    pub const singular_text_margin: i32 = 81;
+    pub const singular_text_margin_quiet: i32 = 81;
+    pub const singular_text_margin_noisy: i32 = 81;
     pub const ttpick_depth_weight: i32 = 981;
     pub const ttpick_age_weight: i32 = 4180;
     pub const ttpick_pv_weight: i32 = 208;
@@ -345,9 +347,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult, .min = 10, .max = 992, .c_end = 39 },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult, .min = 10, .max = 1565, .c_end = 62 },
     .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs, .min = 10, .max = 1837, .c_end = 73 },
-    .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin, .min = 0, .max = 50, .c_end = 1 },
+    .{ .name = "singular_dext_margin_quiet", .default = tunable_defaults.singular_dext_margin_quiet, .min = 0, .max = 50, .c_end = 1 },
+    .{ .name = "singular_dext_margin_noisy", .default = tunable_defaults.singular_dext_margin_noisy, .min = 0, .max = 50, .c_end = 1 },
     .{ .name = "singular_dext_pv_margin", .default = tunable_defaults.singular_dext_pv_margin, .min = 0, .max = 50, .c_end = 1 },
-    .{ .name = "singular_text_margin", .default = tunable_defaults.singular_text_margin, .min = 0, .max = 200, .c_end = 5 },
+    .{ .name = "singular_text_margin_quiet", .default = tunable_defaults.singular_text_margin_quiet, .min = 0, .max = 200, .c_end = 5 },
+    .{ .name = "singular_text_margin_noisy", .default = tunable_defaults.singular_text_margin_noisy, .min = 0, .max = 200, .c_end = 5 },
     .{ .name = "ttpick_depth_weight", .default = tunable_defaults.ttpick_depth_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "ttpick_age_weight", .default = tunable_defaults.ttpick_age_weight, .min = 0, .max = 8192, .c_end = 256 },
     .{ .name = "ttpick_pv_weight", .default = tunable_defaults.ttpick_pv_weight, .min = 0, .max = 2048, .c_end = 128 },
@@ -490,9 +494,11 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
     pub var singular_depth_offs = tunable_defaults.singular_depth_offs;
-    pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
+    pub var singular_dext_margin_quiet = tunable_defaults.singular_dext_margin_quiet;
+    pub var singular_dext_margin_noisy = tunable_defaults.singular_dext_margin_noisy;
     pub var singular_dext_pv_margin = tunable_defaults.singular_dext_pv_margin;
-    pub var singular_text_margin = tunable_defaults.singular_text_margin;
+    pub var singular_text_margin_quiet = tunable_defaults.singular_text_margin_quiet;
+    pub var singular_text_margin_noisy = tunable_defaults.singular_text_margin_noisy;
     pub var ttpick_depth_weight = tunable_defaults.ttpick_depth_weight;
     pub var ttpick_age_weight = tunable_defaults.ttpick_age_weight;
     pub var ttpick_pv_weight = tunable_defaults.ttpick_pv_weight;
