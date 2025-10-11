@@ -989,10 +989,10 @@ fn search(
                     else
                         tunable_constants.singular_text_margin_noisy;
                     if (is_pv) {
-                        triple_ext_margin += 100;
+                        triple_ext_margin += 200;
                     }
 
-                    if (s_score < s_beta - triple_ext_margin) {
+                    if ((!is_pv or is_quiet) and s_score < s_beta - triple_ext_margin) {
                         extension += 1;
                     }
                 }
