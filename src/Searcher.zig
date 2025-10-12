@@ -981,7 +981,9 @@ fn search(
                     double_ext_margin += tunable_constants.singular_dext_pv_margin;
                 }
                 if (is_quiet) {
-                    double_ext_margin -= @divTrunc(history_score, 256);
+                    // std.debug.print("{} {}\n", .{ depth, history_score });
+                    const expected_history = 24500 + 1000 * depth;
+                    double_ext_margin -= std.math.clamp(@divTrunc(history_score - expected_history, 1024), -10, 10);
                 }
 
                 if (s_score < s_beta - double_ext_margin) {
