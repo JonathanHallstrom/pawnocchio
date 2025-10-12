@@ -344,9 +344,6 @@ pub const HistoryTable = struct {
         self.nonpawn_corrhist[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].update(err, weight);
         const cap_idx = prev.tp_captured.toInt();
         self.countermove_corrhist[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][cap_idx][board.stm.toInt()].update(err, weight);
-        if (prev.tp_captured != .king) {
-            self.countermove_corrhist[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][PieceType.king.toInt()][board.stm.toInt()].update(err, @divTrunc(weight + 1, 2));
-        }
     }
 
     pub fn summedCorrectionTerms(self: *const HistoryTable, board: *const Board, prev: TypedMove) i64 {
