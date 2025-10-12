@@ -1193,13 +1193,7 @@ fn search(
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
-                self.histories.updateCorrection(
-                    board,
-                    cur.move,
-                    corrected_static_eval,
-                    best_score,
-                    depth,
-                );
+                self.histories.updateCorrection(board, cur.move, corrected_static_eval, best_score, depth);
             }
         }
     }

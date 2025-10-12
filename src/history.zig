@@ -335,15 +335,18 @@ pub const HistoryTable = struct {
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {
         const err = score - corrected_static_eval;
-        const weight: i32 = std.math.clamp(depth, 0, 15) + 1;
+        const weight = @min(depth, 15) + 1;
 
-        self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight * 2048);
-        self.major_corrhist[board.major_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight * 2048);
-        self.minor_corrhist[board.minor_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight * 2048);
-        self.nonpawn_corrhist[board.nonpawn_hash[0] % CORRHIST_SIZE][board.stm.toInt()][0].update(err, weight * 2048);
-        self.nonpawn_corrhist[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].update(err, weight * 2048);
+        self.pawn_corrhist[board.pawn_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
+        self.major_corrhist[board.major_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
+        self.minor_corrhist[board.minor_hash % CORRHIST_SIZE][board.stm.toInt()].update(err, weight);
+        self.nonpawn_corrhist[board.nonpawn_hash[0] % CORRHIST_SIZE][board.stm.toInt()][0].update(err, weight);
+        self.nonpawn_corrhist[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].update(err, weight);
         const cap_idx = prev.tp_captured.toInt();
-        self.countermove_corrhist[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][cap_idx][board.stm.toInt()].update(err, weight * 2048);
+        self.countermove_corrhist[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][cap_idx][board.stm.toInt()].update(err, weight);
+        if (prev.tp_captured != .king) {
+            self.countermove_corrhist[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][PieceType.king.toInt()][board.stm.toInt()].update(err, @divTrunc(weight + 1, 2));
+        }
     }
 
     pub fn summedCorrectionTerms(self: *const HistoryTable, board: *const Board, prev: TypedMove) i64 {
@@ -450,6 +453,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        gravityUpdate(&self.val, std.math.clamp(@divTrunc(err * weight, 1024), -16000, 16000));
+        gravityUpdate(&self.val, std.math.clamp(err * weight << 1, -16000, 16000));
     }
 };
