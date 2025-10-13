@@ -980,6 +980,12 @@ fn search(
                 if (is_pv) {
                     double_ext_margin += tunable_constants.singular_dext_pv_margin;
                 }
+                if (is_quiet) {
+                    // std.debug.print("{} {}\n", .{ depth, history_score });
+                    const expected_history = 24500 + 1000 * depth;
+                    const hist_margin = std.math.clamp(@divTrunc(history_score - expected_history, 128), -100, 100);
+                    double_ext_margin -= hist_margin;
+                }
 
                 if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
