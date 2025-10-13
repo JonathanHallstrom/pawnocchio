@@ -983,7 +983,7 @@ fn search(
                 if (is_quiet) {
                     // std.debug.print("{} {}\n", .{ depth, history_score });
                     const expected_history = 24500 + 1000 * depth;
-                    double_ext_margin -= std.math.clamp(@divTrunc(history_score - expected_history, 1024), -10, 10);
+                    double_ext_margin -= std.math.clamp(@divTrunc(history_score - expected_history, 512), -20, 20);
                 }
 
                 if (s_score < s_beta - double_ext_margin) {
