@@ -984,12 +984,15 @@ fn search(
                 if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
 
-                    const triple_ext_margin = if (is_quiet)
+                    var triple_ext_margin = if (is_quiet)
                         tunable_constants.singular_text_margin_quiet
                     else
                         tunable_constants.singular_text_margin_noisy;
+                    if (is_pv) {
+                        triple_ext_margin += 300;
+                    }
 
-                    if (!is_pv and s_score < s_beta - triple_ext_margin) {
+                    if (s_score < s_beta - triple_ext_margin) {
                         extension += 1;
                     }
                 }
