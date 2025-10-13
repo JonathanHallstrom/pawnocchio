@@ -983,7 +983,16 @@ fn search(
                 if (is_quiet) {
                     // std.debug.print("{} {}\n", .{ depth, history_score });
                     const expected_history = 24500 + 1000 * depth;
-                    double_ext_margin -= std.math.clamp(@divTrunc(history_score - expected_history, 512), -20, 20);
+                    const diff = history_score - expected_history;
+                    const sign: i32 = if (diff >= 0) 1 else -1;
+                    const sqrt = struct {
+                        fn impl(x: i32) i32 {
+                            return @intFromFloat(@sqrt(@as(f64, @floatFromInt(x))));
+                        }
+                    }.impl;
+                    const hist_margin = std.math.clamp(@divTrunc(sqrt(diff * sign) * sign, 8), -40, 20);
+                    // std.debug.print("{}\n", .{hist_margin});
+                    double_ext_margin -= hist_margin;
                 }
 
                 if (s_score < s_beta - double_ext_margin) {
