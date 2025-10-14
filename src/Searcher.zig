@@ -617,11 +617,12 @@ fn search(
     alpha_original: i32,
     beta_original: i32,
     depth_: i32,
-    cutnode: bool,
+    cutnode_original: bool,
 ) i16 {
     var depth = depth_;
     var alpha = alpha_original;
     var beta = beta_original;
+    var cutnode = cutnode_original;
 
     self.nodes += 1;
     if (!(is_root and self.is_main_thread and self.root_move.isNull()) and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
@@ -999,6 +1000,7 @@ fn search(
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
                 extension -= 2;
+                cutnode = true;
             }
         }
         num_searched += 1;
