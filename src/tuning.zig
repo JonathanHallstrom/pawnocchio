@@ -134,11 +134,8 @@ const tunable_defaults = struct {
     pub const lmr_dodeeper_mult: i32 = 2;
     pub const nmp_margin_base: i32 = 250;
     pub const nmp_margin_mult: i32 = 25;
-    pub const nmp_base: i32 = 56078;
+    pub const nmp_base: i32 = 61914;
     pub const nmp_mult: i32 = 1093;
-    pub const nmp_eval_reduction_scale: i32 = 24;
-    pub const nmp_eval_reduction_max: i32 = 30376;
-    pub const nmp_history_mult: i32 = 512;
     pub const fp_depth_limit: i32 = 6144;
     pub const fp_base: i32 = 311;
     pub const fp_mult: i32 = 80;
@@ -159,6 +156,11 @@ const tunable_defaults = struct {
     pub const corrhist_countermove_weight: i32 = 765;
     pub const corrhist_major_weight: i32 = 957;
     pub const corrhist_minor_weight: i32 = 963;
+    pub const corrhist_pawn_update_weight: i32 = 2048;
+    pub const corrhist_nonpawn_update_weight: i32 = 2048;
+    pub const corrhist_countermove_update_weight: i32 = 2048;
+    pub const corrhist_major_update_weight: i32 = 2048;
+    pub const corrhist_minor_update_weight: i32 = 2048;
     pub const lmp_standard_base: i32 = 3082;
     pub const lmp_improving_base: i32 = 3246;
     pub const lmp_standard_linear_mult: i32 = -38;
@@ -203,9 +205,11 @@ const tunable_defaults = struct {
     pub const singular_beta_mult: i32 = 450;
     pub const singular_depth_mult: i32 = 591;
     pub const singular_depth_offs: i32 = 822;
-    pub const singular_dext_margin: i32 = 15;
+    pub const singular_dext_margin_quiet: i32 = 15;
+    pub const singular_dext_margin_noisy: i32 = 15;
     pub const singular_dext_pv_margin: i32 = 22;
-    pub const singular_text_margin: i32 = 81;
+    pub const singular_text_margin_quiet: i32 = 81;
+    pub const singular_text_margin_noisy: i32 = 81;
     pub const ttpick_depth_weight: i32 = 981;
     pub const ttpick_age_weight: i32 = 4180;
     pub const ttpick_pv_weight: i32 = 208;
@@ -284,9 +288,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "nmp_margin_mult", .default = tunable_defaults.nmp_margin_mult, .min = -100, .max = 100, .c_end = 5 },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base, .min = -10, .max = 126747, .c_end = 5069 },
     .{ .name = "nmp_mult", .default = tunable_defaults.nmp_mult, .min = -10, .max = 2317, .c_end = 92 },
-    .{ .name = "nmp_eval_reduction_scale", .default = tunable_defaults.nmp_eval_reduction_scale, .min = -10, .max = 97, .c_end = 3 },
-    .{ .name = "nmp_eval_reduction_max", .default = tunable_defaults.nmp_eval_reduction_max, .min = -10, .max = 62215, .c_end = 2488 },
-    .{ .name = "nmp_history_mult", .default = tunable_defaults.nmp_history_mult, .min = 0, .max = 1536, .c_end = 51 },
     .{ .name = "fp_depth_limit", .default = tunable_defaults.fp_depth_limit },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base, .min = -10, .max = 747, .c_end = 29 },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult, .min = -10, .max = 242, .c_end = 9 },
@@ -307,11 +308,16 @@ pub const tunables = [_]Tunable{
     .{ .name = "corrhist_countermove_weight", .default = tunable_defaults.corrhist_countermove_weight, .min = -10, .max = 2875, .c_end = 114 },
     .{ .name = "corrhist_major_weight", .default = tunable_defaults.corrhist_major_weight, .min = -10, .max = 2952, .c_end = 117 },
     .{ .name = "corrhist_minor_weight", .default = tunable_defaults.corrhist_minor_weight, .min = -10, .max = 2315, .c_end = 92 },
-    .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base, .min = 10, .max = 9345, .c_end = 200 },
-    .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base, .min = 10, .max = 7580, .c_end = 200 },
-    .{ .name = "lmp_standard_linear_mult", .default = tunable_defaults.lmp_standard_linear_mult, .min = -1024, .max = 1024, .c_end = 100 },
-    .{ .name = "lmp_improving_linear_mult", .default = tunable_defaults.lmp_improving_linear_mult, .min = -1024, .max = 1024, .c_end = 100 },
-    .{ .name = "lmp_standard_quadratic_mult", .default = tunable_defaults.lmp_standard_quadratic_mult, .min = -10, .max = 2177, .c_end = 100 },
+    .{ .name = "corrhist_pawn_update_weight", .default = tunable_defaults.corrhist_pawn_update_weight },
+    .{ .name = "corrhist_nonpawn_update_weight", .default = tunable_defaults.corrhist_nonpawn_update_weight },
+    .{ .name = "corrhist_countermove_update_weight", .default = tunable_defaults.corrhist_countermove_update_weight },
+    .{ .name = "corrhist_major_update_weight", .default = tunable_defaults.corrhist_major_update_weight },
+    .{ .name = "corrhist_minor_update_weight", .default = tunable_defaults.corrhist_minor_update_weight },
+    .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base, .min = 10, .max = 9345, .c_end = 300 },
+    .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base, .min = 10, .max = 7580, .c_end = 300 },
+    .{ .name = "lmp_standard_linear_mult", .default = tunable_defaults.lmp_standard_linear_mult, .min = -1024, .max = 1024, .c_end = 50 },
+    .{ .name = "lmp_improving_linear_mult", .default = tunable_defaults.lmp_improving_linear_mult, .min = -1024, .max = 1024, .c_end = 50 },
+    .{ .name = "lmp_standard_quadratic_mult", .default = tunable_defaults.lmp_standard_quadratic_mult, .min = -10, .max = 2177, .c_end = 40 },
     .{ .name = "lmp_improving_quadratic_mult", .default = tunable_defaults.lmp_improving_quadratic_mult, .min = -10, .max = 2717, .c_end = 100 },
     .{ .name = "good_noisy_ordering_base", .default = tunable_defaults.good_noisy_ordering_base, .min = -2048, .max = 2048, .c_end = 32 },
     .{ .name = "good_noisy_ordering_mult", .default = tunable_defaults.good_noisy_ordering_mult, .min = -10, .max = 2570, .c_end = 102 },
@@ -351,9 +357,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult, .min = 10, .max = 992, .c_end = 39 },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult, .min = 10, .max = 1565, .c_end = 62 },
     .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs, .min = 10, .max = 1837, .c_end = 73 },
-    .{ .name = "singular_dext_margin", .default = tunable_defaults.singular_dext_margin, .min = 0, .max = 50, .c_end = 1 },
+    .{ .name = "singular_dext_margin_quiet", .default = tunable_defaults.singular_dext_margin_quiet, .min = 0, .max = 50, .c_end = 1 },
+    .{ .name = "singular_dext_margin_noisy", .default = tunable_defaults.singular_dext_margin_noisy, .min = 0, .max = 50, .c_end = 1 },
     .{ .name = "singular_dext_pv_margin", .default = tunable_defaults.singular_dext_pv_margin, .min = 0, .max = 50, .c_end = 1 },
-    .{ .name = "singular_text_margin", .default = tunable_defaults.singular_text_margin, .min = 0, .max = 200, .c_end = 5 },
+    .{ .name = "singular_text_margin_quiet", .default = tunable_defaults.singular_text_margin_quiet, .min = 0, .max = 200, .c_end = 5 },
+    .{ .name = "singular_text_margin_noisy", .default = tunable_defaults.singular_text_margin_noisy, .min = 0, .max = 200, .c_end = 5 },
     .{ .name = "ttpick_depth_weight", .default = tunable_defaults.ttpick_depth_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "ttpick_age_weight", .default = tunable_defaults.ttpick_age_weight, .min = 0, .max = 8192, .c_end = 256 },
     .{ .name = "ttpick_pv_weight", .default = tunable_defaults.ttpick_pv_weight, .min = 0, .max = 2048, .c_end = 128 },
@@ -432,9 +440,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var nmp_margin_mult = tunable_defaults.nmp_margin_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
-    pub var nmp_eval_reduction_scale = tunable_defaults.nmp_eval_reduction_scale;
-    pub var nmp_eval_reduction_max = tunable_defaults.nmp_eval_reduction_max;
-    pub var nmp_history_mult = tunable_defaults.nmp_history_mult;
     pub var fp_depth_limit = tunable_defaults.fp_depth_limit;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
@@ -455,6 +460,11 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var corrhist_countermove_weight = tunable_defaults.corrhist_countermove_weight;
     pub var corrhist_major_weight = tunable_defaults.corrhist_major_weight;
     pub var corrhist_minor_weight = tunable_defaults.corrhist_minor_weight;
+    pub var corrhist_pawn_update_weight = tunable_defaults.corrhist_pawn_update_weight;
+    pub var corrhist_nonpawn_update_weight = tunable_defaults.corrhist_nonpawn_update_weight;
+    pub var corrhist_countermove_update_weight = tunable_defaults.corrhist_countermove_update_weight;
+    pub var corrhist_major_update_weight = tunable_defaults.corrhist_major_update_weight;
+    pub var corrhist_minor_update_weight = tunable_defaults.corrhist_minor_update_weight;
     pub var lmp_standard_base = tunable_defaults.lmp_standard_base;
     pub var lmp_improving_base = tunable_defaults.lmp_improving_base;
     pub var lmp_standard_linear_mult = tunable_defaults.lmp_standard_linear_mult;
@@ -499,9 +509,11 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
     pub var singular_depth_offs = tunable_defaults.singular_depth_offs;
-    pub var singular_dext_margin = tunable_defaults.singular_dext_margin;
+    pub var singular_dext_margin_quiet = tunable_defaults.singular_dext_margin_quiet;
+    pub var singular_dext_margin_noisy = tunable_defaults.singular_dext_margin_noisy;
     pub var singular_dext_pv_margin = tunable_defaults.singular_dext_pv_margin;
-    pub var singular_text_margin = tunable_defaults.singular_text_margin;
+    pub var singular_text_margin_quiet = tunable_defaults.singular_text_margin_quiet;
+    pub var singular_text_margin_noisy = tunable_defaults.singular_text_margin_noisy;
     pub var ttpick_depth_weight = tunable_defaults.ttpick_depth_weight;
     pub var ttpick_age_weight = tunable_defaults.ttpick_age_weight;
     pub var ttpick_pv_weight = tunable_defaults.ttpick_pv_weight;
