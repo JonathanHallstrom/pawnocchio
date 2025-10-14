@@ -143,7 +143,8 @@ const tunable_defaults = struct {
     pub const qs_see_threshold: i32 = -74;
     pub const see_quiet_pruning_mult: i32 = -79;
     pub const see_noisy_pruning_mult: i32 = -43;
-    pub const razoring_mult: i32 = 209;
+    pub const razoring_mult: i32 = 150;
+    pub const razoring_quad: i32 = 30;
     pub const razoring_offs: i32 = 51;
     pub const razoring_easy_capture: i32 = 98;
     pub const history_pruning_depth_limit: i32 = 4095;
@@ -295,7 +296,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold, .min = -230, .max = 10, .c_end = 8 },
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult, .min = -185, .max = 10, .c_end = 7 },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult, .min = -135, .max = 10, .c_end = 5 },
-    .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult, .min = -10, .max = 572, .c_end = 22 },
+    .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult },
+    .{ .name = "razoring_quad", .default = tunable_defaults.razoring_quad },
     .{ .name = "razoring_offs", .default = tunable_defaults.razoring_offs, .min = -1024, .max = 1024, .c_end = 10 },
     .{ .name = "razoring_easy_capture", .default = tunable_defaults.razoring_easy_capture, .min = -1024, .max = 1024, .c_end = 10 },
     .{ .name = "history_pruning_depth_limit", .default = tunable_defaults.history_pruning_depth_limit },
@@ -448,6 +450,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
     pub var razoring_mult = tunable_defaults.razoring_mult;
+    pub var razoring_quad = tunable_defaults.razoring_quad;
     pub var razoring_offs = tunable_defaults.razoring_offs;
     pub var razoring_easy_capture = tunable_defaults.razoring_easy_capture;
     pub var history_pruning_depth_limit = tunable_defaults.history_pruning_depth_limit;
