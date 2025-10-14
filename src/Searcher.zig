@@ -780,10 +780,11 @@ fn search(
         }
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
+        const depth_3 = @max(0, depth - 3);
         if (eval +
             tunable_constants.razoring_offs +
             tunable_constants.razoring_mult * depth +
-            tunable_constants.razoring_quad * depth * depth +
+            tunable_constants.razoring_quad * depth_3 * depth_3 +
             tunable_constants.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
