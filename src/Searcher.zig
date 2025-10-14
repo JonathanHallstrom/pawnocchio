@@ -770,7 +770,9 @@ fn search(
             tunable_constants.rfp_base +
             tunable_constants.rfp_mult * depth +
             tunable_constants.rfp_quad * depth * depth -
-            tunable_constants.rfp_improving_margin * @intFromBool(improving and !opponent_has_easy_capture) -
+            tunable_constants.rfp_improving_margin * @intFromBool(improving) -
+            tunable_constants.rfp_improving_easy_margin * @intFromBool(improving and !opponent_has_easy_capture) -
+            tunable_constants.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) -
             tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
             tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
             (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
