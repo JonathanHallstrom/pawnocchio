@@ -807,6 +807,9 @@ fn search(
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
+            if (improving) {
+                nmp_reduction += 4096;
+            }
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
