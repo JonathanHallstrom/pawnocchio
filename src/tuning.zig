@@ -156,6 +156,11 @@ const tunable_defaults = struct {
     pub const corrhist_countermove_weight: i32 = 765;
     pub const corrhist_major_weight: i32 = 957;
     pub const corrhist_minor_weight: i32 = 963;
+    pub const corrhist_pawn_update_weight: i32 = 2048;
+    pub const corrhist_nonpawn_update_weight: i32 = 2048;
+    pub const corrhist_countermove_update_weight: i32 = 2048;
+    pub const corrhist_major_update_weight: i32 = 2048;
+    pub const corrhist_minor_update_weight: i32 = 2048;
     pub const lmp_standard_base: i32 = 3082;
     pub const lmp_improving_base: i32 = 3246;
     pub const lmp_standard_linear_mult: i32 = -38;
@@ -303,6 +308,11 @@ pub const tunables = [_]Tunable{
     .{ .name = "corrhist_countermove_weight", .default = tunable_defaults.corrhist_countermove_weight, .min = -10, .max = 2875, .c_end = 114 },
     .{ .name = "corrhist_major_weight", .default = tunable_defaults.corrhist_major_weight, .min = -10, .max = 2952, .c_end = 117 },
     .{ .name = "corrhist_minor_weight", .default = tunable_defaults.corrhist_minor_weight, .min = -10, .max = 2315, .c_end = 92 },
+    .{ .name = "corrhist_pawn_update_weight", .default = tunable_defaults.corrhist_pawn_update_weight },
+    .{ .name = "corrhist_nonpawn_update_weight", .default = tunable_defaults.corrhist_nonpawn_update_weight },
+    .{ .name = "corrhist_countermove_update_weight", .default = tunable_defaults.corrhist_countermove_update_weight },
+    .{ .name = "corrhist_major_update_weight", .default = tunable_defaults.corrhist_major_update_weight },
+    .{ .name = "corrhist_minor_update_weight", .default = tunable_defaults.corrhist_minor_update_weight },
     .{ .name = "lmp_standard_base", .default = tunable_defaults.lmp_standard_base, .min = 10, .max = 9345, .c_end = 300 },
     .{ .name = "lmp_improving_base", .default = tunable_defaults.lmp_improving_base, .min = 10, .max = 7580, .c_end = 300 },
     .{ .name = "lmp_standard_linear_mult", .default = tunable_defaults.lmp_standard_linear_mult, .min = -1024, .max = 1024, .c_end = 50 },
@@ -450,6 +460,11 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var corrhist_countermove_weight = tunable_defaults.corrhist_countermove_weight;
     pub var corrhist_major_weight = tunable_defaults.corrhist_major_weight;
     pub var corrhist_minor_weight = tunable_defaults.corrhist_minor_weight;
+    pub var corrhist_pawn_update_weight = tunable_defaults.corrhist_pawn_update_weight;
+    pub var corrhist_nonpawn_update_weight = tunable_defaults.corrhist_nonpawn_update_weight;
+    pub var corrhist_countermove_update_weight = tunable_defaults.corrhist_countermove_update_weight;
+    pub var corrhist_major_update_weight = tunable_defaults.corrhist_major_update_weight;
+    pub var corrhist_minor_update_weight = tunable_defaults.corrhist_minor_update_weight;
     pub var lmp_standard_base = tunable_defaults.lmp_standard_base;
     pub var lmp_improving_base = tunable_defaults.lmp_improving_base;
     pub var lmp_standard_linear_mult = tunable_defaults.lmp_standard_linear_mult;
