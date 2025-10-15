@@ -754,6 +754,7 @@ fn search(
         depth += 1;
     }
 
+    const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
@@ -779,7 +780,6 @@ fn search(
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         if (depth <= 3 and
             eval +
                 tunable_constants.razoring_offs +
@@ -1031,6 +1031,9 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                if (is_quiet and we_have_easy_capture) {
+                    reduction += 1024;
+                }
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
