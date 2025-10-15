@@ -855,6 +855,7 @@ fn search(
     var num_searched: u8 = 0;
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
+    var has_winning_capture = we_have_easy_capture;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -864,6 +865,7 @@ fn search(
         if (!board.isLegal(stm, move)) {
             continue;
         }
+        has_winning_capture = has_winning_capture or mp.stage == .good_noisies;
         if (is_root and self.root_move.isNull()) {
             self.root_move = move;
         }
@@ -1031,8 +1033,9 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                if (is_quiet and we_have_easy_capture) {
-                    reduction += 1024;
+
+                if (is_quiet and has_winning_capture) {
+                    reduction += 512;
                 }
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
