@@ -754,6 +754,7 @@ fn search(
         depth += 1;
     }
 
+    const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
@@ -765,7 +766,6 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
         if (depth <= 12 and
             eval >= beta +
                 tunable_constants.rfp_base +
@@ -1031,6 +1031,9 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
+                if (!opponent_has_easy_capture and !is_in_check and eval >= beta + 300) {
+                    reduction += 1024;
+                }
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
