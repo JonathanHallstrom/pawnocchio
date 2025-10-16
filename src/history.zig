@@ -383,13 +383,13 @@ pub const HistoryTable = struct {
         const countermove_correction: i64 = (&self.countermove_corrhist)[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][board.stm.toInt()].val;
         const followupmove_correction: i64 = (&self.followupmove_corrhist)[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][board.stm.toInt()].val;
 
-        return @divTrunc((pawn_correction * pawn_correction +
+        return pawn_correction * pawn_correction +
             white_nonpawn_correction * white_nonpawn_correction +
             black_nonpawn_correction * black_nonpawn_correction +
             countermove_correction * countermove_correction +
             followupmove_correction * followupmove_correction +
             major_correction * major_correction +
-            minor_correction * minor_correction) * 6, 7);
+            minor_correction * minor_correction;
     }
 
     pub fn correct(self: *const HistoryTable, board: *const Board, prev: TypedMove, followup: TypedMove, static_eval: i16) i16 {
