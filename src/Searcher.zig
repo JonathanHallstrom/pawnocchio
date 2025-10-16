@@ -802,7 +802,9 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
-            eval >= beta + tunable_constants.nmp_margin_base - tunable_constants.nmp_margin_mult * depth and
+            eval >= beta + tunable_constants.nmp_margin_base -
+                tunable_constants.nmp_margin_mult * depth -
+                @as(i32, 100) * @intFromBool(improving) and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull())
