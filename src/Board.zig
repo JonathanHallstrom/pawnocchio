@@ -898,15 +898,23 @@ pub fn updateMasks(self: *Board, col: Colour) void {
 
 pub fn resetHash(self: *Board) void {
     self.hash = 0;
+    self.pawn_hash = 0;
+    self.major_hash = 0;
+    self.minor_hash = 0;
+    self.nonpawn_hash = .{0} ** 2;
     self.updateEPHash();
     self.updateCastlingHash();
     if (self.stm == .black)
         self.updateTurnHash();
     inline for (0..6) |p| {
         const pt = PieceType.fromInt(@intCast(p));
-        var iter = Bitboard.iterator(self.pieces[p]);
+        var iter = Bitboard.iterator(self.pieceFor(.white, pt));
         while (iter.next()) |sq| {
-            self.hash ^= root.zobrist.piece((&self.mailbox)[sq.toInt()].toColouredPieceType().toColour(), pt, sq);
+            self.zobristPiece(.white, pt, sq);
+        }
+        iter = Bitboard.iterator(self.pieceFor(.black, pt));
+        while (iter.next()) |sq| {
+            self.zobristPiece(.black, pt, sq);
         }
     }
 }
@@ -1005,7 +1013,7 @@ pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, e
             if (pt == .pawn) {
                 updated_halfmove = 0;
                 const pawn_d_rank = if (stm == .white) 1 else -1;
-                if (to.toInt() == @as(i8, from.toInt()) + 8 * 2 * pawn_d_rank) {
+                if (to.toInt() ^ from.toInt() == 16) {
                     const target = from.move(pawn_d_rank, 0);
                     if (Bitboard.pawnAttacks(target, stm) & self.pawnsFor(stm.flipped()) != 0) {
                         self.ep_target = target;
@@ -1014,6 +1022,7 @@ pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, e
                 }
             }
             if (pt == .king) {
+                @branchHint(.unpredictable);
                 updated_castling_rights.kingMoved(stm);
             }
         },
