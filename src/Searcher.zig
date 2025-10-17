@@ -414,7 +414,7 @@ fn qsearch(
     }
 
     if (self.ply >= MAX_PLY - 1) {
-        return static_eval;
+        return if (is_in_check) 0 else static_eval;
     }
 
     var best_score = static_eval;
