@@ -459,7 +459,7 @@ fn qsearch(
             if (!is_in_check and
                 futility <= alpha and
                 !is_recapture and
-                !SEE.scoreMove(board, move, 1, .pruning))
+                mp.stage == .bad_noisies)
             {
                 best_score = @intCast(@max(best_score, futility));
                 continue;
