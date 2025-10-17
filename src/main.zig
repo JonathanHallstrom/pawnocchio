@@ -406,6 +406,7 @@ pub fn main() !void {
             write("option name NormalizeEval type check default true\n", .{});
             write("option name SoftNodes type check default false\n", .{});
             write("option name EnableWeirdTCs type check default false\n", .{});
+            write("option name Scale type spin default 400 min 1 max 10000\n", .{});
             if (root.tuning.do_tuning) {
                 for (root.tuning.tunables) |tunable| {
                     write(
@@ -594,6 +595,13 @@ pub fn main() !void {
                         }
                     }
                 }
+            }
+
+            if (std.ascii.eqlIgnoreCase("Scale", option_name)) {
+                @import("nnue.zig").SCALE = std.fmt.parseInt(i16, value, 10) catch {
+                    writeLog("invalid scale: '{s}'\n", .{value});
+                    continue :loop;
+                };
             }
         } else if (root.use_tbs and std.ascii.eqlIgnoreCase(command, "ProbeWDL")) {
             std.debug.print("{any}\n", .{root.pyrrhic.probeWDL(&board)});
