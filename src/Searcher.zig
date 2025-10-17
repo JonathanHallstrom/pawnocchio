@@ -394,10 +394,10 @@ fn qsearch(
             static_eval = tt_score;
         }
 
-        if (static_eval >= beta) {
+        if (static_eval >= beta and !evaluation.isMateScore(beta)) {
             return @intCast(static_eval + @divTrunc((beta - static_eval) * tunable_constants.standpat_fail_medium, 1024));
         }
-        if (static_eval > alpha) {
+        if (static_eval > alpha and !evaluation.isMateScore(alpha)) {
             alpha = static_eval;
         }
     }
@@ -417,7 +417,7 @@ fn qsearch(
         return if (is_in_check) 0 else static_eval;
     }
 
-    var best_score = static_eval;
+    var best_score = if (beta < -evaluation.win_score) -evaluation.inf_score else static_eval;
     var best_move = Move.init();
     var score_type: ScoreType = .upper;
     var mp = MovePicker.initQs(
