@@ -212,7 +212,7 @@ const tunable_defaults = struct {
     pub const singular_depth_offs: i32 = 795;
     pub const singular_dext_margin_quiet: i32 = 16;
     pub const singular_dext_margin_noisy: i32 = 15;
-    pub const singular_dext_pv_margin: i32 = 22;
+    pub const singular_dext_pv_margin: i32 = 100;
     pub const singular_text_margin_quiet: i32 = 81;
     pub const singular_text_margin_noisy: i32 = 84;
     pub const ttpick_depth_weight: i32 = 972;
@@ -369,7 +369,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs, .min = 10, .max = 1837, .c_end = 73 },
     .{ .name = "singular_dext_margin_quiet", .default = tunable_defaults.singular_dext_margin_quiet, .min = 0, .max = 50, .c_end = 1 },
     .{ .name = "singular_dext_margin_noisy", .default = tunable_defaults.singular_dext_margin_noisy, .min = 0, .max = 50, .c_end = 1 },
-    .{ .name = "singular_dext_pv_margin", .default = tunable_defaults.singular_dext_pv_margin, .min = 0, .max = 50, .c_end = 1 },
+    .{ .name = "singular_dext_pv_margin", .default = tunable_defaults.singular_dext_pv_margin, .min = 0, .max = 300, .c_end = 5 },
     .{ .name = "singular_text_margin_quiet", .default = tunable_defaults.singular_text_margin_quiet, .min = 0, .max = 200, .c_end = 5 },
     .{ .name = "singular_text_margin_noisy", .default = tunable_defaults.singular_text_margin_noisy, .min = 0, .max = 200, .c_end = 5 },
     .{ .name = "ttpick_depth_weight", .default = tunable_defaults.ttpick_depth_weight, .min = 0, .max = 2048, .c_end = 128 },
