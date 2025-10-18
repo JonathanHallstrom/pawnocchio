@@ -939,8 +939,7 @@ fn search(
             else
                 @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
 
-            if (!is_pv and
-                !skip_see_pruning and
+            if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
             {
                 continue;
