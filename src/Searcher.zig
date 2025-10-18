@@ -681,8 +681,8 @@ fn search(
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
-    // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
+    const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
@@ -952,7 +952,7 @@ fn search(
             depth >= 6 and
             move == tt_entry.move and
             !is_singular_search and
-            tt_entry.depth + @as(i32, 3) >= depth and
+            tt_entry.depth >= depth - 3 - @intFromBool(tt_move_hist > 30000) + @intFromBool(tt_move_hist < -5000) and
             tt_entry.flags.score_type != .upper)
         {
             const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - depth * tunable_constants.singular_beta_mult, 1024));
