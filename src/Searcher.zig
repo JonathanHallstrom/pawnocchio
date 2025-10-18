@@ -952,7 +952,7 @@ fn search(
             depth >= 6 and
             move == tt_entry.move and
             !is_singular_search and
-            tt_entry.depth + @as(i32, 3) >= depth and
+            tt_entry.depth + @as(i32, 2) >= depth and
             tt_entry.flags.score_type != .upper)
         {
             const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - depth * tunable_constants.singular_beta_mult, 1024));
