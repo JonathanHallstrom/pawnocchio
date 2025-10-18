@@ -39,7 +39,7 @@ pub fn main() !void {
     _ = args.next() orelse "pawnocchio";
 
     {
-        const bench_depth_default: i32 = 13;
+        const bench_depth_default: i32 = 11;
         const datagen_nodes_default: u64 = 7000;
         const datagen_threads_default: usize = std.Thread.getCpuCount() catch 1;
         var do_bench = false;
