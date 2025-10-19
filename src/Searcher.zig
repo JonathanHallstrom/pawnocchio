@@ -384,11 +384,10 @@ fn qsearch(
 
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval: i16 = raw_static_eval;
-    var correction: i64 = 0;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval, correction = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -723,11 +722,10 @@ fn search(
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.inf_score;
     var corrected_static_eval = raw_static_eval;
-    var correction: i64 = 0;
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval, correction = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -758,6 +756,8 @@ fn search(
 
     if (!evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
+        @abs(eval) < 5000 and
+        @abs(corrected_static_eval) < 5000 and
         !is_in_check and
         !is_singular_search and
         @as(i32, eval) - corrected_static_eval > 200 and
