@@ -145,6 +145,7 @@ const tunable_defaults = struct {
     pub const qs_see_threshold: i32 = -75;
     pub const see_quiet_pruning_mult: i32 = -81;
     pub const see_noisy_pruning_mult: i32 = -45;
+    pub const see_pv_offs: i32 = 100;
     pub const razoring_mult: i32 = 215;
     pub const razoring_quad: i32 = 98;
     pub const razoring_offs: i32 = 50;
@@ -302,6 +303,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold },
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult },
+    .{ .name = "see_pv_offs", .default = tunable_defaults.see_pv_offs },
     .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult },
     .{ .name = "razoring_quad", .default = tunable_defaults.razoring_quad },
     .{ .name = "razoring_offs", .default = tunable_defaults.razoring_offs },
@@ -459,6 +461,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
     pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
+    pub var see_pv_offs = tunable_defaults.see_pv_offs;
     pub var razoring_mult = tunable_defaults.razoring_mult;
     pub var razoring_quad = tunable_defaults.razoring_quad;
     pub var razoring_offs = tunable_defaults.razoring_offs;

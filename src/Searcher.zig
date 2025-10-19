@@ -934,15 +934,34 @@ fn search(
                     mp.skip_quiets = true;
                     continue;
                 }
+            } else {
+                const futility_value = eval +
+                    tunable_constants.fp_base +
+                    @divTrunc(lmr_depth * tunable_constants.fp_mult, 1024) +
+                    SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
+                if (mp.stage == .bad_noisies and
+                    !is_in_check and
+                    lmr_depth <= 6104 and
+                    @abs(alpha) < 2000 and
+                    futility_value <= alpha)
+                {
+                    if (!evaluation.isTBScore(best_score)) {
+                        best_score = @intCast(@max(best_score, futility_value));
+                    }
+                    break;
+                }
             }
 
-            const see_pruning_thresh = if (is_quiet)
+            var see_pruning_thresh = if (is_quiet)
                 @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth >> 10
             else
                 @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
 
-            if (!is_pv and
-                !skip_see_pruning and
+            if (is_pv) {
+                see_pruning_thresh -= tunable_constants.see_pv_offs;
+            }
+
+            if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
             {
                 continue;
