@@ -712,7 +712,7 @@ fn search(
         }
     }
 
-    if (depth >= 4 and
+    if (depth >= 4 + (if (is_pv) 4 else 0) and
         (is_pv or cutnode) and
         !has_tt_move)
     {
