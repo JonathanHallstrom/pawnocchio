@@ -149,7 +149,7 @@ pub const PawnHistory = struct {
 };
 
 pub const NoisyHistory = struct {
-    vals: [64 * 64 * 13 * 2 * 2]i16,
+    vals: [64 * 64 * 13 * 2 * 2][2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -169,7 +169,7 @@ pub const NoisyHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+    inline fn entry(self: anytype, board: *const Board, move: TypedMove, is_recapture: bool) root.inheritConstness(@TypeOf(self), *i16) {
         const from_offs: usize = move.move.from().toInt();
         const to_offs: usize = move.move.to().toInt();
         const captured = (&board.mailbox)[to_offs];
@@ -177,19 +177,19 @@ pub const NoisyHistory = struct {
         const threats = board.threats[board.stm.flipped().toInt()];
         const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
         const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
-        return &(&self.vals)[from_offs * 64 * 13 * 2 * 2 + to_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
+        return &(&self.vals)[from_offs * 64 * 13 * 2 * 2 + to_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs][@intFromBool(is_recapture)];
     }
 
-    pub inline fn updateRaw(self: *NoisyHistory, board: *const Board, move: TypedMove, upd: i32) void {
-        gravityUpdate(self.entry(board, move), upd);
+    pub inline fn updateRaw(self: *NoisyHistory, board: *const Board, move: TypedMove, is_recapture: bool, upd: i32) void {
+        gravityUpdate(self.entry(board, move, is_recapture), upd);
     }
 
-    inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
-        self.updateRaw(board, move, if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, is_recapture: bool, depth: i32, is_bonus: bool) void {
+        self.updateRaw(board, move, is_recapture, if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
-    inline fn read(self: *const NoisyHistory, board: *const Board, move: TypedMove) i16 {
-        return self.entry(board, move).*;
+    inline fn read(self: *const NoisyHistory, board: *const Board, move: TypedMove, is_recapture: bool) i16 {
+        return self.entry(board, move, is_recapture).*;
     }
 };
 
@@ -323,17 +323,17 @@ pub const HistoryTable = struct {
         }
     }
 
-    pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
+    pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move, is_recapture: bool) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        res += self.noisy.read(board, typed);
+        res += self.noisy.read(board, typed, is_recapture);
 
         return res;
     }
 
-    pub fn updateNoisy(self: *HistoryTable, board: *const Board, move: Move, depth: i32, is_bonus: bool) void {
+    pub fn updateNoisy(self: *HistoryTable, board: *const Board, move: Move, is_recapture: bool, depth: i32, is_bonus: bool) void {
         const typed = TypedMove.fromBoard(board, move);
-        self.noisy.update(board, typed, depth, is_bonus);
+        self.noisy.update(board, typed, is_recapture, depth, is_bonus);
     }
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, followup: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {

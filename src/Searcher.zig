@@ -449,7 +449,7 @@ fn qsearch(
         const skip_see_pruning = mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
-            const history_score = self.histories.readNoisy(board, move);
+            const history_score = self.histories.readNoisy(board, move, is_recapture);
             if (!is_in_check and
                 num_searched >= 2 and
                 history_score < tunable_constants.qs_hp_margin)
@@ -857,6 +857,7 @@ fn search(
     var num_searched: u8 = 0;
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
+    const previous_move_destination = cur.move.move.to();
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -882,11 +883,12 @@ fn search(
             std.debug.assert(!is_quiet);
         }
         const skip_see_pruning = mp.stage == .good_noisies;
+        const is_recapture = move.to() == previous_move_destination;
         const history_score = if (is_quiet) self.histories.readQuietPruning(
             board,
             move,
             self.getUsableMoves(),
-        ) else self.histories.readNoisy(board, move);
+        ) else self.histories.readNoisy(board, move, is_recapture);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const lmr_history_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
@@ -1159,10 +1161,10 @@ fn search(
                         self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
                     }
                 } else {
-                    self.histories.updateNoisy(board, move, hist_depth, true);
+                    self.histories.updateNoisy(board, move, move.to() == cur.move.move.to(), hist_depth, true);
                 }
                 for (searched_noisies.slice()) |searched_move| {
-                    self.histories.updateNoisy(board, searched_move, hist_depth, false);
+                    self.histories.updateNoisy(board, searched_move, searched_move.to() == cur.move.move.to(), hist_depth, false);
                 }
                 break;
             }

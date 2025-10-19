@@ -157,7 +157,7 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
         res += SEE.value(.pawn, .ordering);
     }
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
-    res += self.histories.readNoisy(self.board, move);
+    res += self.histories.readNoisy(self.board, move, move.to() == self.moves[0].move.to());
 
     return res;
 }
@@ -207,7 +207,7 @@ fn goodNoises(self: *MovePicker) ScoredMove {
         return @call(call_modifier, &generateQuiets, .{self});
     }
     const res = self.movelist.vals.slice()[self.findBest()];
-    const history_score = self.histories.readNoisy(self.board, res.move);
+    const history_score = self.histories.readNoisy(self.board, res.move, res.move.to() == self.moves[0].move.to());
     const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
         root.tuning.tunable_constants.good_noisy_ordering_base;
     if (SEE.scoreMove(self.board, res.move, margin, .ordering)) {
