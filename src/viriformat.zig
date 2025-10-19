@@ -59,6 +59,86 @@ const MarlinPackedBoard = extern struct {
 
     const unmoved_rook = 6;
 
+    pub fn toBoard(self: MarlinPackedBoard) Board {
+        var res: Board = .{};
+
+        var iter = Bitboard.iterator(self.occupancy);
+        var castling_rooks: u64 = 0;
+        var i: usize = 0;
+        while (iter.next()) |sq| : (i += 1) {
+            const code = self.pieces[i / 2] >> if (i % 2 == 0) 0 else 4;
+            const is_black = code & 8 == 1;
+            const col: Colour = if (is_black) .black else .white;
+            const pt = switch (code & 0b111) {
+                0 => .pawn,
+                1 => .knight,
+                2 => .bishop,
+                3 => .rook,
+                4 => .queen,
+                5 => .king,
+                6 => blk: {
+                    castling_rooks |= sq.toBitboard();
+                    break :blk .rook;
+                },
+            };
+            switch (col) {
+                inline else => |ccol| res.addPiece(ccol, pt, col, Board.NullEvalState{}),
+            }
+        }
+
+        var white_queenside_file: ?File = null;
+        var white_kingside_file: ?File = null;
+        const white_castling_rooks = castling_rooks & 0b1111_1111;
+        var black_queenside_file: ?File = null;
+        var black_kingside_file: ?File = null;
+        const black_castling_rooks = castling_rooks >> 56;
+
+        iter = Bitboard.iterator(white_castling_rooks);
+        var rights_flag: u8 = 0;
+        while (iter.next()) |sq| {
+            const king = Square.fromBitboard(res.kingFor(.white));
+
+            if (king.getFile() < sq.getFile()) {
+                white_queenside_file = sq.getFile();
+                rights_flag |= root.CastlingRights.white_queenside_castle;
+            } else {
+                white_kingside_file = sq.getFile();
+                rights_flag |= root.CastlingRights.white_kingside_castle;
+            }
+        }
+        iter = Bitboard.iterator(black_castling_rooks);
+        while (iter.next()) |sq| {
+            const king = Square.fromBitboard(res.kingFor(.black));
+
+            if (king.getFile() < sq.getFile()) {
+                black_queenside_file = sq.getFile();
+                rights_flag |= root.CastlingRights.black_queenside_castle;
+            } else {
+                black_kingside_file = sq.getFile();
+                rights_flag |= root.CastlingRights.black_kingside_castle;
+            }
+        }
+
+        res.castling_rights = .initFromParts(
+            rights_flag,
+            white_kingside_file orelse .h,
+            black_kingside_file orelse .h,
+            white_queenside_file orelse .a,
+            black_queenside_file orelse .a,
+        );
+
+        const ep_target = self.stm_ep_square & 0b0111_1111;
+        res.ep_target = if (ep_target < 64) Square.fromInt(ep_target) else null;
+        res.stm = if (self.stm_ep_square & 0b1000_0000 == 0) .white else .black;
+        res.halfmove = self.halfmove_clock;
+        res.fullmove = self.fullmove_number.toNative();
+        res.updateMasks(.white);
+        res.updateMasks(.black);
+        res.resetHash();
+
+        return res;
+    }
+
     pub fn from(board: Board, loss_draw_win: u8, score: i16) MarlinPackedBoard {
         const occ = board.white | board.black;
         var pieces: [16]u8 = .{0} ** 16;
@@ -253,3 +333,5 @@ test "all edge cases i could think of in one position" {
 
     try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.buffered());
 }
+
+test {}
