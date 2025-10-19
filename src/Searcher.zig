@@ -950,13 +950,16 @@ fn search(
                 }
             }
 
-            const see_pruning_thresh = if (is_quiet)
+            var see_pruning_thresh = if (is_quiet)
                 @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth >> 10
             else
                 @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
 
-            if (!is_pv and
-                !skip_see_pruning and
+            if (is_pv) {
+                see_pruning_thresh -= tunable_constants.see_pv_offs;
+            }
+
+            if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
             {
                 continue;
