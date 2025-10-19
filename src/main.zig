@@ -39,7 +39,7 @@ pub fn main() !void {
     _ = args.next() orelse "pawnocchio";
 
     {
-        const bench_depth_default: i32 = 13;
+        const bench_depth_default: i32 = 11;
         const datagen_nodes_default: u64 = 7000;
         const datagen_threads_default: usize = std.Thread.getCpuCount() catch 1;
         var do_bench = false;
@@ -871,6 +871,25 @@ pub fn main() !void {
             return;
         } else if (std.ascii.eqlIgnoreCase(command, "wait")) {
             root.engine.waitUntilDoneSearching();
+        } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "get_scale")) {
+            const filename = parts.next() orelse "";
+            var file = try std.fs.cwd().openFile(filename, .{});
+            defer file.close();
+
+            var reader_buf: [4096]u8 = undefined;
+            var file_reader = file.reader(&reader_buf);
+
+            var sum: i64 = 0;
+
+            while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
+                std.debug.print("'{s}'\n", .{data_line});
+                const end = std.mem.indexOfScalar(u8, data_line, '[') orelse data_line.len;
+                const fen = data_line[0..end];
+
+                const raw_eval = @import("nnue.zig").nnEval(&(try Board.parseFen(fen, true)));
+                sum += raw_eval;
+            } else |_| {}
+            std.debug.print("{}\n", .{sum});
         } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "nneval")) {
             const raw_eval = @import("nnue.zig").nnEval(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);

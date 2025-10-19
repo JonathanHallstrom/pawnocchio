@@ -388,7 +388,7 @@ fn qsearch(
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -415,7 +415,7 @@ fn qsearch(
     }
 
     if (self.ply >= MAX_PLY - 1) {
-        return static_eval;
+        return if (is_in_check) 0 else static_eval;
     }
 
     var best_score = static_eval;
@@ -713,7 +713,7 @@ fn search(
         }
     }
 
-    if (depth >= 4 and
+    if (depth >= 4 + (if (is_pv) 4 else 0) and
         (is_pv or cutnode) and
         !has_tt_move)
     {
@@ -726,7 +726,7 @@ fn search(
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -761,31 +761,33 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move);
+        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
-        if (depth <= 12 and
-            eval >= beta +
-                tunable_constants.rfp_base +
-                tunable_constants.rfp_mult * depth +
-                tunable_constants.rfp_quad * depth * depth -
-                tunable_constants.rfp_improving_margin * @intFromBool(improving and !opponent_has_easy_capture) -
-                tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-                tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-                (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
+        if (eval >= beta +
+            tunable_constants.rfp_base +
+            tunable_constants.rfp_mult * depth +
+            tunable_constants.rfp_quad * depth * depth -
+            tunable_constants.rfp_improving_margin * @intFromBool(improving) -
+            tunable_constants.rfp_improving_easy_margin * @intFromBool(improving and !opponent_has_easy_capture) -
+            tunable_constants.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) -
+            tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
+            tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
+            (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
-        if (depth <= 3 and
-            eval +
-                tunable_constants.razoring_offs +
-                tunable_constants.razoring_mult * depth +
-                tunable_constants.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
+        const depth_3 = @max(0, depth - 3);
+        if (eval +
+            tunable_constants.razoring_offs +
+            tunable_constants.razoring_mult * depth +
+            tunable_constants.razoring_quad * depth_3 * depth_3 +
+            tunable_constants.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
@@ -931,15 +933,34 @@ fn search(
                     mp.skip_quiets = true;
                     continue;
                 }
+            } else {
+                const futility_value = eval +
+                    tunable_constants.fp_base +
+                    @divTrunc(lmr_depth * tunable_constants.fp_mult, 1024) +
+                    SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
+                if (mp.stage == .bad_noisies and
+                    !is_in_check and
+                    lmr_depth <= 6104 and
+                    @abs(alpha) < 2000 and
+                    futility_value <= alpha)
+                {
+                    if (!evaluation.isTBScore(best_score)) {
+                        best_score = @intCast(@max(best_score, futility_value));
+                    }
+                    break;
+                }
             }
 
-            const see_pruning_thresh = if (is_quiet)
+            var see_pruning_thresh = if (is_quiet)
                 @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth >> 10
             else
                 @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
 
-            if (!is_pv and
-                !skip_see_pruning and
+            if (is_pv) {
+                see_pruning_thresh -= tunable_constants.see_pv_offs;
+            }
+
+            if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
             {
                 continue;
@@ -1023,7 +1044,7 @@ fn search(
                 self.node_counts[move.from().toInt()][move.to().toInt()] += self.nodes - node_count_before;
             };
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move);
+            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
@@ -1194,7 +1215,7 @@ fn search(
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
-                self.histories.updateCorrection(board, cur.move, corrected_static_eval, best_score, depth);
+                self.histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, depth);
             }
         }
     }
