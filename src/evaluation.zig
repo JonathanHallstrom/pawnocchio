@@ -43,6 +43,18 @@ pub fn initThreadLocals() void {
 pub const State = impl.State;
 pub const evaluate: fn (comptime root.Colour, *const Board, *const Board, *State) i16 = impl.evaluate;
 
+pub fn evalPosition(board: *const Board) i16 {
+    var state = State.init(board);
+
+    return switch (board.stm) {
+        inline else => |stm| evaluate(stm, board, board, &state),
+    };
+}
+
+pub fn evalFen(fen: []const u8) !i16 {
+    return evalPosition(&try Board.parseFen(fen, true));
+}
+
 pub const inf_score: i16 = 32767;
 pub const checkmate_score: i16 = 32000;
 pub const highest_non_mate_score = checkmate_score - root.Searcher.MAX_PLY - 1;

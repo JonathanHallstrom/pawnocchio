@@ -871,7 +871,7 @@ pub fn main() !void {
             return;
         } else if (std.ascii.eqlIgnoreCase(command, "wait")) {
             root.engine.waitUntilDoneSearching();
-        } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "get_scale")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "get_scale")) {
             const filename = parts.next() orelse "";
             var file = try std.fs.cwd().openFile(filename, .{});
             defer file.close();
@@ -882,11 +882,10 @@ pub fn main() !void {
             var sum: i64 = 0;
 
             while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
-                std.debug.print("'{s}'\n", .{data_line});
                 const end = std.mem.indexOfScalar(u8, data_line, '[') orelse data_line.len;
                 const fen = data_line[0..end];
 
-                const raw_eval = @import("nnue.zig").nnEval(&(try Board.parseFen(fen, true)));
+                const raw_eval = try root.evaluation.evalFen(fen);
                 sum += raw_eval;
             } else |_| {}
             std.debug.print("{}\n", .{sum});
@@ -897,7 +896,7 @@ pub fn main() !void {
             write("raw eval: {}\n", .{raw_eval});
             write("scaled eval: {}\n", .{scaled});
             write("scaled and normalized eval: {}\n", .{normalized});
-        } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
             for ([_][]const u8{
                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
                 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
@@ -912,7 +911,7 @@ pub fn main() !void {
                 "1nbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk - 0 1",
             }) |fen| {
                 write("FEN: {s}\n", .{fen});
-                write("EVAL: {}\n", .{@import("nnue.zig").nnEval(&try Board.parseFen(fen, false))});
+                write("EVAL: {}\n", .{try root.evaluation.evalFen(fen)});
             }
         } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
             const hce = @import("hce.zig");
