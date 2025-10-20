@@ -1019,7 +1019,7 @@ fn search(
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
-                extension -= 2;
+                extension -= @as(u8, 2) + @intFromBool(!is_pv);
             }
         }
         num_searched += 1;
