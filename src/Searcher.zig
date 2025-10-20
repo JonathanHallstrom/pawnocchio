@@ -539,6 +539,10 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
     const legal_factor = int(i64, @log2(float(legal)) * float(legal_mult) + float(legal_offs));
     reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
 
+    if (depth < 3) {
+        reduction -= 1024;
+    }
+
     return reduction;
 }
 
@@ -1047,7 +1051,7 @@ fn search(
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
-            if (depth >= 3 and num_searched > 1) {
+            if (depth >= 2 and num_searched > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
