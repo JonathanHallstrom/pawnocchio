@@ -567,11 +567,11 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
     comptime var two = 0;
     comptime var three = 0;
     inline for (0..N) |i| {
-        res += weights.one[i] * @intFromBool(params[i]);
+        res += @intCast(weights.one[i] * @intFromBool(params[i]));
         inline for (i + 1..N) |j| {
-            res += weights.two[two] * @intFromBool(params[i] and params[j]);
+            res += @intCast(weights.two[two] * @intFromBool(params[i] and params[j]));
             inline for (j + 1..N) |k| {
-                res += weights.three[three] * @intFromBool(params[i] and params[j] and params[k]);
+                res += @intCast(weights.three[three] * @intFromBool(params[i] and params[j] and params[k]));
                 three += 1;
             }
             two += 1;
@@ -754,6 +754,9 @@ fn search(
         depth += 1;
     }
 
+    const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
+    const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
+
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
@@ -765,7 +768,6 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
         if (eval >= beta +
             tunable_constants.rfp_base +
             tunable_constants.rfp_mult * depth +
@@ -780,7 +782,6 @@ fn search(
             return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         const depth_3 = @max(0, depth - 3);
         if (eval +
             tunable_constants.razoring_offs +
@@ -1052,7 +1053,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunable_constants.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += getFactorisedLmr(8, .{
+                reduction += getFactorisedLmr(10, .{
                     is_pv,
                     cutnode,
                     improving,
@@ -1061,6 +1062,8 @@ fn search(
                     is_quiet,
                     gives_check,
                     cur.failhighs > 2,
+                    we_have_easy_capture,
+                    opponent_has_easy_capture,
                 });
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
