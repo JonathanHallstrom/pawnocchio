@@ -934,12 +934,12 @@ fn search(
                 }
             } else {
                 const futility_value = eval +
-                    tunable_constants.fp_base +
-                    @divTrunc(lmr_depth * tunable_constants.fp_mult, 1024) +
+                    tunable_constants.bnfp_base +
+                    @divTrunc(lmr_depth * tunable_constants.bnfp_mult, 1024) +
                     SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
                 if (mp.stage == .bad_noisies and
                     !is_in_check and
-                    lmr_depth <= 6104 and
+                    lmr_depth <= tunable_constants.bnfp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
                 {
