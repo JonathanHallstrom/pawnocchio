@@ -277,7 +277,9 @@ pub const HistoryTable = struct {
         };
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
+            if (!moves[i].move.isNull()) {
+                res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
+            }
         }
 
         return @divTrunc(res, 1024);
@@ -300,7 +302,10 @@ pub const HistoryTable = struct {
         };
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
+
+            if (!moves[i].move.isNull()) {
+                res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
+            }
         }
 
         return @divTrunc(res, 1024);
@@ -319,7 +324,9 @@ pub const HistoryTable = struct {
         self.pawn.update(board, typed, depth, is_bonus);
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            self.countermove.update(board.stm, typed, stm, moves[i], depth, is_bonus);
+            if (!moves[i].move.isNull()) {
+                self.countermove.update(board.stm, typed, stm, moves[i], depth, is_bonus);
+            }
         }
     }
 
