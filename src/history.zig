@@ -456,6 +456,6 @@ const CorrhistEntry = struct {
     val: i16 = 0,
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        gravityUpdate(&self.val, std.math.clamp(@divTrunc(err * weight, 1024), -16000, 16000));
+        gravityUpdate(&self.val, std.math.clamp(@divTrunc(err * weight, 1024), -MAX_CORRHIST / 4, MAX_CORRHIST / 4));
     }
 };
