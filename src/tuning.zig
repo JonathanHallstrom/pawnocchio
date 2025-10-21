@@ -119,16 +119,14 @@ const tunable_defaults = struct {
     pub const aspiration_multiplier: i32 = 1166;
     pub const lmr_quiet_base: i32 = 3700;
     pub const lmr_noisy_base: i32 = 2192;
-    pub const lmr_quiet_log_mult: i32 = 171;
-    pub const lmr_noisy_log_mult: i32 = 216;
-    pub const lmr_quiet_depth_mult: i32 = 944;
-    pub const lmr_noisy_depth_mult: i32 = 729;
-    pub const lmr_quiet_depth_offs: i32 = -117;
-    pub const lmr_noisy_depth_offs: i32 = 198;
-    pub const lmr_quiet_legal_mult: i32 = 1172;
-    pub const lmr_noisy_legal_mult: i32 = 1074;
-    pub const lmr_quiet_legal_offs: i32 = -26;
-    pub const lmr_noisy_legal_offs: i32 = -136;
+    pub const lmr_quiet_depth_mult: i32 = 386;
+    pub const lmr_noisy_depth_mult: i32 = 335;
+    pub const lmr_quiet_depth_offs: i32 = -48;
+    pub const lmr_noisy_depth_offs: i32 = 91;
+    pub const lmr_quiet_legal_mult: i32 = 479;
+    pub const lmr_noisy_legal_mult: i32 = 493;
+    pub const lmr_quiet_legal_offs: i32 = -11;
+    pub const lmr_noisy_legal_offs: i32 = -62;
     pub const lmr_quiet_history_mult: i32 = 586;
     pub const lmr_noisy_history_mult: i32 = 955;
     pub const lmr_corrhist_mult: i32 = 6921;
@@ -280,8 +278,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = 1127, .max = 4015, .c_end = 160 },
     .{ .name = "lmr_quiet_base", .default = tunable_defaults.lmr_quiet_base, .min = -10, .max = 6772, .c_end = 270 },
     .{ .name = "lmr_noisy_base", .default = tunable_defaults.lmr_noisy_base, .min = -10, .max = 4412, .c_end = 176 },
-    .{ .name = "lmr_quiet_log_mult", .default = tunable_defaults.lmr_quiet_log_mult, .min = -10, .max = 510, .c_end = 20 },
-    .{ .name = "lmr_noisy_log_mult", .default = tunable_defaults.lmr_noisy_log_mult, .min = -10, .max = 547, .c_end = 21 },
     .{ .name = "lmr_quiet_depth_mult", .default = tunable_defaults.lmr_quiet_depth_mult, .min = -10, .max = 1895, .c_end = 75 },
     .{ .name = "lmr_noisy_depth_mult", .default = tunable_defaults.lmr_noisy_depth_mult, .min = -10, .max = 2132, .c_end = 84 },
     .{ .name = "lmr_quiet_depth_offs", .default = tunable_defaults.lmr_quiet_depth_offs, .min = -1024, .max = 1024, .c_end = 32 },
@@ -441,8 +437,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
     pub var lmr_quiet_base = tunable_defaults.lmr_quiet_base;
     pub var lmr_noisy_base = tunable_defaults.lmr_noisy_base;
-    pub var lmr_quiet_log_mult = tunable_defaults.lmr_quiet_log_mult;
-    pub var lmr_noisy_log_mult = tunable_defaults.lmr_noisy_log_mult;
     pub var lmr_quiet_depth_mult = tunable_defaults.lmr_quiet_depth_mult;
     pub var lmr_noisy_depth_mult = tunable_defaults.lmr_noisy_depth_mult;
     pub var lmr_quiet_depth_offs = tunable_defaults.lmr_quiet_depth_offs;

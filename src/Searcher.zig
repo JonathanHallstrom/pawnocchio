@@ -527,7 +527,6 @@ fn int(comptime T: type, x: anytype) T {
 
 fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
     const base = if (is_quiet) tunable_constants.lmr_quiet_base else tunable_constants.lmr_noisy_base;
-    const log_mult = if (is_quiet) tunable_constants.lmr_quiet_log_mult else tunable_constants.lmr_noisy_log_mult;
     const depth_mult = if (is_quiet) tunable_constants.lmr_quiet_depth_mult else tunable_constants.lmr_noisy_depth_mult;
     const legal_mult = if (is_quiet) tunable_constants.lmr_quiet_legal_mult else tunable_constants.lmr_noisy_legal_mult;
     const depth_offs = if (is_quiet) tunable_constants.lmr_quiet_depth_offs else tunable_constants.lmr_noisy_depth_offs;
@@ -537,7 +536,7 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
 
     const depth_factor = int(i64, @log2(float(depth)) * float(depth_mult) + float(depth_offs));
     const legal_factor = int(i64, @log2(float(legal)) * float(legal_mult) + float(legal_offs));
-    reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
+    reduction += @intCast(depth_factor * legal_factor >> 10);
 
     return reduction;
 }
