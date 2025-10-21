@@ -822,19 +822,14 @@ pub inline fn updatePins(noalias self: *Board, comptime col: Colour) void {
     const bishop_sliders = (self.bishops() | self.queens()) & self.occupancyFor(col.flipped());
     var pinned: u64 = 0;
     // var pinner: u64 = 0;
-    for ([_]u64{
-        king_as_rook_attacks & rook_sliders,
-        king_as_bishop_attacks & bishop_sliders,
-    }) |potential_pinners| {
-        var iter = Bitboard.iterator(potential_pinners);
-        while (iter.next()) |potential_pinner| {
-            const ray_between = Bitboard.queenRayBetweenExclusive(king_sq, potential_pinner);
-            const pieces_between = occ & ray_between;
-            if (@popCount(pieces_between) == 1) {
-                if (pieces_between & us_occ != 0) {
-                    pinned |= pieces_between;
-                    // pinner |= potential_pinner.toBitboard();
-                }
+    var iter = Bitboard.iterator((king_as_rook_attacks & rook_sliders) | (king_as_bishop_attacks & bishop_sliders));
+    while (iter.next()) |potential_pinner| {
+        const ray_between = Bitboard.queenRayBetweenExclusive(king_sq, potential_pinner);
+        const pieces_between = occ & ray_between;
+        if (@popCount(pieces_between) == 1) {
+            if (pieces_between & us_occ != 0) {
+                pinned |= pieces_between;
+                // pinner |= potential_pinner.toBitboard();
             }
         }
     }
