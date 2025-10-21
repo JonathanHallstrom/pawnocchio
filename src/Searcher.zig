@@ -786,7 +786,8 @@ fn search(
             tunable_constants.razoring_offs +
             tunable_constants.razoring_mult * depth +
             tunable_constants.razoring_quad * depth_3 * depth_3 +
-            tunable_constants.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
+            tunable_constants.razoring_easy_capture * @intFromBool(we_have_easy_capture) -
+            @as(i32, 50) * @intFromBool(opponent_has_easy_capture) <= alpha)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
