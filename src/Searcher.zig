@@ -1161,7 +1161,12 @@ fn search(
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
-                const hist_depth = depth + @as(i32, if (score >= beta + tunable_constants.high_eval_offs) 1 else 0);
+                var hist_depth = depth;
+                if (score >= beta + tunable_constants.high_eval_offs or
+                    !is_in_check and corrected_static_eval + 50 <= best_score)
+                {
+                    hist_depth += 1;
+                }
                 score_type = .lower;
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
