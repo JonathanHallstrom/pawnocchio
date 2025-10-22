@@ -284,6 +284,9 @@ pub const HistoryTable = struct {
         return @divTrunc(res, 1024);
     }
 
+    // var pawn_w: u64 = 0;
+    // var read_count: u64 = 0;
+    //
     pub inline fn readQuietOrdering(
         self: *const HistoryTable,
         board: *const Board,
@@ -292,7 +295,14 @@ pub const HistoryTable = struct {
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        const extra_pawn_weight: u16 = @popCount(board.pawns()) * @as(u16, 32) / @popCount(board.occupancy());
+        const pawn_count: u16 = @popCount(board.pawns());
+        const total_count: u16 = @popCount(board.occupancy());
+        const extra_pawn_weight = pawn_count * 16 / (total_count - pawn_count);
+        // read_count += 1;
+        // pawn_w += extra_pawn_weight;
+        // if (read_count % 1024 == 0) {
+        //     std.debug.print("{}\n", .{pawn_w * 1024 / read_count});
+        // }
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
         res += @divTrunc(tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed) * extra_pawn_weight, 16);
         const weights = [NUM_CONTHISTS]i32{
