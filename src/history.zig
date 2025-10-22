@@ -140,7 +140,7 @@ pub const PawnHistory = struct {
     }
 
     inline fn update(self: *PawnHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool, extra_weight: i32) void {
-        self.updateRaw(board, move, @divTrunc(extra_weight * if (is_bonus) bonus(depth) else -penalty(depth), 16));
+        self.updateRaw(board, move, @divTrunc(extra_weight * if (is_bonus) bonus(depth) else -penalty(depth), 1024));
     }
 
     inline fn read(self: *const PawnHistory, board: *const Board, move: TypedMove) i16 {
@@ -268,7 +268,6 @@ pub const HistoryTable = struct {
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-
         res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
         const weights = [NUM_CONTHISTS]i32{
@@ -280,13 +279,9 @@ pub const HistoryTable = struct {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-
         return @divTrunc(res, 1024);
     }
 
-    // var pawn_w: u64 = 0;
-    // var read_count: u64 = 0;
-    //
     pub inline fn readQuietOrdering(
         self: *const HistoryTable,
         board: *const Board,
@@ -295,11 +290,6 @@ pub const HistoryTable = struct {
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        // read_count += 1;
-        // pawn_w += extra_pawn_weight;
-        // if (read_count % 1024 == 0) {
-        //     std.debug.print("{}\n", .{pawn_w * 1024 / read_count});
-        // }
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
         const weights = [NUM_CONTHISTS]i32{
@@ -311,7 +301,6 @@ pub const HistoryTable = struct {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             res += weights[i] * self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-
         return @divTrunc(res, 1024);
     }
 
@@ -325,7 +314,7 @@ pub const HistoryTable = struct {
     ) void {
         const pawn_count: u16 = @popCount(board.pawns());
         const total_count: u16 = @popCount(board.occupancy());
-        const extra_pawn_weight = pawn_count * 16 / (total_count - pawn_count);
+        const extra_pawn_weight = pawn_count * 1024 / (total_count - pawn_count);
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus);
         self.pawn.update(board, typed, depth, is_bonus, extra_pawn_weight);
