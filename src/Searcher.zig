@@ -738,7 +738,7 @@ fn search(
     const eval = cur.static_eval;
     const prev_eval = self.stackEntry(-1).static_eval;
 
-    if (!tt_pv and
+    if (!is_pv and
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
         cur.reduction >= 3072 and
