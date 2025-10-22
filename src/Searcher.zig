@@ -465,9 +465,7 @@ fn qsearch(
                 continue;
             }
 
-            if (!is_in_check and
-                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)))
-            {
+            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)) {
                 continue;
             }
         }
