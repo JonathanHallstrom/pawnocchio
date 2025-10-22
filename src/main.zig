@@ -187,6 +187,7 @@ pub fn main() !void {
             }
         }
         if (do_datagen) {
+            try root.pyrrhic.init("/media/jonathanhallstrom/64a18cc9-6680-4f1b-a09f-56b812251151/5man_tablebases");
             std.debug.print("datagenning with {} threads\n", .{datagen_threads});
             try root.engine.setThreadCount(datagen_threads);
             if (datagen_positions) |positions| {

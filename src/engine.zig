@@ -174,7 +174,7 @@ fn datagenWorker(
         var num_adj_draw: u8 = 0;
         var num_adj_loss: u8 = 0;
         game_loop: for (0..2000) |move_idx| {
-            var limits = root.Limits.initFixedTime(std.time.ns_per_s);
+            var limits = root.Limits.initFixedTime(std.time.ns_per_s * 10);
             limits.soft_nodes = node_count;
             limits.hard_nodes = 100 * node_count;
             limits.min_depth = min_depth;
@@ -214,6 +214,26 @@ fn datagenWorker(
                 num_adj_draw += 1;
             } else {
                 num_adj_draw = 0;
+            }
+            if (rng.random().int(u8) == 0) {
+                limits.soft_nodes = 1000_000;
+                limits.hard_nodes = 100_000_000;
+                searcher.startSearch(
+                    root.Searcher.Params{
+                        .board = board,
+                        .limits = limits,
+                        .needs_full_reset = false,
+                        .previous_hashes = hashes,
+                        .normalize = false,
+                    },
+                    false,
+                    true,
+                );
+
+                const s = searcher.full_width_score_normalized;
+                if (@abs(s) > 50 and @abs(s) < 200) {
+                    std.debug.print("{s}\n", .{board.toFen().slice()});
+                }
             }
             switch (board.stm) {
                 inline else => |stm| {
@@ -341,14 +361,14 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
         pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 19 + clamped_pps) / 20 else pps;
-        std.debug.print("games:{} wins:{} draws:{} losses:{} positions:{} positions/s:{}\n", .{
-            stats.games.load(.seq_cst),
-            stats.wins.load(.seq_cst),
-            stats.draws.load(.seq_cst),
-            stats.losses.load(.seq_cst),
-            cur_positions,
-            pps_ema_opt.?,
-        });
+        // std.debug.print("games:{} wins:{} draws:{} losses:{} positions:{} positions/s:{}\n", .{
+        //     stats.games.load(.seq_cst),
+        //     stats.wins.load(.seq_cst),
+        //     stats.draws.load(.seq_cst),
+        //     stats.losses.load(.seq_cst),
+        //     cur_positions,
+        //     pps_ema_opt.?,
+        // });
     }
 }
 
