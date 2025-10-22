@@ -129,7 +129,7 @@ const tunable_defaults = struct {
     pub const lmr_noisy_legal_offs: i32 = -62;
     pub const lmr_quiet_history_mult: i32 = 586;
     pub const lmr_noisy_history_mult: i32 = 955;
-    pub const lmr_corrhist_mult: i32 = 6921;
+    pub const lmr_corrhist_mult: i32 = 1551;
     pub const lmr_dodeeper_margin: i32 = 57;
     pub const lmr_dodeeper_mult: i32 = 2;
     pub const nmp_margin_base: i32 = 250;
@@ -288,7 +288,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_noisy_legal_offs", .default = tunable_defaults.lmr_noisy_legal_offs, .min = -1024, .max = 1024, .c_end = 32 },
     .{ .name = "lmr_quiet_history_mult", .default = tunable_defaults.lmr_quiet_history_mult, .min = -10, .max = 1975, .c_end = 78 },
     .{ .name = "lmr_noisy_history_mult", .default = tunable_defaults.lmr_noisy_history_mult, .min = -10, .max = 2470, .c_end = 98 },
-    .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult, .min = -10, .max = 23695, .c_end = 947 },
+    .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult },
     .{ .name = "lmr_dodeeper_margin", .default = tunable_defaults.lmr_dodeeper_margin, .min = -10, .max = 140, .c_end = 5 },
     .{ .name = "lmr_dodeeper_mult", .default = tunable_defaults.lmr_dodeeper_mult, .min = 0, .max = 10, .c_end = 0.5 },
     .{ .name = "nmp_margin_base", .default = tunable_defaults.nmp_margin_base },
