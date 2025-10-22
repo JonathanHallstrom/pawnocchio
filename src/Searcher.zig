@@ -652,12 +652,8 @@ fn search(
     }
 
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
-        if (board.halfmove >= 100) {
-            if (is_in_check) {
-                return if (board.hasLegalMove()) 0 else evaluation.matedIn(self.ply);
-            } else {
-                return 0;
-            }
+        if (board.halfmove >= 100 and is_in_check and !board.hasLegalMove()) {
+            return evaluation.matedIn(self.ply);
         } else {
             return 0;
         }
