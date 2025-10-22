@@ -802,9 +802,11 @@ fn search(
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
+            const reduction = nmp_reduction >> 3;
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
+            self.stackEntry(0).reduction = reduction;
             const nmp_score = -self.search(
                 false,
                 false,
@@ -814,6 +816,7 @@ fn search(
                 depth - nmp_reduction,
                 !cutnode,
             );
+            self.stackEntry(0).reduction = 0;
             self.unmakeNullMove(stm);
 
             if (nmp_score >= beta) {
