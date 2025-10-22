@@ -268,6 +268,7 @@ pub const HistoryTable = struct {
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
+
         res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
         const weights = [NUM_CONTHISTS]i32{
@@ -291,8 +292,9 @@ pub const HistoryTable = struct {
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
+        const extra_pawn_weight: u16 = @popCount(board.pawns()) * @as(u16, 32) / @popCount(board.occupancy());
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
-        res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
+        res += @divTrunc(tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed) * extra_pawn_weight, 16);
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_ordering_weight,
             tunable_constants.cont2_ordering_weight,
