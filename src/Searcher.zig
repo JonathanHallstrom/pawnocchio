@@ -830,6 +830,7 @@ fn search(
             }
         }
     }
+    improving = improving or eval >= beta;
 
     var mp = MovePicker.init(
         board,
