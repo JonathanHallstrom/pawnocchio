@@ -103,8 +103,6 @@ const tunable_defaults = struct {
     pub const cont2_pruning_weight: i32 = 1039;
     pub const cont4_ordering_weight: i32 = 830;
     pub const cont4_pruning_weight: i32 = 41;
-    pub const noisy_ordering_weight: i32 = 1198;
-    pub const noisy_pruning_weight: i32 = 1183;
     pub const rfp_base: i32 = 53;
     pub const rfp_mult: i32 = 42;
     pub const rfp_quad: i32 = 6;
@@ -119,16 +117,14 @@ const tunable_defaults = struct {
     pub const aspiration_multiplier: i32 = 1166;
     pub const lmr_quiet_base: i32 = 3700;
     pub const lmr_noisy_base: i32 = 2192;
-    pub const lmr_quiet_log_mult: i32 = 171;
-    pub const lmr_noisy_log_mult: i32 = 216;
-    pub const lmr_quiet_depth_mult: i32 = 944;
-    pub const lmr_noisy_depth_mult: i32 = 729;
-    pub const lmr_quiet_depth_offs: i32 = -117;
-    pub const lmr_noisy_depth_offs: i32 = 198;
-    pub const lmr_quiet_legal_mult: i32 = 1172;
-    pub const lmr_noisy_legal_mult: i32 = 1074;
-    pub const lmr_quiet_legal_offs: i32 = -26;
-    pub const lmr_noisy_legal_offs: i32 = -136;
+    pub const lmr_quiet_depth_mult: i32 = 386;
+    pub const lmr_noisy_depth_mult: i32 = 335;
+    pub const lmr_quiet_depth_offs: i32 = -48;
+    pub const lmr_noisy_depth_offs: i32 = 91;
+    pub const lmr_quiet_legal_mult: i32 = 479;
+    pub const lmr_noisy_legal_mult: i32 = 493;
+    pub const lmr_quiet_legal_offs: i32 = -11;
+    pub const lmr_noisy_legal_offs: i32 = -62;
     pub const lmr_quiet_history_mult: i32 = 586;
     pub const lmr_noisy_history_mult: i32 = 955;
     pub const lmr_corrhist_mult: i32 = 6921;
@@ -143,7 +139,7 @@ const tunable_defaults = struct {
     pub const fp_mult: i32 = 82;
     pub const fp_hist_mult: i32 = 127;
     pub const bnfp_depth_limit: i32 = 6104;
-    pub const bnfp_base: i32 = 323;
+    pub const bnfp_base: i32 = 200;
     pub const bnfp_mult: i32 = 82;
     pub const qs_see_threshold: i32 = -75;
     pub const see_quiet_pruning_mult: i32 = -81;
@@ -264,8 +260,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont2_pruning_weight", .default = tunable_defaults.cont2_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont4_ordering_weight", .default = tunable_defaults.cont4_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "noisy_ordering_weight", .default = tunable_defaults.noisy_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "noisy_pruning_weight", .default = tunable_defaults.noisy_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 100, .c_end = 5 },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 100 },
     .{ .name = "rfp_quad", .default = tunable_defaults.rfp_quad, .min = -10, .max = 30 },
@@ -280,8 +274,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = 1127, .max = 4015, .c_end = 160 },
     .{ .name = "lmr_quiet_base", .default = tunable_defaults.lmr_quiet_base, .min = -10, .max = 6772, .c_end = 270 },
     .{ .name = "lmr_noisy_base", .default = tunable_defaults.lmr_noisy_base, .min = -10, .max = 4412, .c_end = 176 },
-    .{ .name = "lmr_quiet_log_mult", .default = tunable_defaults.lmr_quiet_log_mult, .min = -10, .max = 510, .c_end = 20 },
-    .{ .name = "lmr_noisy_log_mult", .default = tunable_defaults.lmr_noisy_log_mult, .min = -10, .max = 547, .c_end = 21 },
     .{ .name = "lmr_quiet_depth_mult", .default = tunable_defaults.lmr_quiet_depth_mult, .min = -10, .max = 1895, .c_end = 75 },
     .{ .name = "lmr_noisy_depth_mult", .default = tunable_defaults.lmr_noisy_depth_mult, .min = -10, .max = 2132, .c_end = 84 },
     .{ .name = "lmr_quiet_depth_offs", .default = tunable_defaults.lmr_quiet_depth_offs, .min = -1024, .max = 1024, .c_end = 32 },
@@ -425,8 +417,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var cont2_pruning_weight = tunable_defaults.cont2_pruning_weight;
     pub var cont4_ordering_weight = tunable_defaults.cont4_ordering_weight;
     pub var cont4_pruning_weight = tunable_defaults.cont4_pruning_weight;
-    pub var noisy_ordering_weight = tunable_defaults.noisy_ordering_weight;
-    pub var noisy_pruning_weight = tunable_defaults.noisy_pruning_weight;
     pub var rfp_base = tunable_defaults.rfp_base;
     pub var rfp_mult = tunable_defaults.rfp_mult;
     pub var rfp_quad = tunable_defaults.rfp_quad;
@@ -441,8 +431,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
     pub var lmr_quiet_base = tunable_defaults.lmr_quiet_base;
     pub var lmr_noisy_base = tunable_defaults.lmr_noisy_base;
-    pub var lmr_quiet_log_mult = tunable_defaults.lmr_quiet_log_mult;
-    pub var lmr_noisy_log_mult = tunable_defaults.lmr_noisy_log_mult;
     pub var lmr_quiet_depth_mult = tunable_defaults.lmr_quiet_depth_mult;
     pub var lmr_noisy_depth_mult = tunable_defaults.lmr_noisy_depth_mult;
     pub var lmr_quiet_depth_offs = tunable_defaults.lmr_quiet_depth_offs;

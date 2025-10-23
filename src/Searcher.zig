@@ -466,9 +466,7 @@ fn qsearch(
                 continue;
             }
 
-            if (!is_in_check and
-                (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)))
-            {
+            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunable_constants.qs_see_threshold, .pruning)) {
                 continue;
             }
         }
@@ -528,7 +526,6 @@ fn int(comptime T: type, x: anytype) T {
 
 fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
     const base = if (is_quiet) tunable_constants.lmr_quiet_base else tunable_constants.lmr_noisy_base;
-    const log_mult = if (is_quiet) tunable_constants.lmr_quiet_log_mult else tunable_constants.lmr_noisy_log_mult;
     const depth_mult = if (is_quiet) tunable_constants.lmr_quiet_depth_mult else tunable_constants.lmr_noisy_depth_mult;
     const legal_mult = if (is_quiet) tunable_constants.lmr_quiet_legal_mult else tunable_constants.lmr_noisy_legal_mult;
     const depth_offs = if (is_quiet) tunable_constants.lmr_quiet_depth_offs else tunable_constants.lmr_noisy_depth_offs;
@@ -538,7 +535,7 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
 
     const depth_factor = int(i64, @log2(float(depth)) * float(depth_mult) + float(depth_offs));
     const legal_factor = int(i64, @log2(float(legal)) * float(legal_mult) + float(legal_offs));
-    reduction += @intCast(depth_factor * log_mult * legal_factor >> 20);
+    reduction += @intCast(depth_factor * legal_factor >> 10);
 
     return reduction;
 }
@@ -656,12 +653,8 @@ fn search(
     }
 
     if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
-        if (board.halfmove >= 100) {
-            if (is_in_check) {
-                return if (board.hasLegalMove()) 0 else evaluation.matedIn(self.ply);
-            } else {
-                return 0;
-            }
+        if (board.halfmove >= 100 and is_in_check and !board.hasLegalMove()) {
+            return evaluation.matedIn(self.ply);
         } else {
             return 0;
         }
@@ -746,7 +739,7 @@ fn search(
     const eval = cur.static_eval;
     const prev_eval = self.stackEntry(-1).static_eval;
 
-    if (!tt_pv and
+    if (!is_pv and
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
         cur.reduction >= 3072 and
