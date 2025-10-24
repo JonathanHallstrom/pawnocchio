@@ -30,7 +30,7 @@ fn parseScoreFromInfoBlock(info: []const u8) !i16 {
 
     const score_str = info[1..end_score];
     const raw_score: f64 =
-        if (std.mem.count(u8, score_str, "M") > 0)
+        if (std.mem.count(u8, score_str, "M") + std.mem.count(u8, score_str, "#") > 0)
             (if (score_str[0] == '+') 1000.0 else -1000.0)
         else
             try std.fmt.parseFloat(f64, score_str);
