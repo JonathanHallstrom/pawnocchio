@@ -770,7 +770,7 @@ fn search(
             tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
             (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
-            return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
+            return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
@@ -789,7 +789,7 @@ fn search(
                 alpha + 1,
             );
 
-            return razor_score;
+            return evaluation.clampScore(razor_score);
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
@@ -1008,7 +1008,7 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
-                return @intCast(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
+                return evaluation.clampScore(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
