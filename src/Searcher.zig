@@ -908,12 +908,12 @@ fn search(
                     continue;
                 }
 
-                const futility_value = eval +
+                const futility_value = (if (is_in_check) tt_entry.score else eval) +
                     tunable_constants.fp_base +
                     @divTrunc(lmr_depth * tunable_constants.fp_mult +
                         @divTrunc(history_score * tunable_constants.fp_hist_mult, 4), 1024);
                 if (!is_pv and
-                    !is_in_check and
+                    (!is_in_check or tt_hit and tt_entry.flags.score_type != .none) and
                     lmr_depth <= tunable_constants.fp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
