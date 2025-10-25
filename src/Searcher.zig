@@ -1404,12 +1404,12 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             },
         }
         if (@abs(previous_score - score) < tunable_constants.eval_stab_margin) {
-            self.eval_stability = @min(self.eval_stability + 1, 8);
+            self.eval_stability = self.eval_stability + 1;
         } else {
             self.eval_stability = 0;
         }
         if (previous_move == self.root_move) {
-            self.move_stability = @min(self.move_stability + 1, 8);
+            self.move_stability = self.move_stability + 1;
         } else {
             self.move_stability = 0;
         }
