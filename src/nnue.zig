@@ -26,6 +26,8 @@ const evaluation = root.evaluation;
 const Move = root.Move;
 
 const builtin = @import("builtin");
+const has_avx512 = std.Target.x86.featureSetHas(builtin.cpu.model.features, .avx512f);
+const has_avx2 = std.Target.x86.featureSetHas(builtin.cpu.model.features, .avx2);
 const CAN_VERBATIM_NET = builtin.cpu.arch.endian() == .little and builtin.mode == .ReleaseFast and !build_options.runtime_net;
 const build_options = @import("build_options");
 
@@ -47,6 +49,33 @@ fn mullo(
     b: @Vector(N, i16),
 ) @Vector(N, i16) {
     return a *% b;
+}
+
+fn one_iter(
+    comptime N: comptime_int,
+    a: @Vector(N, i16),
+    b: @Vector(N, i16),
+    min: @Vector(N, i16),
+    max: @Vector(N, i16),
+) @Vector(N / 2, i32) {
+    // if (has_avx512 and N == 32 or has_avx2 and N == 16) {
+    //     var tmp: @Vector(32, i16) = undefined;
+    //     return asm (
+    //         \\vpminsw %[v], %[max], %[v]
+    //         \\vpmaxsw %[v], %[min], %[v]
+    //         \\vpmullw %[v], %[w], %[tmp]
+    //         \\vpmaddwd %[v], %[tmp], %[res]
+    //         : [res] "=v" (-> @Vector(16, i32)),
+    //           [tmp] "=&v" (tmp),
+    //         : [v] "v" (a),
+    //           [w] "v" (b),
+    //           [min] "v" (min),
+    //           [max] "v" (max),
+    //     );
+    // }
+    const ac = @max(@min(a, max), min);
+    const m = b *% ac;
+    return madd(N, m, ac);
 }
 
 const Weights = extern struct {
@@ -341,16 +370,13 @@ const Accumulator = struct {
             inline for (&accs) |*acc| {
                 defer i += VEC_SIZE;
                 const us: Vec = us_acc[i..][0..VEC_SIZE].*;
-                const us_clamped: Vec = @max(@min(us, ONE), ZERO);
                 const them: Vec = them_acc[i..][0..VEC_SIZE].*;
-                const them_clamped: Vec = @max(@min(them, ONE), ZERO);
 
                 const us_weights: Vec = (&weights.output_weights)[bucket_offset..][i..][0..VEC_SIZE].*;
                 const them_weights: Vec = (&weights.output_weights)[bucket_offset..][i + HIDDEN_SIZE ..][0..VEC_SIZE].*;
 
-                acc.* +=
-                    madd(VEC_SIZE, mullo(VEC_SIZE, us_weights, us_clamped), us_clamped) +
-                    madd(VEC_SIZE, mullo(VEC_SIZE, them_weights, them_clamped), them_clamped);
+                acc.* += one_iter(VEC_SIZE, us, us_weights, ZERO, ONE) +
+                    one_iter(VEC_SIZE, them, them_weights, ZERO, ONE);
             }
         }
         var acc = accs[0];
