@@ -93,11 +93,11 @@ fn computeNodeCountFactor(_: *const Limits, best_move_count: u64, total_nodes: u
 }
 
 fn computeEvalStabilityFactor(_: *const Limits, stab: i64) u64 {
-    return @intCast(@max(1, tunable_constants.eval_stab_base - @divTrunc(tunable_constants.eval_stab_offs * stab, 1024)));
+    return @intCast(@max(300, tunable_constants.eval_stab_base - @divTrunc(tunable_constants.eval_stab_offs * stab, 1024)));
 }
 
 fn computeMoveStabilityFactor(_: *const Limits, stab: i64) u64 {
-    return @intCast(@max(1, tunable_constants.move_stab_base - @divTrunc(tunable_constants.move_stab_offs * stab, 1024)));
+    return @intCast(@max(300, tunable_constants.move_stab_base - @divTrunc(tunable_constants.move_stab_offs * stab, 1024)));
 }
 
 pub fn checkRoot(
