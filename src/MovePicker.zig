@@ -159,6 +159,10 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += self.histories.readNoisy(self.board, move);
 
+    if (move.to() == self.moves[0].move.to()) {
+        res += 4096;
+    }
+
     return res;
 }
 
