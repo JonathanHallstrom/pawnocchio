@@ -189,6 +189,7 @@ pub const StackEntry = struct {
     move: TypedMove,
     move_is_noisy: bool,
     prev: TypedMove,
+    prevprev: TypedMove,
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
@@ -201,6 +202,7 @@ pub const StackEntry = struct {
         board_: *const Board,
         move_: TypedMove,
         prev_: TypedMove,
+        prevprev_: TypedMove,
         prev_evals: EvalPair,
         usable_moves_: u8,
     ) void {
@@ -208,6 +210,7 @@ pub const StackEntry = struct {
         self.move = move_;
         self.move_is_noisy = board_.isNoisy(move_.move);
         self.prev = prev_;
+        self.prevprev = prevprev_;
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = evaluation.inf_score;
@@ -284,6 +287,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
         board,
         TypedMove.fromBoard(board, move),
         prev_stack_entry.move,
+        prev_stack_entry.prev,
         prev_stack_entry.evals,
         prev_stack_entry.usable_moves + 1,
     );
@@ -310,6 +314,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
     new_stack_entry.init(
         board,
+        TypedMove.init(),
         TypedMove.init(),
         TypedMove.init(),
         prev_stack_entry.evals,
@@ -387,7 +392,7 @@ fn qsearch(
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, cur.prevprev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -717,7 +722,7 @@ fn search(
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, cur.prevprev, self.applyContempt(raw_static_eval));
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
@@ -752,7 +757,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
+        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev, cur.prevprev);
         // cutnodes are expected to fail high
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
@@ -1035,7 +1040,12 @@ fn search(
                 self.node_counts[move.from().toInt()][move.to().toInt()] += self.nodes - node_count_before;
             };
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
+            const corrhists_squared = self.histories.squaredCorrectionTerms(
+                board,
+                cur.move,
+                cur.prev,
+                cur.prevprev,
+            );
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
@@ -1206,7 +1216,7 @@ fn search(
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
-                self.histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, depth);
+                self.histories.updateCorrection(board, cur.move, cur.prev, cur.prevprev, corrected_static_eval, best_score, depth);
             }
         }
     }
@@ -1331,7 +1341,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     for (0..STACK_PADDING) |i| {
         self.search_stack[i] = std.mem.zeroes(StackEntry);
     }
-    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
+    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
     self.ttage +%= 1;
     if (params.needs_full_reset) {
