@@ -727,7 +727,7 @@ fn search(
             corrected_static_eval,
             corrected_static_eval,
             tt_entry.flags.score_type,
-        )) {
+        ) and !evaluation.isTBScore(tt_score)) {
             is_tt_corrected_eval = true;
             cur.static_eval = tt_score;
         } else {
@@ -916,6 +916,7 @@ fn search(
                     !is_in_check and
                     lmr_depth <= tunable_constants.fp_depth_limit and
                     @abs(alpha) < 2000 and
+                    @abs(beta) < 2000 and
                     futility_value <= alpha)
                 {
                     if (!evaluation.isTBScore(best_score)) {
