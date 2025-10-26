@@ -797,7 +797,8 @@ fn search(
             eval >= beta + tunable_constants.nmp_margin_base - tunable_constants.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
-            !cur.move.move.isNull())
+            !cur.move.move.isNull() and
+            cutnode)
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunable_constants.nmp_base + depth * tunable_constants.nmp_mult;
