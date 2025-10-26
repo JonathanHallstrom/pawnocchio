@@ -122,8 +122,9 @@ pub inline fn kings(self: Board) u64 {
     return self.pieces[5];
 }
 
-pub inline fn pieceOn(self: Board, sq: Square) ?PieceType {
+pub inline fn pieceOn(self: *const Board, sq: Square) ?PieceType {
     const cpt = (&self.mailbox)[sq.toInt()];
+
     return if (cpt.isNull()) null else cpt.toColouredPieceType().toPieceType();
 }
 
@@ -992,15 +993,13 @@ pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, e
         .default => {
             const from = move.from();
             const to = move.to();
-            const pt = (&self.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
-
-            const cap_opt = (&self.mailbox)[to.toInt()];
+            const pt = self.pieceOn(from).?;
 
             updated_castling_rights.updateSquare(from, stm);
-            if (cap_opt.opt()) |cap| {
+            if (self.pieceOn(move.to())) |cap| {
                 updated_halfmove = 0;
                 updated_castling_rights.updateSquare(to, stm.flipped());
-                self.movePieceCapture(stm, pt, from, to, cap.toPieceType(), to, eval_state);
+                self.movePieceCapture(stm, pt, from, to, cap, to, eval_state);
             } else {
                 self.movePiece(stm, pt, from, to, eval_state);
             }
@@ -1039,11 +1038,10 @@ pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, e
         .promotion => {
             const from = move.from();
             const to = move.to();
-            const cap_opt = (&self.mailbox)[to.toInt()];
             updated_halfmove = 0;
-            if (cap_opt.opt()) |cap| {
+            if (self.pieceOn(move.to())) |cap| {
                 updated_castling_rights.updateSquare(to, stm.flipped());
-                self.movePiecePromoCapture(stm, move.promoType(), from, to, cap.toPieceType(), to, eval_state);
+                self.movePiecePromoCapture(stm, move.promoType(), from, to, cap, to, eval_state);
             } else {
                 self.addPiece(stm, move.promoType(), to, eval_state);
                 self.removePiece(stm, .pawn, from, eval_state);
