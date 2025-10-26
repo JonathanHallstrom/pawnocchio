@@ -897,6 +897,9 @@ fn search(
                             lmp_linear_mult * depth +
                             lmp_quadratic_mult * depth * depth)
                 {
+                    if (!evaluation.isTBScore(best_score) and eval + 200 < alpha) {
+                        best_score = @max(best_score, evaluation.clampScore(eval));
+                    }
                     mp.skip_quiets = true;
                     continue;
                 }
