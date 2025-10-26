@@ -908,12 +908,15 @@ fn search(
                     continue;
                 }
 
-                const futility_value = eval +
+                var futility_value = eval +
                     tunable_constants.fp_base +
                     @divTrunc(lmr_depth * tunable_constants.fp_mult +
                         @divTrunc(history_score * tunable_constants.fp_hist_mult, 4), 1024);
-                if (!is_pv and
-                    !is_in_check and
+
+                if (is_pv) {
+                    futility_value += 100 + 30 * depth;
+                }
+                if (!is_in_check and
                     lmr_depth <= tunable_constants.fp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
