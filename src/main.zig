@@ -189,18 +189,22 @@ pub fn main() !void {
             if (std.mem.count(u8, arg, "vftotxt") > 0) {
                 var file = try std.fs.cwd().openFile(args.next() orelse "", .{});
                 defer file.close();
-                const stat = try file.stat();
+
+                var buf: [4096]u8 = undefined;
+                var br = file.reader(&buf);
 
                 // mapped_weights = try std.posix.mmap(null, Weights.WEIGHT_COUNT * @sizeOf(i16), std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
-                const mapped = try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, file.handle, 0);
-                defer std.posix.munmap(mapped);
 
                 const viriformat = root.viriformat;
-                var i: usize = 0;
-                while (i < mapped.len) {
+                while (!br.atEnd()) {
                     var marlin_board: viriformat.MarlinPackedBoard = undefined;
-                    @memcpy(std.mem.asBytes(&marlin_board), mapped[i..][0..32]);
-                    i += 32;
+                    br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+                        if (e == error.EndOfStream) {
+                            break;
+                        } else {
+                            return e;
+                        }
+                    };
 
                     var board = marlin_board.toBoard();
                     const wdl = @as(f64, @floatFromInt(marlin_board.wdl)) / 2.0;
@@ -213,8 +217,13 @@ pub fn main() !void {
                     }.impl;
                     while (true) {
                         var move_eval_pair: viriformat.MoveEvalPair = undefined;
-                        @memcpy(std.mem.asBytes(&move_eval_pair), mapped[i..][0..4]);
-                        i += 4;
+                        br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                            if (e == error.EndOfStream) {
+                                break;
+                            } else {
+                                return e;
+                            }
+                        };
                         const viri_move = move_eval_pair.move;
 
                         if (viri_move.data == 0) {
@@ -232,6 +241,114 @@ pub fn main() !void {
                         write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(move_eval_pair.eval.toNative()), wdl });
                     }
                 }
+                return;
+            }
+
+            if (std.mem.count(u8, arg, "analyse") > 0) {
+                var file: ?std.fs.File = null;
+                var approximate = false;
+                while (args.next()) |a| {
+                    if (std.mem.eql(u8, a, "--approximate")) {
+                        approximate = true;
+                    } else {
+                        file = try std.fs.cwd().openFile(a, .{});
+                    }
+                }
+                defer file.?.close();
+                const stat = try file.?.stat();
+
+                var buf: [4096]u8 = undefined;
+                var br = file.?.reader(&buf);
+
+                var sum_exits: i64 = 0;
+                var game_count: usize = 0;
+                var position_count: usize = 0;
+                var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
+                defer zobrist_set.deinit();
+
+                if (!approximate) {
+                    try zobrist_set.ensureTotalCapacity(@intCast((stat.size + 3) / 4));
+                }
+
+                var approximator = if (approximate) try @import("HyperLogLog.zig").init(20, allocator) else undefined;
+                defer if (approximate) approximator.deinit(allocator);
+
+                const viriformat = root.viriformat;
+                while (!br.atEnd()) {
+                    var marlin_board: viriformat.MarlinPackedBoard = undefined;
+                    br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+                        if (e == error.EndOfStream) {
+                            break;
+                        } else {
+                            return e;
+                        }
+                    };
+
+                    game_count += 1;
+
+                    if (game_count % 16384 == 0) {
+                        const unique_count = if (approximate) approximator.count() else zobrist_set.count();
+                        write("\rprogress: {}% average exit so far: {d:.2} unique positions: {}/{} ({}%)", .{
+                            @as(u128, br.logicalPos() * 100) / stat.size,
+                            @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(game_count)),
+                            unique_count,
+                            position_count,
+                            @as(u64, unique_count) * 100 / position_count,
+                        });
+                    }
+                    var board = marlin_board.toBoard();
+                    for (0..std.math.maxInt(usize)) |move_idx| {
+                        var move_eval_pair: viriformat.MoveEvalPair = undefined;
+                        br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                            if (e == error.EndOfStream) {
+                                break;
+                            } else {
+                                return e;
+                            }
+                        };
+                        const viri_move = move_eval_pair.move;
+
+                        if (move_idx == 0) {
+                            const exit = if (board.stm == .white) move_eval_pair.eval.toNative() else -move_eval_pair.eval.toNative();
+
+                            sum_exits += exit;
+                        }
+
+                        if (viri_move.data == 0) {
+                            break;
+                        }
+
+                        const move = viri_move.toMove(&board);
+
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                @setEvalBranchQuota(1 << 30);
+                                board.makeMove(stm, move, Board.NullEvalState{});
+                            },
+                        }
+
+                        if (approximate) {
+                            approximator.add(board.hash);
+                        } else {
+                            try zobrist_set.put(board.hash, void{});
+                        }
+                        position_count += 1;
+                    }
+                }
+
+                const unique_count = if (approximate) approximator.count() else zobrist_set.count();
+                write(
+                    \\
+                    \\average exit: {d:.2}
+                    \\unique positions: {}/{} ({}%)
+                    \\
+                , .{
+                    @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(game_count)),
+                    unique_count,
+                    position_count,
+                    @as(u64, unique_count) * 100 / position_count,
+                });
+
                 return;
             }
         }
