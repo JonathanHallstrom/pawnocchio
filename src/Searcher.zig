@@ -950,7 +950,7 @@ fn search(
             var see_pruning_thresh = if (is_quiet)
                 @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth >> 10
             else
-                @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
+                @divTrunc(history_score, 32) + (@as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20);
 
             if (is_pv) {
                 see_pruning_thresh -= tunable_constants.see_pv_offs;
