@@ -261,8 +261,11 @@ pub fn main() !void {
                 var br = file.?.reader(&buf);
 
                 var sum_exits: i64 = 0;
-                var game_count: usize = 0;
-                var position_count: usize = 0;
+                var game_count: u64 = 0;
+                var position_count: u64 = 0;
+                var wins: u64 = 0;
+                var draws: u64 = 0;
+                var losses: u64 = 0;
                 var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
                 defer zobrist_set.deinit();
 
@@ -285,6 +288,12 @@ pub fn main() !void {
                     };
 
                     game_count += 1;
+                    switch (marlin_board.wdl) {
+                        0 => losses += 1,
+                        1 => draws += 1,
+                        2 => wins += 1,
+                        else => unreachable,
+                    }
 
                     if (game_count % 16384 == 0) {
                         const unique_count = if (approximate) approximator.count() else zobrist_set.count();
@@ -341,12 +350,21 @@ pub fn main() !void {
                     \\
                     \\average exit: {d:.2}
                     \\unique positions: {}/{} ({}%)
+                    \\wins: {} ({}%)
+                    \\draws: {} ({}%)
+                    \\losses: {} ({}%)
                     \\
                 , .{
                     @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(game_count)),
                     unique_count,
                     position_count,
                     @as(u64, unique_count) * 100 / position_count,
+                    wins,
+                    100 * wins / game_count,
+                    draws,
+                    100 * draws / game_count,
+                    losses,
+                    100 * losses / game_count,
                 });
 
                 return;

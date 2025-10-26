@@ -238,27 +238,44 @@ pub const ViriMove = struct {
         return new(move.from(), move.to());
     }
 
+    // pub fn toMove(self: Self, board: *const Board) Move {
+    //     var moves = root.movegen.MoveListReceiver{};
+    //     root.movegen.generateAll(board, &moves);
+    //
+    //     var correct: Move = .init();
+    //     for (moves.vals.slice()) |move| {
+    //         if (ViriMove.fromMove(move).data == self.data) {
+    //             correct = move;
+    //         }
+    //     }
+    //     const res = self.toMoveImpl(board);
+    //
+    //     if (res != correct) {
+    //         std.debug.print("{s} {s} {s}\n", .{ board.toFen().slice(), res.toString(board).slice(), correct.toString(board).slice() });
+    //     }
+    //     return res;
+    // }
     pub fn toMove(self: Self, board: *const Board) Move {
-        var moves = root.movegen.MoveListReceiver{};
-        root.movegen.generateAll(board, &moves);
-
-        for (moves.vals.slice()) |move| {
-            if (ViriMove.fromMove(move).data == self.data) {
-                return move;
+        if (self.isPromo()) {
+            const promo_type = PieceType.fromInt(@intCast(1 + ((self.data & ~promo_flag_bits) >> 12)));
+            return Move.promo(self.from(), self.to(), promo_type);
+        }
+        if (self.isCastle()) {
+            if (self.from().toInt() < self.to().toInt()) {
+                return Move.castlingKingside(board.stm, self.from(), self.to());
+            } else {
+                return Move.castlingQueenside(board.stm, self.from(), self.to());
             }
         }
-
-        @panic("wtf");
-        // if (self.isCastle()) {
-        //     return if (self.from().toInt() < self.to().toInt()) Move.castlingKingside(board.stm, self.from(), self.to()) else Move.castlingQueenside(board.stm, self.from(), self.to());
-        // }
-        // if (self.isEp()) {
-        //     return Move.enPassant(self.from(), self.to());
-        // }
-        // if (self.isPromo()) {
-        //     const promo_type = PieceType.fromInt(1 + (self.data & ~promo_flag_bits >> 12));
-        //     const is_capture =
-        // }
+        if (self.isEp()) {
+            return Move.enPassant(self.from(), self.to());
+        }
+        const is_capture = board.pieceOn(self.to()) != null;
+        if (is_capture) {
+            return Move.capture(self.from(), self.to());
+        } else {
+            return Move.quiet(self.from(), self.to());
+        }
     }
 };
 
