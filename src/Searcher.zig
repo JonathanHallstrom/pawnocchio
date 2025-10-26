@@ -770,7 +770,7 @@ fn search(
             tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
             (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32))
         {
-            return @intCast(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
+            return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
@@ -789,7 +789,7 @@ fn search(
                 alpha + 1,
             );
 
-            return razor_score;
+            return evaluation.clampScore(razor_score);
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
@@ -926,6 +926,11 @@ fn search(
                     continue;
                 }
             } else {
+                if (lmr_depth <= tunable_constants.history_pruning_depth_limit and
+                    history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
+                {
+                    continue;
+                }
                 const futility_value = eval +
                     tunable_constants.bnfp_base +
                     @divTrunc(lmr_depth * tunable_constants.bnfp_mult, 1024) +
@@ -1008,7 +1013,7 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
-                return @intCast(s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024));
+                return @intCast(@max(-(evaluation.win_score - 1), s_beta + @divTrunc((beta - s_beta) * tunable_constants.multicut_fail_medium, 1024)));
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
