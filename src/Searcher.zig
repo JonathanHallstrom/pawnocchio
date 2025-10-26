@@ -925,6 +925,11 @@ fn search(
                     continue;
                 }
             } else {
+                if (depth <= 4 and
+                    history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
+                {
+                    continue;
+                }
                 const futility_value = eval +
                     tunable_constants.bnfp_base +
                     @divTrunc(lmr_depth * tunable_constants.bnfp_mult, 1024) +
