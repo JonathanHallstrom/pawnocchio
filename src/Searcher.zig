@@ -804,7 +804,14 @@ fn search(
             nmp_reduction >>= 13;
 
             self.makeNullMove(stm);
-            const nmp_score = -self.search(
+            var nmp_score = -self.qsearch(
+                false,
+                false,
+                stm.flipped(),
+                -beta,
+                -beta + 1,
+            );
+            if (nmp_score >= beta and nmp_reduction < depth) nmp_score = -self.search(
                 false,
                 false,
                 stm.flipped(),
