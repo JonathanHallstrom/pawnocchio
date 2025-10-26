@@ -47,7 +47,7 @@ fn LittleEndian(comptime T: type) type {
     };
 }
 
-const MarlinPackedBoard = extern struct {
+pub const MarlinPackedBoard = extern struct {
     occupancy: LittleEndian(u64),
     pieces: [16]u8 align(8),
     stm_ep_square: u8,
@@ -62,14 +62,14 @@ const MarlinPackedBoard = extern struct {
     pub fn toBoard(self: MarlinPackedBoard) Board {
         var res: Board = .{};
 
-        var iter = Bitboard.iterator(self.occupancy);
+        var iter = Bitboard.iterator(self.occupancy.toNative());
         var castling_rooks: u64 = 0;
         var i: usize = 0;
         while (iter.next()) |sq| : (i += 1) {
-            const code = self.pieces[i / 2] >> if (i % 2 == 0) 0 else 4;
-            const is_black = code & 8 == 1;
+            const code = (self.pieces[i / 2] >> if (i % 2 == 0) 0 else 4) & 0b1111;
+            const is_black = code & 8 != 0;
             const col: Colour = if (is_black) .black else .white;
-            const pt = switch (code & 0b111) {
+            const pt: PieceType = switch (code & 0b111) {
                 0 => .pawn,
                 1 => .knight,
                 2 => .bishop,
@@ -80,9 +80,10 @@ const MarlinPackedBoard = extern struct {
                     castling_rooks |= sq.toBitboard();
                     break :blk .rook;
                 },
+                else => undefined,
             };
             switch (col) {
-                inline else => |ccol| res.addPiece(ccol, pt, col, Board.NullEvalState{}),
+                inline else => |ccol| res.addPiece(ccol, pt, sq, Board.NullEvalState{}),
             }
         }
 
@@ -98,33 +99,33 @@ const MarlinPackedBoard = extern struct {
         while (iter.next()) |sq| {
             const king = Square.fromBitboard(res.kingFor(.white));
 
-            if (king.getFile() < sq.getFile()) {
-                white_queenside_file = sq.getFile();
-                rights_flag |= root.CastlingRights.white_queenside_castle;
-            } else {
+            if (king.getFile().toInt() < sq.getFile().toInt()) {
                 white_kingside_file = sq.getFile();
                 rights_flag |= root.CastlingRights.white_kingside_castle;
+            } else {
+                white_queenside_file = sq.getFile();
+                rights_flag |= root.CastlingRights.white_queenside_castle;
             }
         }
         iter = Bitboard.iterator(black_castling_rooks);
         while (iter.next()) |sq| {
             const king = Square.fromBitboard(res.kingFor(.black));
 
-            if (king.getFile() < sq.getFile()) {
-                black_queenside_file = sq.getFile();
-                rights_flag |= root.CastlingRights.black_queenside_castle;
-            } else {
+            if (king.getFile().toInt() < sq.getFile().toInt()) {
                 black_kingside_file = sq.getFile();
                 rights_flag |= root.CastlingRights.black_kingside_castle;
+            } else {
+                black_queenside_file = sq.getFile();
+                rights_flag |= root.CastlingRights.black_queenside_castle;
             }
         }
 
         res.castling_rights = .initFromParts(
             rights_flag,
-            white_kingside_file orelse .h,
-            black_kingside_file orelse .h,
-            white_queenside_file orelse .a,
-            black_queenside_file orelse .a,
+            white_kingside_file orelse .a,
+            black_kingside_file orelse .a,
+            white_queenside_file orelse .h,
+            black_queenside_file orelse .h,
         );
 
         const ep_target = self.stm_ep_square & 0b0111_1111;
@@ -182,7 +183,7 @@ const MarlinPackedBoard = extern struct {
     }
 };
 
-const ViriMove = struct {
+pub const ViriMove = struct {
     const promo_flag_bits: u16 = 0b1100_0000_0000_0000;
     const ep_flag_bits: u16 = 0b0100_0000_0000_0000;
     const castle_flag_bits: u16 = 0b1000_0000_0000_0000;
@@ -197,17 +198,17 @@ const ViriMove = struct {
         Castle = castle_flag_bits,
     };
 
-    pub fn newWithPromo(from: Square, to: Square, promotion: PieceType) Self {
+    pub fn newWithPromo(from_: Square, to_: Square, promotion: PieceType) Self {
         const promotion_int = promotion.toInt() - 1;
-        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 | @as(u16, promotion_int) << 12 | promo_flag_bits };
+        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @as(u16, promotion_int) << 12 | promo_flag_bits };
     }
 
-    pub fn newWithFlags(from: Square, to: Square, flags: MoveFlags) Self {
-        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 | @intFromEnum(flags) };
+    pub fn newWithFlags(from_: Square, to_: Square, flags: MoveFlags) Self {
+        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @intFromEnum(flags) };
     }
 
-    pub fn new(from: Square, to: Square) Self {
-        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 };
+    pub fn new(from_: Square, to_: Square) Self {
+        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 };
     }
 
     pub fn isPromo(self: Self) bool {
@@ -222,15 +223,46 @@ const ViriMove = struct {
         return self.data & castle_flag_bits == castle_flag_bits;
     }
 
+    pub fn from(self: Self) Square {
+        return @enumFromInt(self.data & 0b111111);
+    }
+
+    pub fn to(self: Self) Square {
+        return @enumFromInt(self.data >> 6 & 0b111111);
+    }
+
     pub fn fromMove(move: Move) Self {
         if (move.tp() == .castling) return newWithFlags(move.from(), move.to(), .Castle);
         if (move.tp() == .ep) return newWithFlags(move.from(), move.to(), .EnPassant);
         if (move.tp() == .promotion) return newWithPromo(move.from(), move.to(), move.promoType());
         return new(move.from(), move.to());
     }
+
+    pub fn toMove(self: Self, board: *const Board) Move {
+        var moves = root.movegen.MoveListReceiver{};
+        root.movegen.generateAll(board, &moves);
+
+        for (moves.vals.slice()) |move| {
+            if (ViriMove.fromMove(move).data == self.data) {
+                return move;
+            }
+        }
+
+        @panic("wtf");
+        // if (self.isCastle()) {
+        //     return if (self.from().toInt() < self.to().toInt()) Move.castlingKingside(board.stm, self.from(), self.to()) else Move.castlingQueenside(board.stm, self.from(), self.to());
+        // }
+        // if (self.isEp()) {
+        //     return Move.enPassant(self.from(), self.to());
+        // }
+        // if (self.isPromo()) {
+        //     const promo_type = PieceType.fromInt(1 + (self.data & ~promo_flag_bits >> 12));
+        //     const is_capture =
+        // }
+    }
 };
 
-const MoveEvalPair = struct {
+pub const MoveEvalPair = struct {
     move: ViriMove,
     eval: LittleEndian(i16),
 };
@@ -334,4 +366,12 @@ test "all edge cases i could think of in one position" {
     try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.buffered());
 }
 
-test {}
+test {
+    const board_original = Board.startpos();
+
+    const marlin_board = MarlinPackedBoard.from(board_original, 1, 0);
+
+    const round_trip = marlin_board.toBoard();
+
+    try std.testing.expectEqualDeep(board_original, round_trip);
+}

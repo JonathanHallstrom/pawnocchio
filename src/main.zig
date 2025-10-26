@@ -185,6 +185,55 @@ pub fn main() !void {
 
                 return;
             }
+
+            if (std.mem.count(u8, arg, "vftotxt") > 0) {
+                var file = try std.fs.cwd().openFile(args.next() orelse "", .{});
+                defer file.close();
+                const stat = try file.stat();
+
+                // mapped_weights = try std.posix.mmap(null, Weights.WEIGHT_COUNT * @sizeOf(i16), std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
+                const mapped = try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, file.handle, 0);
+                defer std.posix.munmap(mapped);
+
+                const viriformat = root.viriformat;
+                var i: usize = 0;
+                while (i < mapped.len) {
+                    var marlin_board: viriformat.MarlinPackedBoard = undefined;
+                    @memcpy(std.mem.asBytes(&marlin_board), mapped[i..][0..32]);
+                    i += 32;
+
+                    var board = marlin_board.toBoard();
+                    const wdl = @as(f64, @floatFromInt(marlin_board.wdl)) / 2.0;
+                    const sigmoid = struct {
+                        fn impl(score: i16) f64 {
+                            const f: f64 = @floatFromInt(score);
+
+                            return 1.0 / (1.0 + @exp(-f / 400.0));
+                        }
+                    }.impl;
+                    while (true) {
+                        var move_eval_pair: viriformat.MoveEvalPair = undefined;
+                        @memcpy(std.mem.asBytes(&move_eval_pair), mapped[i..][0..4]);
+                        i += 4;
+                        const viri_move = move_eval_pair.move;
+
+                        if (viri_move.data == 0) {
+                            break;
+                        }
+
+                        const move = viri_move.toMove(&board);
+
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                board.makeMove(stm, move, Board.NullEvalState{});
+                            },
+                        }
+
+                        write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(move_eval_pair.eval.toNative()), wdl });
+                    }
+                }
+                return;
+            }
         }
         if (do_datagen) {
             std.debug.print("datagenning with {} threads\n", .{datagen_threads});
