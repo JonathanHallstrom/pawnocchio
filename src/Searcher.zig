@@ -1000,6 +1000,10 @@ fn search(
                     tunable_constants.singular_dext_margin_noisy;
                 if (is_pv) {
                     double_ext_margin += tunable_constants.singular_dext_pv_margin;
+                } else {
+                    if (is_quiet) {
+                        double_ext_margin -= @divTrunc(history_score, 128);
+                    }
                 }
 
                 if (s_score < s_beta - double_ext_margin) {
