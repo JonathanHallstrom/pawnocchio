@@ -1196,6 +1196,10 @@ fn search(
         return if (is_in_check) mated_score else 0;
     }
 
+    if (!evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta) and best_score >= beta) {
+        best_score = @intCast(@divTrunc(@as(i32, best_score) * @max(0, depth) + beta, @max(0, depth) + 1));
+    }
+
     if (!is_singular_search) {
         if (score_type == .upper and tt_hit) {
             best_move = tt_entry.move;
