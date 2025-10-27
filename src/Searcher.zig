@@ -708,6 +708,7 @@ fn search(
         (is_pv or cutnode) and
         !has_tt_move)
     {
+        cur.reduction += 1024;
         depth -= 1;
     }
     var improving = false;
