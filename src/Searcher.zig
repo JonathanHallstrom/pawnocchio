@@ -928,8 +928,8 @@ fn search(
                     continue;
                 }
             } else {
-                if (lmr_depth <= tunable_constants.history_pruning_depth_limit and
-                    history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
+                if (lmr_depth <= tunable_constants.noisy_history_pruning_depth_limit and
+                    history_score < depth * tunable_constants.noisy_history_pruning_mult + tunable_constants.noisy_history_pruning_offs)
                 {
                     continue;
                 }

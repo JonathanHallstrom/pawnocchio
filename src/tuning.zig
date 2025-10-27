@@ -152,6 +152,9 @@ const tunable_defaults = struct {
     pub const history_pruning_depth_limit: i32 = 3994;
     pub const history_pruning_offs: i32 = 805;
     pub const history_pruning_mult: i32 = -2849;
+    pub const noisy_history_pruning_depth_limit: i32 = 3994;
+    pub const noisy_history_pruning_offs: i32 = 805;
+    pub const noisy_history_pruning_mult: i32 = -2849;
     pub const qs_futility_margin: i32 = 140;
     pub const qs_hp_margin: i32 = -3483;
     pub const corrhist_pawn_weight: i32 = 778;
@@ -201,8 +204,10 @@ const tunable_defaults = struct {
     pub const eval_stab_margin: i32 = 22;
     pub const eval_stab_base: i32 = 1354;
     pub const eval_stab_offs: i32 = 55;
+    pub const eval_stab_lim: i32 = 900;
     pub const move_stab_base: i32 = 1322;
     pub const move_stab_offs: i32 = 46;
+    pub const move_stab_lim: i32 = 950;
     pub const soft_limit_base: i32 = 51;
     pub const soft_limit_incr: i32 = 781;
     pub const hard_limit_phase_mult: i32 = 109;
@@ -309,6 +314,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "history_pruning_depth_limit", .default = tunable_defaults.history_pruning_depth_limit },
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
+    .{ .name = "noisy_history_pruning_depth_limit", .default = tunable_defaults.noisy_history_pruning_depth_limit },
+    .{ .name = "noisy_history_pruning_offs", .default = tunable_defaults.noisy_history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
+    .{ .name = "noisy_history_pruning_mult", .default = tunable_defaults.noisy_history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin, .min = -10, .max = 305, .c_end = 11 },
     .{ .name = "qs_hp_margin", .default = tunable_defaults.qs_hp_margin, .min = -6000, .max = 0, .c_end = 400 },
     .{ .name = "corrhist_pawn_weight", .default = tunable_defaults.corrhist_pawn_weight, .min = -10, .max = 1825, .c_end = 72 },
@@ -358,8 +366,10 @@ pub const tunables = [_]Tunable{
     .{ .name = "eval_stab_margin", .default = tunable_defaults.eval_stab_margin, .min = 1, .c_end = 0.5 },
     .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .min = 10, .c_end = 30 },
     .{ .name = "eval_stab_offs", .default = tunable_defaults.eval_stab_offs, .min = 10, .c_end = 1 },
+    .{ .name = "eval_stab_lim", .default = tunable_defaults.eval_stab_lim, .min = 10, .c_end = 20 },
     .{ .name = "move_stab_base", .default = tunable_defaults.move_stab_base, .min = 10, .c_end = 30 },
     .{ .name = "move_stab_offs", .default = tunable_defaults.move_stab_offs, .min = 10, .c_end = 1 },
+    .{ .name = "move_stab_lim", .default = tunable_defaults.move_stab_lim, .min = 10, .c_end = 20 },
     .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base, .min = 10, .c_end = 1 },
     .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr, .min = 10, .c_end = 15 },
     .{ .name = "hard_limit_phase_mult", .default = tunable_defaults.hard_limit_phase_mult, .min = 10, .c_end = 3 },
@@ -461,11 +471,14 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_pv_offs = tunable_defaults.see_pv_offs;
     pub var razoring_mult = tunable_defaults.razoring_mult;
     pub var razoring_quad = tunable_defaults.razoring_quad;
-    pub var razoring_offs = tunable_defaults.razoring_offs;
+    pub var razoring_base = tunable_defaults.razoring_offs;
     pub var razoring_easy_capture = tunable_defaults.razoring_easy_capture;
     pub var history_pruning_depth_limit = tunable_defaults.history_pruning_depth_limit;
     pub var history_pruning_offs = tunable_defaults.history_pruning_offs;
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
+    pub var noisy_history_pruning_depth_limit = tunable_defaults.noisy_history_pruning_depth_limit;
+    pub var noisy_history_pruning_offs = tunable_defaults.noisy_history_pruning_offs;
+    pub var noisy_history_pruning_mult = tunable_defaults.noisy_history_pruning_mult;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
     pub var qs_hp_margin = tunable_defaults.qs_hp_margin;
     pub var corrhist_pawn_weight = tunable_defaults.corrhist_pawn_weight;
@@ -515,8 +528,10 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var eval_stab_margin = tunable_defaults.eval_stab_margin;
     pub var eval_stab_base = tunable_defaults.eval_stab_base;
     pub var eval_stab_offs = tunable_defaults.eval_stab_offs;
+    pub var eval_stab_lim = tunable_defaults.eval_stab_lim;
     pub var move_stab_base = tunable_defaults.move_stab_base;
     pub var move_stab_offs = tunable_defaults.move_stab_offs;
+    pub var move_stab_lim = tunable_defaults.move_stab_lim;
     pub var soft_limit_base = tunable_defaults.soft_limit_base;
     pub var soft_limit_incr = tunable_defaults.soft_limit_incr;
     pub var hard_limit_phase_mult = tunable_defaults.hard_limit_phase_mult;
