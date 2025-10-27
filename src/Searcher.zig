@@ -736,8 +736,10 @@ fn search(
     }
     const eval = cur.static_eval;
     const prev_eval = self.stackEntry(-1).static_eval;
+    const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
 
     if (!is_pv and
+        !opponent_has_easy_capture and
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
         cur.reduction >= 3072 and
@@ -757,7 +759,6 @@ fn search(
         // if we are re-searching this then its likely because its important, so otherwise we reduce more
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
-        const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
         if (eval >= beta +
             tunable_constants.rfp_base +
             tunable_constants.rfp_mult * depth +
@@ -1000,6 +1001,10 @@ fn search(
                     tunable_constants.singular_dext_margin_noisy;
                 if (is_pv) {
                     double_ext_margin += tunable_constants.singular_dext_pv_margin;
+                } else {
+                    if (is_quiet) {
+                        double_ext_margin -= @divTrunc(history_score - 20000, 256);
+                    }
                 }
 
                 if (s_score < s_beta - double_ext_margin) {
