@@ -703,13 +703,6 @@ fn search(
             }
         }
     }
-
-    if (depth >= 4 + (if (is_pv) 4 else 0) and
-        (is_pv or cutnode) and
-        !has_tt_move)
-    {
-        depth -= 1;
-    }
     var improving = false;
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.inf_score;
@@ -744,6 +737,13 @@ fn search(
         @as(i32, eval) + prev_eval < 0)
     {
         depth += 1;
+    }
+
+    if (depth >= 4 + (if (is_pv) 4 else 0) and
+        (is_pv or cutnode) and
+        !has_tt_move)
+    {
+        depth -= 1;
     }
 
     if (!is_pv and
