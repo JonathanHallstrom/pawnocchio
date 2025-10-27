@@ -746,6 +746,17 @@ fn search(
         depth += 1;
     }
 
+    if (!tt_pv and
+        !is_in_check and
+        !is_singular_search and
+        depth >= 4 and
+        eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
+        cur.reduction >= 1536 and
+        @as(i32, eval) + prev_eval > 100)
+    {
+        depth -= 1;
+    }
+
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
