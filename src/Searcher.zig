@@ -886,21 +886,22 @@ fn search(
             base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
 
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
-            if (is_quiet) {
-                const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
-                const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
-                const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
-                const granularity: i32 = 978;
-                if (!is_pv and
-                    num_searched * granularity >=
-                        lmp_base +
-                            lmp_linear_mult * depth +
-                            lmp_quadratic_mult * depth * depth)
-                {
-                    mp.skip_quiets = true;
+            const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
+            const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
+            const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
+            const granularity: i32 = 978;
+            if (!is_pv and
+                num_searched * granularity >=
+                    lmp_base +
+                        lmp_linear_mult * depth +
+                        lmp_quadratic_mult * depth * depth)
+            {
+                mp.skip_quiets = true;
+                if (is_quiet) {
                     continue;
                 }
-
+            }
+            if (is_quiet) {
                 if (lmr_depth <= tunable_constants.history_pruning_depth_limit and
                     history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
                 {
