@@ -1178,7 +1178,7 @@ fn search(
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
                 if (is_quiet) {
-                    if (depth >= 3 or num_searched_quiets >= @as(u8, 2) + @intFromBool(has_tt_move and board.isQuiet(tt_entry.move))) {
+                    if (depth >= 3 or num_searched_quiets >= 2) {
                         self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
                         for (searched_quiets.slice()) |searched_move| {
                             self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
