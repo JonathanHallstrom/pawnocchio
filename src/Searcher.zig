@@ -849,6 +849,15 @@ fn search(
     var num_searched: u8 = 0;
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
+    const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
+    const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
+    const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
+    const granularity: i32 = 978;
+    const lmp_margin =
+        @divTrunc(lmp_base +
+        lmp_linear_mult * depth +
+        lmp_quadratic_mult * depth * depth +
+        granularity - 1, granularity);
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -884,23 +893,18 @@ fn search(
             const lmr_history_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
-
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
-            if (is_quiet) {
-                const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
-                const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
-                const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
-                const granularity: i32 = 978;
-                if (!is_pv and
-                    num_searched * granularity >=
-                        lmp_base +
-                            lmp_linear_mult * depth +
-                            lmp_quadratic_mult * depth * depth)
-                {
-                    mp.skip_quiets = true;
+
+            if (!is_pv and
+                num_searched >= lmp_margin)
+            {
+                mp.skip_quiets = true;
+                if (is_quiet) {
                     continue;
                 }
+            }
 
+            if (is_quiet) {
                 if (lmr_depth <= tunable_constants.history_pruning_depth_limit and
                     history_score < depth * tunable_constants.history_pruning_mult + tunable_constants.history_pruning_offs)
                 {
