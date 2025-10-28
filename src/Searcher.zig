@@ -195,6 +195,7 @@ pub const StackEntry = struct {
     failhighs: u8,
     usable_moves: u8,
     reduction: i32,
+    history_score: i32,
 
     pub fn init(
         self: *StackEntry,
@@ -214,6 +215,7 @@ pub const StackEntry = struct {
         self.failhighs = 0;
         self.usable_moves = usable_moves_;
         self.reduction = 0;
+        self.history_score = 0;
     }
 };
 
@@ -1042,6 +1044,7 @@ fn search(
 
         const score = blk: {
             self.makeMove(stm, move);
+            self.stackEntry(0).history_score = history_score;
             defer self.unmakeMove(stm, move);
 
             const gives_check = self.stackEntry(0).board.checkers != 0;
