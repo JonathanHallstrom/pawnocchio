@@ -779,7 +779,7 @@ fn search(
         }
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
-        const depth_3 = @max(0, depth - 3);
+        const depth_3 = @max(0, depth - 3 - @intFromBool(improving));
         if (eval +
             tunable_constants.razoring_offs +
             tunable_constants.razoring_mult * depth +
