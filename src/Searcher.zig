@@ -461,7 +461,7 @@ fn qsearch(
                 futility <= alpha and
                 !is_recapture and
                 @abs(alpha) <= 2000 and
-                !SEE.scoreMove(board, move, 1, .pruning))
+                !SEE.scoreMove(board, move, futility - alpha, .pruning))
             {
                 if (!evaluation.isTBScore(best_score)) {
                     best_score = @intCast(@max(best_score, futility));
