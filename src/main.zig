@@ -194,6 +194,7 @@ pub fn main() !void {
                 var br = file.reader(&buf);
 
                 // mapped_weights = try std.posix.mmap(null, Weights.WEIGHT_COUNT * @sizeOf(i16), std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
+                // var rng = std.Random.DefaultPrng.init(@bitCast((try br.interface.peekArray(8)).*));
 
                 const viriformat = root.viriformat;
                 while (!br.atEnd()) {
@@ -215,7 +216,11 @@ pub fn main() !void {
                             return 1.0 / (1.0 + @exp(-f / 400.0));
                         }
                     }.impl;
-                    while (true) {
+
+                    // var chosen_board: Board = undefined;
+                    // var chosen_eval: i16 = undefined;
+
+                    for (0..std.math.maxInt(usize)) |_| {
                         var move_eval_pair: viriformat.MoveEvalPair = undefined;
                         br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
                             if (e == error.EndOfStream) {
@@ -239,7 +244,12 @@ pub fn main() !void {
                         }
 
                         write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(move_eval_pair.eval.toNative()), wdl });
+                        // if (rng.random().int(u32) % (i + 1) == 0) {
+                        //     chosen_board = board;
+                        //     chosen_eval = move_eval_pair.eval.toNative();
+                        // }
                     }
+                    // write("{s} | {d:.10} | {d:.1}\n", .{ chosen_board.toFen().slice(), sigmoid(chosen_eval), wdl });
                 }
                 return;
             }
