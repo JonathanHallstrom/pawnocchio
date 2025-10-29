@@ -1112,6 +1112,10 @@ fn search(
                         new_depth,
                         !cutnode,
                     );
+
+                    if (is_quiet and (s <= alpha or s >= beta)) {
+                        self.histories.updateCont(board, move, self.getUsableMoves(), @max(0, new_depth - 2), s >= beta);
+                    }
                     if (self.stop.load(.acquire)) {
                         break :blk 0;
                     }
