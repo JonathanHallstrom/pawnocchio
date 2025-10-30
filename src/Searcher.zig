@@ -978,7 +978,7 @@ fn search(
 
         var extension: i32 = 0;
         if (!is_root and
-            depth >= 6 and
+            depth - @intFromBool(tt_pv) >= 5 and
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + @as(i32, 3) >= depth and
