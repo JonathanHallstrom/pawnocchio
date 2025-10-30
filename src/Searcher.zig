@@ -958,10 +958,10 @@ fn search(
                 }
             }
 
-            var see_pruning_thresh = if (is_quiet)
-                @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth >> 10
-            else
-                @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
+            const see_offs: i64 = if (is_quiet) tunable_constants.see_quiet_pruning_offs else tunable_constants.see_noisy_pruning_offs;
+            const see_mult: i64 = if (is_quiet) tunable_constants.see_quiet_pruning_mult else tunable_constants.see_noisy_pruning_mult;
+            const see_quad: i64 = if (is_quiet) tunable_constants.see_quiet_pruning_quad else tunable_constants.see_noisy_pruning_quad;
+            var see_pruning_thresh = see_offs + (lmr_depth * (see_mult + (lmr_depth * see_quad >> 10)) >> 10);
 
             if (is_pv) {
                 see_pruning_thresh -= tunable_constants.see_pv_offs;

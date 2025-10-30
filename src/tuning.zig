@@ -144,8 +144,12 @@ const tunable_defaults = struct {
     pub const bnfp_base: i32 = 200;
     pub const bnfp_mult: i32 = 82;
     pub const qs_see_threshold: i32 = -75;
-    pub const see_quiet_pruning_mult: i32 = -81;
-    pub const see_noisy_pruning_mult: i32 = -45;
+    pub const see_quiet_pruning_offs: i32 = 0;
+    pub const see_noisy_pruning_offs: i32 = 0;
+    pub const see_quiet_pruning_mult: i32 = 0;
+    pub const see_noisy_pruning_mult: i32 = 0;
+    pub const see_quiet_pruning_quad: i32 = -35;
+    pub const see_noisy_pruning_quad: i32 = -45;
     pub const see_pv_offs: i32 = 100;
     pub const razoring_mult: i32 = 215;
     pub const razoring_quad: i32 = 98;
@@ -308,8 +312,12 @@ pub const tunables = [_]Tunable{
     .{ .name = "bnfp_base", .default = tunable_defaults.bnfp_base },
     .{ .name = "bnfp_mult", .default = tunable_defaults.bnfp_mult },
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold },
+    .{ .name = "see_quiet_pruning_offs", .default = tunable_defaults.see_quiet_pruning_offs, .min = -100, .max = 100, .c_end = 20 },
+    .{ .name = "see_noisy_pruning_offs", .default = tunable_defaults.see_noisy_pruning_offs, .min = -100, .max = 100, .c_end = 5 },
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult },
+    .{ .name = "see_quiet_pruning_quad", .default = tunable_defaults.see_quiet_pruning_quad },
+    .{ .name = "see_noisy_pruning_quad", .default = tunable_defaults.see_noisy_pruning_quad },
     .{ .name = "see_pv_offs", .default = tunable_defaults.see_pv_offs },
     .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult },
     .{ .name = "razoring_quad", .default = tunable_defaults.razoring_quad },
@@ -472,8 +480,12 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var bnfp_base = tunable_defaults.bnfp_base;
     pub var bnfp_mult = tunable_defaults.bnfp_mult;
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
+    pub var see_quiet_pruning_offs = tunable_defaults.see_quiet_pruning_offs;
+    pub var see_noisy_pruning_offs = tunable_defaults.see_noisy_pruning_offs;
     pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
+    pub var see_quiet_pruning_quad = tunable_defaults.see_quiet_pruning_quad;
+    pub var see_noisy_pruning_quad = tunable_defaults.see_noisy_pruning_quad;
     pub var see_pv_offs = tunable_defaults.see_pv_offs;
     pub var razoring_mult = tunable_defaults.razoring_mult;
     pub var razoring_quad = tunable_defaults.razoring_quad;
