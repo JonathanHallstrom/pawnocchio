@@ -423,6 +423,13 @@ pub const ScoreType = enum(u2) {
     lower = 1,
     upper = 2,
     exact = 3,
+
+    pub fn givesLowerBound(self: ScoreType) bool {
+        return @intFromEnum(self) & 1 != 0;
+    }
+    pub fn givesUpperBound(self: ScoreType) bool {
+        return @intFromEnum(self) & 2 != 0;
+    }
 };
 
 pub const TTFlags = packed struct {
