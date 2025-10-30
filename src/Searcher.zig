@@ -897,6 +897,9 @@ fn search(
             const lmr_history_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
+            if (tt_pv and !is_pv) {
+                base_lmr += 1024;
+            }
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
 
             if (!is_pv and
