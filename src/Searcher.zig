@@ -959,7 +959,7 @@ fn search(
             }
 
             var see_pruning_thresh = if (is_quiet)
-                @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth >> 10
+                @as(i64, tunable_constants.see_quiet_pruning_mult) * lmr_depth * lmr_depth >> 20
             else
                 @as(i64, tunable_constants.see_noisy_pruning_mult) * lmr_depth * lmr_depth >> 20;
 
