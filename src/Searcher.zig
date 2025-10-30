@@ -855,15 +855,13 @@ fn search(
     var num_searched: u8 = 0;
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
+    const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
     const lmp_linear_mult = if (improving) tunable_constants.lmp_improving_linear_mult else tunable_constants.lmp_standard_linear_mult;
     const lmp_quadratic_mult = if (improving) tunable_constants.lmp_improving_quadratic_mult else tunable_constants.lmp_standard_quadratic_mult;
-    const lmp_base = if (improving) tunable_constants.lmp_improving_base else tunable_constants.lmp_standard_base;
-    const granularity: i32 = 978;
-    const lmp_margin =
-        @divTrunc(lmp_base +
+    const lmp_margin = @divTrunc(lmp_base +
         lmp_linear_mult * depth +
-        lmp_quadratic_mult * depth * depth +
-        granularity - 1, granularity);
+        lmp_quadratic_mult * depth * depth, 1024);
+    std.debug.assert(lmp_margin > 0);
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
