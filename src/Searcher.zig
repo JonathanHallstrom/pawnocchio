@@ -924,7 +924,7 @@ fn search(
                         @divTrunc(history_score * tunable_constants.fp_hist_mult, 4), 1024);
 
                 if (is_pv) {
-                    futility_value += 100 + 30 * depth;
+                    futility_value += tunable_constants.fp_pv_base + tunable_constants.fp_pv_mult * depth;
                 }
                 if (!is_in_check and
                     lmr_depth <= tunable_constants.fp_depth_limit and
