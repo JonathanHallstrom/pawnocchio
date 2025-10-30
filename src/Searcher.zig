@@ -508,6 +508,10 @@ fn qsearch(
         0,
         raw_static_eval,
     );
+
+    if (!evaluation.isMateScore(beta) and !evaluation.isMateScore(best_score) and best_score >= beta) {
+        best_score -= @intCast(best_score - beta >> 1);
+    }
     return best_score;
 }
 
