@@ -941,12 +941,16 @@ fn search(
                 {
                     continue;
                 }
-                const futility_value = eval +
+                var futility_value = eval +
                     tunable_constants.bnfp_base +
                     @divTrunc(lmr_depth * tunable_constants.bnfp_mult, 1024) +
                     SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
-                if (mp.stage == .bad_noisies and
-                    !is_in_check and
+
+                if (mp.stage != .bad_noisies) {
+                    futility_value += 100 + 30 * depth;
+                }
+
+                if (!is_in_check and
                     lmr_depth <= tunable_constants.bnfp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
@@ -954,7 +958,11 @@ fn search(
                     if (!evaluation.isTBScore(best_score)) {
                         best_score = @intCast(@max(best_score, futility_value));
                     }
-                    break;
+                    if (mp.stage == .bad_noisies) {
+                        break;
+                    } else {
+                        continue;
+                    }
                 }
             }
 
