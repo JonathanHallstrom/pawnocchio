@@ -745,7 +745,7 @@ fn search(
     if (!is_pv and
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
-        cur.reduction >= 3072 and
+        cur.reduction >= tunable_constants.hindsight_ext_margin and
         @as(i32, eval) + prev_eval < 0)
     {
         depth += 1;

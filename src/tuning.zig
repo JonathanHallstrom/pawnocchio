@@ -131,6 +131,7 @@ const tunable_defaults = struct {
     pub const lmr_corrhist_mult: i32 = 6921;
     pub const lmr_dodeeper_margin: i32 = 57;
     pub const lmr_dodeeper_mult: i32 = 2;
+    pub const hindsight_ext_margin: i32 = 3072;
     pub const nmp_margin_base: i32 = 250;
     pub const nmp_margin_mult: i32 = 26;
     pub const nmp_base: i32 = 64369;
@@ -300,6 +301,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult, .min = -10, .max = 23695, .c_end = 947 },
     .{ .name = "lmr_dodeeper_margin", .default = tunable_defaults.lmr_dodeeper_margin, .min = -10, .max = 140, .c_end = 5 },
     .{ .name = "lmr_dodeeper_mult", .default = tunable_defaults.lmr_dodeeper_mult, .min = 0, .max = 10, .c_end = 0.5 },
+    .{ .name = "hindsight_ext_margin", .default = tunable_defaults.hindsight_ext_margin },
     .{ .name = "nmp_margin_base", .default = tunable_defaults.nmp_margin_base },
     .{ .name = "nmp_margin_mult", .default = tunable_defaults.nmp_margin_mult },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
@@ -469,6 +471,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var lmr_dodeeper_margin = tunable_defaults.lmr_dodeeper_margin;
     pub var lmr_dodeeper_mult = tunable_defaults.lmr_dodeeper_mult;
+    pub var hindsight_ext_margin = tunable_defaults.hindsight_ext_margin;
     pub var nmp_margin_base = tunable_defaults.nmp_margin_base;
     pub var nmp_margin_mult = tunable_defaults.nmp_margin_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
