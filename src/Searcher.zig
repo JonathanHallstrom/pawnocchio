@@ -800,6 +800,7 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         if (depth >= 4 and
+            tt_entry.flags.score_type != .upper and
             eval >= beta + tunable_constants.nmp_margin_base - tunable_constants.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
