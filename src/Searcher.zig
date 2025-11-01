@@ -764,7 +764,7 @@ fn search(
         if (eval >= beta +
             tunables.rfp_base +
             tunables.rfp_mult * depth +
-            tunables.rfp_quad * depth * depth -
+            (tunables.rfp_quad * depth * depth >> 10) -
             tunables.rfp_improving_margin * @intFromBool(improving) -
             tunables.rfp_improving_easy_margin * @intFromBool(improving and !opponent_has_easy_capture) -
             tunables.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) -

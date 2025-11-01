@@ -105,7 +105,7 @@ const tunable_defaults = struct {
     pub const cont4_pruning_weight: i32 = 41;
     pub const rfp_base: i32 = 53;
     pub const rfp_mult: i32 = 42;
-    pub const rfp_quad: i32 = 6;
+    pub const rfp_quad: i32 = 6144;
     pub const rfp_improving_margin: i32 = 1;
     pub const rfp_improving_easy_margin: i32 = 81;
     pub const rfp_easy_margin: i32 = 1;
@@ -275,7 +275,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 100, .c_end = 5 },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 100 },
-    .{ .name = "rfp_quad", .default = tunable_defaults.rfp_quad, .min = -10, .max = 30 },
+    .{ .name = "rfp_quad", .default = tunable_defaults.rfp_quad, .min = -10, .max = 30, .c_end = @as(f64, tunable_defaults.rfp_quad) / 20 },
     .{ .name = "rfp_improving_margin", .default = tunable_defaults.rfp_improving_margin, .min = -100, .max = 100, .c_end = 10 },
     .{ .name = "rfp_improving_easy_margin", .default = tunable_defaults.rfp_improving_easy_margin },
     .{ .name = "rfp_easy_margin", .default = tunable_defaults.rfp_easy_margin, .min = -50, .max = 50, .c_end = 5 },
