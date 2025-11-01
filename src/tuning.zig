@@ -152,9 +152,9 @@ const tunable_defaults = struct {
     pub const see_quiet_pruning_quad: i32 = -35;
     pub const see_noisy_pruning_quad: i32 = -45;
     pub const see_pv_offs: i32 = 100;
+    pub const razoring_offs: i32 = 50;
     pub const razoring_mult: i32 = 215;
     pub const razoring_quad: i32 = 98;
-    pub const razoring_offs: i32 = 50;
     pub const razoring_easy_capture: i32 = 95;
     pub const history_pruning_depth_limit: i32 = 3994;
     pub const history_pruning_offs: i32 = 805;
@@ -321,9 +321,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "see_quiet_pruning_quad", .default = tunable_defaults.see_quiet_pruning_quad },
     .{ .name = "see_noisy_pruning_quad", .default = tunable_defaults.see_noisy_pruning_quad },
     .{ .name = "see_pv_offs", .default = tunable_defaults.see_pv_offs },
+    .{ .name = "razoring_offs", .default = tunable_defaults.razoring_offs },
     .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult },
     .{ .name = "razoring_quad", .default = tunable_defaults.razoring_quad },
-    .{ .name = "razoring_offs", .default = tunable_defaults.razoring_offs },
     .{ .name = "razoring_easy_capture", .default = tunable_defaults.razoring_easy_capture, .min = -1024, .max = 1024, .c_end = 10 },
     .{ .name = "history_pruning_depth_limit", .default = tunable_defaults.history_pruning_depth_limit },
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
@@ -490,9 +490,9 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var see_quiet_pruning_quad = tunable_defaults.see_quiet_pruning_quad;
     pub var see_noisy_pruning_quad = tunable_defaults.see_noisy_pruning_quad;
     pub var see_pv_offs = tunable_defaults.see_pv_offs;
+    pub var razoring_offs = tunable_defaults.razoring_offs;
     pub var razoring_mult = tunable_defaults.razoring_mult;
     pub var razoring_quad = tunable_defaults.razoring_quad;
-    pub var razoring_base = tunable_defaults.razoring_offs;
     pub var razoring_easy_capture = tunable_defaults.razoring_easy_capture;
     pub var history_pruning_depth_limit = tunable_defaults.history_pruning_depth_limit;
     pub var history_pruning_offs = tunable_defaults.history_pruning_offs;
