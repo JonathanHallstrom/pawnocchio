@@ -24,8 +24,6 @@ const Move = root.Move;
 const Board = root.Board;
 const Limits = root.Limits;
 const ScoredMove = root.ScoredMove;
-const ScoredMoveReceiver = root.ScoredMoveReceiver;
-const FilteringScoredMoveReceiver = root.FilteringScoredMoveReceiver;
 const Colour = root.Colour;
 const MovePicker = root.MovePicker;
 const history = root.history;
@@ -185,7 +183,7 @@ pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
 
 pub const StackEntry = struct {
     board: Board,
-    movelist: FilteringScoredMoveReceiver,
+    movelist: root.FilteringScoredMoveReceiver,
     move: TypedMove,
     move_is_noisy: bool,
     prev: TypedMove,
