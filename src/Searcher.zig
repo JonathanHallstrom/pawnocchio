@@ -954,7 +954,7 @@ fn search(
                     if (!evaluation.isTBScore(best_score)) {
                         best_score = @intCast(@max(best_score, futility_value));
                     }
-                    break;
+                    continue;
                 }
             }
 
