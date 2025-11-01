@@ -70,13 +70,10 @@ pub fn initFixedDepth(max_depth_: i32) Limits {
 }
 
 pub fn checkSearch(self: *Limits, nodes: u64) bool {
-    if (std.debug.runtime_safety and nodes >= self.hard_nodes) {
+    if (nodes >= self.hard_nodes) {
         return true;
     }
     if (nodes % 1024 == 0) {
-        if (nodes >= self.hard_nodes) {
-            return true;
-        }
         if (root.engine.shouldStopSearching()) {
             return true;
         }

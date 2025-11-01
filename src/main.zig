@@ -797,9 +797,6 @@ pub fn main() !void {
             }
             limits.min_depth = min_depth;
             if (hard_nodes_opt) |max_nodes| {
-                if (!std.debug.runtime_safety) {
-                    write("info string Not built with runtime safety, node bound will not be exact\n", .{});
-                }
                 limits.soft_nodes = max_nodes;
                 limits.hard_nodes = max_nodes;
             }
