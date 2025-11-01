@@ -1071,6 +1071,9 @@ fn search(
                     gives_check,
                     cur.failhighs > 2,
                 });
+                if (self.ply <= @divTrunc(self.limits.root_depth, 8)) {
+                    reduction >>= 1;
+                }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
