@@ -1056,7 +1056,7 @@ fn search(
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
-            if (depth >= 3 and num_searched > 1) {
+            if (depth >= 3 and num_searched > 1 and self.ply > @divTrunc(self.limits.root_depth, 8)) {
                 const history_lmr_mult: i64 = if (is_quiet) tunable_constants.lmr_quiet_history_mult else tunable_constants.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
