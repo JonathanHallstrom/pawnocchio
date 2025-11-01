@@ -773,7 +773,7 @@ fn search(
             tunable_constants.rfp_worsening_margin * @intFromBool(opponent_worsening) -
             tunable_constants.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
             (corrplexity * tunable_constants.rfp_corrplexity_mult >> 32) +
-            @divTrunc(cur.history_score, 400) * @intFromBool(!cur.move_is_noisy))
+            @divTrunc(cur.history_score, tunable_constants.rfp_history_div) * @intFromBool(!cur.move_is_noisy))
         {
             return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunable_constants.rfp_fail_medium, 1024));
         }
