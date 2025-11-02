@@ -801,7 +801,8 @@ fn search(
             eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
-            !cur.move.move.isNull())
+            !cur.move.move.isNull() and
+            (cutnode or tt_entry.flags.score_type != .upper))
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunables.nmp_base + depth * tunables.nmp_mult;
@@ -819,6 +820,15 @@ fn search(
             );
             self.unmakeNullMove(stm);
 
+            // if (tt_entry.flags.score_type == .upper) {
+            //     engine.dbgStats("nmp failed after tt_entry.flags.score_type == .upper", @intFromBool(nmp_score < beta));
+            // }
+            // if (!cutnode) {
+            //     engine.dbgStats("nmp failed after !cutnode", @intFromBool(nmp_score < beta));
+            // }
+            // if (!cutnode and tt_entry.flags.score_type == .upper) {
+            //     engine.dbgStats("nmp failed after !cutnode and tt_entry.flags.score_type == .upper", @intFromBool(nmp_score < beta));
+            // }
             if (nmp_score >= beta) {
                 if (depth <= 15 or self.min_nmp_ply != 0) {
                     return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
