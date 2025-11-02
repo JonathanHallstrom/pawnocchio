@@ -106,7 +106,7 @@ full_width_score_normalized: i16,
 nodes_prev_check: u64,
 eval_stability: u8,
 move_stability: u8,
-node_counts: [64][64]u64 = std.mem.zeroes([64][64]u64),
+node_counts: [64][64]u64,
 limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
@@ -1070,6 +1070,7 @@ fn search(
                     gives_check,
                     cur.failhighs > 2,
                 });
+                // engine.dbgStats("lmr reduction", reduction);
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
@@ -1316,6 +1317,10 @@ test retainOnlyDuplicates {
 /// we make the previous hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
 fn fixupPreviousHashes(self: *Searcher) void {
     self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
+}
+
+fn dbgHit(self: *Searcher, comptime name: []const u8, a: bool, b: bool) void {
+    return self.dbg(name, @intFromBool(a == b));
 }
 
 fn init(self: *Searcher, params: Params, is_main_thread: bool) void {

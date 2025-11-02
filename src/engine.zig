@@ -32,6 +32,10 @@ var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
 var tt: []root.TTCluster = &.{};
 
+pub var debug_stats_lock: std.Thread.Mutex = .{};
+pub var debug_stats: std.StringHashMap(@import("DebugStats.zig")) = .init(std.heap.page_allocator);
+pub var debug_rng: std.Random.DefaultPrng = undefined;
+
 pub const SearchSettings = struct {
     search_params: Searcher.Params,
     quiet: bool = false,
@@ -86,9 +90,58 @@ pub fn setThreadCount(thread_count: usize) !void {
     }
 }
 
+pub fn dbgStats(comptime name: []const u8, value: i64) void {
+    debug_stats_lock.lock();
+    defer debug_stats_lock.unlock();
+
+    const gp = debug_stats.getOrPut(name) catch unreachable;
+    if (!gp.found_existing) {
+        gp.value_ptr.* = .{};
+    }
+    gp.value_ptr.add(value, debug_rng.random());
+}
+
+pub fn printDebugStats() void {
+    var iter = debug_stats.iterator();
+    while (iter.next()) |entry| {
+        std.debug.print(
+            \\{s}
+            \\  avg:  {d:.4}
+            \\  std:  {d:.4}
+            \\  min:  {d:.4}
+            \\  max:  {d:.4}
+            \\  skew: {d:.4}
+            \\  percentiles:
+            \\
+        , .{
+            entry.key_ptr.*,
+            entry.value_ptr.average(),
+            entry.value_ptr.standardDeviation(),
+            entry.value_ptr.min,
+            entry.value_ptr.max,
+            entry.value_ptr.skewness(),
+        });
+        inline for (@import("DebugStats.zig").PERCENTILES, 0..) |percentile, i| {
+            const percentile_str = std.fmt.comptimePrint("{d}:", .{percentile});
+            const format = std.fmt.comptimePrint("    {s:<5} {{d:.0}}\n", .{percentile_str});
+            std.debug.print(format, .{entry.value_ptr.percentiles[i]});
+        }
+    }
+}
+
+pub fn init() !void {
+    reset();
+    try setTTSize(16);
+    try setThreadCount(1);
+    debug_stats = .init(std.heap.page_allocator); // yes its inefficient no i don't care
+    debug_rng.seed(@bitCast(std.time.microTimestamp()));
+}
+
 pub fn deinit() void {
     std.heap.page_allocator.free(tt);
     std.heap.page_allocator.free(searchers);
+    printDebugStats();
+    debug_stats.deinit();
 }
 
 fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {

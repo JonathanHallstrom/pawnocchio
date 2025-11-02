@@ -21,7 +21,7 @@ const root = @import("root.zig");
 const Move = root.Move;
 const tunable_constants = root.tunable_constants;
 
-hard_time: u64, // must always have a hard time limit
+hard_time: u64 = 0, // must always have a hard time limit
 soft_time: ?u64 = null,
 max_depth: ?i32 = null,
 soft_nodes: u64 = std.math.maxInt(u64),

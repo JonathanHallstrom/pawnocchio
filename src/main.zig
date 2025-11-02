@@ -196,6 +196,7 @@ pub fn main() !void {
             }
         }
         if (do_bench) {
+            defer root.engine.printDebugStats();
             var total_nodes: u64 = 0;
             var timer = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start\n", .{});
             for ([_][]const u8{

@@ -88,9 +88,7 @@ pub fn init() void {
             stdout = std.io.getStdOut();
             attacks.init();
             evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
-            engine.reset();
-            engine.setTTSize(16) catch std.debug.panic("Fatal: couldn't allocate default TT size\n", .{});
-            engine.setThreadCount(1) catch std.debug.panic("Fatal: couldn't allocate default thread count\n", .{});
+            engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
         }
         var init_once = std.once(initImpl);
     };
