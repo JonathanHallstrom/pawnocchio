@@ -239,6 +239,7 @@ fn datagenWorker(
                     .needs_full_reset = false,
                     .previous_hashes = hashes,
                     .normalize = false,
+                    .minimal = false,
                 },
                 false,
                 true,

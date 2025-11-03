@@ -46,6 +46,7 @@ pub const Params = struct {
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
     normalize: bool,
+    minimal: bool,
 };
 
 const EvalPair = struct {
@@ -119,6 +120,7 @@ seldepth: u8,
 ttage: u5 = 0,
 syzygy_depth: u8 = 1,
 normalize: bool = false,
+minimal: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 histories: history.HistoryTable,
@@ -1335,6 +1337,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     const board = params.board;
     self.previous_hashes.len = 0;
     self.normalize = params.normalize;
+    self.minimal = params.minimal;
     var num_repeitions: u8 = 0;
     for (params.previous_hashes.slice()) |previous_hash| {
         if (params.board.hash == previous_hash) {
@@ -1403,7 +1406,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction = @min(failhigh_reduction + 1, 4);
                     if (should_print) {
-                        if (!quiet and !evaluation.isMateScore(score)) {
+                        if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .lower);
                         }
                     }
@@ -1412,7 +1415,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction >>= 1;
                     if (should_print) {
-                        if (!quiet and !evaluation.isMateScore(score)) {
+                        if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .upper);
                         }
                     }
@@ -1440,7 +1443,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
 
         completed_depth = depth;
         if (is_main_thread) {
-            if (!quiet) {
+            if (!quiet and !self.minimal) {
                 self.writeInfo(self.full_width_score, depth, .completed);
             }
         }
@@ -1505,6 +1508,9 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         move = list.vals.slice()[0];
                     }
                 }
+            }
+            if (self.minimal) {
+                self.writeInfo(self.full_width_score, completed_depth, .completed);
             }
             write("bestmove {s}\n", .{move.toString(&board).slice()});
         }
