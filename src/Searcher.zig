@@ -678,7 +678,7 @@ fn search(
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
     // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
@@ -1064,6 +1064,9 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
+                if (!tt_move_quiet and has_tt_move) {
+                    reduction += 1024;
+                }
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
