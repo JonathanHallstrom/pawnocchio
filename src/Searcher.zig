@@ -968,7 +968,7 @@ fn search(
             }
 
             if (!skip_see_pruning and
-                !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
+                !SEE.scoreMove(board, move, @intCast(-see_pruning_thresh), .pruning))
             {
                 continue;
             }
