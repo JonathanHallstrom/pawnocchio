@@ -943,7 +943,7 @@ fn search(
                 }
                 const futility_value = eval +
                     tunables.bnfp_base +
-                    @divTrunc(lmr_depth * tunables.bnfp_mult, 1024) +
+                    @divTrunc(lmr_depth * tunables.bnfp_mult + history_score * 16, 1024) +
                     SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
                 if (mp.stage == .bad_noisies and
                     !is_in_check and
