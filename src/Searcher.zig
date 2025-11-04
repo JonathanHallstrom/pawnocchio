@@ -1018,7 +1018,7 @@ fn search(
                     else
                         tunables.singular_text_margin_noisy;
                     if (is_pv) {
-                        triple_ext_margin += 500;
+                        triple_ext_margin += tunables.singular_text_pv_margin;
                     }
 
                     if (s_score < s_beta - triple_ext_margin) {
