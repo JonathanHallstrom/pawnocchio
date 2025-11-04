@@ -105,13 +105,14 @@ const tunable_defaults = struct {
     pub const cont4_pruning_weight: i32 = 41;
     pub const rfp_base: i32 = 53;
     pub const rfp_mult: i32 = 42;
-    pub const rfp_quad: i32 = 6;
+    pub const rfp_quad: i32 = 6144;
     pub const rfp_improving_margin: i32 = 1;
     pub const rfp_improving_easy_margin: i32 = 81;
     pub const rfp_easy_margin: i32 = 1;
     pub const rfp_worsening_margin: i32 = 15;
     pub const rfp_cutnode_margin: i32 = 19;
     pub const rfp_corrplexity_mult: i32 = 18;
+    pub const rfp_history_div: i32 = 400;
     pub const aspiration_score_mult: i32 = 1127;
     pub const aspiration_initial: i32 = 10136;
     pub const aspiration_multiplier: i32 = 1166;
@@ -130,6 +131,7 @@ const tunable_defaults = struct {
     pub const lmr_corrhist_mult: i32 = 6921;
     pub const lmr_dodeeper_margin: i32 = 57;
     pub const lmr_dodeeper_mult: i32 = 2;
+    pub const hindsight_ext_margin: i32 = 3072;
     pub const nmp_margin_base: i32 = 250;
     pub const nmp_margin_mult: i32 = 26;
     pub const nmp_base: i32 = 64369;
@@ -137,21 +139,30 @@ const tunable_defaults = struct {
     pub const fp_depth_limit: i32 = 8000;
     pub const fp_base: i32 = 323;
     pub const fp_mult: i32 = 82;
+    pub const fp_pv_base: i32 = 100;
+    pub const fp_pv_mult: i32 = 30;
     pub const fp_hist_mult: i32 = 127;
     pub const bnfp_depth_limit: i32 = 8000;
     pub const bnfp_base: i32 = 200;
     pub const bnfp_mult: i32 = 82;
     pub const qs_see_threshold: i32 = -75;
-    pub const see_quiet_pruning_mult: i32 = -81;
-    pub const see_noisy_pruning_mult: i32 = -45;
+    pub const see_quiet_pruning_offs: i32 = 0;
+    pub const see_noisy_pruning_offs: i32 = 0;
+    pub const see_quiet_pruning_mult: i32 = 0;
+    pub const see_noisy_pruning_mult: i32 = 0;
+    pub const see_quiet_pruning_quad: i32 = -35;
+    pub const see_noisy_pruning_quad: i32 = -45;
     pub const see_pv_offs: i32 = 100;
+    pub const razoring_offs: i32 = 50;
     pub const razoring_mult: i32 = 215;
     pub const razoring_quad: i32 = 98;
-    pub const razoring_offs: i32 = 50;
     pub const razoring_easy_capture: i32 = 95;
     pub const history_pruning_depth_limit: i32 = 3994;
     pub const history_pruning_offs: i32 = 805;
     pub const history_pruning_mult: i32 = -2849;
+    pub const noisy_history_pruning_depth_limit: i32 = 3994;
+    pub const noisy_history_pruning_offs: i32 = 805;
+    pub const noisy_history_pruning_mult: i32 = -2849;
     pub const qs_futility_margin: i32 = 140;
     pub const qs_hp_margin: i32 = -3483;
     pub const corrhist_pawn_weight: i32 = 778;
@@ -166,12 +177,12 @@ const tunable_defaults = struct {
     pub const corrhist_followupmove_update_weight: i32 = 1991;
     pub const corrhist_major_update_weight: i32 = 2023;
     pub const corrhist_minor_update_weight: i32 = 2031;
-    pub const lmp_standard_base: i32 = 2976;
-    pub const lmp_improving_base: i32 = 3296;
+    pub const lmp_standard_base: i32 = 4139;
+    pub const lmp_improving_base: i32 = 4474;
     pub const lmp_standard_linear_mult: i32 = -2;
-    pub const lmp_improving_linear_mult: i32 = 363;
-    pub const lmp_standard_quadratic_mult: i32 = 186;
-    pub const lmp_improving_quadratic_mult: i32 = 1186;
+    pub const lmp_improving_linear_mult: i32 = 380;
+    pub const lmp_standard_quadratic_mult: i32 = 195;
+    pub const lmp_improving_quadratic_mult: i32 = 1242;
     pub const good_noisy_ordering_base: i32 = -23;
     pub const good_noisy_ordering_mult: i32 = 843;
     pub const see_pawn_pruning: i32 = 85;
@@ -201,8 +212,10 @@ const tunable_defaults = struct {
     pub const eval_stab_margin: i32 = 22;
     pub const eval_stab_base: i32 = 1354;
     pub const eval_stab_offs: i32 = 55;
+    pub const eval_stab_lim: i32 = 900;
     pub const move_stab_base: i32 = 1322;
     pub const move_stab_offs: i32 = 46;
+    pub const move_stab_lim: i32 = 950;
     pub const soft_limit_base: i32 = 51;
     pub const soft_limit_incr: i32 = 781;
     pub const hard_limit_phase_mult: i32 = 109;
@@ -215,6 +228,7 @@ const tunable_defaults = struct {
     pub const singular_dext_pv_margin: i32 = 22;
     pub const singular_text_margin_quiet: i32 = 81;
     pub const singular_text_margin_noisy: i32 = 84;
+    pub const singular_text_pv_margin: i32 = 500;
     pub const ttpick_depth_weight: i32 = 972;
     pub const ttpick_age_weight: i32 = 4362;
     pub const ttpick_pv_weight: i32 = 229;
@@ -262,13 +276,14 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 100, .c_end = 5 },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 100 },
-    .{ .name = "rfp_quad", .default = tunable_defaults.rfp_quad, .min = -10, .max = 30 },
+    .{ .name = "rfp_quad", .default = tunable_defaults.rfp_quad, .min = -10, .max = 30, .c_end = @as(f64, tunable_defaults.rfp_quad) / 20 },
     .{ .name = "rfp_improving_margin", .default = tunable_defaults.rfp_improving_margin, .min = -100, .max = 100, .c_end = 10 },
     .{ .name = "rfp_improving_easy_margin", .default = tunable_defaults.rfp_improving_easy_margin },
     .{ .name = "rfp_easy_margin", .default = tunable_defaults.rfp_easy_margin, .min = -50, .max = 50, .c_end = 5 },
     .{ .name = "rfp_worsening_margin", .default = tunable_defaults.rfp_worsening_margin, .min = -10, .max = 45, .c_end = 1 },
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
     .{ .name = "rfp_corrplexity_mult", .default = tunable_defaults.rfp_corrplexity_mult, .min = -10, .max = 60, .c_end = 2 },
+    .{ .name = "rfp_history_div", .default = tunable_defaults.rfp_history_div },
     .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 10, .max = 4096, .c_end = 32 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = 10, .max = 39450, .c_end = 1577 },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = 1127, .max = 4015, .c_end = 160 },
@@ -287,6 +302,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult, .min = -10, .max = 23695, .c_end = 947 },
     .{ .name = "lmr_dodeeper_margin", .default = tunable_defaults.lmr_dodeeper_margin, .min = -10, .max = 140, .c_end = 5 },
     .{ .name = "lmr_dodeeper_mult", .default = tunable_defaults.lmr_dodeeper_mult, .min = 0, .max = 10, .c_end = 0.5 },
+    .{ .name = "hindsight_ext_margin", .default = tunable_defaults.hindsight_ext_margin },
     .{ .name = "nmp_margin_base", .default = tunable_defaults.nmp_margin_base },
     .{ .name = "nmp_margin_mult", .default = tunable_defaults.nmp_margin_mult },
     .{ .name = "nmp_base", .default = tunable_defaults.nmp_base },
@@ -294,21 +310,30 @@ pub const tunables = [_]Tunable{
     .{ .name = "fp_depth_limit", .default = tunable_defaults.fp_depth_limit },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
+    .{ .name = "fp_pv_base", .default = tunable_defaults.fp_pv_base },
+    .{ .name = "fp_pv_mult", .default = tunable_defaults.fp_pv_mult },
     .{ .name = "fp_hist_mult", .default = tunable_defaults.fp_hist_mult },
     .{ .name = "bnfp_depth_limit", .default = tunable_defaults.bnfp_depth_limit },
     .{ .name = "bnfp_base", .default = tunable_defaults.bnfp_base },
     .{ .name = "bnfp_mult", .default = tunable_defaults.bnfp_mult },
     .{ .name = "qs_see_threshold", .default = tunable_defaults.qs_see_threshold },
+    .{ .name = "see_quiet_pruning_offs", .default = tunable_defaults.see_quiet_pruning_offs, .min = -100, .max = 100, .c_end = 20 },
+    .{ .name = "see_noisy_pruning_offs", .default = tunable_defaults.see_noisy_pruning_offs, .min = -100, .max = 100, .c_end = 5 },
     .{ .name = "see_quiet_pruning_mult", .default = tunable_defaults.see_quiet_pruning_mult },
     .{ .name = "see_noisy_pruning_mult", .default = tunable_defaults.see_noisy_pruning_mult },
+    .{ .name = "see_quiet_pruning_quad", .default = tunable_defaults.see_quiet_pruning_quad },
+    .{ .name = "see_noisy_pruning_quad", .default = tunable_defaults.see_noisy_pruning_quad },
     .{ .name = "see_pv_offs", .default = tunable_defaults.see_pv_offs },
+    .{ .name = "razoring_offs", .default = tunable_defaults.razoring_offs },
     .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult },
     .{ .name = "razoring_quad", .default = tunable_defaults.razoring_quad },
-    .{ .name = "razoring_offs", .default = tunable_defaults.razoring_offs },
     .{ .name = "razoring_easy_capture", .default = tunable_defaults.razoring_easy_capture, .min = -1024, .max = 1024, .c_end = 10 },
     .{ .name = "history_pruning_depth_limit", .default = tunable_defaults.history_pruning_depth_limit },
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
+    .{ .name = "noisy_history_pruning_depth_limit", .default = tunable_defaults.noisy_history_pruning_depth_limit },
+    .{ .name = "noisy_history_pruning_offs", .default = tunable_defaults.noisy_history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
+    .{ .name = "noisy_history_pruning_mult", .default = tunable_defaults.noisy_history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin, .min = -10, .max = 305, .c_end = 11 },
     .{ .name = "qs_hp_margin", .default = tunable_defaults.qs_hp_margin, .min = -6000, .max = 0, .c_end = 400 },
     .{ .name = "corrhist_pawn_weight", .default = tunable_defaults.corrhist_pawn_weight, .min = -10, .max = 1825, .c_end = 72 },
@@ -358,8 +383,10 @@ pub const tunables = [_]Tunable{
     .{ .name = "eval_stab_margin", .default = tunable_defaults.eval_stab_margin, .min = 1, .c_end = 0.5 },
     .{ .name = "eval_stab_base", .default = tunable_defaults.eval_stab_base, .min = 10, .c_end = 30 },
     .{ .name = "eval_stab_offs", .default = tunable_defaults.eval_stab_offs, .min = 10, .c_end = 1 },
+    .{ .name = "eval_stab_lim", .default = tunable_defaults.eval_stab_lim, .min = 10, .c_end = 20 },
     .{ .name = "move_stab_base", .default = tunable_defaults.move_stab_base, .min = 10, .c_end = 30 },
     .{ .name = "move_stab_offs", .default = tunable_defaults.move_stab_offs, .min = 10, .c_end = 1 },
+    .{ .name = "move_stab_lim", .default = tunable_defaults.move_stab_lim, .min = 10, .c_end = 20 },
     .{ .name = "soft_limit_base", .default = tunable_defaults.soft_limit_base, .min = 10, .c_end = 1 },
     .{ .name = "soft_limit_incr", .default = tunable_defaults.soft_limit_incr, .min = 10, .c_end = 15 },
     .{ .name = "hard_limit_phase_mult", .default = tunable_defaults.hard_limit_phase_mult, .min = 10, .c_end = 3 },
@@ -372,6 +399,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "singular_dext_pv_margin", .default = tunable_defaults.singular_dext_pv_margin, .min = 0, .max = 50, .c_end = 1 },
     .{ .name = "singular_text_margin_quiet", .default = tunable_defaults.singular_text_margin_quiet, .min = 0, .max = 200, .c_end = 5 },
     .{ .name = "singular_text_margin_noisy", .default = tunable_defaults.singular_text_margin_noisy, .min = 0, .max = 200, .c_end = 5 },
+    .{ .name = "singular_text_pv_margin", .default = tunable_defaults.singular_text_pv_margin, .min = 0, .max = 1000, .c_end = 25 },
     .{ .name = "ttpick_depth_weight", .default = tunable_defaults.ttpick_depth_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "ttpick_age_weight", .default = tunable_defaults.ttpick_age_weight, .min = 0, .max = 8192, .c_end = 256 },
     .{ .name = "ttpick_pv_weight", .default = tunable_defaults.ttpick_pv_weight, .min = 0, .max = 2048, .c_end = 128 },
@@ -426,6 +454,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var rfp_worsening_margin = tunable_defaults.rfp_worsening_margin;
     pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var rfp_corrplexity_mult = tunable_defaults.rfp_corrplexity_mult;
+    pub var rfp_history_div = tunable_defaults.rfp_history_div;
     pub var aspiration_score_mult = tunable_defaults.aspiration_score_mult;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
@@ -444,11 +473,14 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var lmr_dodeeper_margin = tunable_defaults.lmr_dodeeper_margin;
     pub var lmr_dodeeper_mult = tunable_defaults.lmr_dodeeper_mult;
+    pub var hindsight_ext_margin = tunable_defaults.hindsight_ext_margin;
     pub var nmp_margin_base = tunable_defaults.nmp_margin_base;
     pub var nmp_margin_mult = tunable_defaults.nmp_margin_mult;
     pub var nmp_base = tunable_defaults.nmp_base;
     pub var nmp_mult = tunable_defaults.nmp_mult;
     pub var fp_depth_limit = tunable_defaults.fp_depth_limit;
+    pub var fp_pv_base = tunable_defaults.fp_pv_base;
+    pub var fp_pv_mult = tunable_defaults.fp_pv_mult;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
     pub var fp_hist_mult = tunable_defaults.fp_hist_mult;
@@ -456,16 +488,23 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var bnfp_base = tunable_defaults.bnfp_base;
     pub var bnfp_mult = tunable_defaults.bnfp_mult;
     pub var qs_see_threshold = tunable_defaults.qs_see_threshold;
+    pub var see_quiet_pruning_offs = tunable_defaults.see_quiet_pruning_offs;
+    pub var see_noisy_pruning_offs = tunable_defaults.see_noisy_pruning_offs;
     pub var see_quiet_pruning_mult = tunable_defaults.see_quiet_pruning_mult;
     pub var see_noisy_pruning_mult = tunable_defaults.see_noisy_pruning_mult;
+    pub var see_quiet_pruning_quad = tunable_defaults.see_quiet_pruning_quad;
+    pub var see_noisy_pruning_quad = tunable_defaults.see_noisy_pruning_quad;
     pub var see_pv_offs = tunable_defaults.see_pv_offs;
+    pub var razoring_offs = tunable_defaults.razoring_offs;
     pub var razoring_mult = tunable_defaults.razoring_mult;
     pub var razoring_quad = tunable_defaults.razoring_quad;
-    pub var razoring_offs = tunable_defaults.razoring_offs;
     pub var razoring_easy_capture = tunable_defaults.razoring_easy_capture;
     pub var history_pruning_depth_limit = tunable_defaults.history_pruning_depth_limit;
     pub var history_pruning_offs = tunable_defaults.history_pruning_offs;
     pub var history_pruning_mult = tunable_defaults.history_pruning_mult;
+    pub var noisy_history_pruning_depth_limit = tunable_defaults.noisy_history_pruning_depth_limit;
+    pub var noisy_history_pruning_offs = tunable_defaults.noisy_history_pruning_offs;
+    pub var noisy_history_pruning_mult = tunable_defaults.noisy_history_pruning_mult;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
     pub var qs_hp_margin = tunable_defaults.qs_hp_margin;
     pub var corrhist_pawn_weight = tunable_defaults.corrhist_pawn_weight;
@@ -515,8 +554,10 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var eval_stab_margin = tunable_defaults.eval_stab_margin;
     pub var eval_stab_base = tunable_defaults.eval_stab_base;
     pub var eval_stab_offs = tunable_defaults.eval_stab_offs;
+    pub var eval_stab_lim = tunable_defaults.eval_stab_lim;
     pub var move_stab_base = tunable_defaults.move_stab_base;
     pub var move_stab_offs = tunable_defaults.move_stab_offs;
+    pub var move_stab_lim = tunable_defaults.move_stab_lim;
     pub var soft_limit_base = tunable_defaults.soft_limit_base;
     pub var soft_limit_incr = tunable_defaults.soft_limit_incr;
     pub var hard_limit_phase_mult = tunable_defaults.hard_limit_phase_mult;
@@ -529,6 +570,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var singular_dext_pv_margin = tunable_defaults.singular_dext_pv_margin;
     pub var singular_text_margin_quiet = tunable_defaults.singular_text_margin_quiet;
     pub var singular_text_margin_noisy = tunable_defaults.singular_text_margin_noisy;
+    pub var singular_text_pv_margin = tunable_defaults.singular_text_pv_margin;
     pub var ttpick_depth_weight = tunable_defaults.ttpick_depth_weight;
     pub var ttpick_age_weight = tunable_defaults.ttpick_age_weight;
     pub var ttpick_pv_weight = tunable_defaults.ttpick_pv_weight;

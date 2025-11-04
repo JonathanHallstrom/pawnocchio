@@ -90,9 +90,7 @@ pub fn init() void {
             stdout_writer = stdout.writer(&stdout_buf);
             attacks.init();
             evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
-            engine.reset();
-            engine.setTTSize(16) catch std.debug.panic("Fatal: couldn't allocate default TT size\n", .{});
-            engine.setThreadCount(1) catch std.debug.panic("Fatal: couldn't allocate default thread count\n", .{});
+            engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
         }
         var init_once = std.once(initImpl);
     };
@@ -426,6 +424,13 @@ pub const ScoreType = enum(u2) {
     lower = 1,
     upper = 2,
     exact = 3,
+
+    pub fn givesLowerBound(self: ScoreType) bool {
+        return @intFromEnum(self) & 1 != 0;
+    }
+    pub fn givesUpperBound(self: ScoreType) bool {
+        return @intFromEnum(self) & 2 != 0;
+    }
 };
 
 pub const TTFlags = packed struct {

@@ -21,7 +21,7 @@ const root = @import("root.zig");
 const Move = root.Move;
 const tunable_constants = root.tunable_constants;
 
-hard_time: u64, // must always have a hard time limit
+hard_time: u64 = 0, // must always have a hard time limit
 soft_time: ?u64 = null,
 max_depth: ?i32 = null,
 soft_nodes: u64 = std.math.maxInt(u64),
@@ -70,13 +70,10 @@ pub fn initFixedDepth(max_depth_: i32) Limits {
 }
 
 pub fn checkSearch(self: *Limits, nodes: u64) bool {
-    if (std.debug.runtime_safety and nodes >= self.hard_nodes) {
+    if (nodes >= self.hard_nodes) {
         return true;
     }
     if (nodes % 1024 == 0) {
-        if (nodes >= self.hard_nodes) {
-            return true;
-        }
         if (root.engine.shouldStopSearching()) {
             return true;
         }
@@ -93,11 +90,11 @@ fn computeNodeCountFactor(_: *const Limits, best_move_count: u64, total_nodes: u
 }
 
 fn computeEvalStabilityFactor(_: *const Limits, stab: i64) u64 {
-    return @intCast(@max(1, tunable_constants.eval_stab_base - @divTrunc(tunable_constants.eval_stab_offs * stab, 1024)));
+    return @intCast(@max(tunable_constants.eval_stab_lim, tunable_constants.eval_stab_base - @divTrunc(tunable_constants.eval_stab_offs * stab, 1024)));
 }
 
 fn computeMoveStabilityFactor(_: *const Limits, stab: i64) u64 {
-    return @intCast(@max(1, tunable_constants.move_stab_base - @divTrunc(tunable_constants.move_stab_offs * stab, 1024)));
+    return @intCast(@max(tunable_constants.move_stab_lim, tunable_constants.move_stab_base - @divTrunc(tunable_constants.move_stab_offs * stab, 1024)));
 }
 
 pub fn checkRoot(

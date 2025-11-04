@@ -390,6 +390,7 @@ pub fn main() !void {
             }
         }
         if (do_bench) {
+            defer root.engine.printDebugStats();
             var total_nodes: u64 = 0;
             var timer = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start\n", .{});
             for ([_][]const u8{
@@ -501,6 +502,7 @@ pub fn main() !void {
                         .limits = root.Limits.initFixedDepth(bench_depth),
                         .previous_hashes = .{},
                         .normalize = false,
+                        .minimal = false,
                     },
                     .quiet = true,
                 });
@@ -538,6 +540,7 @@ pub fn main() !void {
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
+    var minimal: bool = false;
     var normalize: bool = true;
     var softnodes: bool = false;
     var weird_tcs: bool = false;
@@ -574,6 +577,7 @@ pub fn main() !void {
             write("option name SyzygyPath type string default <empty>\n", .{});
             write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
             write("option name NormalizeEval type check default true\n", .{});
+            write("option name Minimal type check default false\n", .{});
             write("option name SoftNodes type check default false\n", .{});
             write("option name EnableWeirdTCs type check default false\n", .{});
             if (root.tuning.do_tuning) {
@@ -679,6 +683,15 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase("false", value)) {
                     normalize = false;
+                }
+            }
+
+            if (std.ascii.eqlIgnoreCase("Minimal", option_name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    minimal = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    minimal = false;
                 }
             }
 
@@ -999,9 +1012,6 @@ pub fn main() !void {
             }
             limits.min_depth = min_depth;
             if (hard_nodes_opt) |max_nodes| {
-                if (!std.debug.runtime_safety) {
-                    write("info string Not built with runtime safety, node bound will not be exact\n", .{});
-                }
                 limits.soft_nodes = max_nodes;
                 limits.hard_nodes = max_nodes;
             }
@@ -1025,6 +1035,7 @@ pub fn main() !void {
                     .previous_hashes = previous_hashes,
                     .syzygy_depth = syzygy_depth,
                     .normalize = normalize,
+                    .minimal = minimal,
                 },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {

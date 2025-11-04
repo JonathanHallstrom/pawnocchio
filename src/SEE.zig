@@ -26,17 +26,6 @@ const Board = root.Board;
 const Move = root.Move;
 const Colour = root.Colour;
 
-inline fn getAttacks(comptime stm: Colour, comptime tp: PieceType, sq: Square, occ: u64) u64 {
-    return switch (tp) {
-        .pawn => Bitboard.pawnAttacks(sq, stm),
-        .knight => Bitboard.knightMoves(sq),
-        .bishop => attacks.getBishopAttacks(sq, occ),
-        .rook => attacks.getRookAttacks(sq, occ),
-        .queen => attacks.getBishopAttacks(sq, occ) | attacks.getRookAttacks(sq, occ),
-        .king => Bitboard.kingMoves(sq),
-    };
-}
-
 pub const Mode = enum {
     pruning,
     ordering,
@@ -112,11 +101,9 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
     }
 
     var occ = board.occupancy() & ~from.toBitboard() & ~to.toBitboard();
-    const kings = board.kings();
     const queens = board.queens();
     const rooks = board.rooks() | queens;
     const bishops = board.bishops() | queens;
-    const knights = board.knights();
 
     var stm = board.stm.flipped();
 
@@ -133,12 +120,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
     const allowed = ~all_pinned | allowed_pinned;
 
     var attackers =
-        (getAttacks(undefined, .king, to, occ) & kings) |
-        (getAttacks(undefined, .knight, to, occ) & knights) |
-        (getAttacks(undefined, .bishop, to, occ) & bishops) |
-        (getAttacks(undefined, .rook, to, occ) & rooks) |
-        (getAttacks(.white, .pawn, to, occ) & board.pawnsFor(.black)) |
-        (getAttacks(.black, .pawn, to, occ) & board.pawnsFor(.white));
+        root.movegen.attackersFor(.white, board, to, occ) |
+        root.movegen.attackersFor(.black, board, to, occ);
 
     attackers &= allowed & occ;
 
@@ -159,9 +142,9 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
         }
 
         if (attacker == .pawn or attacker == .bishop or attacker == .queen)
-            attackers |= getAttacks(undefined, .bishop, to, occ) & bishops;
+            attackers |= root.attacks.getBishopAttacks(to, occ) & bishops;
         if (attacker == .rook or attacker == .queen)
-            attackers |= getAttacks(undefined, .rook, to, occ) & rooks;
+            attackers |= root.attacks.getRookAttacks(to, occ) & rooks;
 
         attackers &= occ;
         score = -score - 1 - value(attacker, mode);
