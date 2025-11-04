@@ -1068,6 +1068,9 @@ fn search(
                 if (tt_move_noisy) {
                     reduction += 1024;
                 }
+                if (tt_pv and tt_entry.flags.score_type.givesLowerBound() and tt_entry.score > alpha) {
+                    reduction -= 1024;
+                }
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
