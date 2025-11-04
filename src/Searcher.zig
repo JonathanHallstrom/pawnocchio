@@ -964,7 +964,7 @@ fn search(
             var see_pruning_thresh = see_offs + (lmr_depth * (see_mult + (lmr_depth * see_quad >> 10)) >> 10);
 
             if (is_pv) {
-                see_pruning_thresh -= tunables.see_pv_offs;
+                see_pruning_thresh += tunables.see_pv_offs;
             }
 
             if (!skip_see_pruning and
