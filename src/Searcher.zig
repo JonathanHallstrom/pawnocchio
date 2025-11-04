@@ -1064,6 +1064,9 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
+                if (tt_pv and tt_entry.flags.score_type.givesLowerBound() and tt_entry.score > alpha) {
+                    reduction -= 1024;
+                }
                 reduction += getFactorisedLmr(8, .{
                     is_pv,
                     cutnode,
