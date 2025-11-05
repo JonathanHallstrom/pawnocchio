@@ -617,10 +617,10 @@ fn search(
     comptime stm: Colour,
     alpha_original: i32,
     beta_original: i32,
-    depth_: i32,
+    depth_original: i32,
     cutnode: bool,
 ) i16 {
-    var depth = depth_;
+    var depth = depth_original;
     var alpha = alpha_original;
     var beta = beta_original;
 
