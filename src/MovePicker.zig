@@ -51,6 +51,10 @@ pub const Stage = enum {
     quiets,
     bad_noisy_prep,
     bad_noisies,
+
+    probcut_tt,
+    probcut_generate_noisies,
+    probcut_noisies,
 };
 
 pub fn init(
@@ -97,6 +101,28 @@ pub fn initQs(
         .histories = histories_,
         .ttmove = ttmove_,
         .moves = moves_,
+    };
+}
+
+pub fn initProbcut(
+    board_: *const Board,
+    movelist_: *MoveReceiver,
+    histories_: *root.history.HistoryTable,
+    ttmove_: Move,
+) MovePicker {
+    movelist_.vals.len = 0;
+    movelist_.filter = ttmove_;
+    return .{
+        .movelist = movelist_,
+        .board = board_,
+        .first = 0,
+        .last = 0,
+        .stage = .probcut_tt,
+        .next_func = &probcutTt,
+        .skip_quiets = true,
+        .histories = histories_,
+        .ttmove = ttmove_,
+        .moves = .{TypedMove.init()} ** history.NUM_CONTHISTS,
     };
 }
 
@@ -256,6 +282,46 @@ fn badNoisyPrep(self: *MovePicker) ScoredMove {
     return @call(call_modifier, &badNoisies, .{self});
 }
 fn badNoisies(self: *MovePicker) ScoredMove {
+    if (self.first == self.last) {
+        return ScoredMove{ .move = Move.init(), .score = 0 };
+    }
+    return self.movelist.vals.slice()[self.findBest()];
+}
+
+fn probcutTt(self: *MovePicker) ScoredMove {
+    self.stage = .probcut_generate_noisies;
+    self.next_func = &probcutGenerateNoisies;
+    if (self.board.isQuiet(self.ttmove)) {
+        return @call(call_modifier, probcutGenerateNoisies, .{self});
+    }
+    switch (self.board.stm) {
+        inline else => |stm| {
+            if (self.board.isPseudoLegal(stm, self.ttmove)) {
+                return ScoredMove{ .move = self.ttmove, .score = 0 };
+            }
+        },
+    }
+    return @call(call_modifier, &probcutGenerateNoisies, .{self});
+}
+
+fn probcutGenerateNoisies(self: *MovePicker) ScoredMove {
+    self.movelist.vals.len = 0;
+    switch (self.board.stm) {
+        inline else => |stm| {
+            std.debug.assert(self.movelist.vals.len == 0);
+            movegen.generateAllNoisies(stm, self.board, self.movelist);
+            for (self.movelist.vals.slice()) |*scored_move| {
+                scored_move.score = self.noisyValue(scored_move.move);
+            }
+        },
+    }
+    self.last = self.movelist.vals.len;
+    self.stage = .probcut_noisies;
+    self.next_func = &probcutNoises;
+    return @call(call_modifier, &probcutNoises, .{self});
+}
+
+fn probcutNoises(self: *MovePicker) ScoredMove {
     if (self.first == self.last) {
         return ScoredMove{ .move = Move.init(), .score = 0 };
     }
