@@ -17,6 +17,7 @@
 const std = @import("std");
 
 pub const do_tuning = false;
+pub const do_lmr_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -581,7 +582,7 @@ pub const tunable_constants = if (do_tuning) struct {
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {
-    pub const N = 8;
+    pub const N = 9;
     pub fn biggerTables(comptime amount: usize) void {
         comptime var two_idx_old = 0;
         comptime var three_idx_old = 0;
@@ -626,7 +627,7 @@ const factorized_lmr_defaults = struct {
         , .{ one_out, two_out, three_out });
     }
 
-    pub const one = [N]i16{
+    pub const one = [N]i32{
         -1232,
         1358,
         -531,
@@ -635,8 +636,9 @@ const factorized_lmr_defaults = struct {
         -52,
         -647,
         820,
+        0,
     };
-    pub const two: [N * (N - 1) / 2]i16 = .{
+    pub const two: [N * (N - 1) / 2]i32 = .{
         -49,
         -161,
         42,
@@ -644,85 +646,121 @@ const factorized_lmr_defaults = struct {
         196,
         185,
         19,
+        0,
         69,
         187,
         -215,
         -15,
         -51,
         194,
+        0,
         -139,
         -125,
         27,
         133,
         241,
+        0,
         -473,
         246,
         158,
         -252,
+        0,
         109,
         -220,
         114,
+        0,
         249,
         -107,
+        0,
         28,
+        0,
+        0,
     };
-    pub const three: [N * (N - 1) * (N - 2) / 6]i16 = .{
+    pub const three: [N * (N - 1) * (N - 2) / 6]i32 = .{
         240,
         253,
         -396,
         430,
         -7,
         -77,
+        0,
         -235,
         208,
         -79,
         -41,
         39,
+        0,
         -403,
         110,
         287,
         -56,
+        0,
         73,
         -25,
         199,
+        0,
         -74,
         -318,
+        0,
         -68,
+        0,
+        0,
         -60,
         233,
         44,
         -144,
         131,
+        0,
         -259,
         194,
         223,
         -112,
+        0,
         11,
         324,
         -117,
+        0,
         131,
         243,
+        0,
         -68,
+        0,
+        0,
         -39,
         1,
         -72,
         94,
+        0,
         16,
         324,
         -50,
+        0,
         -389,
         -118,
+        0,
         143,
+        0,
+        0,
         55,
         -133,
         -297,
+        0,
         372,
         -47,
+        0,
         -249,
+        0,
+        0,
         -317,
         -47,
+        0,
         25,
+        0,
+        0,
         156,
+        0,
+        0,
+        0,
     };
 };
 
@@ -732,7 +770,7 @@ pub const factorized_lmr_params = struct {
     pub const c_end = 128;
 };
 
-pub const factorized_lmr = if (do_tuning) struct {
+pub const factorized_lmr = if (do_lmr_tuning) struct {
     pub const N = factorized_lmr_defaults.N;
     pub var one = factorized_lmr_defaults.one;
     pub var two = factorized_lmr_defaults.two;

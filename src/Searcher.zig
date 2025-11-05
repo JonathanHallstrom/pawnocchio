@@ -544,7 +544,7 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
 }
 
 fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
-    if (root.tuning.do_tuning) {
+    if (root.tuning.do_lmr_tuning) {
         return preCalculateBaseLMR(@min(depth, 32), @min(legal, 32), is_quiet);
     } else {
         const table = comptime blk: {
@@ -568,11 +568,11 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
     comptime var two = 0;
     comptime var three = 0;
     inline for (0..N) |i| {
-        res += weights.one[i] * @intFromBool(params[i]);
+        res += @intCast(weights.one[i] * @intFromBool(params[i]));
         inline for (i + 1..N) |j| {
-            res += weights.two[two] * @intFromBool(params[i] and params[j]);
+            res += @intCast(weights.two[two] * @intFromBool(params[i] and params[j]));
             inline for (j + 1..N) |k| {
-                res += weights.three[three] * @intFromBool(params[i] and params[j] and params[k]);
+                res += @intCast(weights.three[three] * @intFromBool(params[i] and params[j] and params[k]));
                 three += 1;
             }
             two += 1;
@@ -581,7 +581,7 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
     return res;
 }
 
-const precomp_lmr_factorised = if (!root.tuning.do_tuning)
+const precomp_lmr_factorised = if (!root.tuning.do_lmr_tuning)
 blk: {
     @setEvalBranchQuota(1 << 30);
     const N = root.tuning.factorized_lmr.N;
@@ -599,7 +599,7 @@ blk: {
 } else void{};
 
 inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
-    if (root.tuning.do_tuning) {
+    if (root.tuning.do_lmr_tuning) {
         return convolve(N, params, root.tuning.factorized_lmr);
     } else {
         var i: usize = 0;
@@ -678,7 +678,7 @@ fn search(
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
     // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
@@ -1064,7 +1064,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += getFactorisedLmr(8, .{
+                reduction += getFactorisedLmr(9, .{
                     is_pv,
                     cutnode,
                     improving,
@@ -1073,6 +1073,7 @@ fn search(
                     is_quiet,
                     gives_check,
                     cur.failhighs > 2,
+                    tt_move_quiet,
                 });
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
