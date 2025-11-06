@@ -999,7 +999,7 @@ fn search(
             cur.static_eval = eval;
             cur.excluded = Move.init();
 
-            if (s_score < s_beta) {
+            if (s_score <= s_beta) {
                 extension += 1;
 
                 var double_ext_margin = if (is_quiet)
