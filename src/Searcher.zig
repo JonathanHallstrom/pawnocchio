@@ -1180,20 +1180,20 @@ fn search(
                 const usable_moves = self.getUsableMoves();
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
+                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, 0);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
+                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
                         }
                     }
-                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
+                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, 0);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
+                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
                     }
                 } else {
-                    self.histories.updateNoisy(board, move, hist_depth, true);
+                    self.histories.updateNoisy(board, move, hist_depth, true, 0);
                 }
                 for (searched_noisies.slice()) |searched_move| {
-                    self.histories.updateNoisy(board, searched_move, hist_depth, false);
+                    self.histories.updateNoisy(board, searched_move, hist_depth, false, 0);
                 }
                 break;
             }
