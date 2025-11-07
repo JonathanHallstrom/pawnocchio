@@ -277,6 +277,8 @@ pub fn main() !void {
                 var draws: u64 = 0;
                 var losses: u64 = 0;
                 var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
+                var piece_counts: [33]u64 = .{0} ** 33;
+                var phase_counts: [25]u64 = .{0} ** 25;
                 defer zobrist_set.deinit();
 
                 if (!approximate) {
@@ -346,6 +348,8 @@ pub fn main() !void {
                             },
                         }
 
+                        piece_counts[@popCount(board.occupancy())] += 1;
+                        phase_counts[board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 })] += 1;
                         if (approximate) {
                             approximator.add(board.hash);
                         } else {
@@ -360,6 +364,8 @@ pub fn main() !void {
                     \\
                     \\average exit: {d:.2}
                     \\unique positions: {}/{} ({}%)
+                    \\piece count distribution: {any}
+                    \\phase distribution: {any}
                     \\wins: {} ({}%)
                     \\draws: {} ({}%)
                     \\losses: {} ({}%)
@@ -369,6 +375,8 @@ pub fn main() !void {
                     unique_count,
                     position_count,
                     @as(u64, unique_count) * 100 / position_count,
+                    piece_counts,
+                    phase_counts,
                     wins,
                     100 * wins / game_count,
                     draws,
