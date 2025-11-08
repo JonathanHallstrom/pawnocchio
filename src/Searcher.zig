@@ -751,6 +751,7 @@ fn search(
         depth += 1;
     }
 
+    const has_non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings()) != 0;
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
@@ -797,11 +798,9 @@ fn search(
             return evaluation.clampScore(razor_score);
         }
 
-        const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
-
         if (depth >= 4 and
             eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
-            non_pk != 0 and
+            has_non_pk and
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull())
         {
@@ -893,7 +892,7 @@ fn search(
             self.getUsableMoves(),
         ) else self.histories.readNoisy(board, move);
 
-        if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
+        if (!is_root and best_score >= evaluation.matedIn(MAX_PLY) and has_non_pk) {
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
