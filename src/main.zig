@@ -277,9 +277,11 @@ pub fn main() !void {
                 var draws: u64 = 0;
                 var losses: u64 = 0;
                 var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
+                defer zobrist_set.deinit();
+                var score_counts: []u64 = try allocator.alloc(u64, std.math.maxInt(u16));
+                defer allocator.free(score_counts);
                 var piece_counts: [33]u64 = .{0} ** 33;
                 var phase_counts: [25]u64 = .{0} ** 25;
-                defer zobrist_set.deinit();
 
                 if (!approximate) {
                     try zobrist_set.ensureTotalCapacity(@intCast((stat.size + 3) / 4));
@@ -350,6 +352,7 @@ pub fn main() !void {
 
                         piece_counts[@popCount(board.occupancy())] += 1;
                         phase_counts[board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 })] += 1;
+                        score_counts[@intCast(move_eval_pair.eval.toNative() - std.math.minInt(i16))] += 1;
                         if (approximate) {
                             approximator.add(board.hash);
                         } else {
@@ -384,6 +387,13 @@ pub fn main() !void {
                     losses,
                     100 * losses / game_count,
                 });
+                var score_distr_file = try std.fs.cwd().createFile("score_distribution.txt", .{});
+                defer score_distr_file.close();
+
+                // its fine to reuse the buffer since we finished reading the file
+                var writer = score_distr_file.writer(&buf);
+                try writer.interface.print("{any}\n", .{score_counts});
+                try writer.interface.flush();
 
                 return;
             }
