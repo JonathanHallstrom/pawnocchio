@@ -113,6 +113,7 @@ const tunable_defaults = struct {
     pub const rfp_cutnode_margin: i32 = 19;
     pub const rfp_corrplexity_mult: i32 = 18;
     pub const rfp_history_div: i32 = 400;
+    pub const rfp_noisy_history_div: i32 = 400;
     pub const aspiration_score_mult: i32 = 1127;
     pub const aspiration_initial: i32 = 10136;
     pub const aspiration_multiplier: i32 = 1166;
@@ -284,6 +285,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
     .{ .name = "rfp_corrplexity_mult", .default = tunable_defaults.rfp_corrplexity_mult, .min = -10, .max = 60, .c_end = 2 },
     .{ .name = "rfp_history_div", .default = tunable_defaults.rfp_history_div },
+    .{ .name = "rfp_noisy_history_div", .default = tunable_defaults.rfp_noisy_history_div },
     .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 10, .max = 4096, .c_end = 32 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = 10, .max = 39450, .c_end = 1577 },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = 1127, .max = 4015, .c_end = 160 },
@@ -328,7 +330,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult },
     .{ .name = "razoring_quad", .default = tunable_defaults.razoring_quad },
     .{ .name = "razoring_easy_capture", .default = tunable_defaults.razoring_easy_capture, .min = -1024, .max = 1024, .c_end = 10 },
-    .{ .name = "history_pruning_depth_limit", .default = tunable_defaults.history_pruning_depth_limit },
+    .{ .name = "noisy_history_pruning_depth_limit", .default = tunable_defaults.noisy_history_pruning_depth_limit },
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "noisy_history_pruning_depth_limit", .default = tunable_defaults.noisy_history_pruning_depth_limit },
@@ -455,6 +457,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var rfp_corrplexity_mult = tunable_defaults.rfp_corrplexity_mult;
     pub var rfp_history_div = tunable_defaults.rfp_history_div;
+    pub var rfp_noisy_history_div = tunable_defaults.rfp_noisy_history_div;
     pub var aspiration_score_mult = tunable_defaults.aspiration_score_mult;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
