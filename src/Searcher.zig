@@ -860,7 +860,7 @@ fn search(
     const lmp_quadratic_mult = if (improving) tunables.lmp_improving_quadratic_mult else tunables.lmp_standard_quadratic_mult;
     const lmp_margin = @divTrunc(lmp_base +
         lmp_linear_mult * depth +
-        lmp_quadratic_mult * depth * depth, 1024);
+        lmp_quadratic_mult * depth * depth + if (is_pv) 8192 else 0, 1024);
     std.debug.assert(lmp_margin > 0);
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
@@ -899,9 +899,7 @@ fn search(
             base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
 
-            if (!is_pv and
-                num_searched >= lmp_margin)
-            {
+            if (num_searched >= lmp_margin) {
                 mp.skip_quiets = true;
                 if (is_quiet) {
                     continue;
