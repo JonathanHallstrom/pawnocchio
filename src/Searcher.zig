@@ -1113,6 +1113,16 @@ fn search(
                         new_depth,
                         !cutnode,
                     );
+
+                    if (is_quiet and (s <= alpha or s >= beta)) {
+                        const usable_moves = self.getUsableMoves();
+                        self.histories.updateCont(board, move, usable_moves, new_depth, s >= beta, 0);
+                        if (s >= beta) {
+                            for (searched_quiets.slice()) |searched_move| {
+                                self.histories.updateCont(board, searched_move, usable_moves, new_depth, false, 0);
+                            }
+                        }
+                    }
                     if (self.stop.load(.acquire)) {
                         break :blk 0;
                     }
