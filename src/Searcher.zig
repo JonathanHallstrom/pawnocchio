@@ -1030,7 +1030,7 @@ fn search(
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
-                extension -= 2;
+                extension -= if (!is_pv) 3 else 2;
             }
         }
         num_searched += 1;
