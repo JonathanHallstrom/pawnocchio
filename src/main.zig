@@ -257,9 +257,15 @@ pub fn main() !void {
             if (std.mem.count(u8, arg, "analyse") > 0) {
                 var file: ?std.fs.File = null;
                 var approximate = false;
+                var use_tbs = false;
                 while (args.next()) |a| {
                     if (std.mem.eql(u8, a, "--approximate")) {
                         approximate = true;
+                    } else if (std.mem.eql(u8, a, "--tb-path")) {
+                        const null_terminated = try allocator.dupeZ(u8, args.next() orelse "");
+                        defer allocator.free(null_terminated);
+                        try root.pyrrhic.init(null_terminated);
+                        use_tbs = true;
                     } else {
                         file = try std.fs.cwd().openFile(a, .{});
                     }
@@ -276,6 +282,8 @@ pub fn main() !void {
                 var wins: u64 = 0;
                 var draws: u64 = 0;
                 var losses: u64 = 0;
+                var tb_results = std.mem.zeroes([3][3]u64);
+                var king_pos: [64]u64 = .{0} ** 64;
                 var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
                 defer zobrist_set.deinit();
                 var score_counts: []u64 = try allocator.alloc(u64, std.math.maxInt(u16));
@@ -320,6 +328,9 @@ pub fn main() !void {
                         });
                     }
                     var board = marlin_board.toBoard();
+                    var had_tb_win = false;
+                    var had_tb_draw = false;
+                    var had_tb_loss = false;
                     for (0..std.math.maxInt(usize)) |move_idx| {
                         var move_eval_pair: viriformat.MoveEvalPair = undefined;
                         br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
@@ -349,10 +360,25 @@ pub fn main() !void {
                                 board.makeMove(stm, move, Board.NullEvalState{});
                             },
                         }
+                        var king: root.Square = .fromBitboard(board.kingFor(board.stm));
+                        if (board.stm == .black) {
+                            king = king.flipRank();
+                        }
+                        king_pos[king.toInt()] += 1;
 
+                        if (use_tbs) {
+                            if (root.pyrrhic.probeWDL(&board)) |res| {
+                                const res_stm = if (board.stm == .black) res.flipped() else res;
+                                switch (res_stm) {
+                                    .loss => had_tb_loss = true,
+                                    .draw => had_tb_draw = true,
+                                    .win => had_tb_win = true,
+                                }
+                            }
+                        }
                         piece_counts[@popCount(board.occupancy())] += 1;
-                        phase_counts[board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 })] += 1;
-                        score_counts[@intCast(move_eval_pair.eval.toNative() - std.math.minInt(i16))] += 1;
+                        phase_counts[@min(24, board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 }))] += 1;
+                        score_counts[@intCast(@as(isize, move_eval_pair.eval.toNative()) - std.math.minInt(i16))] += 1;
                         if (approximate) {
                             approximator.add(board.hash);
                         } else {
@@ -360,6 +386,12 @@ pub fn main() !void {
                         }
                         position_count += 1;
                     }
+                    if (had_tb_loss)
+                        tb_results[marlin_board.wdl][0] += 1;
+                    if (had_tb_draw)
+                        tb_results[marlin_board.wdl][1] += 1;
+                    if (had_tb_win)
+                        tb_results[marlin_board.wdl][2] += 1;
                 }
 
                 const unique_count = if (approximate) approximator.count() else zobrist_set.count();
@@ -369,6 +401,8 @@ pub fn main() !void {
                     \\unique positions: {}/{} ({}%)
                     \\piece count distribution: {any}
                     \\phase distribution: {any}
+                    \\king position distribution: {any}
+                    \\tb results: {any}
                     \\wins: {} ({}%)
                     \\draws: {} ({}%)
                     \\losses: {} ({}%)
@@ -380,6 +414,8 @@ pub fn main() !void {
                     @as(u64, unique_count) * 100 / position_count,
                     piece_counts,
                     phase_counts,
+                    king_pos,
+                    tb_results,
                     wins,
                     100 * wins / game_count,
                     draws,
@@ -387,6 +423,23 @@ pub fn main() !void {
                     losses,
                     100 * losses / game_count,
                 });
+                write("king bucket distr:\n", .{});
+                for (0..8) |i| {
+                    for (0..8) |j| {
+                        const count = king_pos[i * 8 + j];
+                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(position_count))});
+                    }
+                    write("\n", .{});
+                }
+                write("king bucket distr (with mirroring):\n", .{});
+                for (0..8) |i| {
+                    for (0..4) |j| {
+                        const count = king_pos[i * 8 + j] + king_pos[i * 8 + 7 - j];
+                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(position_count))});
+                    }
+                    write("\n", .{});
+                }
+
                 var score_distr_file = try std.fs.cwd().createFile("score_distribution.txt", .{});
                 defer score_distr_file.close();
 
