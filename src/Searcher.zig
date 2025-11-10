@@ -1414,8 +1414,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         }
                     }
                 } else if (score <= aspiration_lower) {
+                    aspiration_upper = aspiration_lower;
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
-                    aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction >>= 1;
                     if (should_print) {
                         if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
