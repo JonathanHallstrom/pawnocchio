@@ -1118,6 +1118,9 @@ fn search(
                     }
                 }
             } else if (!is_pv or num_searched > 1) {
+                if (move == tt_entry.move and tt_entry.depth >= 2 and self.limits.root_depth >= 7) {
+                    new_depth = @max(1, new_depth);
+                }
                 s = -self.search(
                     false,
                     false,
