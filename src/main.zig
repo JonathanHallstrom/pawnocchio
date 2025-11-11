@@ -523,8 +523,8 @@ pub fn main() !void {
                     }
                     var board = marlin_board.toBoard();
                     var game = viriformat.Game.from(board, allocator);
+                    game.initial_position = marlin_board;
                     defer game.moves.deinit();
-                    game.setOutCome(@enumFromInt(marlin_board.wdl));
                     var skipping = false;
                     var final_correct_wdl_idx: ?usize = null;
                     for (0..std.math.maxInt(usize)) |move_idx| {
