@@ -107,7 +107,7 @@ pub const QuietHistory = struct {
 
 pub const PawnHistory = struct {
     const HashSize = 2048;
-    vals: [HashSize * 2 * 6 * 64]i16,
+    vals: [HashSize * 2 * 6 * 64][2][2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -132,7 +132,10 @@ pub const PawnHistory = struct {
         const tp_offs: usize = move.tp.toInt();
         const to_offs: usize = move.move.to().toInt();
         const hash_offs: usize = @intCast(board.pawn_hash % HashSize);
-        return &(&self.vals)[hash_offs * 2 * 6 * 64 + col_offs * 6 * 64 + tp_offs * 64 + to_offs];
+        const threats = board.threats[board.stm.flipped().toInt()];
+        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
+        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
+        return &(&self.vals)[hash_offs * 2 * 6 * 64 + col_offs * 6 * 64 + tp_offs * 64 + to_offs][from_threatened_offs][to_threatened_offs];
     }
 
     pub inline fn updateRaw(self: *PawnHistory, board: *const Board, move: TypedMove, upd: i32) void {
