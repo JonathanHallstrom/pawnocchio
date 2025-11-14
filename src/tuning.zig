@@ -223,6 +223,8 @@ const tunable_defaults = struct {
     pub const hard_limit_phase_mult: i32 = 109;
     pub const hard_limit_base: i32 = 233;
     pub const singular_beta_mult: i32 = 401;
+    pub const singular_beta_ttpv_mult: i32 = 400;
+    pub const singular_beta_pv_mult: i32 = 400;
     pub const singular_depth_mult: i32 = 571;
     pub const singular_depth_offs: i32 = 795;
     pub const singular_dext_margin_quiet: i32 = 16;
@@ -396,6 +398,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "hard_limit_phase_mult", .default = tunable_defaults.hard_limit_phase_mult, .min = 10, .c_end = 3 },
     .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base, .min = 10, .c_end = 5 },
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult, .min = 10, .max = 992, .c_end = 39 },
+    .{ .name = "singular_beta_pv_mult", .default = tunable_defaults.singular_beta_pv_mult, .min = 10, .max = 992, .c_end = 39 },
+    .{ .name = "singular_beta_ttpv_mult", .default = tunable_defaults.singular_beta_ttpv_mult, .min = 10, .max = 992, .c_end = 39 },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult, .min = 10, .max = 1565, .c_end = 62 },
     .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs, .min = 10, .max = 1837, .c_end = 73 },
     .{ .name = "singular_dext_margin_quiet", .default = tunable_defaults.singular_dext_margin_quiet, .min = 0, .max = 50, .c_end = 1 },
@@ -569,6 +573,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var hard_limit_phase_mult = tunable_defaults.hard_limit_phase_mult;
     pub var hard_limit_base = tunable_defaults.hard_limit_base;
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
+    pub var singular_beta_pv_mult = tunable_defaults.singular_beta_pv_mult;
+    pub var singular_beta_ttpv_mult = tunable_defaults.singular_beta_ttpv_mult;
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
     pub var singular_depth_offs = tunable_defaults.singular_depth_offs;
     pub var singular_dext_margin_quiet = tunable_defaults.singular_dext_margin_quiet;

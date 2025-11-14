@@ -982,8 +982,10 @@ fn search(
             tt_entry.depth + @as(i32, 3) >= depth and
             tt_entry.flags.score_type != .upper)
         {
-            const ttpv_beta_margin: i32 = if (!is_pv and tt_pv) 400 else 0;
-            const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - depth * (tunables.singular_beta_mult + ttpv_beta_margin), 1024));
+            var beta_mult: i32 = tunables.singular_beta_mult;
+            beta_mult -= @intFromBool(is_pv) * tunables.singular_beta_pv_mult;
+            beta_mult += @intFromBool(tt_pv) * tunables.singular_beta_ttpv_mult;
+            const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - depth * beta_mult, 1024));
             const s_depth = depth * tunables.singular_depth_mult - tunables.singular_depth_offs >> 10;
 
             cur.excluded = move;
