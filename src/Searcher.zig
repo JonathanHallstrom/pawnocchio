@@ -1028,8 +1028,8 @@ fn search(
                         extension += 1;
                     }
                 }
-            } else if (s_beta >= beta) {
-                return @intCast(@max(-(evaluation.win_score - 1), s_beta + @divTrunc((beta - s_beta) * tunables.multicut_fail_medium, 1024)));
+            } else if (s_score >= beta) {
+                return @intCast(@max(-(evaluation.win_score - 1), s_score + @divTrunc((beta - s_score) * tunables.multicut_fail_medium, 1024)));
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
