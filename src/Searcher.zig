@@ -1181,23 +1181,23 @@ fn search(
                 score_type = .lower;
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
-                const faillow_bonus = 2 * @max(0, alpha - eval);
+                const extra: i32 = 2 * @max(0, alpha - eval);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus);
+                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, extra);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
+                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, -extra);
                         }
                     }
-                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus);
+                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, extra);
                     for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
+                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, -extra);
                     }
                 } else {
-                    self.histories.updateNoisy(board, move, hist_depth, true, faillow_bonus);
+                    self.histories.updateNoisy(board, move, hist_depth, true, extra);
                 }
                 for (searched_noisies.slice()) |searched_move| {
-                    self.histories.updateNoisy(board, searched_move, hist_depth, false, 0);
+                    self.histories.updateNoisy(board, searched_move, hist_depth, false, -extra);
                 }
                 break;
             }
