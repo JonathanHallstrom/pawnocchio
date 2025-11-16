@@ -784,6 +784,7 @@ fn search(
             tunables.razoring_offs +
             tunables.razoring_mult * depth +
             tunables.razoring_quad * depth_3 * depth_3 +
+            @as(i32, 100) * @intFromBool(cutnode) +
             tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
