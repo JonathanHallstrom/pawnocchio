@@ -473,7 +473,7 @@ pub const HistoryTable = struct {
 fn gravityUpdateCont(entry: *i16, total: i64, adjustment: anytype) void {
     const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));
     const magnitude: i32 = @abs(clamped);
-    entry.* += @intCast(std.math.clamp(clamped - ((magnitude * total) >> SHIFT), -MAX_HISTORY, MAX_HISTORY));
+    entry.* += @intCast(std.math.clamp(clamped - ((magnitude * total) >> SHIFT), -std.math.maxInt(i16), std.math.maxInt(i16)));
 }
 
 fn gravityUpdate(entry: *i16, adjustment: anytype) void {
