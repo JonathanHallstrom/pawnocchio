@@ -93,6 +93,7 @@ const tunable_defaults = struct {
     pub const noisy_history_penalty_offs: i32 = 223;
     pub const noisy_history_penalty_max: i32 = 2441;
     pub const high_eval_offs: i32 = 48;
+    pub const faillow_mult: i32 = 2048;
     pub const quiet_ordering_weight: i32 = 1251;
     pub const quiet_pruning_weight: i32 = 847;
     pub const pawn_ordering_weight: i32 = 991;
@@ -268,6 +269,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "noisy_history_penalty_offs", .default = tunable_defaults.noisy_history_penalty_offs },
     .{ .name = "noisy_history_penalty_max", .default = tunable_defaults.noisy_history_penalty_max },
     .{ .name = "high_eval_offs", .default = tunable_defaults.high_eval_offs },
+    .{ .name = "faillow_mult", .default = tunable_defaults.faillow_mult },
     .{ .name = "quiet_ordering_weight", .default = tunable_defaults.quiet_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "quiet_pruning_weight", .default = tunable_defaults.quiet_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "pawn_ordering_weight", .default = tunable_defaults.pawn_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
@@ -443,6 +445,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var noisy_history_penalty_offs = tunable_defaults.noisy_history_penalty_offs;
     pub var noisy_history_penalty_max = tunable_defaults.noisy_history_penalty_max;
     pub var high_eval_offs = tunable_defaults.high_eval_offs;
+    pub var faillow_mult = tunable_defaults.faillow_mult;
     pub var quiet_ordering_weight = tunable_defaults.quiet_ordering_weight;
     pub var quiet_pruning_weight = tunable_defaults.quiet_pruning_weight;
     pub var pawn_ordering_weight = tunable_defaults.pawn_ordering_weight;
