@@ -836,7 +836,7 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + 400;
+        const probcut_beta = beta + 300 - @as(i32, if (improving) 100 else 0);
         const probcut_depth = depth - 3;
 
         if (!is_pv and
