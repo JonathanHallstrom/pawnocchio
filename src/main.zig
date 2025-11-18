@@ -444,7 +444,7 @@ pub fn main() !void {
             const value = parts.next() orelse "";
 
             if (std.ascii.eqlIgnoreCase("Hash", option_name)) {
-                const size = std.fmt.parseInt(u16, value, 10) catch {
+                const size = std.fmt.parseInt(u64, value, 10) catch {
                     writeLog("invalid hash size: '{s}'\n", .{value});
                     continue;
                 };
