@@ -1361,6 +1361,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.ttage +%= 1;
     if (params.needs_full_reset) {
         self.histories.reset();
+        self.ttage = 0;
     }
     @memset(std.mem.asBytes(&self.node_counts), 0);
     evaluation.initThreadLocals();
