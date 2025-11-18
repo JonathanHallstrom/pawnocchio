@@ -1181,7 +1181,7 @@ fn search(
                 score_type = .lower;
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
-                const faillow_bonus = 2 * @max(0, alpha - eval);
+                const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
                         self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus);
