@@ -1197,7 +1197,7 @@ fn search(
                 }
                 break;
             }
-            if (2 <= depth and depth <= 12) {
+            if (2 <= depth and depth <= 6) {
                 depth -= 1;
             }
         }
