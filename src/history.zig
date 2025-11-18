@@ -96,8 +96,8 @@ pub const QuietHistory = struct {
         gravityUpdate(self.entry(board, move), upd);
     }
 
-    inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
-        self.updateRaw(board, move, if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool, extra: i32) void {
+        self.updateRaw(board, move, extra + if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const QuietHistory, board: *const Board, move: TypedMove) i16 {
@@ -139,8 +139,8 @@ pub const PawnHistory = struct {
         gravityUpdate(self.entry(board, move), upd);
     }
 
-    inline fn update(self: *PawnHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
-        self.updateRaw(board, move, if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(self: *PawnHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool, extra: i32) void {
+        self.updateRaw(board, move, extra + if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const PawnHistory, board: *const Board, move: TypedMove) i16 {
@@ -184,8 +184,8 @@ pub const NoisyHistory = struct {
         gravityUpdate(self.entry(board, move), upd);
     }
 
-    inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool) void {
-        self.updateRaw(board, move, if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(self: *NoisyHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool, extra: i32) void {
+        self.updateRaw(board, move, extra + if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const NoisyHistory, board: *const Board, move: TypedMove) i16 {
@@ -222,12 +222,30 @@ pub const ContHistory = struct {
         return &(&self.vals)[col_offs * 6 * 64 * 2 * 6 * 64 + prev_offs * 2 * 6 * 64 + move_offs * 2 + prev_col_offs];
     }
 
-    pub inline fn updateRaw(self: *ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove, upd: i32) void {
-        gravityUpdate(self.entry(col, move, prev_col, prev), upd);
+    pub inline fn updateRaw(
+        self: *ContHistory,
+        total_cont: i64,
+        col: Colour,
+        move: TypedMove,
+        prev_col: Colour,
+        prev: TypedMove,
+        upd: i32,
+    ) void {
+        gravityUpdateCont(self.entry(col, move, prev_col, prev), total_cont, upd);
     }
 
-    inline fn update(self: *ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove, depth: i32, is_bonus: bool) void {
-        self.updateRaw(col, move, prev_col, prev, if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(
+        self: *ContHistory,
+        total_cont: i64,
+        col: Colour,
+        move: TypedMove,
+        prev_col: Colour,
+        prev: TypedMove,
+        depth: i32,
+        is_bonus: bool,
+        extra: i32,
+    ) void {
+        self.updateRaw(total_cont, col, move, prev_col, prev, extra + if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const ContHistory, col: Colour, move: TypedMove, prev_col: Colour, prev: TypedMove) i16 {
@@ -313,13 +331,19 @@ pub const HistoryTable = struct {
         moves: ConthistMoves,
         depth: i32,
         is_bonus: bool,
+        extra: i32,
     ) void {
         const typed = TypedMove.fromBoard(board, move);
-        self.quiet.update(board, typed, depth, is_bonus);
-        self.pawn.update(board, typed, depth, is_bonus);
+        self.quiet.update(board, typed, depth, is_bonus, extra);
+        self.pawn.update(board, typed, depth, is_bonus, extra);
+        var cont: i64 = 0;
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            self.countermove.update(board.stm, typed, stm, moves[i], depth, is_bonus);
+            cont += self.countermove.read(board.stm, typed, stm, moves[i]);
+        }
+        inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
+            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
+            self.countermove.update(cont, board.stm, typed, stm, moves[i], depth, is_bonus, extra);
         }
     }
 
@@ -331,9 +355,9 @@ pub const HistoryTable = struct {
         return res;
     }
 
-    pub fn updateNoisy(self: *HistoryTable, board: *const Board, move: Move, depth: i32, is_bonus: bool) void {
+    pub fn updateNoisy(self: *HistoryTable, board: *const Board, move: Move, depth: i32, is_bonus: bool, extra: i32) void {
         const typed = TypedMove.fromBoard(board, move);
-        self.noisy.update(board, typed, depth, is_bonus);
+        self.noisy.update(board, typed, depth, is_bonus, extra);
     }
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, followup: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {
@@ -445,6 +469,12 @@ pub const HistoryTable = struct {
         return @intCast(@divTrunc(material_scaled, divisor));
     }
 };
+
+fn gravityUpdateCont(entry: *i16, total: i64, adjustment: anytype) void {
+    const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));
+    const magnitude: i32 = @abs(clamped);
+    entry.* +|= @intCast(std.math.clamp(clamped - ((magnitude * total) >> SHIFT), -MAX_HISTORY, MAX_HISTORY));
+}
 
 fn gravityUpdate(entry: *i16, adjustment: anytype) void {
     const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));

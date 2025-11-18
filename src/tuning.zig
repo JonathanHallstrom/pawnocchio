@@ -113,6 +113,7 @@ const tunable_defaults = struct {
     pub const rfp_cutnode_margin: i32 = 19;
     pub const rfp_corrplexity_mult: i32 = 18;
     pub const rfp_history_div: i32 = 400;
+    pub const rfp_noisy_history_div: i32 = 400;
     pub const aspiration_score_mult: i32 = 1127;
     pub const aspiration_initial: i32 = 10136;
     pub const aspiration_multiplier: i32 = 1166;
@@ -131,6 +132,7 @@ const tunable_defaults = struct {
     pub const lmr_corrhist_mult: i32 = 6921;
     pub const lmr_dodeeper_margin: i32 = 57;
     pub const lmr_dodeeper_mult: i32 = 2;
+    pub const lmr_doshallower_margin: i32 = 0;
     pub const hindsight_ext_margin: i32 = 3072;
     pub const nmp_margin_base: i32 = 250;
     pub const nmp_margin_mult: i32 = 26;
@@ -220,7 +222,9 @@ const tunable_defaults = struct {
     pub const soft_limit_incr: i32 = 781;
     pub const hard_limit_phase_mult: i32 = 109;
     pub const hard_limit_base: i32 = 233;
-    pub const singular_beta_mult: i32 = 451;
+    pub const singular_beta_mult: i32 = 401;
+    pub const singular_beta_ttpv_mult: i32 = 400;
+    pub const singular_beta_pv_mult: i32 = 400;
     pub const singular_depth_mult: i32 = 571;
     pub const singular_depth_offs: i32 = 795;
     pub const singular_dext_margin_quiet: i32 = 16;
@@ -284,6 +288,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
     .{ .name = "rfp_corrplexity_mult", .default = tunable_defaults.rfp_corrplexity_mult, .min = -10, .max = 60, .c_end = 2 },
     .{ .name = "rfp_history_div", .default = tunable_defaults.rfp_history_div },
+    .{ .name = "rfp_noisy_history_div", .default = tunable_defaults.rfp_noisy_history_div },
     .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 10, .max = 4096, .c_end = 32 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = 10, .max = 39450, .c_end = 1577 },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = 1127, .max = 4015, .c_end = 160 },
@@ -302,6 +307,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult, .min = -10, .max = 23695, .c_end = 947 },
     .{ .name = "lmr_dodeeper_margin", .default = tunable_defaults.lmr_dodeeper_margin, .min = -10, .max = 140, .c_end = 5 },
     .{ .name = "lmr_dodeeper_mult", .default = tunable_defaults.lmr_dodeeper_mult, .min = 0, .max = 10, .c_end = 0.5 },
+    .{ .name = "lmr_doshallower_margin", .default = tunable_defaults.lmr_doshallower_margin, .min = -50, .max = 50, .c_end = 3 },
     .{ .name = "hindsight_ext_margin", .default = tunable_defaults.hindsight_ext_margin },
     .{ .name = "nmp_margin_base", .default = tunable_defaults.nmp_margin_base },
     .{ .name = "nmp_margin_mult", .default = tunable_defaults.nmp_margin_mult },
@@ -328,7 +334,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "razoring_mult", .default = tunable_defaults.razoring_mult },
     .{ .name = "razoring_quad", .default = tunable_defaults.razoring_quad },
     .{ .name = "razoring_easy_capture", .default = tunable_defaults.razoring_easy_capture, .min = -1024, .max = 1024, .c_end = 10 },
-    .{ .name = "history_pruning_depth_limit", .default = tunable_defaults.history_pruning_depth_limit },
+    .{ .name = "noisy_history_pruning_depth_limit", .default = tunable_defaults.noisy_history_pruning_depth_limit },
     .{ .name = "history_pruning_offs", .default = tunable_defaults.history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
     .{ .name = "history_pruning_mult", .default = tunable_defaults.history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "noisy_history_pruning_depth_limit", .default = tunable_defaults.noisy_history_pruning_depth_limit },
@@ -392,6 +398,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "hard_limit_phase_mult", .default = tunable_defaults.hard_limit_phase_mult, .min = 10, .c_end = 3 },
     .{ .name = "hard_limit_base", .default = tunable_defaults.hard_limit_base, .min = 10, .c_end = 5 },
     .{ .name = "singular_beta_mult", .default = tunable_defaults.singular_beta_mult, .min = 10, .max = 992, .c_end = 39 },
+    .{ .name = "singular_beta_pv_mult", .default = tunable_defaults.singular_beta_pv_mult, .min = 10, .max = 992, .c_end = 39 },
+    .{ .name = "singular_beta_ttpv_mult", .default = tunable_defaults.singular_beta_ttpv_mult, .min = 10, .max = 992, .c_end = 39 },
     .{ .name = "singular_depth_mult", .default = tunable_defaults.singular_depth_mult, .min = 10, .max = 1565, .c_end = 62 },
     .{ .name = "singular_depth_offs", .default = tunable_defaults.singular_depth_offs, .min = 10, .max = 1837, .c_end = 73 },
     .{ .name = "singular_dext_margin_quiet", .default = tunable_defaults.singular_dext_margin_quiet, .min = 0, .max = 50, .c_end = 1 },
@@ -455,6 +463,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var rfp_corrplexity_mult = tunable_defaults.rfp_corrplexity_mult;
     pub var rfp_history_div = tunable_defaults.rfp_history_div;
+    pub var rfp_noisy_history_div = tunable_defaults.rfp_noisy_history_div;
     pub var aspiration_score_mult = tunable_defaults.aspiration_score_mult;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
@@ -473,6 +482,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var lmr_dodeeper_margin = tunable_defaults.lmr_dodeeper_margin;
     pub var lmr_dodeeper_mult = tunable_defaults.lmr_dodeeper_mult;
+    pub var lmr_doshallower_margin = tunable_defaults.lmr_doshallower_margin;
     pub var hindsight_ext_margin = tunable_defaults.hindsight_ext_margin;
     pub var nmp_margin_base = tunable_defaults.nmp_margin_base;
     pub var nmp_margin_mult = tunable_defaults.nmp_margin_mult;
@@ -563,6 +573,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var hard_limit_phase_mult = tunable_defaults.hard_limit_phase_mult;
     pub var hard_limit_base = tunable_defaults.hard_limit_base;
     pub var singular_beta_mult = tunable_defaults.singular_beta_mult;
+    pub var singular_beta_pv_mult = tunable_defaults.singular_beta_pv_mult;
+    pub var singular_beta_ttpv_mult = tunable_defaults.singular_beta_ttpv_mult;
     pub var singular_depth_mult = tunable_defaults.singular_depth_mult;
     pub var singular_depth_offs = tunable_defaults.singular_depth_offs;
     pub var singular_dext_margin_quiet = tunable_defaults.singular_dext_margin_quiet;

@@ -453,7 +453,7 @@ fn qsearch(
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, move);
-            if ((num_searched >= @as(i32, if (is_in_check) 4 else 2)) and
+            if (num_searched >= 2 and
                 history_score < tunables.qs_hp_margin)
             {
                 break;
@@ -618,10 +618,10 @@ fn search(
     comptime stm: Colour,
     alpha_original: i32,
     beta_original: i32,
-    depth_: i32,
+    depth_original: i32,
     cutnode: bool,
 ) i16 {
-    var depth = depth_;
+    var depth = depth_original;
     var alpha = alpha_original;
     var beta = beta_original;
 
@@ -774,7 +774,7 @@ fn search(
             tunables.rfp_worsening_margin * @intFromBool(opponent_worsening) -
             tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
             (corrplexity * tunables.rfp_corrplexity_mult >> 32) +
-            @divTrunc(cur.history_score, tunables.rfp_history_div) * @intFromBool(!cur.move_is_noisy))
+            @divTrunc(cur.history_score, if (cur.move_is_noisy) tunables.rfp_noisy_history_div else tunables.rfp_history_div))
         {
             return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunables.rfp_fail_medium, 1024));
         }
@@ -983,7 +983,10 @@ fn search(
             tt_entry.depth + @as(i32, 3) >= depth and
             tt_entry.flags.score_type != .upper)
         {
-            const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - depth * tunables.singular_beta_mult, 1024));
+            var beta_mult: i32 = tunables.singular_beta_mult;
+            beta_mult -= @intFromBool(is_pv) * tunables.singular_beta_pv_mult;
+            beta_mult += @intFromBool(tt_pv) * tunables.singular_beta_ttpv_mult;
+            const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - depth * beta_mult, 1024));
             const s_depth = depth * tunables.singular_depth_mult - tunables.singular_depth_offs >> 10;
 
             cur.excluded = move;
@@ -1100,7 +1103,7 @@ fn search(
 
                 if (s > alpha and reduced_depth < new_depth) {
                     const do_deeper_search = s > best_score + tunables.lmr_dodeeper_margin + tunables.lmr_dodeeper_mult * new_depth;
-                    const do_shallower_search = s < best_score + new_depth;
+                    const do_shallower_search = s < best_score + tunables.lmr_doshallower_margin + new_depth;
 
                     new_depth += @intFromBool(do_deeper_search);
                     new_depth -= @intFromBool(do_shallower_search);
@@ -1179,22 +1182,19 @@ fn search(
                 score_type = .lower;
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
+                const faillow_bonus = 2 * @max(0, alpha - eval);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
+                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
+                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
                         }
                     }
-                    self.histories.updateQuiet(board, move, usable_moves, hist_depth, true);
-                    for (searched_quiets.slice()) |searched_move| {
-                        self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false);
-                    }
                 } else {
-                    self.histories.updateNoisy(board, move, hist_depth, true);
+                    self.histories.updateNoisy(board, move, hist_depth, true, faillow_bonus);
                 }
                 for (searched_noisies.slice()) |searched_move| {
-                    self.histories.updateNoisy(board, searched_move, hist_depth, false);
+                    self.histories.updateNoisy(board, searched_move, hist_depth, false, 0);
                 }
                 break;
             }
