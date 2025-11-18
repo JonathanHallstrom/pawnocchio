@@ -1182,7 +1182,7 @@ fn search(
                 score_type = .lower;
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
-                const faillow_bonus = 2 * @max(0, alpha - eval);
+                const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
                         self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus);
@@ -1250,7 +1250,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     };
     var nodes: u64 = 0;
     var tbhits: u64 = 0;
-    for (engine.searchers) |*searcher| {
+    for (engine.searchers) |searcher| {
         nodes += searcher.nodes;
         tbhits += searcher.tbhits;
     }
@@ -1362,6 +1362,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.ttage +%= 1;
     if (params.needs_full_reset) {
         self.histories.reset();
+        self.ttage = 0;
     }
     @memset(std.mem.asBytes(&self.node_counts), 0);
     evaluation.initThreadLocals();
@@ -1463,7 +1464,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             var move_stability: u32 = 0;
             var best_move_count: u64 = 0;
             var total_nodes: u64 = 0;
-            for (engine.searchers) |*searcher| {
+            for (engine.searchers) |searcher| {
                 eval_stability += searcher.eval_stability;
                 if (searcher.root_move == self.root_move) {
                     move_stability += searcher.move_stability;
