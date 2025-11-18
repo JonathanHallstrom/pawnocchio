@@ -31,7 +31,7 @@ pub fn main() !void {
     }
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = if (std.debug.runtime_safety) gpa.allocator() else std.heap.smp_allocator;
 
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
@@ -257,13 +257,28 @@ pub fn main() !void {
             if (std.mem.count(u8, arg, "analyse") > 0) {
                 var file: ?std.fs.File = null;
                 var approximate = false;
+                var use_tbs = false;
                 while (args.next()) |a| {
                     if (std.mem.eql(u8, a, "--approximate")) {
                         approximate = true;
+                    } else if (std.mem.eql(u8, a, "--tb-path")) {
+                        const null_terminated = try allocator.dupeZ(u8, args.next() orelse "");
+                        defer allocator.free(null_terminated);
+                        try root.pyrrhic.init(null_terminated);
+                        use_tbs = true;
                     } else {
                         file = try std.fs.cwd().openFile(a, .{});
                     }
                 }
+                if (!use_tbs) {
+                    std.debug.print("not using TBs, if you want TB stats please pass --tb-path\n", .{});
+                }
+                if (approximate) {
+                    std.debug.print("unique count is using HyperLogLog, and so may be slightly wrong\n", .{});
+                } else {
+                    std.debug.print("unique count is using a hashset, for better performance try --approximate\n", .{});
+                }
+
                 defer file.?.close();
                 const stat = try file.?.stat();
 
@@ -276,8 +291,14 @@ pub fn main() !void {
                 var wins: u64 = 0;
                 var draws: u64 = 0;
                 var losses: u64 = 0;
+                var tb_results = std.mem.zeroes([3][3]u64);
+                var king_pos: [64]u64 = .{0} ** 64;
                 var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
                 defer zobrist_set.deinit();
+                var score_counts: []u64 = try allocator.alloc(u64, std.math.maxInt(u16));
+                defer allocator.free(score_counts);
+                var piece_counts: [33]u64 = .{0} ** 33;
+                var phase_counts: [25]u64 = .{0} ** 25;
 
                 if (!approximate) {
                     try zobrist_set.ensureTotalCapacity(@intCast((stat.size + 3) / 4));
@@ -316,6 +337,9 @@ pub fn main() !void {
                         });
                     }
                     var board = marlin_board.toBoard();
+                    var had_tb_win = false;
+                    var had_tb_draw = false;
+                    var had_tb_loss = false;
                     for (0..std.math.maxInt(usize)) |move_idx| {
                         var move_eval_pair: viriformat.MoveEvalPair = undefined;
                         br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
@@ -345,7 +369,24 @@ pub fn main() !void {
                                 board.makeMove(stm, move, Board.NullEvalState{});
                             },
                         }
+                        var king: root.Square = .fromBitboard(board.kingFor(board.stm));
+                        if (board.stm == .black) {
+                            king = king.flipRank();
+                        }
+                        king_pos[king.toInt()] += 1;
 
+                        if (use_tbs) {
+                            if (root.pyrrhic.probeWDL(&board)) |res| {
+                                switch (if (board.stm == .black) res.flipped() else res) {
+                                    .loss => had_tb_loss = true,
+                                    .draw => had_tb_draw = true,
+                                    .win => had_tb_win = true,
+                                }
+                            }
+                        }
+                        piece_counts[@popCount(board.occupancy())] += 1;
+                        phase_counts[@min(24, board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 }))] += 1;
+                        score_counts[@intCast(@as(isize, move_eval_pair.eval.toNative()) - std.math.minInt(i16))] += 1;
                         if (approximate) {
                             approximator.add(board.hash);
                         } else {
@@ -353,13 +394,30 @@ pub fn main() !void {
                         }
                         position_count += 1;
                     }
+                    if (had_tb_loss)
+                        tb_results[marlin_board.wdl][0] += 1;
+                    if (had_tb_draw)
+                        tb_results[marlin_board.wdl][1] += 1;
+                    if (had_tb_win)
+                        tb_results[marlin_board.wdl][2] += 1;
                 }
 
                 const unique_count = if (approximate) approximator.count() else zobrist_set.count();
+
+                var total_tb: u64 = 0;
+                for (tb_results) |tb_arr| for (tb_arr) |tb_count| {
+                    total_tb += tb_count;
+                };
+                const incorrect_tb = total_tb - (tb_results[0][0] + tb_results[1][1] + tb_results[2][2]);
                 write(
                     \\
                     \\average exit: {d:.2}
                     \\unique positions: {}/{} ({}%)
+                    \\piece count distribution: {any}
+                    \\phase distribution: {any}
+                    \\king position distribution: {any}
+                    \\tb results: {any}
+                    \\games whose outcome do not match TBs: {d:.2}%
                     \\wins: {} ({}%)
                     \\draws: {} ({}%)
                     \\losses: {} ({}%)
@@ -369,12 +427,165 @@ pub fn main() !void {
                     unique_count,
                     position_count,
                     @as(u64, unique_count) * 100 / position_count,
+                    piece_counts,
+                    phase_counts,
+                    king_pos,
+                    tb_results,
+                    @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(1, total_tb))),
                     wins,
                     100 * wins / game_count,
                     draws,
                     100 * draws / game_count,
                     losses,
                     100 * losses / game_count,
+                });
+                write("king bucket distr:\n", .{});
+                for (0..8) |i| {
+                    for (0..8) |j| {
+                        const count = king_pos[i * 8 + j];
+                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(position_count))});
+                    }
+                    write("\n", .{});
+                }
+                write("king bucket distr (with mirroring):\n", .{});
+                for (0..8) |i| {
+                    for (0..4) |j| {
+                        const count = king_pos[i * 8 + j] + king_pos[i * 8 + 7 - j];
+                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(position_count))});
+                    }
+                    write("\n", .{});
+                }
+
+                write("writing score distribution to 'score_distribution.txt'\n", .{});
+                var score_distr_file = try std.fs.cwd().createFile("score_distribution.txt", .{});
+                defer score_distr_file.close();
+
+                // its fine to reuse the buffer since we finished reading the file
+                var writer = score_distr_file.writer(&buf);
+                try writer.interface.print("{any}\n", .{score_counts});
+                try writer.interface.flush();
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "relabel-tb") > 0) {
+                var input_file: ?std.fs.File = null;
+                var output_file: ?std.fs.File = null;
+                var use_tbs = false;
+                while (args.next()) |a| {
+                    if (std.mem.eql(u8, a, "--tb-path")) {
+                        const null_terminated = try allocator.dupeZ(u8, args.next() orelse "");
+                        defer allocator.free(null_terminated);
+                        try root.pyrrhic.init(null_terminated);
+                        use_tbs = true;
+                    } else {
+                        input_file = try std.fs.cwd().openFile(a, .{});
+                        var name_writer = std.Io.Writer.Allocating.init(allocator);
+                        defer name_writer.deinit();
+                        try name_writer.writer.print("{s}_relabeled", .{a});
+                        output_file = try std.fs.cwd().createFile(name_writer.written(), .{});
+                    }
+                }
+                if (!use_tbs) {
+                    std.debug.panic("must specify --tb-path\n", .{});
+                }
+                if (input_file == null or output_file == null) {
+                    std.debug.panic("must specify an input file\n", .{});
+                }
+                defer input_file.?.close();
+                const stat = try input_file.?.stat();
+
+                var input_buf: [4096]u8 = undefined;
+                var br = input_file.?.reader(&input_buf);
+                var output_buf: [4096]u8 = undefined;
+                var bw = output_file.?.writer(&output_buf);
+
+                var game_count: u64 = 0;
+                var position_count: u64 = 0;
+                var incorrect_wdl_count: u64 = 0;
+
+                const viriformat = root.viriformat;
+                while (!br.atEnd()) {
+                    var marlin_board: viriformat.MarlinPackedBoard = undefined;
+                    br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+                        if (e == error.EndOfStream) {
+                            break;
+                        } else {
+                            return e;
+                        }
+                    };
+
+                    game_count += 1;
+
+                    if (game_count % 16384 == 0) {
+                        write("\rprogress: {}%", .{
+                            @as(u128, br.logicalPos() * 100) / stat.size,
+                        });
+                    }
+                    var board = marlin_board.toBoard();
+                    var game = viriformat.Game.from(board, allocator);
+                    game.initial_position = marlin_board;
+                    defer game.moves.deinit();
+                    var skipping = false;
+                    var final_correct_wdl_idx: ?usize = null;
+                    for (0..std.math.maxInt(usize)) |move_idx| {
+                        var move_eval_pair: viriformat.MoveEvalPair = undefined;
+                        br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                            if (e == error.EndOfStream) {
+                                break;
+                            } else {
+                                return e;
+                            }
+                        };
+                        const viri_move = move_eval_pair.move;
+
+                        if (viri_move.data == 0) {
+                            break;
+                        }
+
+                        const move = viri_move.toMove(&board);
+                        if (!skipping) {
+                            try game.addMove(move, move_eval_pair.eval.toNative());
+                        }
+
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                @setEvalBranchQuota(1 << 30);
+                                board.makeMove(stm, move, Board.NullEvalState{});
+                            },
+                        }
+
+                        if (!skipping) {
+                            if (root.pyrrhic.probeWDL(&board)) |res| {
+                                const white_relative_result = if (board.stm == .black) res.flipped() else res;
+                                const game_result: root.WDL = @enumFromInt(marlin_board.wdl);
+                                if (white_relative_result != game_result) {
+                                    if (final_correct_wdl_idx) |final_corr_idx| {
+                                        while (game.moves.items.len > final_corr_idx + 1) {
+                                            _ = game.moves.pop();
+                                        }
+                                    } else {
+                                        incorrect_wdl_count += 1;
+                                        game.setOutCome(white_relative_result);
+                                    }
+                                    skipping = true;
+                                } else {
+                                    final_correct_wdl_idx = move_idx;
+                                }
+                            }
+                        }
+                        position_count += 1;
+                    }
+                    try game.serializeInto(&bw.interface);
+                }
+                try bw.interface.flush();
+
+                write(
+                    \\
+                    \\relabeled {}/{} games
+                    \\
+                , .{
+                    incorrect_wdl_count,
+                    game_count,
                 });
 
                 return;
