@@ -945,8 +945,7 @@ fn search(
                     tunables.bnfp_base +
                     @divTrunc(lmr_depth * tunables.bnfp_mult, 1024) +
                     SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
-                if (mp.stage == .bad_noisies and
-                    !is_in_check and
+                if (!is_in_check and
                     lmr_depth <= tunables.bnfp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
