@@ -772,12 +772,12 @@ fn search(
         if (eval >= beta +
             @divTrunc(
                 tunables.rfp_base +
-                    tunables.rfp_mult * depth +
+                    (tunables.rfp_mult + additional_margin * 102) * depth +
                     tunables.rfp_quad * depth * depth +
                     (corrplexity * tunables.rfp_corrplexity_mult >> 22) +
                     @divTrunc(cur.history_score * if (cur.move_is_noisy) tunables.rfp_noisy_history_mult else tunables.rfp_history_mult, 16),
                 1024,
-            ) - additional_margin)
+            ) - @divTrunc(additional_margin * 9 + 9, 10))
         {
             return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunables.rfp_fail_medium, 1024));
         }
