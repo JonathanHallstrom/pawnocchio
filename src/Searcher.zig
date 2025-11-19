@@ -763,6 +763,12 @@ fn search(
         // basically we reduce more if this node is likely unimportant
         const no_tthit_cutnode = !tt_hit and cutnode;
         const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
+        const additional_margin =
+            tunables.rfp_improving_margin * @intFromBool(improving) +
+            tunables.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) +
+            tunables.rfp_improving_easy_margin * @intFromBool(improving and opponent_has_easy_capture) +
+            tunables.rfp_worsening_margin * @intFromBool(opponent_worsening) +
+            tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode);
         if (eval >= beta +
             @divTrunc(
                 tunables.rfp_base +
@@ -771,12 +777,7 @@ fn search(
                     (corrplexity * tunables.rfp_corrplexity_mult >> 22) +
                     @divTrunc(cur.history_score * if (cur.move_is_noisy) tunables.rfp_noisy_history_mult else tunables.rfp_history_mult, 16),
                 1024,
-            ) -
-            tunables.rfp_improving_margin * @intFromBool(improving) -
-            tunables.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) -
-            tunables.rfp_improving_easy_margin * @intFromBool(improving and opponent_has_easy_capture) -
-            tunables.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-            tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode))
+            ) - additional_margin)
         {
             return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunables.rfp_fail_medium, 1024));
         }
