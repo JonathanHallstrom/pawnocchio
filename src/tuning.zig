@@ -104,8 +104,8 @@ const tunable_defaults = struct {
     pub const cont2_pruning_weight: i32 = 1039;
     pub const cont4_ordering_weight: i32 = 830;
     pub const cont4_pruning_weight: i32 = 41;
-    pub const rfp_base: i32 = 53;
-    pub const rfp_mult: i32 = 42;
+    pub const rfp_base: i32 = 54272;
+    pub const rfp_mult: i32 = 43008;
     pub const rfp_quad: i32 = 6144;
     pub const rfp_improving_margin: i32 = 1;
     pub const rfp_improving_easy_margin: i32 = 81;
@@ -113,8 +113,8 @@ const tunable_defaults = struct {
     pub const rfp_worsening_margin: i32 = 15;
     pub const rfp_cutnode_margin: i32 = 19;
     pub const rfp_corrplexity_mult: i32 = 18;
-    pub const rfp_history_div: i32 = 400;
-    pub const rfp_noisy_history_div: i32 = 400;
+    pub const rfp_history_mult: i32 = 41;
+    pub const rfp_noisy_history_mult: i32 = 41;
     pub const aspiration_score_mult: i32 = 1127;
     pub const aspiration_initial: i32 = 10136;
     pub const aspiration_multiplier: i32 = 1166;
@@ -280,17 +280,17 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont2_pruning_weight", .default = tunable_defaults.cont2_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont4_ordering_weight", .default = tunable_defaults.cont4_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "rfp_base", .default = tunable_defaults.rfp_base, .min = -10, .max = 100, .c_end = 5 },
-    .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult, .min = -10, .max = 100 },
-    .{ .name = "rfp_quad", .default = tunable_defaults.rfp_quad, .min = -10, .max = 30, .c_end = @as(f64, tunable_defaults.rfp_quad) / 20 },
+    .{ .name = "rfp_base", .default = tunable_defaults.rfp_base },
+    .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult },
+    .{ .name = "rfp_quad", .default = tunable_defaults.rfp_quad, .c_end = @as(f64, tunable_defaults.rfp_quad) / 20 },
     .{ .name = "rfp_improving_margin", .default = tunable_defaults.rfp_improving_margin, .min = -100, .max = 100, .c_end = 10 },
     .{ .name = "rfp_improving_easy_margin", .default = tunable_defaults.rfp_improving_easy_margin },
     .{ .name = "rfp_easy_margin", .default = tunable_defaults.rfp_easy_margin, .min = -50, .max = 50, .c_end = 5 },
     .{ .name = "rfp_worsening_margin", .default = tunable_defaults.rfp_worsening_margin, .min = -10, .max = 45, .c_end = 1 },
     .{ .name = "rfp_cutnode_margin", .default = tunable_defaults.rfp_cutnode_margin, .min = -10, .max = 55, .c_end = 1 },
     .{ .name = "rfp_corrplexity_mult", .default = tunable_defaults.rfp_corrplexity_mult, .min = -10, .max = 60, .c_end = 2 },
-    .{ .name = "rfp_history_div", .default = tunable_defaults.rfp_history_div },
-    .{ .name = "rfp_noisy_history_div", .default = tunable_defaults.rfp_noisy_history_div },
+    .{ .name = "rfp_history_mult", .default = tunable_defaults.rfp_history_mult },
+    .{ .name = "rfp_noisy_history_mult", .default = tunable_defaults.rfp_noisy_history_mult },
     .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 10, .max = 4096, .c_end = 32 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = 10, .max = 39450, .c_end = 1577 },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = 1127, .max = 4015, .c_end = 160 },
@@ -465,8 +465,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var rfp_worsening_margin = tunable_defaults.rfp_worsening_margin;
     pub var rfp_cutnode_margin = tunable_defaults.rfp_cutnode_margin;
     pub var rfp_corrplexity_mult = tunable_defaults.rfp_corrplexity_mult;
-    pub var rfp_history_div = tunable_defaults.rfp_history_div;
-    pub var rfp_noisy_history_div = tunable_defaults.rfp_noisy_history_div;
+    pub var rfp_history_mult = tunable_defaults.rfp_history_mult;
+    pub var rfp_noisy_history_mult = tunable_defaults.rfp_noisy_history_mult;
     pub var aspiration_score_mult = tunable_defaults.aspiration_score_mult;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
