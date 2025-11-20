@@ -336,14 +336,15 @@ pub const HistoryTable = struct {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus, extra);
         self.pawn.update(board, typed, depth, is_bonus, extra);
-        var cont: i64 = 0;
+        var total: i64 = 0;
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            cont += self.countermove.read(board.stm, typed, stm, moves[i]);
+            total += self.countermove.read(board.stm, typed, stm, moves[i]);
         }
+        total += self.pawn.read(board, typed);
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            self.countermove.update(cont, board.stm, typed, stm, moves[i], depth, is_bonus, extra);
+            self.countermove.update(total, board.stm, typed, stm, moves[i], depth, is_bonus, extra);
         }
     }
 
