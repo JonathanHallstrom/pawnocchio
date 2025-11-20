@@ -92,12 +92,12 @@ pub const QuietHistory = struct {
         return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + from_offs * 64 * 2 * 2 + to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
-    pub inline fn updateRaw(self: *QuietHistory, board: *const Board, move: TypedMove, upd: i32) void {
-        gravityUpdate(self.entry(board, move), upd);
+    pub inline fn updateRaw(self: *QuietHistory, total: i64, board: *const Board, move: TypedMove, upd: i32) void {
+        gravityUpdateCont(self.entry(board, move), total, upd);
     }
 
-    inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool, extra: i32) void {
-        self.updateRaw(board, move, extra + if (is_bonus) bonus(depth) else -penalty(depth));
+    inline fn update(self: *QuietHistory, total: i64, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool, extra: i32) void {
+        self.updateRaw(total, board, move, extra + if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
     inline fn read(self: *const QuietHistory, board: *const Board, move: TypedMove) i16 {
@@ -334,16 +334,17 @@ pub const HistoryTable = struct {
         extra: i32,
     ) void {
         const typed = TypedMove.fromBoard(board, move);
-        self.quiet.update(board, typed, depth, is_bonus, extra);
-        self.pawn.update(board, typed, depth, is_bonus, extra);
-        var cont: i64 = 0;
+        var total: i64 = 0;
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            cont += self.countermove.read(board.stm, typed, stm, moves[i]);
+            total += self.countermove.read(board.stm, typed, stm, moves[i]);
         }
+        total += self.quiet.read(board, typed);
+        self.quiet.update(total, board, typed, depth, is_bonus, extra);
+        self.pawn.update(board, typed, depth, is_bonus, extra);
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            self.countermove.update(cont, board.stm, typed, stm, moves[i], depth, is_bonus, extra);
+            self.countermove.update(total, board.stm, typed, stm, moves[i], depth, is_bonus, extra);
         }
     }
 
