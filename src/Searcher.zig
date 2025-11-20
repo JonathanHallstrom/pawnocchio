@@ -1123,6 +1123,10 @@ fn search(
                         new_depth,
                         !cutnode,
                     );
+
+                    if (is_quiet) {
+                        self.histories.updateCont(board, move, self.getUsableMoves(), if (s >= alpha) new_depth else reduced_depth, true, -200);
+                    }
                     if (self.stop.load(.acquire)) {
                         break :blk 0;
                     }
