@@ -339,13 +339,13 @@ pub const HistoryTable = struct {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             total += self.countermove.read(board.stm, typed, stm, moves[i]);
         }
-        total += self.quiet.read(board, typed);
-        self.quiet.update(total, board, typed, depth, is_bonus, extra);
         self.pawn.update(board, typed, depth, is_bonus, extra);
         inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
             self.countermove.update(total, board.stm, typed, stm, moves[i], depth, is_bonus, extra);
         }
+        total += self.quiet.read(board, typed);
+        self.quiet.update(total, board, typed, depth, is_bonus, extra);
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
