@@ -1365,11 +1365,11 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     }
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
-    self.ttage +%= 1;
     if (params.needs_full_reset) {
         self.histories.reset();
         self.ttage = 0;
     }
+    self.ttage +%= 1;
     @memset(std.mem.asBytes(&self.node_counts), 0);
     evaluation.initThreadLocals();
 }
