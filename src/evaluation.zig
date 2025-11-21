@@ -41,7 +41,7 @@ pub fn initThreadLocals() void {
 }
 
 pub const State = impl.State;
-pub const evaluate: fn (comptime root.Colour, *const Board, *const Board, *State) i16 = impl.evaluate;
+pub const evaluate = impl.evaluate;
 
 pub const inf_score: i16 = 32767;
 pub const checkmate_score: i16 = 32000;

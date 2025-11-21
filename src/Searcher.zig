@@ -17,6 +17,7 @@
 const std = @import("std");
 
 const root = @import("root.zig");
+const nnue = @import("nnue.zig");
 
 const evaluation = root.evaluation;
 const movegen = root.movegen;
@@ -123,6 +124,7 @@ normalize: bool = false,
 minimal: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
+refresh_cache: if (evaluation.use_hce) void else root.refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT),
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -161,7 +163,7 @@ pub fn writeTT(
 
 fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
     const hash = self.stackEntry(0).board.getHashWithHalfmove();
-    const eval = evaluate(stm, &self.stackEntry(0).board, &self.stackEntry(-1).board, self.evalState(0));
+    const eval = evaluate(stm, &self.stackEntry(0).board, self.evalState(0), &self.refresh_cache);
     self.writeTT(
         false,
         hash,
@@ -274,14 +276,13 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
-    const old_stack_entry: *StackEntry = self.stackEntry(-1);
     const prev_stack_entry: *StackEntry = self.stackEntry(0);
     const prev_eval_state: *evaluation.State = self.evalState(0);
     const new_stack_entry: *StackEntry = self.stackEntry(1);
     const new_eval_state: *evaluation.State = self.evalState(1);
     const board = &prev_stack_entry.board;
 
-    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
+    new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
@@ -302,14 +303,13 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
 }
 
 fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
-    const old_stack_entry = self.stackEntry(-1);
     const prev_stack_entry = self.stackEntry(0);
     const prev_eval_state = self.evalState(0);
     const new_stack_entry = self.stackEntry(1);
     const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
 
-    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
+    new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
     new_stack_entry.init(
         board,
         TypedMove.init(),
@@ -1366,6 +1366,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
+        self.refresh_cache.initInPlace();
         self.histories.reset();
         self.ttage = 0;
     }
