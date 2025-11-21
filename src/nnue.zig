@@ -199,10 +199,10 @@ const Accumulator = struct {
         }
     }
 
-    pub fn update(noalias self: *Accumulator, other: *const Accumulator, board: *const Board) void {
+    pub fn update(noalias self: *Accumulator, other: *const Accumulator, board: *const Board, refresh_cache: anytype) void {
         switch (board.stm) {
             inline else => |stm| {
-                self.applyUpdate(.copy, other, stm.flipped(), board);
+                self.applyUpdate(.copy, other, stm.flipped(), board, refresh_cache);
             },
         }
     }
@@ -304,11 +304,11 @@ const Accumulator = struct {
         }
     }
 
-    pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board) i16 {
+    pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, refresh_cache: anytype) i16 {
         // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)[0..10]});
         // std.debug.print("{any}\n", .{(&weights.output_biases)[0..BUCKET_COUNT]});
 
-        self.applyUpdate(.inplace, null, stm.flipped(), board);
+        self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
         // std.debug.print("{any}\n", .{self.white[0..10]});
         // std.debug.print("{any}\n", .{self.black[0..10]});
         // if (std.debug.runtime_safety) {
@@ -378,7 +378,14 @@ const Accumulator = struct {
         return whichInputBucket(stm, from) != whichInputBucket(stm, to);
     }
 
-    fn applyUpdate(noalias self: *Accumulator, comptime mode: enum { copy, inplace }, noalias other: if (mode == .inplace) @TypeOf(null) else *const Accumulator, comptime stm: Colour, board: *const Board) void {
+    fn applyUpdate(
+        noalias self: *Accumulator,
+        comptime mode: enum { copy, inplace },
+        noalias other: if (mode == .inplace) @TypeOf(null) else *const Accumulator,
+        comptime stm: Colour,
+        board: *const Board,
+        refresh_cache: anytype,
+    ) void {
         if (mode == .copy) {
             self.white_mirrored = other.white_mirrored;
             self.black_mirrored = other.black_mirrored;
@@ -505,8 +512,8 @@ const Accumulator = struct {
 
 pub const State = Accumulator;
 
-pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State) i16 {
-    return eval_state.forward(stm, board);
+pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State, refresh_cache: anytype) i16 {
+    return eval_state.forward(stm, board, refresh_cache);
 }
 
 fn screlu(x: i32) i32 {
@@ -567,20 +574,18 @@ pub fn deinit() void {
     std.posix.munmap(mapped_weights);
 }
 
-pub fn initThreadLocals() void {
-    refresh_cache.initInPlace();
-}
-
 pub fn nnEval(board: *const Board) i16 {
+    const RC = @import("refresh_cache.zig").refreshCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT);
+    var cache: RC = undefined;
+    cache.initInPlace();
     var acc = Accumulator.init(board);
     switch (board.stm) {
         inline else => |stm| {
-            return acc.forward(stm, board);
+            return acc.forward(stm, board, &cache);
         },
     }
 }
 
-threadlocal var refresh_cache: root.refreshCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT) = undefined;
 pub const VEC_SIZE = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 16;

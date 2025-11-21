@@ -360,7 +360,7 @@ pub const State = struct {
         self.* = init(board);
     }
 
-    pub fn update(_: State, _: *const State, _: *const Board) void {}
+    pub fn update(_: State, _: *const State, _: *const Board, _: anytype) void {}
 
     pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
         self.state = self.state.add(readPieceSquareTable(col, pt, square));
@@ -398,7 +398,7 @@ pub const State = struct {
     }
 };
 
-pub fn evaluate(comptime stm: Colour, _: *const Board, state: *State) i16 {
+pub fn evaluate(comptime stm: Colour, _: *const Board, state: *State, _: anytype) i16 {
     var res = evaluation.clampScore(state.eval());
     if (stm == .black) res = -res;
     return res;
