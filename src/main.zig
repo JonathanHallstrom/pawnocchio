@@ -893,7 +893,7 @@ pub fn main() !void {
             var state = hce.State.init(&board);
 
             switch (board.stm) {
-                inline else => |stm| write("{}\n", .{hce.evaluate(stm, &board, &board, &state)}),
+                inline else => |stm| write("{}\n", .{hce.evaluate(stm, &board, &state)}),
             }
         } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
             var prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));

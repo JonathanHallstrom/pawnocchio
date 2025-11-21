@@ -199,10 +199,10 @@ const Accumulator = struct {
         }
     }
 
-    pub fn update(noalias self: *Accumulator, other: *const Accumulator, board: *const Board, old_board: *const Board) void {
+    pub fn update(noalias self: *Accumulator, other: *const Accumulator, board: *const Board) void {
         switch (board.stm) {
             inline else => |stm| {
-                self.applyUpdate(.copy, other, stm.flipped(), board, old_board);
+                self.applyUpdate(.copy, other, stm.flipped(), board);
             },
         }
     }
@@ -304,11 +304,11 @@ const Accumulator = struct {
         }
     }
 
-    pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, old_board: *const Board) i16 {
+    pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board) i16 {
         // std.debug.print("{any}\n", .{(&weights.hidden_layer_biases)[0..10]});
         // std.debug.print("{any}\n", .{(&weights.output_biases)[0..BUCKET_COUNT]});
 
-        self.applyUpdate(.inplace, null, stm.flipped(), board, old_board);
+        self.applyUpdate(.inplace, null, stm.flipped(), board);
         // std.debug.print("{any}\n", .{self.white[0..10]});
         // std.debug.print("{any}\n", .{self.black[0..10]});
         // if (std.debug.runtime_safety) {
@@ -378,7 +378,7 @@ const Accumulator = struct {
         return whichInputBucket(stm, from) != whichInputBucket(stm, to);
     }
 
-    fn applyUpdate(noalias self: *Accumulator, comptime mode: enum { copy, inplace }, noalias other: if (mode == .inplace) @TypeOf(null) else *const Accumulator, comptime stm: Colour, board: *const Board, old_board: *const Board) void {
+    fn applyUpdate(noalias self: *Accumulator, comptime mode: enum { copy, inplace }, noalias other: if (mode == .inplace) @TypeOf(null) else *const Accumulator, comptime stm: Colour, board: *const Board) void {
         if (mode == .copy) {
             self.white_mirrored = other.white_mirrored;
             self.black_mirrored = other.black_mirrored;
@@ -418,7 +418,6 @@ const Accumulator = struct {
             if (add1.pt == .king and needsRefresh(stm, add1.sq, sub1.sq)) {
                 // std.debug.print("refresh\n", .{});
                 // self.mirrorFor(col: Colour)
-                refresh_cache.store(stm, old_board, self.accFor(stm));
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
                 refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
@@ -430,7 +429,6 @@ const Accumulator = struct {
             const sub2 = self.dirty_piece.subs.slice()[1];
             self.doAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
             if (add1.pt == .king and needsRefresh(stm, add1.sq, sub1.sq)) {
-                refresh_cache.store(stm, old_board, self.accFor(stm));
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
                 refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
@@ -446,7 +444,6 @@ const Accumulator = struct {
             if (needsRefresh(stm, add1.sq, sub1.sq)) {
                 // std.debug.print("castling refresh\n", .{});
                 // std.debug.print("{} {s}\n", .{stm, old_board.toFen().slice()});
-                refresh_cache.store(stm, old_board, self.accFor(stm));
                 self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
                 refresh_cache.refresh(stm, board, self.accFor(stm));
             } else {
@@ -508,8 +505,8 @@ const Accumulator = struct {
 
 pub const State = Accumulator;
 
-pub fn evaluate(comptime stm: Colour, board: *const Board, old_board: *const Board, eval_state: *State) i16 {
-    return eval_state.forward(stm, board, old_board);
+pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State) i16 {
+    return eval_state.forward(stm, board);
 }
 
 fn screlu(x: i32) i32 {
@@ -578,7 +575,7 @@ pub fn nnEval(board: *const Board) i16 {
     var acc = Accumulator.init(board);
     switch (board.stm) {
         inline else => |stm| {
-            return acc.forward(stm, board, &.{});
+            return acc.forward(stm, board);
         },
     }
 }
