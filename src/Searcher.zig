@@ -757,7 +757,9 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        if (eval >= beta - tunables.rfp_min_margin) {
+        // some insanity by eren
+        const tt_pv_decision = !tt_pv or (tt_hit and tt_entry.score >= beta + 90 - 15 * @divTrunc(depth + tt_entry.depth, 2));
+        if (eval >= beta - tunables.rfp_min_margin and tt_pv_decision) {
             const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             // cutnodes are expected to fail high
             // if we are re-searching this then its likely because its important, so otherwise we reduce more
