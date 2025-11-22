@@ -844,17 +844,21 @@ pub fn main() !void {
             root.engine.reset();
             previous_hashes = .{};
             board = Board.startpos();
-        } else if (std.ascii.eqlIgnoreCase(command, "setoption")) {
-            if (!std.ascii.eqlIgnoreCase("name", parts.next() orelse "")) continue;
+        } else if (std.ascii.eqlIgnoreCase(command, "setoption") or std.ascii.eqlIgnoreCase(command, "so")) {
             var option_name = parts.next() orelse "";
-            var value_part = parts.next() orelse "";
-            if (!std.ascii.eqlIgnoreCase("value", value_part)) {
-                // yes this is cursed
-                while (option_name.ptr[option_name.len..] != value_part.ptr[value_part.len..])
-                    option_name.len += 1;
-                value_part = parts.next() orelse "";
+            if (std.ascii.eqlIgnoreCase("name", option_name)) {
+                option_name = parts.next() orelse "";
             }
-            const value = parts.next() orelse "";
+            var value = parts.next() orelse "";
+            if (std.ascii.eqlIgnoreCase("Overhead", value)) {
+                // yes this is cursed
+                while (option_name.ptr[option_name.len..] != value.ptr[value.len..])
+                    option_name.len += 1;
+                value = parts.next() orelse "";
+            }
+            if (std.ascii.eqlIgnoreCase("value", value)) {
+                value = parts.next() orelse "";
+            }
 
             if (std.ascii.eqlIgnoreCase("Hash", option_name)) {
                 const size = std.fmt.parseInt(u64, value, 10) catch {
@@ -932,7 +936,7 @@ pub fn main() !void {
                 root.tuning.setMax();
             }
 
-            if (std.ascii.eqlIgnoreCase("Move Overhead", option_name)) {
+            if (std.ascii.eqlIgnoreCase("Move Overhead", option_name) or std.ascii.eqlIgnoreCase("MoveOverhead", option_name)) {
                 overhead = std.time.ns_per_ms * (std.fmt.parseInt(u64, value, 10) catch {
                     writeLog("invalid overhead: '{s}'\n", .{value});
                     continue;
@@ -1274,7 +1278,7 @@ pub fn main() !void {
             } else |_| {}
             std.debug.print("{}\n", .{sum});
         } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "nneval")) {
-            const raw_eval = @import("nnue.zig").nnEval(&board);
+            const raw_eval = @import("nnue.zig").evalPosition(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
             const normalized = root.wdl.normalize(scaled, board.classicalMaterial());
             write("raw eval: {}\n", .{raw_eval});
@@ -1299,11 +1303,8 @@ pub fn main() !void {
             }
         } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
             const hce = @import("hce.zig");
-            var state = hce.State.init(&board);
 
-            switch (board.stm) {
-                inline else => |stm| write("{}\n", .{hce.evaluate(stm, &board, &board, &state)}),
-            }
+            write("{}\n", .{hce.evalPosition(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
             var prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
             var mutex = std.Thread.Mutex{};

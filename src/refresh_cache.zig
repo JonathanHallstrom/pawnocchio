@@ -28,19 +28,8 @@ const NNCacheEntry = struct {
     pieces: [6]u64,
     sides: [2]u64,
 
-    fn store(noalias self: *NNCacheEntry, board: *const Board, acc: [*]i16) void {
-        self.pieces = board.pieces;
-        self.sides = .{ board.white, board.black };
-        @memcpy(&self.accumulator, acc);
-    }
-
-    fn refresh(noalias self: *const NNCacheEntry, comptime stm: Colour, board: *const Board, noalias acc: [*]i16, mirror: nnue.MirroringType) void {
+    fn refresh(noalias self: *NNCacheEntry, comptime stm: Colour, board: *const Board, noalias acc: [*]i16, mirror: nnue.MirroringType) void {
         const us_king = Square.fromBitboard(board.kingFor(stm));
-        // std.debug.print("{any}\n", .{self.accumulator});
-        @memcpy(acc, &self.accumulator);
-        // if (@reduce(.Or, @as(@Vector(6, u64), self.pieces)) != 0) {
-        //     std.debug.print("actual refresh\n", .{});
-        // }
         var adds: [64]usize = undefined;
         var num_adds: usize = 0;
         var subs: [64]usize = undefined;
@@ -70,7 +59,7 @@ const NNCacheEntry = struct {
         }
         while (num_adds >= 4) : (num_adds -= 4) {
             for (0..nnue.HIDDEN_SIZE) |i| {
-                acc[i] +=
+                self.accumulator[i] +=
                     (&nnue.weights.hidden_layer_weights)[adds[num_adds - 4] * nnue.HIDDEN_SIZE + i] +
                     (&nnue.weights.hidden_layer_weights)[adds[num_adds - 3] * nnue.HIDDEN_SIZE + i] +
                     (&nnue.weights.hidden_layer_weights)[adds[num_adds - 2] * nnue.HIDDEN_SIZE + i] +
@@ -79,13 +68,13 @@ const NNCacheEntry = struct {
         }
         while (num_adds >= 1) : (num_adds -= 1) {
             for (0..nnue.HIDDEN_SIZE) |i| {
-                acc[i] +=
+                self.accumulator[i] +=
                     (&nnue.weights.hidden_layer_weights)[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
             }
         }
         while (num_subs >= 4) : (num_subs -= 4) {
             for (0..nnue.HIDDEN_SIZE) |i| {
-                acc[i] -=
+                self.accumulator[i] -=
                     (&nnue.weights.hidden_layer_weights)[subs[num_subs - 4] * nnue.HIDDEN_SIZE + i] +
                     (&nnue.weights.hidden_layer_weights)[subs[num_subs - 3] * nnue.HIDDEN_SIZE + i] +
                     (&nnue.weights.hidden_layer_weights)[subs[num_subs - 2] * nnue.HIDDEN_SIZE + i] +
@@ -94,10 +83,13 @@ const NNCacheEntry = struct {
         }
         while (num_subs >= 1) : (num_subs -= 1) {
             for (0..nnue.HIDDEN_SIZE) |i| {
-                acc[i] -=
+                self.accumulator[i] -=
                     (&nnue.weights.hidden_layer_weights)[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
             }
         }
+        self.pieces = board.pieces;
+        self.sides = .{ board.white, board.black };
+        @memcpy(acc, &self.accumulator);
     }
 };
 
@@ -109,6 +101,7 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
         data: if (empty) void else [2][@as(usize, 1) + @intFromBool(mirrored)][bucket_count]NNCacheEntry,
 
         pub fn initInPlace(self: *Self) void {
+            if (empty) return;
             for (&self.data) |*stm| {
                 for (stm) |*subarray| {
                     for (subarray) |*e| {
@@ -120,22 +113,13 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             }
         }
 
-        pub inline fn refresh(noalias self: *const Self, comptime stm: Colour, board: *const Board, acc: [*]i16) void {
+        pub inline fn refresh(noalias self: *Self, comptime stm: Colour, board: *const Board, acc: [*]i16) void {
             if (empty) return;
             const bucket = nnue.whichInputBucket(stm, Square.fromBitboard(board.kingFor(stm)));
             var mirror: nnue.MirroringType = undefined;
             mirror.write(Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4);
             const mirror_idx = if (mirrored) @intFromBool(mirror.read()) else 0;
             return (&self.data)[stm.toInt()][mirror_idx][bucket].refresh(stm, board, acc, mirror);
-        }
-
-        pub inline fn store(noalias self: *Self, comptime stm: Colour, board: *const Board, acc: [*]i16) void {
-            if (empty) return;
-            const bucket = nnue.whichInputBucket(stm, Square.fromBitboard(board.kingFor(stm)));
-            var mirror: nnue.MirroringType = undefined;
-            mirror.write(Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4);
-            const mirror_idx = if (mirrored) @intFromBool(mirror.read()) else 0;
-            (&self.data)[stm.toInt()][mirror_idx][bucket].store(board, acc);
         }
     };
 }

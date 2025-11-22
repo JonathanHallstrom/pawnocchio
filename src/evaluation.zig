@@ -41,14 +41,10 @@ pub fn initThreadLocals() void {
 }
 
 pub const State = impl.State;
-pub const evaluate: fn (comptime root.Colour, *const Board, *const Board, *State) i16 = impl.evaluate;
+pub const evaluate = impl.evaluate;
 
 pub fn evalPosition(board: *const Board) i16 {
-    var state = State.init(board);
-
-    return switch (board.stm) {
-        inline else => |stm| evaluate(stm, board, board, &state),
-    };
+    return impl.evalPosition(board);
 }
 
 pub fn evalFen(fen: []const u8) !i16 {

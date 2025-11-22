@@ -17,6 +17,7 @@
 const std = @import("std");
 
 const root = @import("root.zig");
+const nnue = @import("nnue.zig");
 
 const BoundedArray = root.BoundedArray;
 const evaluation = root.evaluation;
@@ -124,6 +125,7 @@ normalize: bool = false,
 minimal: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
+refresh_cache: if (evaluation.use_hce) void else root.refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT),
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -162,7 +164,7 @@ pub fn writeTT(
 
 fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
     const hash = self.stackEntry(0).board.getHashWithHalfmove();
-    const eval = evaluate(stm, &self.stackEntry(0).board, &self.stackEntry(-1).board, self.evalState(0));
+    const eval = evaluate(stm, &self.stackEntry(0).board, self.evalState(0), &self.refresh_cache);
     self.writeTT(
         false,
         hash,
@@ -275,14 +277,13 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
-    const old_stack_entry: *StackEntry = self.stackEntry(-1);
     const prev_stack_entry: *StackEntry = self.stackEntry(0);
     const prev_eval_state: *evaluation.State = self.evalState(0);
     const new_stack_entry: *StackEntry = self.stackEntry(1);
     const new_eval_state: *evaluation.State = self.evalState(1);
     const board = &prev_stack_entry.board;
 
-    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
+    new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
     new_stack_entry.init(
         board,
         TypedMove.fromBoard(board, move),
@@ -303,14 +304,13 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
 }
 
 fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
-    const old_stack_entry = self.stackEntry(-1);
     const prev_stack_entry = self.stackEntry(0);
     const prev_eval_state = self.evalState(0);
     const new_stack_entry = self.stackEntry(1);
     const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
 
-    new_eval_state.update(prev_eval_state, board, &old_stack_entry.board);
+    new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
     new_stack_entry.init(
         board,
         TypedMove.init(),
@@ -758,25 +758,32 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
-        const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
-        // cutnodes are expected to fail high
-        // if we are re-searching this then its likely because its important, so otherwise we reduce more
-        // basically we reduce more if this node is likely unimportant
-        const no_tthit_cutnode = !tt_hit and cutnode;
-        const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
-        if (eval >= beta +
-            tunables.rfp_base +
-            tunables.rfp_mult * depth +
-            (tunables.rfp_quad * depth * depth >> 10) -
-            tunables.rfp_improving_margin * @intFromBool(improving) -
-            tunables.rfp_improving_easy_margin * @intFromBool(improving and !opponent_has_easy_capture) -
-            tunables.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) -
-            tunables.rfp_worsening_margin * @intFromBool(opponent_worsening) -
-            tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
-            (corrplexity * tunables.rfp_corrplexity_mult >> 32) +
-            @divTrunc(cur.history_score, if (cur.move_is_noisy) tunables.rfp_noisy_history_div else tunables.rfp_history_div))
-        {
-            return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunables.rfp_fail_medium, 1024));
+        if (eval >= beta - tunables.rfp_min_margin) {
+            const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
+            // cutnodes are expected to fail high
+            // if we are re-searching this then its likely because its important, so otherwise we reduce more
+            // basically we reduce more if this node is likely unimportant
+            const no_tthit_cutnode = !tt_hit and cutnode;
+            const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
+            const conditional_margin =
+                tunables.rfp_improving_margin * @intFromBool(improving) +
+                tunables.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) +
+                tunables.rfp_improving_easy_margin * @intFromBool(improving and opponent_has_easy_capture) +
+                tunables.rfp_worsening_margin * @intFromBool(opponent_worsening) +
+                tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode);
+            const rfp_margin =
+                @divTrunc(
+                    tunables.rfp_base +
+                        tunables.rfp_mult * depth +
+                        tunables.rfp_quad * depth * depth +
+                        (corrplexity * tunables.rfp_corrplexity_mult >> 22) +
+                        @divTrunc(cur.history_score * if (cur.move_is_noisy) tunables.rfp_noisy_history_mult else tunables.rfp_history_mult, 16),
+                    1024,
+                ) - conditional_margin;
+
+            if (eval >= beta + rfp_margin) {
+                return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunables.rfp_fail_medium, 1024));
+            }
         }
 
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
@@ -1359,11 +1366,12 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     }
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
-    self.ttage +%= 1;
     if (params.needs_full_reset) {
+        self.refresh_cache.initInPlace();
         self.histories.reset();
         self.ttage = 0;
     }
+    self.ttage +%= 1;
     @memset(std.mem.asBytes(&self.node_counts), 0);
     evaluation.initThreadLocals();
 }
