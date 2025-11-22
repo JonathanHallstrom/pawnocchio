@@ -324,6 +324,27 @@ pub const HistoryTable = struct {
         return @divTrunc(res, 1024);
     }
 
+    pub fn updateCont(
+        self: *HistoryTable,
+        board: *const Board,
+        move: Move,
+        moves: ConthistMoves,
+        depth: i32,
+        is_bonus: bool,
+        extra: i32,
+    ) void {
+        const typed = TypedMove.fromBoard(board, move);
+        var cont: i64 = 0;
+        inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
+            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
+            cont += self.countermove.read(board.stm, typed, stm, moves[i]);
+        }
+        inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
+            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
+            self.countermove.update(cont, board.stm, typed, stm, moves[i], depth, is_bonus, extra);
+        }
+    }
+
     pub fn updateQuiet(
         self: *HistoryTable,
         board: *const Board,
@@ -336,15 +357,7 @@ pub const HistoryTable = struct {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus, extra);
         self.pawn.update(board, typed, depth, is_bonus, extra);
-        var cont: i64 = 0;
-        inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
-            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            cont += self.countermove.read(board.stm, typed, stm, moves[i]);
-        }
-        inline for (CONTHIST_OFFSETS, 0..) |offs, i| {
-            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            self.countermove.update(cont, board.stm, typed, stm, moves[i], depth, is_bonus, extra);
-        }
+        self.updateCont(board, move, moves, depth, is_bonus, extra);
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
