@@ -1229,6 +1229,16 @@ fn search(
             raw_static_eval,
         );
 
+        if (score_type == .upper and !is_root) {
+            const prev: *const StackEntry = self.stackEntry(-1);
+            const prev_move = cur.move.move;
+            if (!prev_move.isNull() and !prev.move_is_noisy) {
+                self.ply -= 1;
+                self.histories.updateCont(&prev.board, prev_move, self.getUsableMoves(), @divTrunc(depth + 1, 2), true, 0);
+                self.ply += 1;
+            }
+        }
+
         if (!is_in_check and (best_score <= alpha_original or board.isQuiet(best_move))) {
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
