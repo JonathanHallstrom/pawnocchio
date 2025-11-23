@@ -111,8 +111,6 @@ move_stability: u8,
 node_counts: [64][64]u64,
 limits: Limits,
 ply: u8,
-stop: std.atomic.Value(bool),
-should_stop: std.atomic.Value(bool),
 previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTCluster,
 pvs: [MAX_PLY]std.BoundedArray(Move, 256),
@@ -360,8 +358,7 @@ fn qsearch(
     var alpha = alpha_original;
     var beta = beta_original;
     self.nodes += 1;
-    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
-        self.stop.store(true, .release);
+    if (!(is_root and self.is_main_thread and self.root_move.isNull()) and self.limits.checkSearch(self.nodes)) {
         return 0;
     }
     const cur: *StackEntry = self.stackEntry(0);
@@ -478,7 +475,7 @@ fn qsearch(
         self.makeMove(stm, move);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
-        if (self.stop.load(.acquire)) {
+        if (engine.shouldStopSearching()) {
             return 0;
         }
 
@@ -625,8 +622,7 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (!(is_root and self.is_main_thread and self.root_move.isNull()) and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
-        self.stop.store(true, .release);
+    if (!(is_root and self.is_main_thread and self.root_move.isNull()) and self.limits.checkSearch(self.nodes)) {
         return 0;
     }
 
@@ -1103,7 +1099,7 @@ fn search(
                     true,
                 );
                 self.stackEntry(0).reduction = 0;
-                if (self.stop.load(.acquire)) {
+                if (engine.shouldStopSearching()) {
                     break :blk 0;
                 }
 
@@ -1123,7 +1119,7 @@ fn search(
                         new_depth,
                         !cutnode,
                     );
-                    if (self.stop.load(.acquire)) {
+                    if (engine.shouldStopSearching()) {
                         break :blk 0;
                     }
                 }
@@ -1137,7 +1133,7 @@ fn search(
                     new_depth,
                     !cutnode,
                 );
-                if (self.stop.load(.acquire)) {
+                if (engine.shouldStopSearching()) {
                     break :blk 0;
                 }
             }
@@ -1155,7 +1151,7 @@ fn search(
 
             break :blk s;
         };
-        if (self.stop.load(.acquire)) {
+        if (engine.shouldStopSearching()) {
             return 0;
         }
 
@@ -1339,8 +1335,6 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.syzygy_depth = params.syzygy_depth;
     self.is_main_thread = is_main_thread;
     self.ply = 0;
-    self.should_stop.store(false, .release);
-    self.stop.store(false, .release);
     self.nodes = 0;
     self.tbhits = 0;
     const board = params.board;
@@ -1408,7 +1402,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     @max(1, depth - failhigh_reduction),
                     false,
                 );
-                if (self.stop.load(.acquire)) {
+                if (engine.shouldStopSearching()) {
                     break;
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
@@ -1489,7 +1483,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 break;
             }
         }
-        if (self.stop.load(.acquire) or engine.shouldStopSearching()) {
+        if (engine.shouldStopSearching()) {
             break;
         }
         self.seldepth = 0;

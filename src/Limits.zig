@@ -73,10 +73,10 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
     if (nodes >= self.hard_nodes) {
         return true;
     }
+    if (root.engine.shouldStopSearching()) {
+        return true;
+    }
     if (nodes % 1024 == 0) {
-        if (root.engine.shouldStopSearching()) {
-            return true;
-        }
         if (self.timer.read() >= self.hard_time) {
             return true;
         }

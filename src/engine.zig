@@ -474,14 +474,11 @@ pub fn querySearchedNodes() u64 {
 }
 
 pub fn stopSearch() void {
-    stop_searching.store(true, .seq_cst);
-    for (searchers) |searcher| {
-        searcher.stop.store(true, .release);
-    }
+    stop_searching.store(true, .release);
 }
 
 pub fn shouldStopSearching() bool {
-    return stop_searching.load(.seq_cst);
+    return stop_searching.load(.acquire);
 }
 
 pub fn waitUntilDoneSearching() void {
