@@ -856,8 +856,8 @@ fn search(
     defer mp.deinit();
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
-    var searched_quiets: BoundedArray(Move, 64) = .{};
-    var searched_noisies: BoundedArray(Move, 64) = .{};
+    var searched_quiets: BoundedArray(Move, 16) = .{};
+    var searched_noisies: BoundedArray(Move, 8) = .{};
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
