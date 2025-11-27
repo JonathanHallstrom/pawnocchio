@@ -124,6 +124,7 @@ normalize: bool = false,
 minimal: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
+winning_root_moves: std.BoundedArray(Move, 256),
 refresh_cache: if (evaluation.use_hce) void else root.refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT),
 histories: history.HistoryTable,
 
@@ -874,6 +875,16 @@ fn search(
         if (move == cur.excluded) {
             continue;
         }
+        if (is_root and self.winning_root_moves.len > 0) {
+            if (for (self.winning_root_moves.slice()) |winning_move| {
+                // the move is a winning move so dont skip it
+                if (winning_move == move) {
+                    break false;
+                }
+            } else true) {
+                break;
+            }
+        }
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
             continue;
@@ -1353,6 +1364,13 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
             num_repeitions += 1;
         }
         self.previous_hashes.append(previous_hash) catch @panic("too many hashes!");
+    }
+    if (root.pyrrhic.probeRootDTZ(&params.board, num_repeitions > 0)) |root_probe| {
+        _, const moves = root_probe;
+        self.winning_root_moves = .{};
+        for (moves.slice()) |scored| {
+            self.winning_root_moves.append(scored.move) catch unreachable;
+        }
     }
     self.fixupPreviousHashes();
 

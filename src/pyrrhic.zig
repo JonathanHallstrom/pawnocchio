@@ -19,6 +19,8 @@ const root = @import("root.zig");
 
 const WDL = root.WDL;
 const Board = root.Board;
+const Square = root.Square;
+const ScoredMove = root.ScoredMove;
 
 const use_tbs = root.use_tbs;
 
@@ -87,7 +89,7 @@ pub fn probeWDL(board: *const Board) ?WDL {
 pub fn probeRootDTZ(
     board: *const Board,
     has_repetition: bool,
-) ?struct { WDL, std.BoundedArray(root.ScoredMove, c.TB_MAX_MOVES) } {
+) ?struct { WDL, std.BoundedArray(ScoredMove, c.TB_MAX_MOVES) } {
     if (!use_tbs or !tbs_init) {
         return null;
     }
@@ -114,6 +116,9 @@ pub fn probeRootDTZ(
         &tb_results,
     );
 
+    if (tb_results.size == 0) {
+        return null;
+    }
     if (probe_result == c.TB_RESULT_FAILED) {
         return null;
     }
@@ -127,17 +132,17 @@ pub fn probeRootDTZ(
     }
 
     const tb_moves = tb_results.moves[0..tb_results.size];
-    var res: std.BoundedArray(root.ScoredMove, c.TB_MAX_MOVES) = .{};
+    var res: std.BoundedArray(ScoredMove, c.TB_MAX_MOVES) = .{};
     for (tb_moves) |tb_move| {
-        const from: u6 = @intCast(c.PYRRHIC_MOVE_FROM(tb_move.move));
-        const to: u6 = @intCast(c.PYRRHIC_MOVE_TO(tb_move.move));
+        const from = Square.fromInt(@intCast(c.PYRRHIC_MOVE_FROM(tb_move.move)));
+        const to = Square.fromInt(@intCast(c.PYRRHIC_MOVE_TO(tb_move.move)));
         const is_ep = c.PYRRHIC_MOVE_IS_ENPASS(tb_move.move);
         var promo_type_opt: ?root.PieceType = null;
         if (c.PYRRHIC_MOVE_IS_NPROMO(tb_move.move)) promo_type_opt = .knight;
         if (c.PYRRHIC_MOVE_IS_BPROMO(tb_move.move)) promo_type_opt = .bishop;
         if (c.PYRRHIC_MOVE_IS_RPROMO(tb_move.move)) promo_type_opt = .rook;
         if (c.PYRRHIC_MOVE_IS_QPROMO(tb_move.move)) promo_type_opt = .queen;
-        const capture = board.occupancyFor(board.stm.flipped()) & @as(u64, 1) << to != 0;
+        const capture = board.occupancyFor(board.stm.flipped()) & @as(u64, 1) << to.toInt() != 0;
         var move = root.Move.quiet(from, to);
         if (is_ep) {
             move = root.Move.enPassant(from, to);
@@ -152,17 +157,24 @@ pub fn probeRootDTZ(
             .score = tb_move.tbRank,
         });
     }
-    const wdl: WDL = switch (probe_result) {
-        c.TB_WIN => .win,
+    std.mem.sort(ScoredMove, res.slice(), void{}, struct {
+        fn impl(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
+            return lhs.score > rhs.score;
+        }
+    }.impl);
+    if (res.slice().len > 0) {
+        while (res.slice()[res.slice().len - 1].score < res.slice()[0].score) {
+            _ = res.pop();
+        }
+    }
+    const win = 262144 - 100;
+    var wdl: WDL = .draw;
+    if (res.slice()[0].score > win) {
+        wdl = .win;
+    } else if (res.slice()[0].score < -win) {
+        wdl = .loss;
+    }
 
-        c.TB_DRAW,
-        c.TB_CURSED_WIN,
-        c.TB_BLESSED_LOSS,
-        => .draw,
-
-        c.TB_LOSS => .loss,
-        else => unreachable,
-    };
     return .{ wdl, res };
 }
 
