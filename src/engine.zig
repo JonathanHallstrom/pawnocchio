@@ -26,11 +26,11 @@ pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atom
 pub var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
 var num_finished_threads: std.atomic.Value(usize) align(std.atomic.cache_line) = std.atomic.Value(usize).init(0);
 var current_num_threads: usize align(std.atomic.cache_line) = 0; // 0 for uninitialized
-pub var searchers: []*Searcher align(std.atomic.cache_line) = &.{};
+pub var searchers: []*align(2 << 20) Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
-var tt: []root.TTCluster = &.{};
+var tt: []align(2 << 20) root.TTCluster = &.{};
 
 pub var debug_stats_lock: std.Thread.Mutex = .{};
 pub var debug_stats: std.StringHashMap(@import("DebugStats.zig")) = .init(std.heap.page_allocator);
@@ -69,8 +69,19 @@ pub fn reset() void {
     needs_full_reset = true;
 }
 
+fn adviseHugePages(p: anytype) !void {
+    const bytes = std.mem.sliceAsBytes(p);
+    if (@import("builtin").os.tag == .linux and @import("builtin").link_libc) {
+        try std.posix.madvise(bytes.ptr, bytes.len, @cImport({
+            @cDefine("_GNU_SOURCE", "");
+            @cInclude("sys/mman.h");
+        }).MADV_HUGEPAGE);
+    }
+}
+
 pub fn setTTSize(new_size: usize) !void {
     tt = try std.heap.page_allocator.realloc(tt, @intCast(new_size * @as(u128, 1 << 20) / @sizeOf(root.TTCluster)));
+    try adviseHugePages(tt);
     resetTT();
 }
 
@@ -88,9 +99,10 @@ pub fn setThreadCount(thread_count: usize) !void {
         for (searchers) |s| {
             std.heap.page_allocator.destroy(s);
         }
-        searchers = std.heap.page_allocator.realloc(searchers, thread_count) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
+        searchers = try std.heap.page_allocator.realloc(searchers, thread_count);
         for (searchers) |*s| {
-            s.* = std.heap.page_allocator.create(Searcher) catch |e| std.debug.panic("Fatal: allocating search data failed with error '{}'\n", .{e});
+            s.* = @ptrCast(try std.heap.page_allocator.alignedAlloc(Searcher, .fromByteUnits(2 << 20), 1));
+            try adviseHugePages(s.*[0..1]);
         }
         needs_full_reset = true;
     }
