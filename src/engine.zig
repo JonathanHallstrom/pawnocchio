@@ -71,7 +71,7 @@ pub fn reset() void {
 
 fn adviseHugePages(p: anytype) !void {
     const bytes = std.mem.sliceAsBytes(p);
-    if (@import("builtin").os.tag == .linux) {
+    if (@import("builtin").os.tag == .linux and @import("builtin").link_libc) {
         try std.posix.madvise(bytes.ptr, bytes.len, @cImport({
             @cDefine("_GNU_SOURCE", "");
             @cInclude("sys/mman.h");
