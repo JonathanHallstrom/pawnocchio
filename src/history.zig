@@ -29,21 +29,22 @@ const tunable_constants = root.tunable_constants;
 pub const TypedMove = struct {
     move: Move,
     tp: PieceType,
+    is_recapture: bool = false,
 
     pub fn init() TypedMove {
-        return .{ .move = Move.init(), .tp = .pawn };
+        return .{
+            .move = Move.init(),
+            .tp = .pawn,
+        };
     }
 
     pub fn fromBoard(board: *const Board, move_: Move) TypedMove {
         if (move_.isNull()) {
-            return .{
-                .move = move_,
-                .tp = .pawn,
-            };
+            return init();
         }
         return .{
             .move = move_,
-            .tp = (&board.mailbox)[move_.from().toInt()].toColouredPieceType().toPieceType(),
+            .tp = board.pieceOn(move_.from()).?,
         };
     }
 };
