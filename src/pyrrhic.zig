@@ -162,8 +162,8 @@ pub fn probeRootDTZ(
             return lhs.score > rhs.score;
         }
     }.impl);
-    if (res.slice().len > 0) {
-        while (res.slice()[res.slice().len - 1].score < res.slice()[0].score) {
+    if (res.len > 0) {
+        while (res.slice()[res.len - 1].score < res.slice()[0].score) {
             _ = res.pop();
         }
     }

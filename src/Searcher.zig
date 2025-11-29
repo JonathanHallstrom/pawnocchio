@@ -885,7 +885,7 @@ fn search(
                     break false;
                 }
             } else true) {
-                break;
+                continue;
             }
         }
         self.prefetch(move);
