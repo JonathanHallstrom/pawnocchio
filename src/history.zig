@@ -44,7 +44,7 @@ pub const TypedMove = struct {
         }
         return .{
             .move = move_,
-            .tp = (&board.mailbox)[move_.from().toInt()].toColouredPieceType().toPieceType(),
+            .tp = board.pieceOn(move_.from()).?,
         };
     }
 };

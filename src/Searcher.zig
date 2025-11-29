@@ -284,9 +284,12 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     const board = &prev_stack_entry.board;
 
     new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
+    const prev_move = prev_stack_entry.move.move;
+    var typed = TypedMove.fromBoard(board, move);
+    typed.is_recapture = move.to() == prev_move.to() and !prev_move.isNull();
     new_stack_entry.init(
         board,
-        TypedMove.fromBoard(board, move),
+        typed,
         prev_stack_entry.move,
         prev_stack_entry.evals,
         prev_stack_entry.usable_moves + 1,
