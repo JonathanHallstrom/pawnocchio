@@ -1368,9 +1368,9 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
         }
         self.previous_hashes.append(previous_hash) catch @panic("too many hashes!");
     }
+    self.winning_root_moves = .{};
     if (root.pyrrhic.probeRootDTZ(&params.board, num_repeitions > 0)) |root_probe| {
         _, const moves = root_probe;
-        self.winning_root_moves = .{};
         for (moves.slice()) |scored| {
             self.winning_root_moves.append(scored.move) catch unreachable;
         }

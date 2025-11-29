@@ -523,7 +523,7 @@ fn screlu(x: i32) i32 {
 
 pub fn init() !void {
     if (build_options.runtime_net) {
-        weights_file = try std.fs.openFileAbsolute(build_options.net_path, .{});
+        weights_file = std.fs.openFileAbsolute(build_options.net_path, .{}) catch try std.fs.cwd().openFile(build_options.net_name, .{});
         if (@import("builtin").target.os.tag == .windows) {
             @compileError("sorry mmap-ing the network manually is not supported on windows");
         }

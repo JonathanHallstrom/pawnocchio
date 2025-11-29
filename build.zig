@@ -8,12 +8,13 @@ pub fn build(b: *std.Build) !void {
 
     // blocked on
     runtime_net = true;
+    const net_name = "net23_1536_take7.nnue";
     const net = b.option([]const u8, "net", "Change the net to be used") orelse blk: {
         // if (runtime_net) {
         //     std.debug.print("When using a runtime net you need to give an absolute path to the network\n", .{});
         //     return error.NoAbsoluteNetPathWithRuntimeNet;
         // }
-        break :blk "pawnocchio-nets/networks/net23_1536_take7.nnue";
+        break :blk "pawnocchio-nets/networks/" ++ net_name;
     };
     var net_abs_buf: [4096]u8 = undefined;
     const net_absolute = try std.fs.cwd().realpath(net, &net_abs_buf);
@@ -48,6 +49,7 @@ pub fn build(b: *std.Build) !void {
     exe_options.addOption(bool, "use_tbs", use_tbs);
     exe_options.addOption(bool, "runtime_net", runtime_net);
     exe_options.addOption([]const u8, "net_path", net_absolute);
+    exe_options.addOption([]const u8, "net_name", net_name);
     exe.root_module.addOptions("build_options", exe_options);
     if (use_tbs) {
         exe.addCSourceFile(.{
