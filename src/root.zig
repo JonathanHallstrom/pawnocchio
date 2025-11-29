@@ -232,13 +232,13 @@ pub const Rank = enum {
     }
 };
 
-pub const PieceType = enum {
-    pawn,
-    knight,
-    bishop,
-    rook,
-    queen,
-    king,
+pub const PieceType = enum(u3) {
+    pawn = 0,
+    knight = 1,
+    bishop = 2,
+    rook = 3,
+    queen = 4,
+    king = 5,
 
     pub const all = [_]PieceType{
         .pawn,
