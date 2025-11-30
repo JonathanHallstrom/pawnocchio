@@ -1400,17 +1400,13 @@ fn pickBestMove() struct { i16, Move } {
     var votes = std.mem.zeroes([64][64]i64);
     var best_move = Move.init();
     var best_score: i16 = -evaluation.inf_score;
-    var max_score: i32 = std.math.minInt(i32);
-    for (engine.searchers) |searcher| {
-        max_score = @max(max_score, searcher.full_width_score);
-    }
     for (engine.searchers) |searcher| {
         const move = searcher.root_move;
-        const score = 1000 - std.math.clamp(max_score - searcher.full_width_score, 0, 1000);
         const normalized = searcher.full_width_score_normalized;
+        const wdl: i64 = @intFromFloat(@round(1024 / (1 + @exp(@as(f64, @floatFromInt(-normalized)) / 400))));
         const d = searcher.limits.root_depth;
 
-        const vote: i64 = (d + 8) * (128 + score);
+        const vote: i64 = (d + 8) * (128 + wdl);
 
         const entry = &votes[move.from().toInt()][move.to().toInt()];
         entry.* += vote;
