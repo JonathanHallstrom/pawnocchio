@@ -264,7 +264,7 @@ pub const HistoryTable = struct {
     minor_corrhist: [16384][2]CorrhistEntry,
     nonpawn_corrhist: [16384][2][2]CorrhistEntry,
     countermove_corrhist: [64 * 64][2][2]CorrhistEntry,
-    followupmove_corrhist: [64 * 64][2]CorrhistEntry,
+    followupmove_corrhist: [64 * 64][2][2]CorrhistEntry,
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
@@ -384,7 +384,7 @@ pub const HistoryTable = struct {
         self.nonpawn_corrhist[board.nonpawn_hash[0] % CORRHIST_SIZE][board.stm.toInt()][0].update(err, weight * tunable_constants.corrhist_nonpawn_update_weight);
         self.nonpawn_corrhist[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].update(err, weight * tunable_constants.corrhist_nonpawn_update_weight);
         self.countermove_corrhist[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][@intFromBool(prev.is_recapture)][board.stm.toInt()].update(err, weight * tunable_constants.corrhist_countermove_update_weight);
-        self.followupmove_corrhist[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][board.stm.toInt()].update(err, weight * tunable_constants.corrhist_followupmove_update_weight);
+        self.followupmove_corrhist[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][@intFromBool(prev.is_recapture)][board.stm.toInt()].update(err, weight * tunable_constants.corrhist_followupmove_update_weight);
     }
 
     pub fn summedCorrectionTerms(self: *const HistoryTable, board: *const Board, prev: TypedMove, followup: TypedMove) i64 {
@@ -398,7 +398,7 @@ pub const HistoryTable = struct {
         const black_nonpawn_correction: i64 = (&self.nonpawn_corrhist)[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].val;
 
         const countermove_correction: i64 = (&self.countermove_corrhist)[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt() * 2][@intFromBool(prev.is_recapture)][board.stm.toInt()].val;
-        const followupmove_correction: i64 = (&self.followupmove_corrhist)[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][board.stm.toInt()].val;
+        const followupmove_correction: i64 = (&self.followupmove_corrhist)[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][@intFromBool(prev.is_recapture)][board.stm.toInt()].val;
 
         return @intCast(@abs(pawn_correction) +
             @abs(white_nonpawn_correction) +
@@ -419,7 +419,7 @@ pub const HistoryTable = struct {
         const black_nonpawn_correction: i64 = (&self.nonpawn_corrhist)[board.nonpawn_hash[1] % CORRHIST_SIZE][board.stm.toInt()][1].val;
 
         const countermove_correction: i64 = (&self.countermove_corrhist)[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][@intFromBool(prev.is_recapture)][board.stm.toInt()].val;
-        const followupmove_correction: i64 = (&self.followupmove_corrhist)[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][board.stm.toInt()].val;
+        const followupmove_correction: i64 = (&self.followupmove_corrhist)[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][@intFromBool(prev.is_recapture)][board.stm.toInt()].val;
 
         return pawn_correction * pawn_correction +
             white_nonpawn_correction * white_nonpawn_correction +
@@ -442,7 +442,7 @@ pub const HistoryTable = struct {
         const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction;
 
         const countermove_correction: i64 = (&self.countermove_corrhist)[@as(usize, prev.move.from().toInt()) * 64 + prev.move.to().toInt()][@intFromBool(prev.is_recapture)][board.stm.toInt()].val;
-        const followupmove_correction: i64 = (&self.followupmove_corrhist)[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][board.stm.toInt()].val;
+        const followupmove_correction: i64 = (&self.followupmove_corrhist)[@as(usize, followup.move.from().toInt()) * 64 + followup.move.to().toInt()][@intFromBool(prev.is_recapture)][board.stm.toInt()].val;
 
         const correction = (tunable_constants.corrhist_pawn_weight * pawn_correction +
             tunable_constants.corrhist_nonpawn_weight * nonpawn_correction +
