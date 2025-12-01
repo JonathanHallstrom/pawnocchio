@@ -1406,7 +1406,9 @@ fn pickBestMove() struct { i16, Move } {
     }
     for (engine.searchers) |searcher| {
         const move = searcher.root_move;
-        const score = 1000 - std.math.clamp(max_score - searcher.full_width_score, 0, 1000);
+
+        const score: i64 = @intFromFloat(@round(1024 / (1 + @exp(@as(f64, @floatFromInt(-searcher.full_width_score)) / 400))));
+
         const normalized = searcher.full_width_score_normalized;
         const d = searcher.limits.root_depth;
 
