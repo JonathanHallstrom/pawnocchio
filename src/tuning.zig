@@ -242,6 +242,8 @@ const tunable_defaults = struct {
     pub const ttpick_upper_weight: i32 = 151;
     pub const ttpick_exact_weight: i32 = 106;
     pub const ttpick_move_weight: i32 = 255;
+    pub const voting_score_offset: i32 = 128;
+    pub const voting_depth_offset: i32 = 128;
 };
 
 pub const tunables = [_]Tunable{
@@ -419,6 +421,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "ttpick_upper_weight", .default = tunable_defaults.ttpick_upper_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "ttpick_exact_weight", .default = tunable_defaults.ttpick_exact_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "ttpick_move_weight", .default = tunable_defaults.ttpick_move_weight, .min = 0, .max = 8192, .c_end = 256 },
+    .{ .name = "voting_score_offset", .default = tunable_defaults.voting_score_offset },
+    .{ .name = "voting_depth_offset", .default = tunable_defaults.voting_depth_offset },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -596,6 +600,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var ttpick_upper_weight = tunable_defaults.ttpick_upper_weight;
     pub var ttpick_exact_weight = tunable_defaults.ttpick_exact_weight;
     pub var ttpick_move_weight = tunable_defaults.ttpick_move_weight;
+    pub var voting_score_offset = tunable_defaults.voting_score_offset;
+    pub var voting_depth_offset = tunable_defaults.voting_depth_offset;
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {
