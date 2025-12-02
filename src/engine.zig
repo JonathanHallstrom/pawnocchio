@@ -129,6 +129,7 @@ pub fn printDebugStats() void {
             \\  min:  {d:.4}
             \\  max:  {d:.4}
             \\  skew: {d:.4}
+            \\  count: {d}
             \\  percentiles:
             \\
         , .{
@@ -138,6 +139,7 @@ pub fn printDebugStats() void {
             entry.value_ptr.min,
             entry.value_ptr.max,
             entry.value_ptr.skewness(),
+            entry.value_ptr.count,
         });
         inline for (@import("DebugStats.zig").PERCENTILES, 0..) |percentile, i| {
             const percentile_str = std.fmt.comptimePrint("{d}:", .{percentile});
