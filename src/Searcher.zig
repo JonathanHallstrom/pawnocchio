@@ -1033,6 +1033,7 @@ fn search(
                 if (is_pv) {
                     double_ext_margin += tunables.singular_dext_pv_margin;
                 }
+                double_ext_margin -= @divTrunc(history_score - 18000, 1024);
 
                 if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
