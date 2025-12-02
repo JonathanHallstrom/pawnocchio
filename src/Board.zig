@@ -379,6 +379,19 @@ pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
             }
         } else {
             self.ep_target = Square.fromBitboard(en_passant_bitboard);
+            switch (self.stm) {
+                inline else => |stm_comptime| {
+                    var rec = movegen.MoveListReceiver{};
+                    movegen.generateAllNoisies(stm_comptime, &self, &rec);
+
+                    for (rec.vals.slice()) |move| {
+                        if (self.isEnPassant(move) and self.isPseudoLegal(stm_comptime, move) and self.isLegal(stm_comptime, move)) {
+                            self.ep_target = null;
+                            break;
+                        }
+                    }
+                },
+            }
         }
     }
 
@@ -449,7 +462,7 @@ pub fn toFen(self: Board) std.BoundedArray(u8, 128) {
                 movegen.generateAllNoisies(stm_comptime, &self, &rec);
 
                 for (rec.vals.slice()) |move| {
-                    if (self.isEnPassant(move) and self.isLegal(stm_comptime, move)) {
+                    if (self.isEnPassant(move) and self.isPseudoLegal(stm_comptime, move) and self.isLegal(stm_comptime, move)) {
                         valid = true;
                         break;
                     }
@@ -1402,8 +1415,12 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
             allowed &= promo_mask;
         }
 
+        if (tp == .ep and self.pawnsFor(stm.flipped()) & move.getEnPassantPawnSquare(stm).toBitboard() == 0) {
+            return false;
+        }
+
         return allowed & to_bb != 0;
-    } else if (tp == .promotion) {
+    } else if (tp == .promotion or tp == .ep) {
         return false;
     }
 
