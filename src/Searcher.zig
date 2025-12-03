@@ -686,9 +686,9 @@ fn search(
     // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
-            if (!is_pv) {
+            if (!is_pv and board.halfmove <= 90) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
-                    if (tt_score >= beta and !evaluation.isMateScore(tt_score) and board.halfmove <= 90) {
+                    if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
                         return @intCast(tt_score + @divTrunc((beta - tt_score) * tunables.tt_fail_medium, 1024));
                     }
 
