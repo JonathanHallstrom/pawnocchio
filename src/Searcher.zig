@@ -846,6 +846,76 @@ fn search(
                 }
             }
         }
+
+        const probcut_beta = beta + 300 - @as(i32, if (improving) 100 else 0);
+        const probcut_depth = depth - 4;
+
+        if (!is_pv and
+            depth >= 5 and
+            cur.excluded.isNull() and
+            !evaluation.isTBScore(beta) and
+            !evaluation.isTBScore(probcut_beta) and
+            !(tt_hit and tt_entry.depth >= probcut_depth and tt_entry.score < probcut_beta))
+        {
+            var mp = MovePicker.initProbcut(
+                board,
+                &cur.movelist,
+                &self.histories,
+                if (is_singular_search) cur.excluded else tt_entry.move,
+            );
+
+            while (mp.next()) |scored_move| {
+                const move = scored_move.move;
+                if (!board.isCapture(move)) {
+                    continue;
+                }
+                self.prefetch(move);
+                if (!board.isLegal(stm, move)) {
+                    continue;
+                }
+
+                if (!SEE.scoreMove(board, move, probcut_beta - eval, .ordering)) {
+                    continue;
+                }
+
+                const score = blk: {
+                    self.makeMove(stm, move);
+                    defer self.unmakeMove(stm, move);
+                    var s = -self.qsearch(
+                        false,
+                        false,
+                        stm.flipped(),
+                        -probcut_beta,
+                        -probcut_beta + 1,
+                    );
+                    if (s >= probcut_beta and probcut_depth > 1) {
+                        s = -self.search(
+                            false,
+                            false,
+                            stm.flipped(),
+                            -probcut_beta,
+                            -probcut_beta + 1,
+                            probcut_depth - 1,
+                            !cutnode,
+                        );
+                    }
+                    break :blk s;
+                };
+                if (score >= probcut_beta) {
+                    self.writeTT(
+                        false,
+                        board.hash,
+                        move,
+                        score,
+                        .lower,
+                        probcut_depth,
+                        raw_static_eval,
+                    );
+
+                    return @intCast(score - (probcut_beta - beta));
+                }
+            }
+        }
     }
 
     var mp = MovePicker.init(
