@@ -698,6 +698,7 @@ fn search(
         }
     }
 
+    // tb probing
     if (!is_root and cur.excluded.isNull() and depth >= self.syzygy_depth) {
         if (root.pyrrhic.probeWDL(board)) |result| {
             self.tbhits += 1;
@@ -713,6 +714,7 @@ fn search(
         }
     }
 
+    // internal iterative reduction (iir)
     if (depth >= 4 + (if (is_pv) 4 else 0) and
         (is_pv or cutnode) and
         !has_tt_move)
@@ -746,6 +748,7 @@ fn search(
     const eval = cur.static_eval;
     const prev_eval = self.stackEntry(-1).static_eval;
 
+    // hindsight extension
     if (!is_pv and
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
@@ -761,6 +764,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
+        // reverse futility pruning (rfp)
         if (eval >= beta - tunables.rfp_min_margin) {
             const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             // cutnodes are expected to fail high
@@ -774,13 +778,14 @@ fn search(
                 tunables.rfp_improving_easy_margin * @intFromBool(improving and opponent_has_easy_capture) +
                 tunables.rfp_worsening_margin * @intFromBool(opponent_worsening) +
                 tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode);
+            const history_mult = if (cur.move_is_noisy) tunables.rfp_noisy_history_mult else tunables.rfp_history_mult;
             const rfp_margin =
                 @divTrunc(
                     tunables.rfp_base +
                         tunables.rfp_mult * depth +
                         tunables.rfp_quad * depth * depth +
                         (corrplexity * tunables.rfp_corrplexity_mult >> 22) +
-                        @divTrunc(cur.history_score * if (cur.move_is_noisy) tunables.rfp_noisy_history_mult else tunables.rfp_history_mult, 16),
+                        @divTrunc(cur.history_score * history_mult, 16),
                     1024,
                 ) - conditional_margin;
 
@@ -789,6 +794,7 @@ fn search(
             }
         }
 
+        // razoring
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         const depth_3 = @max(0, depth - 3);
         if (eval +
@@ -810,6 +816,7 @@ fn search(
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
+        // null move pruning (nmp)
         if (depth >= 4 and
             eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
             non_pk != 0 and
@@ -838,7 +845,15 @@ fn search(
                 }
 
                 self.min_nmp_ply = @intCast(std.math.clamp(self.ply + @divTrunc(nmp_reduction * 3, 4), 0, MAX_PLY));
-                const verif_score = self.search(false, false, stm, beta - 1, beta, depth - nmp_reduction, cutnode);
+                const verif_score = self.search(
+                    false,
+                    false,
+                    stm,
+                    beta - 1,
+                    beta,
+                    depth - nmp_reduction,
+                    cutnode,
+                );
                 self.min_nmp_ply = 0;
 
                 if (verif_score >= beta) {
