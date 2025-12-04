@@ -888,6 +888,7 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+    var singext: i32 = 0;
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -936,7 +937,7 @@ fn search(
             const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
 
             if (!is_pv and
-                num_searched >= lmp_margin)
+                num_searched + singext >= lmp_margin)
             {
                 mp.skip_quiets = true;
                 if (is_quiet) {
@@ -1040,6 +1041,7 @@ fn search(
 
             if (s_score < s_beta) {
                 extension += 1;
+                singext += 1;
 
                 var double_ext_margin = if (is_quiet)
                     tunables.singular_dext_margin_quiet
@@ -1051,6 +1053,7 @@ fn search(
 
                 if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
+                    singext += 1;
 
                     var triple_ext_margin = if (is_quiet)
                         tunables.singular_text_margin_quiet
@@ -1062,6 +1065,7 @@ fn search(
 
                     if (s_score < s_beta - triple_ext_margin) {
                         extension += 1;
+                        singext += 1;
                     }
                 }
             } else if (s_beta >= beta) {
