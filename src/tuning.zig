@@ -244,7 +244,7 @@ const tunable_defaults = struct {
     pub const ttpick_exact_weight: i32 = 106;
     pub const ttpick_move_weight: i32 = 255;
     pub const voting_score_offset: i32 = 128;
-    pub const voting_depth_offset: i32 = 128;
+    pub const voting_depth_offset: i32 = 0;
 };
 
 pub const tunables = [_]Tunable{
@@ -424,7 +424,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "ttpick_exact_weight", .default = tunable_defaults.ttpick_exact_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "ttpick_move_weight", .default = tunable_defaults.ttpick_move_weight, .min = 0, .max = 8192, .c_end = 256 },
     .{ .name = "voting_score_offset", .default = tunable_defaults.voting_score_offset },
-    .{ .name = "voting_depth_offset", .default = tunable_defaults.voting_depth_offset },
+    .{ .name = "voting_depth_offset", .default = tunable_defaults.voting_depth_offset, .min = -256, .max = 256, .c_end = 1 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
