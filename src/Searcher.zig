@@ -1421,7 +1421,7 @@ fn pickBestMove() struct { i16, Move } {
     }
     for (engine.searchers) |searcher| {
         const move = searcher.root_move;
-        const score = 1000 - std.math.clamp(max_score - searcher.full_width_score, 0, 1000);
+        const score = tunables.voting_score_max - std.math.clamp(max_score - searcher.full_width_score, 0, tunables.voting_score_max);
         const normalized = searcher.full_width_score_normalized;
         const d = searcher.limits.root_depth;
 
