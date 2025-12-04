@@ -246,6 +246,7 @@ const tunable_defaults = struct {
     pub const voting_score_max: i32 = 1000;
     pub const voting_score_offset: i32 = 128;
     pub const voting_depth_offset: i32 = 128;
+    pub const voting_offset: i32 = 0;
 };
 
 pub const tunables = [_]Tunable{
@@ -427,6 +428,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "voting_score_max", .default = tunable_defaults.voting_score_max },
     .{ .name = "voting_score_offset", .default = tunable_defaults.voting_score_offset },
     .{ .name = "voting_depth_offset", .default = tunable_defaults.voting_depth_offset },
+    .{ .name = "voting_offset", .default = tunable_defaults.voting_offset, .min = -1000, .max = 1000, .c_end = 100 },
 };
 
 pub const tunable_constants = if (do_tuning) struct {
@@ -608,6 +610,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var voting_score_max = tunable_defaults.voting_score_max;
     pub var voting_score_offset = tunable_defaults.voting_score_offset;
     pub var voting_depth_offset = tunable_defaults.voting_depth_offset;
+    pub var voting_offset = tunable_defaults.voting_offset;
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {

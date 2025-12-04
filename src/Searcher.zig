@@ -1425,7 +1425,7 @@ fn pickBestMove() struct { i16, Move } {
         const normalized = searcher.full_width_score_normalized;
         const d = searcher.limits.root_depth;
 
-        const vote: i64 = (d * 16 + tunables.voting_depth_offset) * (score + tunables.voting_score_offset);
+        const vote: i64 = (d * 16 + tunables.voting_depth_offset) * (score + tunables.voting_score_offset) + tunables.voting_offset;
 
         const entry = &votes[move.from().toInt()][move.to().toInt()];
         entry.* += vote;
