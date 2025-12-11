@@ -1116,6 +1116,9 @@ fn search(
                     gives_check,
                     is_root,
                 });
+                if (cur.failhighs > 2) {
+                    reduction += 512;
+                }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
@@ -1399,8 +1402,8 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.root_score = 0;
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
-    for (0..STACK_PADDING) |i| {
-        self.search_stack[i].reset();
+    for (&self.search_stack) |*stack_entry| {
+        stack_entry.reset();
     }
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
