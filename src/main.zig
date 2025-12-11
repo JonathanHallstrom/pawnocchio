@@ -736,13 +736,10 @@ pub fn main() !void {
     write("{s}\n", .{banner});
     write("pawnocchio {s}\n", .{VERSION_STRING});
 
-    const line_buf = try allocator.alloc(u8, 1 << 20);
-    defer allocator.free(line_buf);
-    var line_writer = std.Io.Writer.fixed(line_buf);
-
-    var stdin_buf: [4096]u8 = undefined;
+    const stdin_buf = try allocator.alloc(u8, 1 << 20);
+    defer allocator.free(stdin_buf);
     var stdin = std.fs.File.stdin();
-    var reader = stdin.reader(&stdin_buf);
+    var reader = stdin.reader(stdin_buf);
 
     var previous_hashes = root.BoundedArray(u64, 200){};
 
@@ -755,16 +752,9 @@ pub fn main() !void {
     var normalize: bool = true;
     var softnodes: bool = false;
     var weird_tcs: bool = false;
-    loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
-        error.EndOfStream => null,
-        else => blk: {
-            std.debug.print("WARNING: encountered '{any}'\n", .{e});
-            break :blk 0;
-        },
-    }) |line_len| {
-        defer _ = line_writer.consumeAll();
-        std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
-        const line = std.mem.trim(u8, line_buf[0..line_len], &std.ascii.whitespace);
+
+    loop: while (reader.interface.takeDelimiter('\n')) |raw_line| {
+        const line = std.mem.trim(u8, raw_line orelse continue, &std.ascii.whitespace);
         for (line) |c| {
             if (!std.ascii.isPrint(c)) {
                 continue :loop;
@@ -1384,7 +1374,7 @@ pub fn main() !void {
                 try previous_hashes.append(board.hash);
             }
         }
-    }
+    } else |_| {}
 }
 
 const banner =
