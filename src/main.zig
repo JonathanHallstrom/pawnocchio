@@ -385,6 +385,8 @@ pub fn main() !void {
                         .{ tunable.name, tunable.default, tunable.getMin(), tunable.getMax() },
                     );
                 }
+            }
+            if (root.tuning.do_lmr_tuning) {
                 const factorized_lmr = root.tuning.factorized_lmr;
                 const factorized_lmr_params = root.tuning.factorized_lmr_params;
                 inline for (0..3, .{ factorized_lmr.one, factorized_lmr.two, factorized_lmr.three }) |i, arr| {
@@ -567,6 +569,8 @@ pub fn main() !void {
                         };
                     }
                 }
+            }
+            if (root.tuning.do_lmr_tuning) {
                 const factorized_lmr = root.tuning.factorized_lmr;
                 inline for (0..3, .{ &factorized_lmr.one, &factorized_lmr.two, &factorized_lmr.three }) |i, arr| {
                     inline for (arr, 0..) |*val_ptr, j| {

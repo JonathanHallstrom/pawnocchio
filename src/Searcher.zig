@@ -568,7 +568,7 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
 }
 
 inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
-    var res: i16 = 0;
+    var res: i32 = 0;
     comptime var two = 0;
     comptime var three = 0;
     inline for (0..N) |i| {
@@ -582,10 +582,10 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
             two += 1;
         }
     }
-    return res;
+    return @intCast(res);
 }
 
-const precomp_lmr_factorised = if (!root.tuning.do_tuning)
+const precomp_lmr_factorised = if (!root.tuning.do_lmr_tuning)
 blk: {
     @setEvalBranchQuota(1 << 30);
     const N = root.tuning.factorized_lmr.N;
@@ -603,7 +603,7 @@ blk: {
 } else void{};
 
 inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
-    if (root.tuning.do_tuning) {
+    if (root.tuning.do_lmr_tuning) {
         return convolve(N, params, root.tuning.factorized_lmr);
     } else {
         var i: usize = 0;
@@ -1088,6 +1088,7 @@ fn search(
             self.stackEntry(0).history_score = history_score;
             defer self.unmakeMove(stm, move);
 
+            const is_recapture = move.to() == cur.move.move.to();
             const gives_check = self.stackEntry(0).board.checkers != 0;
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) {
@@ -1103,7 +1104,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += getFactorisedLmr(8, .{
+                reduction += getFactorisedLmr(11, .{
                     is_pv,
                     cutnode,
                     improving,
@@ -1112,6 +1113,9 @@ fn search(
                     is_quiet,
                     gives_check,
                     cur.failhighs > 2,
+                    is_recapture,
+                    is_in_check,
+                    opponent_worsening,
                 });
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
