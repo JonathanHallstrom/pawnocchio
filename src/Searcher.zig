@@ -215,10 +215,13 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = evaluation.inf_score;
-        self.failhighs = 0;
         self.usable_moves = usable_moves_;
         self.reduction = 0;
         self.history_score = 0;
+    }
+
+    pub fn reset(self: *StackEntry) void {
+        @memset(std.mem.asBytes(self), 0);
     }
 };
 
@@ -1111,7 +1114,7 @@ fn search(
                     tt_pv,
                     is_quiet,
                     gives_check,
-                    cur.failhighs > 2,
+                    is_root,
                 });
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
@@ -1397,7 +1400,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
     for (0..STACK_PADDING) |i| {
-        self.search_stack[i] = std.mem.zeroes(StackEntry);
+        self.search_stack[i].reset();
     }
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
