@@ -17,6 +17,7 @@
 const std = @import("std");
 
 pub const do_tuning = false;
+pub const do_factorized_tuning = false;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -765,7 +766,7 @@ pub const factorized_lmr_params = struct {
     pub const c_end = 128;
 };
 
-pub const factorized_lmr = if (do_tuning) struct {
+pub const factorized_lmr = if (do_factorized_tuning) struct {
     pub const N = factorized_lmr_defaults.N;
     pub var one = factorized_lmr_defaults.one;
     pub var two = factorized_lmr_defaults.two;

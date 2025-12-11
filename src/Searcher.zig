@@ -571,7 +571,7 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
 }
 
 inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
-    var res: i16 = 0;
+    var res: i32 = 0;
     comptime var two = 0;
     comptime var three = 0;
     inline for (0..N) |i| {
@@ -585,10 +585,10 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
             two += 1;
         }
     }
-    return res;
+    return @intCast(res);
 }
 
-const precomp_lmr_factorised = if (!root.tuning.do_tuning)
+const precomp_lmr_factorised = if (!root.tuning.do_factorized_tuning)
 blk: {
     @setEvalBranchQuota(1 << 30);
     const N = root.tuning.factorized_lmr.N;
@@ -606,7 +606,7 @@ blk: {
 } else void{};
 
 inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
-    if (root.tuning.do_tuning) {
+    if (root.tuning.do_factorized_tuning) {
         return convolve(N, params, root.tuning.factorized_lmr);
     } else {
         var i: usize = 0;
