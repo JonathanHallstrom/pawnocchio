@@ -17,7 +17,7 @@
 const std = @import("std");
 
 pub const do_tuning = false;
-pub const do_factorized_tuning = false;
+pub const do_factorized_tuning = true;
 
 pub const Tunable = struct {
     name: []const u8,
@@ -615,7 +615,7 @@ pub const tunable_constants = if (do_tuning) struct {
 } else tunable_defaults;
 
 const factorized_lmr_defaults = struct {
-    pub const N = 8;
+    pub const N = 9;
     pub fn biggerTables(comptime amount: usize) void {
         comptime var two_idx_old = 0;
         comptime var three_idx_old = 0;
@@ -660,7 +660,7 @@ const factorized_lmr_defaults = struct {
         , .{ one_out, two_out, three_out });
     }
 
-    pub const one = [N]i16{
+    pub const one = [N]i32{
         -993,
         1682,
         -323,
@@ -669,8 +669,9 @@ const factorized_lmr_defaults = struct {
         -87,
         -766,
         875,
+        512,
     };
-    pub const two: [N * (N - 1) / 2]i16 = .{
+    pub const two: [N * (N - 1) / 2]i32 = .{
         189,
         25,
         466,
@@ -678,85 +679,121 @@ const factorized_lmr_defaults = struct {
         378,
         48,
         28,
+        0,
         158,
         389,
         -185,
         35,
         -31,
         342,
+        0,
         -172,
         32,
         -57,
         46,
         434,
+        0,
         -458,
         302,
         188,
         -340,
+        0,
         70,
         -514,
         104,
+        0,
         -46,
         -128,
+        0,
         289,
+        0,
+        0,
     };
-    pub const three: [N * (N - 1) * (N - 2) / 6]i16 = .{
+    pub const three: [N * (N - 1) * (N - 2) / 6]i32 = .{
         100,
         285,
         -555,
         462,
         -30,
         151,
+        0,
         -273,
         58,
         -134,
         -51,
         82,
+        0,
         -426,
         164,
         178,
         -327,
+        0,
         -70,
         -68,
         48,
+        0,
         69,
         -181,
+        0,
         -23,
+        0,
+        0,
         -70,
         358,
         -7,
         37,
         184,
+        0,
         -407,
         -21,
         242,
         145,
+        0,
         39,
         56,
         -248,
+        0,
         142,
         290,
+        0,
         13,
+        0,
+        0,
         91,
         -174,
         67,
         113,
+        0,
         -53,
         224,
         113,
+        0,
         -466,
         64,
+        0,
         -39,
+        0,
+        0,
         -58,
         -85,
         -195,
+        0,
         340,
         -90,
+        0,
         -287,
+        0,
+        0,
         -392,
         216,
+        0,
         3,
+        0,
+        0,
         204,
+        0,
+        0,
+        0,
     };
 };
 
