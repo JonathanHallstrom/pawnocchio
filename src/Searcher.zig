@@ -216,10 +216,13 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = evaluation.inf_score;
-        self.failhighs = 0;
         self.usable_moves = usable_moves_;
         self.reduction = 0;
         self.history_score = 0;
+    }
+
+    pub fn reset(self: *StackEntry) void {
+        @memset(std.mem.asBytes(self), 0);
     }
 };
 
@@ -569,7 +572,7 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
 }
 
 inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
-    var res: i16 = 0;
+    var res: i32 = 0;
     comptime var two = 0;
     comptime var three = 0;
     inline for (0..N) |i| {
@@ -583,10 +586,10 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
             two += 1;
         }
     }
-    return res;
+    return @intCast(res);
 }
 
-const precomp_lmr_factorised = if (!root.tuning.do_tuning)
+const precomp_lmr_factorised = if (!root.tuning.do_factorized_tuning)
 blk: {
     @setEvalBranchQuota(1 << 30);
     const N = root.tuning.factorized_lmr.N;
@@ -604,7 +607,7 @@ blk: {
 } else void{};
 
 inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
-    if (root.tuning.do_tuning) {
+    if (root.tuning.do_factorized_tuning) {
         return convolve(N, params, root.tuning.factorized_lmr);
     } else {
         var i: usize = 0;
@@ -699,6 +702,7 @@ fn search(
         }
     }
 
+    // tb probing
     if (!is_root and cur.excluded.isNull() and depth >= self.syzygy_depth) {
         if (root.pyrrhic.probeWDL(board)) |result| {
             self.tbhits += 1;
@@ -714,6 +718,7 @@ fn search(
         }
     }
 
+    // internal iterative reduction (iir)
     if (depth >= 4 + (if (is_pv) 4 else 0) and
         (is_pv or cutnode) and
         !has_tt_move)
@@ -747,6 +752,7 @@ fn search(
     const eval = cur.static_eval;
     const prev_eval = self.stackEntry(-1).static_eval;
 
+    // hindsight extension
     if (!is_pv and
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
         !is_singular_search and
@@ -762,6 +768,7 @@ fn search(
         !is_in_check and
         !is_singular_search)
     {
+        // reverse futility pruning (rfp)
         if (eval >= beta - tunables.rfp_min_margin) {
             const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             // cutnodes are expected to fail high
@@ -775,13 +782,14 @@ fn search(
                 tunables.rfp_improving_easy_margin * @intFromBool(improving and opponent_has_easy_capture) +
                 tunables.rfp_worsening_margin * @intFromBool(opponent_worsening) +
                 tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode);
+            const history_mult = if (cur.move_is_noisy) tunables.rfp_noisy_history_mult else tunables.rfp_history_mult;
             const rfp_margin =
                 @divTrunc(
                     tunables.rfp_base +
                         tunables.rfp_mult * depth +
                         tunables.rfp_quad * depth * depth +
                         (corrplexity * tunables.rfp_corrplexity_mult >> 22) +
-                        @divTrunc(cur.history_score * if (cur.move_is_noisy) tunables.rfp_noisy_history_mult else tunables.rfp_history_mult, 16),
+                        @divTrunc(cur.history_score * history_mult, 16),
                     1024,
                 ) - conditional_margin;
 
@@ -790,6 +798,7 @@ fn search(
             }
         }
 
+        // razoring
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         const depth_3 = @max(0, depth - 3);
         if (eval +
@@ -811,6 +820,7 @@ fn search(
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
+        // null move pruning (nmp)
         if (depth >= 4 and
             eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
             non_pk != 0 and
@@ -839,7 +849,15 @@ fn search(
                 }
 
                 self.min_nmp_ply = @intCast(std.math.clamp(self.ply + @divTrunc(nmp_reduction * 3, 4), 0, MAX_PLY));
-                const verif_score = self.search(false, false, stm, beta - 1, beta, depth - nmp_reduction, cutnode);
+                const verif_score = self.search(
+                    false,
+                    false,
+                    stm,
+                    beta - 1,
+                    beta,
+                    depth - nmp_reduction,
+                    cutnode,
+                );
                 self.min_nmp_ply = 0;
 
                 if (verif_score >= beta) {
@@ -1097,8 +1115,11 @@ fn search(
                     tt_pv,
                     is_quiet,
                     gives_check,
-                    cur.failhighs > 2,
+                    is_root,
                 });
+                if (cur.failhighs > 2) {
+                    reduction += 512;
+                }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
@@ -1123,8 +1144,8 @@ fn search(
                 }
 
                 if (s > alpha and reduced_depth < new_depth) {
-                    const do_deeper_search = s > best_score + tunables.lmr_dodeeper_margin + tunables.lmr_dodeeper_mult * new_depth;
-                    const do_shallower_search = s < best_score + tunables.lmr_doshallower_margin + new_depth;
+                    const do_deeper_search = s > best_score + (tunables.lmr_dodeeper_margin + tunables.lmr_dodeeper_mult * new_depth >> 10);
+                    const do_shallower_search = s < best_score + (tunables.lmr_doshallower_margin + tunables.lmr_doshallower_margin * new_depth >> 10);
 
                     new_depth += @intFromBool(do_deeper_search);
                     new_depth -= @intFromBool(do_shallower_search);
@@ -1382,8 +1403,8 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.root_score = 0;
     self.search_stack[0].board = Board{};
     self.pvs[0].len = 0;
-    for (0..STACK_PADDING) |i| {
-        self.search_stack[i] = std.mem.zeroes(StackEntry);
+    for (&self.search_stack) |*stack_entry| {
+        stack_entry.reset();
     }
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
@@ -1395,6 +1416,38 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.ttage +%= 1;
     @memset(std.mem.asBytes(&self.node_counts), 0);
     evaluation.initThreadLocals();
+}
+
+fn pickBestMove() struct { i16, Move } {
+    var votes = std.mem.zeroes([64][64]i64);
+    var best_move = Move.init();
+    var best_score: i16 = -evaluation.inf_score;
+    var max_score: i32 = std.math.minInt(i32);
+    for (engine.searchers) |searcher| {
+        max_score = @max(max_score, searcher.full_width_score);
+    }
+    for (engine.searchers) |searcher| {
+        const move = searcher.root_move;
+        const score = tunables.voting_score_max - std.math.clamp(max_score - searcher.full_width_score, 0, tunables.voting_score_max);
+        const normalized = searcher.full_width_score_normalized;
+        const d = searcher.limits.root_depth;
+
+        const vote: i64 = (d * 16 + tunables.voting_depth_offset) * (score + tunables.voting_score_offset) + tunables.voting_offset;
+
+        const entry = &votes[move.from().toInt()][move.to().toInt()];
+        entry.* += vote;
+
+        if (evaluation.isTBScore(normalized) or evaluation.isTBScore(best_score)) {
+            if (normalized > best_score) {
+                best_score = normalized;
+                best_move = move;
+            }
+        } else if (entry.* > votes[best_move.from().toInt()][best_move.to().toInt()]) {
+            best_score = normalized;
+            best_move = move;
+        }
+    }
+    return .{ best_score, best_move };
 }
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
@@ -1519,8 +1572,9 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
 
     if (is_main_thread) {
         if (!quiet) {
-            var move = self.root_move;
             const board: Board = self.stackEntry(0).board;
+            const score, var move = pickBestMove();
+            _ = score;
             if (move.isNull()) {
                 const tt_entry = self.readTT(board.hash);
                 switch (board.stm) {
