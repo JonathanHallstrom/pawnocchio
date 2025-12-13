@@ -168,7 +168,8 @@ pub fn classicalMaterial(self: Board) u8 {
     return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
 
-pub fn parseFen(fen: []const u8, permissive: bool) !Board {
+pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
+    const fen = std.mem.trim(u8, ifen, &std.ascii.whitespace);
     if (std.ascii.eqlIgnoreCase(fen, "startpos")) return startpos();
     if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;
     if (std.mem.count(u8, fen, "/") < 7) return error.TooFewRanks;
