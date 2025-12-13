@@ -1091,6 +1091,7 @@ fn search(
             self.stackEntry(0).history_score = history_score;
             defer self.unmakeMove(stm, move);
 
+            const is_recapture = move.to() == cur.move.move.to();
             const gives_check = self.stackEntry(0).board.checkers != 0;
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) {
@@ -1106,7 +1107,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += getFactorisedLmr(9, .{
+                reduction += getFactorisedLmr(10, .{
                     is_pv,
                     cutnode,
                     improving,
@@ -1116,6 +1117,7 @@ fn search(
                     gives_check,
                     is_root,
                     cur.failhighs > 2,
+                    is_recapture,
                 });
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
