@@ -1106,7 +1106,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += getFactorisedLmr(8, .{
+                reduction += getFactorisedLmr(9, .{
                     is_pv,
                     cutnode,
                     improving,
@@ -1115,10 +1115,8 @@ fn search(
                     is_quiet,
                     gives_check,
                     is_root,
+                    cur.failhighs > 2,
                 });
-                if (cur.failhighs > 2) {
-                    reduction += 512;
-                }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
