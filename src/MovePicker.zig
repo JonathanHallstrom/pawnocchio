@@ -156,6 +156,9 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     } else if (self.board.isEnPassant(move)) {
         res += SEE.value(.pawn, .ordering);
     }
+    if (self.board.givesCheckApproximate(self.board.stm, move)) {
+        res += 1024;
+    }
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += self.histories.readNoisy(self.board, move);
 
@@ -163,7 +166,11 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
 }
 
 fn quietValue(self: MovePicker, move: Move) i32 {
-    return self.histories.readQuietOrdering(self.board, move, self.moves);
+    var res = self.histories.readQuietOrdering(self.board, move, self.moves);
+    if (self.board.givesCheckApproximate(self.board.stm, move)) {
+        res += 1024;
+    }
+    return res;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug) .auto else .always_tail;
