@@ -74,14 +74,14 @@ const pickFirst = if (std.simd.suggestVectorLength(u8) orelse 0 >= 1) pickFirstV
 pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
     const from = move.from();
     const to = move.to();
-    const from_type = (&board.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
+    const from_type = board.pieceOn(from).?;
     var captured_type: ?PieceType = null;
     var captured_value: i16 = 0;
     if (board.isEnPassant(move)) {
         captured_type = .pawn;
         captured_value = value(.pawn, mode);
     } else if (board.isCapture(move)) {
-        captured_type = (&board.mailbox)[to.toInt()].toColouredPieceType().toPieceType();
+        captured_type = board.pieceOn(to).?;
         captured_value = value(captured_type.?, mode);
     }
 

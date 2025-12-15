@@ -168,7 +168,8 @@ pub fn classicalMaterial(self: Board) u8 {
     return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
 
-pub fn parseFen(fen: []const u8, permissive: bool) !Board {
+pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
+    const fen = std.mem.trim(u8, ifen, &std.ascii.whitespace);
     if (std.ascii.eqlIgnoreCase(fen, "startpos")) return startpos();
     if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;
     if (std.mem.count(u8, fen, "/") < 7) return error.TooFewRanks;
@@ -669,7 +670,7 @@ pub inline fn getCapturedType(self: Board, move: Move) ?PieceType {
     if (self.isEnPassant(move)) {
         return .pawn;
     }
-    if ((&self.mailbox)[move.to().toInt()]) |cpt| {
+    if (self.colouredPieceOn(move.to())) |cpt| {
         return cpt.toPieceType();
     }
     return null;
@@ -1285,7 +1286,7 @@ pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool
     }
     const from = move.from();
     const to = move.to();
-    const pt = (&self.mailbox)[from.toInt()].toColouredPieceType();
+    const pt = self.colouredPieceOn(from).?;
     assert(pt.toColour() == stm);
     if (pt.toPieceType() == .king) {
         const attackers = movegen.attackersFor(stm.flipped(), self, to, self.occupancy() ^ from.toBitboard());
@@ -1359,7 +1360,7 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         return false;
     }
 
-    const pt = (&self.mailbox)[from.toInt()].toColouredPieceType().toPieceType();
+    const pt = self.pieceOn(from).?;
 
     // if we're in double check it has to be the king that moves, and it cant be castling
     if (self.checkers & self.checkers -% 1 != 0) {
@@ -1433,12 +1434,12 @@ pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove:
 
     var hmc = self.halfmove + 1;
     if (!move.isNull()) {
-        if ((&self.mailbox)[move.to().toInt()].opt()) |cpt| {
+        if (self.colouredPieceOn(move.to())) |cpt| {
             res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
             hmc = 0;
         }
 
-        const cpt = (&self.mailbox)[move.from().toInt()].toColouredPieceType();
+        const cpt = self.colouredPieceOn(move.from()).?;
 
         res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
         res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
