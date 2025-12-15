@@ -156,7 +156,11 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     } else if (self.board.isEnPassant(move)) {
         res += SEE.value(.pawn, .ordering);
     }
+    const is_recapture = self.moves[0].move.to() == move.to();
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
+    if (is_recapture) {
+        res += 1024;
+    }
     res += self.histories.readNoisy(self.board, move);
 
     return res;
