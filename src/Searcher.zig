@@ -457,7 +457,9 @@ fn qsearch(
         }
         const skip_see_pruning = mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
-        if (best_score > evaluation.matedIn(MAX_PLY)) {
+        if (!is_recapture and
+            best_score > evaluation.matedIn(MAX_PLY))
+        {
             const history_score = self.histories.readNoisy(board, move);
             if (num_searched >= 2 and
                 history_score < tunables.qs_hp_margin)
@@ -466,7 +468,6 @@ fn qsearch(
             }
             if (!is_in_check and
                 futility <= alpha and
-                !is_recapture and
                 @abs(alpha) <= 2000 and
                 !SEE.scoreMove(board, move, 1, .pruning))
             {
@@ -476,7 +477,9 @@ fn qsearch(
                 continue;
             }
 
-            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold, .pruning)) {
+            if (!skip_see_pruning and
+                !SEE.scoreMove(board, move, tunables.qs_see_threshold, .pruning))
+            {
                 continue;
             }
         }
