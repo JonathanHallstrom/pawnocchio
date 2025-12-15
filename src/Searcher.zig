@@ -515,6 +515,11 @@ fn qsearch(
         0,
         raw_static_eval,
     );
+
+    if (!is_pv and best_score >= beta and !evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta)) {
+        best_score -= @intCast(@divTrunc(best_score - beta, 4));
+    }
+
     return best_score;
 }
 
