@@ -436,12 +436,20 @@ fn qsearch(
         tt_entry.move,
         self.getUsableMoves(),
     );
+    const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
+    const previous_move_destination = cur.move.move.to();
+    const we_have_recapture = previous_move_destination.toBitboard() & board.threats[stm.toInt()] != 0;
+    if (!is_in_check and
+        static_eval + 1000 <= alpha and
+        !we_have_easy_capture and
+        !we_have_recapture)
+    {
+        return static_eval;
+    }
     defer mp.deinit();
     var num_searched: u8 = 0;
 
     const futility = static_eval + tunables.qs_futility_margin;
-
-    const previous_move_destination = cur.move.move.to();
 
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
