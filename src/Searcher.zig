@@ -515,6 +515,9 @@ fn qsearch(
         0,
         raw_static_eval,
     );
+
+    self.histories.noisy.updateRaw(board, TypedMove.fromBoard(board, best_move), 50);
+
     return best_score;
 }
 
