@@ -58,6 +58,10 @@ pub const Move = enum(u16) {
         return Square.fromInt(@intCast(self.toInt() >> 6 & 0b111111));
     }
 
+    pub fn fromTo(self: Move) usize {
+        return @as(usize, self.from().toInt()) * 64 + self.to().toInt();
+    }
+
     pub fn flag(self: Move) u8 {
         return @intCast(self.toInt() >> 12);
     }
