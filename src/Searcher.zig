@@ -440,6 +440,7 @@ fn qsearch(
     var num_searched: u8 = 0;
 
     const futility = static_eval + tunables.qs_futility_margin;
+    const hard_futility = static_eval + tunables.qs_futility_margin * 3;
 
     const previous_move_destination = cur.move.move.to();
 
@@ -463,6 +464,15 @@ fn qsearch(
                 history_score < tunables.qs_hp_margin)
             {
                 break;
+            }
+            if (!is_in_check and
+                hard_futility <= alpha and
+                !is_recapture)
+            {
+                if (!evaluation.isTBScore(best_score)) {
+                    best_score = @intCast(@max(best_score, hard_futility));
+                }
+                continue;
             }
             if (!is_in_check and
                 futility <= alpha and
