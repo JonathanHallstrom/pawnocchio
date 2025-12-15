@@ -1117,6 +1117,7 @@ fn search(
                     is_root,
                     cur.failhighs > 2,
                 });
+                reduction += 256 * @as(i32, cur.failhighs -| 2);
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
