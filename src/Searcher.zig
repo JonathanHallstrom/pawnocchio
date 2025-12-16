@@ -178,8 +178,21 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
 }
 
 pub fn prefetch(self: *const Searcher, move: Move) void {
-    const board = &self.stackEntry(0).board;
+    const board: *const Board = &self.stackEntry(0).board;
     @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
+    const change = board.roughHashChange(move);
+    const pt = board.pieceOn(move.from());
+    if (pt == .pawn) {
+        @prefetch(&(&self.histories.pawn_corrhist)[board.pawn_hash ^ change], .{});
+    } else {
+        @prefetch(&(&self.histories.nonpawn_corrhist)[(&board.nonpawn_hash)[board.stm.toInt()] ^ change], .{});
+    }
+    if (pt == .rook or pt == .queen) {
+        @prefetch(&(&self.histories.major_corrhist[board.major_hash ^ change]), .{});
+    }
+    if (pt == .knight or pt == .bishop) {
+        @prefetch(&(&self.histories.minor_corrhist[board.minor_hash ^ change]), .{});
+    }
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {

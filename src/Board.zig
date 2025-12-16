@@ -1428,6 +1428,23 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
     } != 0;
 }
 
+pub fn roughHashChange(self: *const Board, move: Move) u64 {
+    var res: u64 = self.hash;
+
+    if (!move.isNull()) {
+        if (self.colouredPieceOn(move.to())) |cpt| {
+            res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+        }
+
+        const cpt = self.colouredPieceOn(move.from()).?;
+
+        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
+        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+    }
+
+    return res;
+}
+
 pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove: bool) u64 {
     var res: u64 = self.hash;
 
