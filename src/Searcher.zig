@@ -793,6 +793,7 @@ fn search(
                 ) - conditional_margin;
 
             if (eval >= beta + rfp_margin) {
+                cur.failhighs += 1;
                 return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunables.rfp_fail_medium, 1024));
             }
         }
