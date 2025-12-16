@@ -284,7 +284,7 @@ pub const PieceType = enum(u3) {
 pub const NullableColouredPieceType = enum(u8) {
     _,
 
-    const null_bit = 128;
+    const null_bit: u8 = 128;
 
     pub fn init() NullableColouredPieceType {
         return @enumFromInt(null_bit);
@@ -308,6 +308,9 @@ pub const NullableColouredPieceType = enum(u8) {
 
     pub inline fn toColouredPieceType(self: NullableColouredPieceType) ColouredPieceType {
         return @enumFromInt(@intFromEnum(self));
+    }
+    pub inline fn clearNull(self: NullableColouredPieceType) ColouredPieceType {
+        return @enumFromInt(@intFromEnum(self) & ~null_bit);
     }
 };
 

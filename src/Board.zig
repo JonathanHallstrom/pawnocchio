@@ -1432,14 +1432,15 @@ pub fn roughHashChange(self: *const Board, move: Move) u64 {
     std.debug.assert(!move.isNull());
     var res: u64 = 0;
 
-    if (self.colouredPieceOn(move.to())) |cpt| {
-        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
-    }
+    const captured_piece_nullable = self.nullableColouredPieceOn(move.to());
+    const cpt = captured_piece_nullable.clearNull();
+    const null_mask = -%@as(u64, @intFromBool(captured_piece_nullable.isNull()));
+    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to()) & ~null_mask;
 
-    const cpt = self.colouredPieceOn(move.from()).?;
+    const pt = self.colouredPieceOn(move.from()).?;
 
-    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
-    res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
+    res ^= root.zobrist.piece(pt.toColour(), pt.toPieceType(), move.from());
+    res ^= root.zobrist.piece(pt.toColour(), pt.toPieceType(), move.to());
 
     return res;
 }

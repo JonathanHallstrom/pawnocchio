@@ -182,17 +182,10 @@ pub fn prefetch(self: *const Searcher, move: Move) void {
     @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
     const change = board.roughHashChange(move);
     const pt = board.pieceOn(move.from());
-    if (pt == .pawn) {
-        @prefetch(&(&self.histories.pawn_corrhist)[board.pawn_hash ^ change], .{});
-    } else {
-        @prefetch(&(&self.histories.nonpawn_corrhist)[(&board.nonpawn_hash)[board.stm.toInt()] ^ change], .{});
-    }
-    if (pt == .rook or pt == .queen) {
-        @prefetch(&(&self.histories.major_corrhist[board.major_hash ^ change]), .{});
-    }
-    if (pt == .knight or pt == .bishop) {
-        @prefetch(&(&self.histories.minor_corrhist[board.minor_hash ^ change]), .{});
-    }
+    @prefetch(&(&self.histories.pawn_corrhist)[board.pawn_hash ^ if (pt == .pawn) change else 0], .{});
+    @prefetch(&(&self.histories.nonpawn_corrhist)[(&board.nonpawn_hash)[board.stm.toInt()] ^ if (pt != .pawn) change else 0], .{});
+    @prefetch(&(&self.histories.major_corrhist[board.major_hash ^ if (pt == .rook or pt == .queen) change else 0]), .{});
+    @prefetch(&(&self.histories.minor_corrhist[board.minor_hash ^ if (pt == .knight or pt == .bishop) change else 0]), .{});
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
