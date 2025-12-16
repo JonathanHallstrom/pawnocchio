@@ -180,12 +180,14 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
 pub fn prefetch(self: *const Searcher, move: Move) void {
     const board: *const Board = &self.stackEntry(0).board;
     @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
-    const change = board.roughHashChange(move);
-    const pt = board.pieceOn(move.from());
-    @prefetch(&(&self.histories.pawn_corrhist)[board.pawn_hash ^ if (pt == .pawn) change else 0], .{});
-    @prefetch(&(&self.histories.nonpawn_corrhist)[(&board.nonpawn_hash)[board.stm.toInt()] ^ if (pt != .pawn) change else 0], .{});
-    @prefetch(&(&self.histories.major_corrhist[board.major_hash ^ if (pt == .rook or pt == .queen) change else 0]), .{});
-    @prefetch(&(&self.histories.minor_corrhist[board.minor_hash ^ if (pt == .knight or pt == .bishop) change else 0]), .{});
+}
+
+pub fn prefetchCorrhist(self: *const Searcher) void {
+    const board: *const Board = &self.stackEntry(0).board;
+    @prefetch(&(&self.histories.pawn_corrhist)[board.pawn_hash], .{});
+    @prefetch(&(&self.histories.nonpawn_corrhist)[(&board.nonpawn_hash)[board.stm.toInt()]], .{});
+    @prefetch(&(&self.histories.major_corrhist[board.major_hash]), .{});
+    @prefetch(&(&self.histories.minor_corrhist[board.minor_hash]), .{});
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
@@ -307,6 +309,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
+    self.prefetchCorrhist();
 }
 
 fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
