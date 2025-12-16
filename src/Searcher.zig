@@ -844,6 +844,7 @@ fn search(
 
             if (nmp_score >= beta) {
                 if (depth <= 15 or self.min_nmp_ply != 0) {
+                    cur.failhighs += 1;
                     return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
                 }
 
@@ -860,6 +861,7 @@ fn search(
                 self.min_nmp_ply = 0;
 
                 if (verif_score >= beta) {
+                    cur.failhighs += 1;
                     return verif_score;
                 }
             }
