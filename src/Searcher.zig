@@ -780,7 +780,8 @@ fn search(
                 tunables.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) +
                 tunables.rfp_improving_easy_margin * @intFromBool(improving and opponent_has_easy_capture) +
                 tunables.rfp_worsening_margin * @intFromBool(opponent_worsening) +
-                tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode);
+                tunables.rfp_cutnode_margin * @intFromBool(no_tthit_cutnode) +
+                @as(i32, -50) * @intFromBool(!cur.move_is_noisy and cur.failhighs > 3);
             const history_mult = if (cur.move_is_noisy) tunables.rfp_noisy_history_mult else tunables.rfp_history_mult;
             const rfp_margin =
                 @divTrunc(
