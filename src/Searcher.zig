@@ -391,9 +391,10 @@ fn qsearch(
     }
     const tt_pv = is_pv or tt_entry.flags.is_pv;
 
-    var raw_static_eval: i16 = evaluation.matedIn(self.ply);
-    var corrected_static_eval: i16 = raw_static_eval;
-    var static_eval: i16 = corrected_static_eval;
+    var raw_static_eval: i16 = -evaluation.inf_score;
+    var corrected_static_eval = raw_static_eval;
+    var static_eval = corrected_static_eval;
+    var best_score = evaluation.matedIn(self.ply);
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
@@ -402,13 +403,17 @@ fn qsearch(
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
             static_eval = tt_score;
         }
-
-        if (static_eval >= beta) {
-            return @intCast(static_eval + @divTrunc((beta - static_eval) * tunables.standpat_fail_medium, 1024));
+        best_score = static_eval;
+    } else {
+        if (tt_entry.flags.score_type.givesLowerBound()) {
+            best_score = tt_entry.score;
         }
-        if (static_eval > alpha) {
-            alpha = static_eval;
-        }
+    }
+    if (static_eval >= beta) {
+        return @intCast(static_eval + @divTrunc((beta - static_eval) * tunables.standpat_fail_medium, 1024));
+    }
+    if (static_eval > alpha) {
+        alpha = static_eval;
     }
 
     if (!is_root) {
@@ -426,7 +431,6 @@ fn qsearch(
         return if (is_in_check) 0 else static_eval;
     }
 
-    var best_score = static_eval;
     var best_move = Move.init();
     var score_type: ScoreType = .upper;
     var mp = MovePicker.initQs(
