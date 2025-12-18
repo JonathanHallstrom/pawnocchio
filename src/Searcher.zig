@@ -1160,6 +1160,9 @@ fn search(
                     if (self.stop.load(.acquire)) {
                         break :blk 0;
                     }
+                    if (is_quiet and (s <= alpha or s >= beta)) {
+                        self.histories.updateCont(board, move, self.getUsableMoves(), new_depth, s >= beta, 0);
+                    }
                 }
             } else if (!is_pv or num_searched > 1) {
                 s = -self.search(
