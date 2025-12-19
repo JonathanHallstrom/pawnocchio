@@ -399,7 +399,7 @@ pub const ScoredMove = packed struct {
 };
 
 pub const ScoredMoveReceiver = struct {
-    vals: std.BoundedArray(ScoredMove, 256) = .{},
+    vals: std.BoundedArray(ScoredMove, 218) = .{},
 
     pub fn receive(self: *@This(), move: Move) void {
         self.vals.appendAssumeCapacity(.{ .move = move, .score = 0 });
@@ -407,7 +407,7 @@ pub const ScoredMoveReceiver = struct {
 };
 
 pub const FilteringScoredMoveReceiver = struct {
-    vals: std.BoundedArray(ScoredMove, 256) = .{},
+    vals: std.BoundedArray(ScoredMove, 218) = .{},
     filter: Move,
 
     pub fn receive(self: *@This(), move: Move) void {

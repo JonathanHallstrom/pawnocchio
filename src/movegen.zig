@@ -26,7 +26,7 @@ const Square = root.Square;
 const Rank = root.Rank;
 
 pub const MoveListReceiver = struct {
-    vals: std.BoundedArray(Move, 256) = .{},
+    vals: std.BoundedArray(Move, 218) = .{},
 
     fn receive(self: *@This(), move: Move) void {
         self.vals.appendAssumeCapacity(move);
