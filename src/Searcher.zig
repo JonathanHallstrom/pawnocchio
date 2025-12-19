@@ -747,8 +747,6 @@ fn search(
             !cur.move_is_noisy)
         {
             const update = std.math.clamp(-(prev_eval + corrected_static_eval - 110), -100, 100);
-            // engine.dbgStats("eval diff", prev_eval + corrected_static_eval);
-            // engine.dbgStats("evaldiff update", update);
             self.histories.quiet.updateRaw(
                 &self.stackEntry(-1).board,
                 cur.move,
