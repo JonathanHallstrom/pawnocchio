@@ -1107,7 +1107,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * history_score >> 13);
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += getFactorisedLmr(9, .{
+                const factorised = getFactorisedLmr(9, .{
                     is_pv,
                     cutnode,
                     improving,
@@ -1118,6 +1118,18 @@ fn search(
                     is_root,
                     cur.failhighs > 2,
                 });
+
+                // const sign = if (factorised < 0) -1 else 1;
+                const factorised_dot = @divTrunc((factorised + 348) * (reduction - 4545), 1024);
+                const dot_update = @divTrunc(@max(0, factorised_dot) * (factorised + reduction), 64 * 1024);
+                // engine.dbgStats("factorised", factorised);
+                // engine.dbgStats("reduction", reduction);
+                // engine.dbgStats("dot product of factorised and reduction", factorised_dot);
+                // engine.dbgStats("dot update", dot_update);
+
+                reduction += dot_update;
+
+                reduction += factorised;
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
