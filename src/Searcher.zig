@@ -761,6 +761,7 @@ fn search(
         depth += 1;
     }
 
+    const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
@@ -798,7 +799,6 @@ fn search(
         }
 
         // razoring
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         const depth_3 = @max(0, depth - 3);
         if (eval +
             tunables.razoring_offs +
@@ -1226,9 +1226,10 @@ fn search(
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
                 const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
+                const easy_capture_bonus = @intFromBool(we_have_easy_capture) * @as(i32, 256);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus);
+                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus + easy_capture_bonus);
                         for (searched_quiets.slice()) |searched_move| {
                             self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
                         }
@@ -1237,7 +1238,7 @@ fn search(
                     self.histories.updateNoisy(board, move, hist_depth, true, faillow_bonus);
                 }
                 for (searched_noisies.slice()) |searched_move| {
-                    self.histories.updateNoisy(board, searched_move, hist_depth, false, 0);
+                    self.histories.updateNoisy(board, searched_move, hist_depth, false, -easy_capture_bonus);
                 }
                 break;
             }
