@@ -736,7 +736,9 @@ fn search(
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
-        if (tt_hit and evaluation.checkTTBound(
+        if (is_pv and depth >= 3) {
+            cur.static_eval = self.qsearch(false, true, stm, alpha, beta);
+        } else if (tt_hit and evaluation.checkTTBound(
             tt_score,
             corrected_static_eval,
             corrected_static_eval,
