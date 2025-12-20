@@ -746,7 +746,7 @@ fn search(
             !cur.move.move.isNull() and
             !cur.move_is_noisy)
         {
-            const update = std.math.clamp(-(prev_eval + corrected_static_eval - 110), -100, 100);
+            const update = @divTrunc(std.math.clamp(-(prev_eval + corrected_static_eval - tunables.eval_hist_offs), tunables.eval_hist_min, tunables.eval_hist_max) * tunables.eval_hist_mult, 1024);
             self.histories.quiet.updateRaw(
                 &self.stackEntry(-1).board,
                 cur.move,
