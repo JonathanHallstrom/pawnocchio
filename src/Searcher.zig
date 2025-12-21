@@ -937,7 +937,7 @@ fn search(
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
-            const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
+            var lmr_depth: i32 = (depth << 10) - base_lmr;
 
             if (!is_pv and
                 num_searched >= lmp_margin)
@@ -1001,6 +1001,7 @@ fn search(
             const see_offs: i64 = if (is_quiet) tunables.see_quiet_pruning_offs else tunables.see_noisy_pruning_offs;
             const see_mult: i64 = if (is_quiet) tunables.see_quiet_pruning_mult else tunables.see_noisy_pruning_mult;
             const see_quad: i64 = if (is_quiet) tunables.see_quiet_pruning_quad else tunables.see_noisy_pruning_quad;
+            lmr_depth = @max(lmr_depth, 0);
             var see_pruning_thresh = see_offs + (lmr_depth * (see_mult + (lmr_depth * see_quad >> 10)) >> 10);
 
             if (is_pv) {
@@ -1159,6 +1160,9 @@ fn search(
                     );
                     if (self.stop.load(.acquire)) {
                         break :blk 0;
+                    }
+                    if (is_quiet and (s <= alpha or s >= beta)) {
+                        self.histories.updateCont(board, move, self.getUsableMoves(), new_depth, s >= beta, 0);
                     }
                 }
             } else if (!is_pv or num_searched > 1) {
