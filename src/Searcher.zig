@@ -195,6 +195,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    corrected_eval: i16,
     failhighs: u8,
     usable_moves: u8,
     reduction: i32,
@@ -215,6 +216,7 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = evaluation.inf_score;
+        self.corrected_eval = evaluation.inf_score;
         self.usable_moves = usable_moves_;
         self.reduction = 0;
         self.history_score = 0;
@@ -397,6 +399,7 @@ fn qsearch(
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -732,10 +735,24 @@ fn search(
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
+        const prev_eval = self.stackEntry(-1).corrected_eval;
+
+        if (prev_eval != evaluation.inf_score and
+            !cur.move.move.isNull() and
+            !cur.move_is_noisy)
+        {
+            const update = @divTrunc(std.math.clamp(-(prev_eval + corrected_static_eval - tunables.eval_hist_offs), tunables.eval_hist_min, tunables.eval_hist_max) * tunables.eval_hist_mult, 1024);
+            self.histories.quiet.updateRaw(
+                &self.stackEntry(-1).board,
+                cur.move,
+                update,
+            );
+        }
         if (tt_hit and evaluation.checkTTBound(
             tt_score,
             corrected_static_eval,
