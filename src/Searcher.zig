@@ -785,6 +785,17 @@ fn search(
         depth += 1;
     }
 
+    // hindsight reduction
+    if (!tt_pv and
+        eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
+        !is_singular_search and
+        cur.reduction >= 1024 and
+        depth >= 3 and
+        @as(i32, eval) + prev_eval > 100)
+    {
+        depth -= 1;
+    }
+
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
