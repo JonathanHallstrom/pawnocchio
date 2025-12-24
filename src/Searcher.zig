@@ -772,7 +772,7 @@ fn search(
             cur.static_eval = corrected_static_eval;
         }
     }
-    const eval = cur.static_eval;
+    const eval = if (is_pv) self.qsearch(false, false, stm, alpha, beta) else cur.static_eval;
     const prev_eval = self.stackEntry(-1).static_eval;
 
     // hindsight extension
@@ -785,14 +785,24 @@ fn search(
         depth += 1;
     }
 
-    if (!is_pv and
-        !evaluation.isMateScore(alpha) and
+    if (!evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
-        !is_in_check and
         !is_singular_search)
     {
+        // pv reverse futility pruning (pvrfp)
+        if (is_pv) {
+            const margin = 150 + 150 * depth;
+
+            if (eval >= beta + margin) {
+                return eval;
+            }
+        }
+
         // reverse futility pruning (rfp)
-        if (eval >= beta - tunables.rfp_min_margin) {
+        if (!is_pv and
+            !is_in_check and
+            eval >= beta - tunables.rfp_min_margin)
+        {
             const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             // cutnodes are expected to fail high
             // if we are re-searching this then its likely because its important, so otherwise we reduce more
@@ -824,11 +834,13 @@ fn search(
         // razoring
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         const depth_3 = @max(0, depth - 3);
-        if (eval +
-            tunables.razoring_offs +
-            tunables.razoring_mult * depth +
-            tunables.razoring_quad * depth_3 * depth_3 +
-            tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
+        if (!is_pv and
+            !is_in_check and
+            eval +
+                tunables.razoring_offs +
+                tunables.razoring_mult * depth +
+                tunables.razoring_quad * depth_3 * depth_3 +
+                tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
@@ -844,7 +856,9 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         // null move pruning (nmp)
-        if (depth >= 4 and
+        if (!is_pv and
+            !is_in_check and
+            depth >= 4 and
             eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
