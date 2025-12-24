@@ -1166,11 +1166,12 @@ fn search(
                 }
 
                 if (s > alpha and reduced_depth < new_depth) {
-                    const do_deeper_search = s > best_score + (tunables.lmr_dodeeper_margin + tunables.lmr_dodeeper_mult * new_depth >> 10);
-                    const do_shallower_search = s < best_score + (tunables.lmr_doshallower_margin + tunables.lmr_doshallower_margin * new_depth >> 10);
-
-                    new_depth += @intFromBool(do_deeper_search);
-                    new_depth -= @intFromBool(do_shallower_search);
+                    if (!is_root) {
+                        const do_deeper_search = s > best_score + (tunables.lmr_dodeeper_margin + tunables.lmr_dodeeper_mult * new_depth >> 10);
+                        const do_shallower_search = s < best_score + (tunables.lmr_doshallower_margin + tunables.lmr_doshallower_margin * new_depth >> 10);
+                        new_depth += @intFromBool(do_deeper_search);
+                        new_depth -= @intFromBool(do_shallower_search);
+                    }
 
                     s = -self.search(
                         false,
