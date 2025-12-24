@@ -792,7 +792,7 @@ fn search(
         !is_singular_search)
     {
         // reverse futility pruning (rfp)
-        if (eval >= beta - tunables.rfp_min_margin) {
+        if (eval >= beta - tunables.rfp_min_margin and !tt_pv) {
             const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             // cutnodes are expected to fail high
             // if we are re-searching this then its likely because its important, so otherwise we reduce more
