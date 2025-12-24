@@ -785,8 +785,7 @@ fn search(
         depth += 1;
     }
 
-    if (!is_pv and
-        !evaluation.isMateScore(alpha) and
+    if (!evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
         !is_in_check and
         !is_singular_search)
@@ -824,11 +823,12 @@ fn search(
         // razoring
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         const depth_3 = @max(0, depth - 3);
-        if (eval +
-            tunables.razoring_offs +
-            tunables.razoring_mult * depth +
-            tunables.razoring_quad * depth_3 * depth_3 +
-            tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
+        if (!is_pv and
+            eval +
+                tunables.razoring_offs +
+                tunables.razoring_mult * depth +
+                tunables.razoring_quad * depth_3 * depth_3 +
+                tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
@@ -844,7 +844,8 @@ fn search(
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
         // null move pruning (nmp)
-        if (depth >= 4 and
+        if (!is_pv and
+            depth >= 4 and
             eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
