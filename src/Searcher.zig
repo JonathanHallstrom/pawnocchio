@@ -723,7 +723,7 @@ fn search(
     // internal iterative reduction (iir)
     if (depth >= 4 + (if (is_pv) 4 else 0) and
         (is_pv or cutnode) and
-        !has_tt_move and cur.reduction <= 3072)
+        !has_tt_move and cur.reduction <= 4096)
     {
         depth -= 1;
     }
