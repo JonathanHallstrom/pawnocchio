@@ -348,7 +348,6 @@ pub const HistoryTable = struct {
         self: *HistoryTable,
         board: *const Board,
         move: Move,
-        moves: ConthistMoves,
         depth: i32,
         is_bonus: bool,
         extra: i32,
@@ -356,7 +355,6 @@ pub const HistoryTable = struct {
         const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus, extra);
         self.pawn.update(board, typed, depth, is_bonus, extra);
-        self.updateCont(board, move, moves, depth, is_bonus, extra);
     }
 
     pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {

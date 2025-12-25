@@ -1253,9 +1253,11 @@ fn search(
                 const prev_hist_bonus = @divTrunc(self.stackEntry(-1).history_score, 32);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus + prev_hist_bonus);
+                        self.histories.updateQuiet(board, move, hist_depth, true, faillow_bonus + prev_hist_bonus);
+                        self.histories.updateCont(board, move, usable_moves, hist_depth, true, faillow_bonus);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
+                            self.histories.updateQuiet(board, searched_move, hist_depth, false, 0);
+                            self.histories.updateCont(board, searched_move, usable_moves, hist_depth, false, 0);
                         }
                     }
                 } else {
