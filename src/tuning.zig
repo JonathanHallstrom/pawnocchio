@@ -124,6 +124,9 @@ const tunable_defaults = struct {
     pub const aspiration_score_mult: i32 = 1120;
     pub const aspiration_initial: i32 = 9022;
     pub const aspiration_multiplier: i32 = 1307;
+    pub const failhigh_add: i32 = 1024;
+    pub const failhigh_mult: i32 = 512;
+    pub const failhigh_max: i32 = 4096;
     pub const lmr_quiet_base: i32 = 3829;
     pub const lmr_noisy_base: i32 = 2544;
     pub const lmr_quiet_depth_mult: i32 = 312;
@@ -310,6 +313,9 @@ pub const tunables = [_]Tunable{
     .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 10, .max = 4096, .c_end = 32 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = 10, .max = 39450, .c_end = 1577 },
     .{ .name = "aspiration_multiplier", .default = tunable_defaults.aspiration_multiplier, .min = 1127, .max = 4015, .c_end = 160 },
+    .{ .name = "failhigh_add", .default = tunable_defaults.failhigh_add },
+    .{ .name = "failhigh_mult", .default = tunable_defaults.failhigh_mult },
+    .{ .name = "failhigh_max", .default = tunable_defaults.failhigh_max },
     .{ .name = "lmr_quiet_base", .default = tunable_defaults.lmr_quiet_base, .min = -10, .max = 6772, .c_end = 270 },
     .{ .name = "lmr_noisy_base", .default = tunable_defaults.lmr_noisy_base, .min = -10, .max = 4412, .c_end = 176 },
     .{ .name = "lmr_quiet_depth_mult", .default = tunable_defaults.lmr_quiet_depth_mult, .min = -10, .max = 1895, .c_end = 75 },
@@ -496,6 +502,9 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var aspiration_score_mult = tunable_defaults.aspiration_score_mult;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
     pub var aspiration_multiplier = tunable_defaults.aspiration_multiplier;
+    pub var failhigh_add = tunable_defaults.failhigh_add;
+    pub var failhigh_mult = tunable_defaults.failhigh_mult;
+    pub var failhigh_max = tunable_defaults.failhigh_max;
     pub var lmr_quiet_base = tunable_defaults.lmr_quiet_base;
     pub var lmr_noisy_base = tunable_defaults.lmr_noisy_base;
     pub var lmr_quiet_depth_mult = tunable_defaults.lmr_quiet_depth_mult;

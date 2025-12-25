@@ -1505,7 +1505,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     stm,
                     aspiration_lower,
                     aspiration_upper,
-                    @max(1, depth - failhigh_reduction),
+                    @max(1, depth - (failhigh_reduction >> 10)),
                     false,
                 );
                 if (self.stop.load(.acquire)) {
@@ -1515,7 +1515,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 if (score >= aspiration_upper) {
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
-                    failhigh_reduction = @min(failhigh_reduction + 1, 4);
+                    failhigh_reduction = @min(failhigh_reduction + tunables.failhigh_add, tunables.failhigh_max);
                     if (should_print) {
                         if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .lower);
@@ -1524,7 +1524,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
-                    failhigh_reduction >>= 1;
+                    failhigh_reduction = failhigh_reduction * tunables.failhigh_mult >> 10;
                     if (should_print) {
                         if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .upper);
