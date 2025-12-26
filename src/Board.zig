@@ -984,6 +984,14 @@ pub inline fn givesCheckApproximate(noalias self: *const Board, comptime stm: Co
     return has_blocker_free_discovery;
 }
 
+pub fn makeMoveSimple(noalias self: *Board, move: Move) void {
+    switch (self.stm) {
+        inline else => |stm| {
+            makeMove(self, stm, move, NullEvalState{});
+        },
+    }
+}
+
 pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;

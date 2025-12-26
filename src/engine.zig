@@ -30,7 +30,7 @@ pub var searchers: []*align(2 << 20) Searcher align(std.atomic.cache_line) = &.{
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
-var tt: []align(2 << 20) root.TTCluster = &.{};
+pub var tt: []align(2 << 20) root.TTCluster = &.{};
 
 pub var debug_stats_lock: std.Thread.Mutex = .{};
 pub var debug_stats: std.StringHashMap(@import("DebugStats.zig")) = .init(std.heap.page_allocator);

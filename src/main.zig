@@ -152,11 +152,15 @@ pub fn main() !void {
                 return;
             }
             if (std.mem.count(u8, arg, "pgntovf") > 0) {
-                var input = args.next() orelse "";
+                var input: []const u8 = "";
                 var skip_broken_games = false;
-                if (std.ascii.eqlIgnoreCase(input, "--skip-broken-games")) {
-                    skip_broken_games = true;
-                    input = args.next() orelse "";
+                while (args.next()) |sub_arg| {
+                    if (std.ascii.eqlIgnoreCase(sub_arg, "--skip-broken-games")) {
+                        std.debug.print("skipping broken games\n", .{});
+                        skip_broken_games = true;
+                    } else {
+                        input = sub_arg;
+                    }
                 }
                 const extension_len = std.mem.indexOf(u8, input, ".pgn") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
                 const output_base = args.next() orelse input[0..extension_len];
@@ -178,8 +182,51 @@ pub fn main() !void {
 
                 try @import("pgn_to_vf.zig").convert(
                     &input_reader.interface,
-                    skip_broken_games,
                     &output_writer.interface,
+                    skip_broken_games,
+                    std.heap.smp_allocator,
+                );
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "epdtovf") > 0) {
+                var input: []const u8 = "";
+                var skip_broken_games = false;
+                var white_relative = false;
+                while (args.next()) |sub_arg| {
+                    if (std.ascii.eqlIgnoreCase(sub_arg, "--skip-broken-games")) {
+                        std.debug.print("skipping broken games\n", .{});
+                        skip_broken_games = true;
+                    } else if (std.ascii.eqlIgnoreCase(sub_arg, "--white-relative")) {
+                        std.debug.print("treating scores as white relative\n", .{});
+                        white_relative = true;
+                    } else {
+                        input = sub_arg;
+                    }
+                }
+                const extension_len = std.mem.indexOf(u8, input, ".epd") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
+                const output_base = args.next() orelse input[0..extension_len];
+
+                const output = try std.fmt.allocPrint(allocator, "{s}.vf", .{output_base});
+                defer allocator.free(output);
+
+                var input_file = std.fs.cwd().openFile(input, .{}) catch try std.fs.openFileAbsolute(input, .{});
+                defer input_file.close();
+
+                var output_file = try std.fs.cwd().createFile(output, .{});
+                defer output_file.close();
+
+                var input_buf: [4096]u8 = undefined;
+                var output_buf: [4096]u8 = undefined;
+
+                var input_reader = input_file.reader(&input_buf);
+                var output_writer = output_file.writer(&output_buf);
+
+                try @import("epd_to_vf.zig").convert(
+                    &input_reader.interface,
+                    &output_writer.interface,
+                    skip_broken_games,
+                    white_relative,
                     std.heap.smp_allocator,
                 );
 
