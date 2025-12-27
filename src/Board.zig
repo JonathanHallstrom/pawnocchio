@@ -638,7 +638,7 @@ pub fn updateEPHash(self: *Board) void {
 }
 
 pub inline fn getHashWithHalfmove(self: Board) u64 {
-    return self.hash ^ root.zobrist.halfmove(self.halfmove >> 3);
+    return self.hash ^ root.zobrist.halfmove(self.halfmove);
 }
 
 pub inline fn isEnPassant(_: Board, move: Move) bool {
@@ -1450,7 +1450,7 @@ pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove:
     }
     res ^= root.zobrist.turn();
     if (include_halfmove) {
-        res ^= root.zobrist.halfmove(hmc >> 3);
+        res ^= root.zobrist.halfmove(hmc);
     }
 
     return res;
