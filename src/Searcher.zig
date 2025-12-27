@@ -1245,23 +1245,25 @@ fn search(
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
-                const hist_depth = depth + @as(i32, if (score >= beta + tunables.high_eval_offs) 1 else 0);
                 score_type = .lower;
                 cur.failhighs += 1;
                 const usable_moves = self.getUsableMoves();
+                const failhigh_bonus = std.math.clamp(@divTrunc((score - (beta + tunables.high_eval_offs / 2)) * 2048, 1024), 0, 500);
+                // engine.dbgStats("failhigh bonus", history.QuietHistory.bonus(hist_depth) - history.QuietHistory.bonus(depth));
+                // engine.dbgStats("new failhigh bonus", failhigh_bonus);
                 const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus);
+                        self.histories.updateQuiet(board, move, usable_moves, depth, true, failhigh_bonus + faillow_bonus);
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
+                            self.histories.updateQuiet(board, searched_move, usable_moves, depth, false, failhigh_bonus);
                         }
                     }
                 } else {
-                    self.histories.updateNoisy(board, move, hist_depth, true, faillow_bonus);
+                    self.histories.updateNoisy(board, move, depth, true, failhigh_bonus + faillow_bonus);
                 }
                 for (searched_noisies.slice()) |searched_move| {
-                    self.histories.updateNoisy(board, searched_move, hist_depth, false, 0);
+                    self.histories.updateNoisy(board, searched_move, depth, false, failhigh_bonus);
                 }
                 break;
             }

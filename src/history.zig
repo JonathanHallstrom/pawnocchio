@@ -64,7 +64,7 @@ pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
 pub const QuietHistory = struct {
     vals: [2 * 64 * 64 * 2 * 2]i16,
 
-    fn bonus(depth: i32) i16 {
+    pub fn bonus(depth: i32) i16 {
         return @intCast(@min(
             depth * tunable_constants.quiet_history_bonus_mult + tunable_constants.quiet_history_bonus_offs,
             tunable_constants.quiet_history_bonus_max,
