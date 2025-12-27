@@ -157,7 +157,7 @@ pub fn turn() u64 {
 }
 
 pub fn halfmove(clock: u8) u64 {
-    const idx = clock / 8;
+    const idx = (clock -| 50) / 8;
     const zero_mask: u64 = @intFromBool(idx != 0);
     return -%zero_mask & std.mem.readInt(u64, data[halfmove_offs..][idx..][0..@sizeOf(u64)], native_endianness);
 }
