@@ -106,11 +106,11 @@ pub fn convert(
             //     .normalize = true,
             //     .previous_hashes = .{},
             // }, true, true);
-            const stm_score = if (white_relative_scores)
-                (if (parsed_board.stm == .white) score else -score)
+            const white_relative_score = if (white_relative_scores)
+                score
             else
-                score;
-            try game.addMove(connecting_move, stm_score);
+                (if (parsed_board.stm == .white) score else -score);
+            try game.addMove(connecting_move, white_relative_score);
             // if (board.isNoisy(connecting_move) or board.pieceOn(connecting_move.to()) == .pawn) {
             //     previous_hashes.clear();
             // }

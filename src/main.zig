@@ -342,7 +342,7 @@ pub fn main() !void {
                 var king_pos: [64]u64 = .{0} ** 64;
                 var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
                 defer zobrist_set.deinit();
-                var score_counts: []u64 = try allocator.alloc(u64, std.math.maxInt(u16));
+                var score_counts: []u64 = try allocator.alloc(u64, 1 + std.math.maxInt(u16));
                 defer allocator.free(score_counts);
                 var piece_counts: [33]u64 = .{0} ** 33;
                 var phase_counts: [25]u64 = .{0} ** 25;
