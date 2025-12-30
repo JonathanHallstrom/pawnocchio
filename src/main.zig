@@ -152,11 +152,15 @@ pub fn main() !void {
                 return;
             }
             if (std.mem.count(u8, arg, "pgntovf") > 0) {
-                var input = args.next() orelse "";
+                var input: []const u8 = "";
                 var skip_broken_games = false;
-                if (std.ascii.eqlIgnoreCase(input, "--skip-broken-games")) {
-                    skip_broken_games = true;
-                    input = args.next() orelse "";
+                while (args.next()) |sub_arg| {
+                    if (std.ascii.eqlIgnoreCase(sub_arg, "--skip-broken-games")) {
+                        std.debug.print("skipping broken games\n", .{});
+                        skip_broken_games = true;
+                    } else {
+                        input = sub_arg;
+                    }
                 }
                 const extension_len = std.mem.indexOf(u8, input, ".pgn") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
                 const output_base = args.next() orelse input[0..extension_len];
@@ -178,8 +182,51 @@ pub fn main() !void {
 
                 try @import("pgn_to_vf.zig").convert(
                     &input_reader.interface,
-                    skip_broken_games,
                     &output_writer.interface,
+                    skip_broken_games,
+                    std.heap.smp_allocator,
+                );
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "epdtovf") > 0) {
+                var input: []const u8 = "";
+                var skip_broken_games = false;
+                var white_relative = false;
+                while (args.next()) |sub_arg| {
+                    if (std.ascii.eqlIgnoreCase(sub_arg, "--skip-broken-games")) {
+                        std.debug.print("skipping broken games\n", .{});
+                        skip_broken_games = true;
+                    } else if (std.ascii.eqlIgnoreCase(sub_arg, "--white-relative")) {
+                        std.debug.print("treating scores as white relative\n", .{});
+                        white_relative = true;
+                    } else {
+                        input = sub_arg;
+                    }
+                }
+                const extension_len = std.mem.indexOf(u8, input, ".epd") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
+                const output_base = args.next() orelse input[0..extension_len];
+
+                const output = try std.fmt.allocPrint(allocator, "{s}.vf", .{output_base});
+                defer allocator.free(output);
+
+                var input_file = std.fs.cwd().openFile(input, .{}) catch try std.fs.openFileAbsolute(input, .{});
+                defer input_file.close();
+
+                var output_file = try std.fs.cwd().createFile(output, .{});
+                defer output_file.close();
+
+                var input_buf: [4096]u8 = undefined;
+                var output_buf: [4096]u8 = undefined;
+
+                var input_reader = input_file.reader(&input_buf);
+                var output_writer = output_file.writer(&output_buf);
+
+                try @import("epd_to_vf.zig").convert(
+                    &input_reader.interface,
+                    &output_writer.interface,
+                    skip_broken_games,
+                    white_relative,
                     std.heap.smp_allocator,
                 );
 
@@ -207,7 +254,7 @@ pub fn main() !void {
                         }
                     };
 
-                    var board = marlin_board.toBoard();
+                    var board = try marlin_board.toBoard();
                     const wdl = @as(f64, @floatFromInt(marlin_board.wdl)) / 2.0;
                     const sigmoid = struct {
                         fn impl(score: i16) f64 {
@@ -295,7 +342,7 @@ pub fn main() !void {
                 var king_pos: [64]u64 = .{0} ** 64;
                 var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
                 defer zobrist_set.deinit();
-                var score_counts: []u64 = try allocator.alloc(u64, std.math.maxInt(u16));
+                var score_counts: []u64 = try allocator.alloc(u64, 1 + std.math.maxInt(u16));
                 defer allocator.free(score_counts);
                 var piece_counts: [33]u64 = .{0} ** 33;
                 var phase_counts: [25]u64 = .{0} ** 25;
@@ -336,7 +383,7 @@ pub fn main() !void {
                             @as(u64, unique_count) * 100 / position_count,
                         });
                     }
-                    var board = marlin_board.toBoard();
+                    var board = try marlin_board.toBoard();
                     var had_tb_win = false;
                     var had_tb_draw = false;
                     var had_tb_loss = false;
@@ -352,7 +399,7 @@ pub fn main() !void {
                         const viri_move = move_eval_pair.move;
 
                         if (move_idx == 0) {
-                            const exit = if (board.stm == .white) move_eval_pair.eval.toNative() else -move_eval_pair.eval.toNative();
+                            const exit = if (board.stm == .white) move_eval_pair.eval.toNative() else -@as(i32, move_eval_pair.eval.toNative());
 
                             sum_exits += exit;
                         }
@@ -362,6 +409,7 @@ pub fn main() !void {
                         }
 
                         const move = viri_move.toMove(&board);
+                        std.debug.print("{s} {s}\n", .{ board.toFen().slice(), move.toString(&board).slice() });
 
                         switch (board.stm) {
                             inline else => |stm| {
@@ -521,7 +569,7 @@ pub fn main() !void {
                             @as(u128, br.logicalPos() * 100) / stat.size,
                         });
                     }
-                    var board = marlin_board.toBoard();
+                    var board = try marlin_board.toBoard();
                     var game = viriformat.Game.from(board, allocator);
                     game.initial_position = marlin_board;
                     defer game.moves.deinit();
@@ -587,6 +635,32 @@ pub fn main() !void {
                     incorrect_wdl_count,
                     game_count,
                 });
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "sanitise") > 0) {
+                const input_name = args.next() orelse "";
+                var input_file = try std.fs.cwd().openFile(input_name, .{});
+                defer input_file.close();
+
+                var name_writer = std.Io.Writer.Allocating.init(allocator);
+                defer name_writer.deinit();
+
+                try name_writer.writer.print("{s}_sanitised", .{input_name});
+
+                var output_file = try std.fs.cwd().createFile(name_writer.written(), .{});
+                defer output_file.close();
+                const stat = try input_file.stat();
+
+                const mapped = try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
+                defer std.posix.munmap(mapped);
+
+                var output_buf: [4096]u8 = undefined;
+                var bw = output_file.writer(&output_buf);
+
+                try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(mapped, &bw.interface, allocator);
+
+                try bw.interface.flush();
 
                 return;
             }

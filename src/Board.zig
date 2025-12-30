@@ -639,7 +639,7 @@ pub fn updateEPHash(self: *Board) void {
 }
 
 pub inline fn getHashWithHalfmove(self: Board) u64 {
-    return self.hash ^ root.zobrist.halfmove(self.halfmove >> 3);
+    return self.hash ^ root.zobrist.halfmove(self.halfmove);
 }
 
 pub inline fn isEnPassant(_: Board, move: Move) bool {
@@ -982,6 +982,14 @@ pub inline fn givesCheckApproximate(noalias self: *const Board, comptime stm: Co
         has_blocker_free_discovery = has_blocker_free_discovery or ray & occ_discovered == 0 and Bitboard.contains(ray, sq);
     }
     return has_blocker_free_discovery;
+}
+
+pub fn makeMoveSimple(noalias self: *Board, move: Move) void {
+    switch (self.stm) {
+        inline else => |stm| {
+            makeMove(self, stm, move, NullEvalState{});
+        },
+    }
 }
 
 pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
@@ -1451,7 +1459,7 @@ pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove:
     }
     res ^= root.zobrist.turn();
     if (include_halfmove) {
-        res ^= root.zobrist.halfmove(hmc >> 3);
+        res ^= root.zobrist.halfmove(hmc);
     }
 
     return res;

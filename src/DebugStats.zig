@@ -55,6 +55,11 @@ pub fn add(self: *Self, data_point: i64, rng: std.Random) void {
         } else if (data_point_f < self.percentiles[i] and r > p) {
             self.percentiles[i] -= step;
         }
+        self.percentiles[i] = std.math.clamp(
+            self.percentiles[i],
+            @as(f64, @floatFromInt(self.min)),
+            @as(f64, @floatFromInt(self.max)),
+        );
     }
 }
 

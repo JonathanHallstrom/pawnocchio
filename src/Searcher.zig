@@ -196,6 +196,7 @@ pub const StackEntry = struct {
     evals: EvalPair,
     excluded: Move = Move.init(),
     static_eval: i16,
+    corrected_eval: i16,
     failhighs: u8,
     usable_moves: u8,
     reduction: i32,
@@ -216,6 +217,7 @@ pub const StackEntry = struct {
         self.evals = prev_evals;
         self.excluded = Move.init();
         self.static_eval = evaluation.inf_score;
+        self.corrected_eval = evaluation.inf_score;
         self.usable_moves = usable_moves_;
         self.reduction = 0;
         self.history_score = 0;
@@ -398,6 +400,7 @@ fn qsearch(
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
@@ -692,11 +695,11 @@ fn search(
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
-                    if (tt_score >= beta and !evaluation.isMateScore(tt_score) and board.halfmove <= 90) {
-                        return @intCast(tt_score + @divTrunc((beta - tt_score) * tunables.tt_fail_medium, 1024));
+                    var score = tt_score;
+                    if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
+                        score = @intCast(tt_score + @divTrunc((beta - tt_score) * tunables.tt_fail_medium, 1024));
                     }
-
-                    return tt_score;
+                    return score;
                 }
             }
         }
@@ -733,10 +736,31 @@ fn search(
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
         corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
+        const prev_eval = self.stackEntry(-1).corrected_eval;
+
+        if (prev_eval != evaluation.inf_score and
+            !cur.move.move.isNull() and
+            !cur.move_is_noisy)
+        {
+            const update = @divTrunc(
+                std.math.clamp(
+                    -(prev_eval + corrected_static_eval - tunables.eval_hist_offs),
+                    tunables.eval_hist_min,
+                    tunables.eval_hist_max,
+                ) * tunables.eval_hist_mult,
+                1024,
+            );
+            self.histories.quiet.updateRaw(
+                &self.stackEntry(-1).board,
+                cur.move,
+                update,
+            );
+        }
         if (tt_hit and evaluation.checkTTBound(
             tt_score,
             corrected_static_eval,
@@ -937,7 +961,7 @@ fn search(
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
-            const lmr_depth: u16 = @intCast(@max(0, (depth << 10) - base_lmr));
+            var lmr_depth: i32 = (depth << 10) - base_lmr;
 
             if (!is_pv and
                 num_searched >= lmp_margin)
@@ -1001,6 +1025,7 @@ fn search(
             const see_offs: i64 = if (is_quiet) tunables.see_quiet_pruning_offs else tunables.see_noisy_pruning_offs;
             const see_mult: i64 = if (is_quiet) tunables.see_quiet_pruning_mult else tunables.see_noisy_pruning_mult;
             const see_quad: i64 = if (is_quiet) tunables.see_quiet_pruning_quad else tunables.see_noisy_pruning_quad;
+            lmr_depth = @max(lmr_depth, 0);
             var see_pruning_thresh = see_offs + (lmr_depth * (see_mult + (lmr_depth * see_quad >> 10)) >> 10);
 
             if (is_pv) {
@@ -1159,6 +1184,9 @@ fn search(
                     );
                     if (self.stop.load(.acquire)) {
                         break :blk 0;
+                    }
+                    if (is_quiet and (s <= alpha or s >= beta)) {
+                        self.histories.updateCont(board, move, self.getUsableMoves(), new_depth, s >= beta, 0);
                     }
                 }
             } else if (!is_pv or num_searched > 1) {
@@ -1478,7 +1506,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     stm,
                     aspiration_lower,
                     aspiration_upper,
-                    @max(1, depth - failhigh_reduction),
+                    @max(1, depth - (failhigh_reduction >> 10)),
                     false,
                 );
                 if (self.stop.load(.acquire)) {
@@ -1488,7 +1516,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 if (score >= aspiration_upper) {
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
-                    failhigh_reduction = @min(failhigh_reduction + 1, 4);
+                    failhigh_reduction = @min(failhigh_reduction + tunables.failhigh_add, tunables.failhigh_max);
                     if (should_print) {
                         if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .lower);
@@ -1497,7 +1525,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 } else if (score <= aspiration_lower) {
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
-                    failhigh_reduction >>= 1;
+                    failhigh_reduction = failhigh_reduction * tunables.failhigh_mult >> 10;
                     if (should_print) {
                         if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
                             self.writeInfo(score, depth, .upper);

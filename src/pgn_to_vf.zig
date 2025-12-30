@@ -122,8 +122,8 @@ fn parseOneGame(game_to_parse: []const u8, game: *Game) !void {
 
 pub fn convert(
     input: *std.Io.Reader,
-    skip_broken_games: bool,
     output: *std.Io.Writer,
+    skip_broken_games: bool,
     allocator: std.mem.Allocator,
 ) !void {
     var move_writer = std.Io.Writer.Allocating.init(allocator);

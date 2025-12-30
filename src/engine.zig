@@ -30,7 +30,7 @@ pub var searchers: []*align(2 << 20) Searcher align(std.atomic.cache_line) = &.{
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
 var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
-var tt: []align(2 << 20) root.TTCluster = &.{};
+pub var tt: []align(2 << 20) root.TTCluster = &.{};
 
 pub var debug_stats_lock: std.Thread.Mutex = .{};
 pub var debug_stats: std.StringHashMap(@import("DebugStats.zig")) = .init(std.heap.page_allocator);
@@ -217,6 +217,10 @@ fn datagenWorker(
     stats: *DatagenStats,
 ) void {
     const searcher = searchers[i];
+    const old_tt = searcher.tt;
+    defer searcher.tt = old_tt;
+    @memset(std.mem.asBytes(searcher), 0);
+    searcher.tt = std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster)) catch std.debug.panic("allocation failed\n", .{});
     const viriformat = root.viriformat;
     var seed: u64 = 0;
     std.posix.getrandom(std.mem.asBytes(&seed)) catch {
@@ -389,10 +393,11 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     var writer_mutex = std.Thread.Mutex{};
     var stats = DatagenStats{};
     for (0..current_num_threads) |i| {
-        searchers[i].tt = try std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster));
         try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer, &writer_mutex, &stats });
     }
-
+    defer for (0..current_num_threads) |i| {
+        std.heap.page_allocator.free(searchers[i].tt);
+    };
     var prev_positions: usize = 0;
     var prev_time = timer.read();
     var pps_ema_opt: ?u64 = null;
