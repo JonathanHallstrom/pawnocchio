@@ -59,7 +59,7 @@ pub const MarlinPackedBoard = extern struct {
 
     const unmoved_rook = 6;
 
-    pub fn toBoard(self: MarlinPackedBoard) Board {
+    pub fn toBoard(self: MarlinPackedBoard) !Board {
         var res: Board = .{};
 
         var iter = Bitboard.iterator(self.occupancy.toNative());
@@ -85,6 +85,9 @@ pub const MarlinPackedBoard = extern struct {
             switch (col) {
                 inline else => |ccol| res.addPiece(ccol, pt, sq, Board.NullEvalState{}),
             }
+        }
+        if (@popCount(res.kingFor(.white)) != 1 or @popCount(res.kingFor(.black)) != 1) {
+            return error.MissingKing;
         }
 
         var white_queenside_file: ?File = null;

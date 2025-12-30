@@ -254,7 +254,7 @@ pub fn main() !void {
                         }
                     };
 
-                    var board = marlin_board.toBoard();
+                    var board = try marlin_board.toBoard();
                     const wdl = @as(f64, @floatFromInt(marlin_board.wdl)) / 2.0;
                     const sigmoid = struct {
                         fn impl(score: i16) f64 {
@@ -383,7 +383,7 @@ pub fn main() !void {
                             @as(u64, unique_count) * 100 / position_count,
                         });
                     }
-                    var board = marlin_board.toBoard();
+                    var board = try marlin_board.toBoard();
                     var had_tb_win = false;
                     var had_tb_draw = false;
                     var had_tb_loss = false;
@@ -399,7 +399,7 @@ pub fn main() !void {
                         const viri_move = move_eval_pair.move;
 
                         if (move_idx == 0) {
-                            const exit = if (board.stm == .white) move_eval_pair.eval.toNative() else -move_eval_pair.eval.toNative();
+                            const exit = if (board.stm == .white) move_eval_pair.eval.toNative() else -@as(i32, move_eval_pair.eval.toNative());
 
                             sum_exits += exit;
                         }
@@ -409,6 +409,7 @@ pub fn main() !void {
                         }
 
                         const move = viri_move.toMove(&board);
+                        std.debug.print("{s} {s}\n", .{ board.toFen().slice(), move.toString(&board).slice() });
 
                         switch (board.stm) {
                             inline else => |stm| {
@@ -568,7 +569,7 @@ pub fn main() !void {
                             @as(u128, br.logicalPos() * 100) / stat.size,
                         });
                     }
-                    var board = marlin_board.toBoard();
+                    var board = try marlin_board.toBoard();
                     var game = viriformat.Game.from(board, allocator);
                     game.initial_position = marlin_board;
                     defer game.moves.deinit();
@@ -634,6 +635,32 @@ pub fn main() !void {
                     incorrect_wdl_count,
                     game_count,
                 });
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "sanitise") > 0) {
+                const input_name = args.next() orelse "";
+                var input_file = try std.fs.cwd().openFile(input_name, .{});
+                defer input_file.close();
+
+                var name_writer = std.Io.Writer.Allocating.init(allocator);
+                defer name_writer.deinit();
+
+                try name_writer.writer.print("{s}_sanitised", .{input_name});
+
+                var output_file = try std.fs.cwd().createFile(name_writer.written(), .{});
+                defer output_file.close();
+                const stat = try input_file.stat();
+
+                const mapped = try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
+                defer std.posix.munmap(mapped);
+
+                var output_buf: [4096]u8 = undefined;
+                var bw = output_file.writer(&output_buf);
+
+                try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(mapped, &bw.interface, allocator);
+
+                try bw.interface.flush();
 
                 return;
             }
