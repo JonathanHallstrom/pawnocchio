@@ -271,8 +271,8 @@ fn evalStateRoot(self: *Searcher) [*]evaluation.State {
 
 fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
     _ = stm;
-    _ = self;
-    return 0;
+    const r: i16 = @intCast(self.nodes & 7);
+    return r - 3;
 }
 
 fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
@@ -669,7 +669,7 @@ fn search(
         if (board.halfmove >= 100 and is_in_check and !board.hasLegalMove()) {
             return evaluation.matedIn(self.ply);
         } else {
-            return 0;
+            return self.drawScore(stm);
         }
     }
 
