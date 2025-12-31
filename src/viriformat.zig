@@ -141,19 +141,22 @@ pub const MarlinPackedBoard = extern struct {
             white_queenside_file orelse .h,
             black_queenside_file orelse .h,
         );
-        if (res.kingFor(.white) & first == 0 and rights_flag & (CastlingRights.white_kingside_castle | CastlingRights.white_queenside_castle) != 0) {
+        if (res.kingFor(.white) & first_last == 0 and rights_flag & (CastlingRights.white_kingside_castle | CastlingRights.white_queenside_castle) != 0) {
             return error.KingOnWrongRankAndCanCastle;
         }
-        if (res.kingFor(.white) & last == 0 and rights_flag & (CastlingRights.black_kingside_castle | CastlingRights.black_queenside_castle) != 0) {
+        if (res.kingFor(.black) & first_last == 0 and rights_flag & (CastlingRights.black_kingside_castle | CastlingRights.black_queenside_castle) != 0) {
             return error.KingOnWrongRankAndCanCastle;
         }
 
         const ep_target = self.stm_ep_square & 0b0111_1111;
         res.ep_target = if (ep_target < 64) Square.fromInt(ep_target) else null;
-        if (ep_target < 64 and (ep_target < 16 or ep_target > 48)) {
-            return error.InvalidEpSquare;
-        }
         res.stm = if (self.stm_ep_square & 0b1000_0000 == 0) .white else .black;
+        if (res.ep_target) |ep_sq| {
+            const proper_rank: Rank = if (res.stm == .white) .sixth else .third;
+            if (ep_sq.getRank() != proper_rank) {
+                return error.InvalidEpSquare;
+            }
+        }
         res.halfmove = self.halfmove_clock;
         res.fullmove = self.fullmove_number.toNative();
         res.updateMasks(res.stm);
