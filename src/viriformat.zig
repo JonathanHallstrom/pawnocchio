@@ -30,6 +30,7 @@ const Colour = root.Colour;
 const Rank = root.Rank;
 const File = root.File;
 const WDL = root.WDL;
+const CastlingRights = root.CastlingRights;
 
 fn LittleEndian(comptime T: type) type {
     return packed struct {
@@ -49,7 +50,7 @@ fn LittleEndian(comptime T: type) type {
 
 pub const MarlinPackedBoard = extern struct {
     occupancy: LittleEndian(u64),
-    pieces: [16]u8 align(8),
+    pieces: [16]u8,
     stm_ep_square: u8,
     halfmove_clock: u8,
     fullmove_number: LittleEndian(u16),
@@ -62,7 +63,11 @@ pub const MarlinPackedBoard = extern struct {
     pub fn toBoard(self: MarlinPackedBoard) !Board {
         var res: Board = .{};
 
-        var iter = Bitboard.iterator(self.occupancy.toNative());
+        const occ = self.occupancy.toNative();
+        if (@popCount(occ) > 32) {
+            return error.TooManyPieces;
+        }
+        var iter = Bitboard.iterator(occ);
         var castling_rooks: u64 = 0;
         var i: usize = 0;
         while (iter.next()) |sq| : (i += 1) {
@@ -89,6 +94,12 @@ pub const MarlinPackedBoard = extern struct {
         if (@popCount(res.kingFor(.white)) != 1 or @popCount(res.kingFor(.black)) != 1) {
             return error.MissingKing;
         }
+        const first = 0xff00000000000000;
+        const last = 0x00000000000000ff;
+        const first_last = first | last;
+        if (first_last & res.pawns() != 0) {
+            return error.PawnsOnFirstLastRank;
+        }
 
         var white_queenside_file: ?File = null;
         var white_kingside_file: ?File = null;
@@ -104,10 +115,10 @@ pub const MarlinPackedBoard = extern struct {
 
             if (king.getFile().toInt() < sq.getFile().toInt()) {
                 white_kingside_file = sq.getFile();
-                rights_flag |= root.CastlingRights.white_kingside_castle;
+                rights_flag |= CastlingRights.white_kingside_castle;
             } else {
                 white_queenside_file = sq.getFile();
-                rights_flag |= root.CastlingRights.white_queenside_castle;
+                rights_flag |= CastlingRights.white_queenside_castle;
             }
         }
         iter = Bitboard.iterator(black_castling_rooks);
@@ -116,10 +127,10 @@ pub const MarlinPackedBoard = extern struct {
 
             if (king.getFile().toInt() < sq.getFile().toInt()) {
                 black_kingside_file = sq.getFile();
-                rights_flag |= root.CastlingRights.black_kingside_castle;
+                rights_flag |= CastlingRights.black_kingside_castle;
             } else {
                 black_queenside_file = sq.getFile();
-                rights_flag |= root.CastlingRights.black_queenside_castle;
+                rights_flag |= CastlingRights.black_queenside_castle;
             }
         }
 
@@ -130,14 +141,22 @@ pub const MarlinPackedBoard = extern struct {
             white_queenside_file orelse .h,
             black_queenside_file orelse .h,
         );
+        if (res.kingFor(.white) & first == 0 and rights_flag & (CastlingRights.white_kingside_castle | CastlingRights.white_queenside_castle) != 0) {
+            return error.KingOnWrongRankAndCanCastle;
+        }
+        if (res.kingFor(.white) & last == 0 and rights_flag & (CastlingRights.black_kingside_castle | CastlingRights.black_queenside_castle) != 0) {
+            return error.KingOnWrongRankAndCanCastle;
+        }
 
         const ep_target = self.stm_ep_square & 0b0111_1111;
         res.ep_target = if (ep_target < 64) Square.fromInt(ep_target) else null;
+        if (ep_target < 64 and (ep_target < 16 or ep_target > 48)) {
+            return error.InvalidEpSquare;
+        }
         res.stm = if (self.stm_ep_square & 0b1000_0000 == 0) .white else .black;
         res.halfmove = self.halfmove_clock;
         res.fullmove = self.fullmove_number.toNative();
-        res.updateMasks(.white);
-        res.updateMasks(.black);
+        res.updateMasks(res.stm);
         res.resetHash();
 
         return res;
