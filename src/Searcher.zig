@@ -1437,6 +1437,8 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
         self.refresh_cache.initInPlace();
         self.histories.reset();
         self.ttage = 0;
+    } else {
+        self.histories.age();
     }
     self.ttage +%= 1;
     @memset(std.mem.asBytes(&self.node_counts), 0);

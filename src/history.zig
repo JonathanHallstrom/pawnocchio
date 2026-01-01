@@ -78,6 +78,12 @@ pub const QuietHistory = struct {
         ));
     }
 
+    fn age(self: *QuietHistory) void {
+        for (&self.vals) |*e| {
+            e.* = @intCast(@divTrunc(@as(i32, e.*) * 3, 4));
+        }
+    }
+
     inline fn reset(self: *QuietHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
@@ -275,6 +281,10 @@ pub const HistoryTable = struct {
         @memset(std.mem.asBytes(&self.nonpawn_corrhist), 0);
         @memset(std.mem.asBytes(&self.countermove_corrhist), 0);
         @memset(std.mem.asBytes(&self.followupmove_corrhist), 0);
+    }
+
+    pub fn age(self: *HistoryTable) void {
+        self.quiet.age();
     }
 
     pub inline fn readQuietPruning(
