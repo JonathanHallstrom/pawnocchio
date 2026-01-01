@@ -397,13 +397,17 @@ fn qsearch(
     var corrected_static_eval: i16 = raw_static_eval;
     var static_eval: i16 = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
-        cur.corrected_eval = corrected_static_eval;
-        cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
-        static_eval = corrected_static_eval;
-        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
-            static_eval = tt_score;
+        if (cur.static_eval != evaluation.inf_score) {
+            static_eval = cur.static_eval;
+        } else {
+            raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
+            corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+            cur.corrected_eval = corrected_static_eval;
+            cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
+            static_eval = corrected_static_eval;
+            if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
+                static_eval = tt_score;
+            }
         }
 
         if (static_eval >= beta) {
@@ -1430,6 +1434,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.pvs[0].len = 0;
     for (&self.search_stack) |*stack_entry| {
         stack_entry.reset();
+        stack_entry.static_eval = evaluation.inf_score;
     }
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
