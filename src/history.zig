@@ -132,6 +132,11 @@ pub const PawnHistory = struct {
     inline fn reset(self: *PawnHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
+    fn age(self: *PawnHistory) void {
+        for (&self.vals) |*e| {
+            e.* = @intCast(@divTrunc(@as(i32, e.*) * 3, 4));
+        }
+    }
 
     inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = board.stm.toInt();
@@ -285,6 +290,7 @@ pub const HistoryTable = struct {
 
     pub fn age(self: *HistoryTable) void {
         self.quiet.age();
+        self.pawn.age();
     }
 
     pub inline fn readQuietPruning(
