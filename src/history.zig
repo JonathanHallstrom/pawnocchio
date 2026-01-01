@@ -80,7 +80,7 @@ pub const QuietHistory = struct {
 
     fn age(self: *QuietHistory) void {
         for (&self.vals) |*e| {
-            e.* = @intCast(@divTrunc(@as(i32, e.*) * 3, 4));
+            e.* = @divTrunc(e.*, 2);
         }
     }
 
