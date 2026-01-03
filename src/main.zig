@@ -55,51 +55,66 @@ pub fn main() !void {
         while (args.next()) |arg| {
             if (std.mem.count(u8, arg, "help") != 0) {
                 std.debug.print(
-                    \\pawnocchio {s} - UCI Chess Engine
-                    \\Usage: pawnocchio [COMMAND] [OPTIONS]
+                    \\pawnocchio {s} - UCI chess engine
                     \\
-                    \\COMMAND-LINE ARGUMENTS:
-                    \\  (Processed first. If none are matched, engine enters UCI mode.)
+                    \\USAGE:
+                    \\  pawnocchio [COMMAND] [ARGUMENTS]
+                    \\  pawnocchio (starts in UCI mode)
                     \\
-                    \\  bench [BENCH_DEPTH]
-                    \\      Run benchmark for OB.
-                    \\      Defaults: BENCH_DEPTH={d}
-                    \\      Example: pawnocchio bench 12
+                    \\TOOLS:
                     \\
-                    \\  datagen [threads=<COUNT>] [nodes=<NODE_COUNT>] [positions=<POS_COUNT>]
-                    \\      Generate training data.
-                    \\      Defaults: threads={d} (all CPU cores), nodes={d}
-                    \\      Example: pawnocchio datagen threads=4 nodes=100000
+                    \\  bench [DEPTH]
+                    \\      run benchmark. default depth: {d}
+                    \\
+                    \\  datagen [threads=N] [nodes=N] positions=N
+                    \\      generate training data. 'positions' is required
+                    \\      defaults: threads={d}, nodes={d}
+                    \\
+                    \\  genfens "<COUNT> <SEED> <BOOK> [OUTPUT]"
+                    \\      generate FENs. note: must be enclosed in quotes due to argument parsing
+                    \\      example: pawnocchio "genfens 100 12345 book.bin"
+                    \\
+                    \\  pgntovf <INPUT.pgn> [--skip-broken-games] [OUTPUT.vf]
+                    \\      convert PGN to viriformat. output is input name + .vf
+                    \\
+                    \\  epdtovf <INPUT.epd> [--skip-broken-games] [--white-relative] [OUTPUT.vf]
+                    \\      convert EPD to viriformat
+                    \\
+                    \\  vftotxt <INPUT.vf>
+                    \\      convert viriformat binary file to <FEN> | <SCORE> | <WDL>
+                    \\
+                    \\  sanitise <INPUT.vf>
+                    \\      sanitise a viriformat file
+                    \\
+                    \\  analyse <INPUT.vf> [--approximate] [--tb-path <PATH>]
+                    \\      analyze a dataset file
+                    \\      --approximate: use HyperLogLog for faster unique count
+                    \\      --tb-path: required for TB statistics
+                    \\
+                    \\  relabel-tb <INPUT.vf> --tb-path <PATH>
+                    \\      relabel dataset outcomes based on Syzygy tablebases
                     \\
                     \\  help
-                    \\      Show this help message and exit.
+                    \\      show this help message and exit
                     \\
-                    \\UCI MODE COMMANDS:
-                    \\  (Used when engine is run without specific command-line arguments above.)
-                    \\
-                    \\  uci                 - Display engine info, list options. Responds with 'uciok'.
-                    \\  spsa_inputs         - Display SPSA inputs.
-                    \\  isready             - Check if ready. Responds with 'readyok'.
-                    \\  ucinewgame          - Reset engine for a new game.
-                    \\  setoption name <NAME> value <VALUE>
-                    \\                      - Set option (e.g., Hash, Threads, UCI_Chess960,
-                    \\                        Move Overhead, tunable parameters).
-                    \\                        Example: setoption name Hash value 128
-                    \\  position (fen <FEN> | startpos) [moves <MOVES...>]
-                    \\                      - Set board position.
-                    \\                        Example: position startpos moves e2e4 e7e5
-                    \\  go [PARAMS...]      - Start search. Parameters include:
-                    \\                          depth <PLY>, nodes <NODE_COUNT>, movetime <MS>,
-                    \\                          wtime <MS>, btime <MS>, [winc <MS>], [binc <MS>],
-                    \\                          mate <DEPTH>, perft <DEPTH> (current pos),
-                    \\                          perft_file <FILEPATH> (from EPD).
-                    \\  stop                - Stop current search.
-                    \\  quit                - Exit engine.
-                    \\  wait                - Wait for search to complete.
-                    \\  d                   - Display Zobrist hash and FEN for current board.
-                    \\  nneval              - Display NNUE evaluation for current position.
-                    \\  bullet_evals        - Display NNUE evaluations for predefined FENs.
-                    \\  hceval              - Display HCE evaluation for current position.
+                    \\UCI COMMANDS:
+                    \\  uci                     - handshake
+                    \\  isready                 - synchronization
+                    \\  setoption               - set Hash, Threads, SyzygyPath, EnableWeirdTCs, etc
+                    \\  ucinewgame              - clear hash and reset
+                    \\  position                - set board (fen <FEN> | startpos) [moves ...]
+                    \\  go                      - search. params: depth, nodes, softnodes, movetime,
+                    \\                            wtime, btime, winc, binc, mate, perft, perft_file
+                    \\  stop                    - stop current search
+                    \\  wait                    - wait for search to complete
+                    \\  d                       - print position
+                    \\  banner                  - print engine logo
+                    \\  nneval                  - show raw/scaled NNUE evaluation
+                    \\  hceval                  - show hand crafted evaluation
+                    \\  get_scale               - read evaluation scale from file
+                    \\  bullet_evals            - run eval on a set of known test positions
+                    \\  ProbeWDL                - query Syzygy tablebase
+                    \\  quit                    - exit
                     \\
                 , .{ VERSION_STRING, bench_depth_default, datagen_threads_default, datagen_nodes_default });
                 return;
