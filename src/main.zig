@@ -664,15 +664,14 @@ pub fn main() !void {
 
                 var output_file = try std.fs.cwd().createFile(name_writer.written(), .{});
                 defer output_file.close();
-                const stat = try input_file.stat();
 
-                const mapped = try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
-                defer std.posix.munmap(mapped);
+                const mapped = try @import("MappedFile.zig").init(input_file);
+                defer mapped.deinit();
 
                 var output_buf: [4096]u8 = undefined;
                 var bw = output_file.writer(&output_buf);
 
-                try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(mapped, &bw.interface, allocator);
+                try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(mapped.data, &bw.interface, allocator);
 
                 try bw.interface.flush();
 
