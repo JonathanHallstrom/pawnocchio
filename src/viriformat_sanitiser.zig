@@ -32,6 +32,7 @@ fn parseSingleGame(input: []const u8, game: *Game) !usize {
     var initial: viriformat.MarlinPackedBoard = undefined;
     @memcpy(std.mem.asBytes(&initial), input[0..32]);
     i += 32;
+    if (initial.wdl > 2) return error.FailedToParse;
 
     var board = initial.toBoard() catch return error.FailedToParse;
     game.reset(board);
@@ -45,6 +46,7 @@ fn parseSingleGame(input: []const u8, game: *Game) !usize {
             break;
         }
         const move = move_eval.move.toMove(&board);
+        // std.debug.print("{s} {s} {} {s}\n", .{ board.toFen().slice(), move.toString(&board).slice(), move_eval.eval.toNative(), @tagName(@as(WDL, @enumFromInt(initial.wdl))) });
 
         switch (board.stm) {
             inline else => |stm| {
