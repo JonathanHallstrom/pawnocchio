@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) !void {
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
     const runtime_net = b.option(bool, "runtime_net", "whether to exclude the binary from the binary") orelse false;
 
-    const net_name = "net23_1536_take7.nnue";
+    const net_name = "mixed_data_01_03.nnue";
     const net = b.option([]const u8, "net", "Change the net to be used") orelse blk: {
         break :blk "pawnocchio-nets/networks/" ++ net_name;
     };
