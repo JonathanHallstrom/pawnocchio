@@ -424,7 +424,6 @@ pub fn main() !void {
                         }
 
                         const move = viri_move.toMove(&board);
-                        std.debug.print("{s} {s}\n", .{ board.toFen().slice(), move.toString(&board).slice() });
 
                         switch (board.stm) {
                             inline else => |stm| {
