@@ -25,8 +25,9 @@ pub fn wdlParams(material: anytype) struct { f64, f64 } {
     //     constexpr double as[] = {-51.91819866, 145.18809272, -166.61481017, 281.59570002};
     //     constexpr double bs[] = {-24.71724508, 82.92975519, -33.49186286, 52.86407201};
     //
-    const p_a = ((-51.918 * x / 58 + 145.188) * x / 58 + -166.615) * x / 58 + 281.596;
-    const p_b = ((-24.717 * x / 58 + 82.930) * x / 58 + -33.492) * x / 58 + 52.864;
+    const fudge = 0.965847119;
+    const p_a = ((-51.918 * fudge * x / 58 + 145.188) * x * fudge / 58 + -166.615) * x * fudge / 58 + 281.596;
+    const p_b = ((-24.717 * fudge * x / 58 + 82.930) * x * fudge / 58 + -33.492) * x * fudge / 58 + 52.864;
 
     return .{ p_a, p_b };
 }

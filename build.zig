@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) !void {
 
     // blocked on
     runtime_net = true;
-    const net_name = "net23_1536_take7.nnue";
+    const net_name = "mixed_data_01_03.nnue";
     const net = b.option([]const u8, "net", "Change the net to be used") orelse blk: {
         // if (runtime_net) {
         //     std.debug.print("When using a runtime net you need to give an absolute path to the network\n", .{});
