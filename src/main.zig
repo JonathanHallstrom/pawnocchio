@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.8.2";
+const VERSION_STRING = "1.9.0";
 
 pub fn main() !void {
     root.init();
@@ -328,8 +328,6 @@ pub fn main() !void {
         _ = windows.SetConsoleCP(windows.CP_UTF8);
         _ = windows.SetConsoleOutputCP(windows.CP_UTF8);
     }
-    write("{s}\n", .{banner});
-    write("pawnocchio {s}\n", .{VERSION_STRING});
 
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);
@@ -399,6 +397,8 @@ pub fn main() !void {
                 }
             }
             write("uciok\n", .{});
+        } else if (std.ascii.eqlIgnoreCase(command, "banner")) {
+            write("{s}\n", .{banner});
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             for (root.tuning.tunables) |tunable| {
                 write(
