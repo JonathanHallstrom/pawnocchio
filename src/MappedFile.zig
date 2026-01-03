@@ -43,7 +43,7 @@ const CloseHandle = windows.CloseHandle;
 
 const Mapping = if (IS_WINDOWS) windows.HANDLE else void;
 
-data: []align(4096) const u8,
+data: []const u8,
 file_mapping: Mapping,
 
 const Self = @This();
@@ -54,7 +54,7 @@ pub fn init(file: std.fs.File) !Self {
         const file_mapping = CreateFileMappingA(file.handle, null, windows.PAGE_READONLY, 0, 0, null) orelse return error.FileMapFailed;
         const READ = 4;
         const raw_ptr = MapViewOfFile(file_mapping, READ, 0, 0, len) orelse return error.MapViewFailed;
-        const ptr: [*]align(4096) const u8 = @ptrCast(@alignCast(raw_ptr));
+        const ptr: [*]const u8 = @ptrCast(raw_ptr);
 
         return .{
             .data = ptr[0..len],
@@ -73,6 +73,6 @@ pub fn deinit(self: *const Self) void {
         _ = CloseHandle(self.file_mapping);
         _ = UnmapViewOfFile(self.data.ptr);
     } else {
-        std.posix.munmap(self.data);
+        std.posix.munmap(@alignCast(self.data));
     }
 }
