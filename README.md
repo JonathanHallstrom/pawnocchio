@@ -19,8 +19,9 @@
 <br>
 <br>
 
-|         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][cegt 40/20] | [ipman r9 list][ipman 10+1] | [Chess324 Top15][324top15] |
+|         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][cegt 40/20] | [ipman r9 list][ipman 10+1] | [Chess324 Top15][324top15]  |
 |:-----------------------:|:------------:|:------------------------:|:------------------------:|:------------------------:|:---------------------------:|:---------------------------:|
+| [1.9][v1.9]             |  2026-01-04  |           3580*          |           3725*          |           3565*          |             3537 (#20)      |          3734 (#8)          |
 | [1.8][v1.8]             |  2025-07-22  |           3564 (#20)     |           3697 (#16)     |           3544 (#18)     |             3517            |          3680 (#12)         |
 | [1.7][v1.7]             |  2025-05-31  |           3528           |           3642           |           3491           |             3448            |
 | [1.6.1][v1.6.1]         |  2025-05-15  |           3500*          |           3622           |           3440*          |
@@ -39,35 +40,15 @@
 ## Features
 Supports FRC, also known as Chess960
 ### Search
-The search is a standard alpha-beta search with the following enhancements:
-- Iterative deepening
-- Quiescence search
-- Aspiration windows
-- Principal variation search
-- Transposition table
-  - Move ordering
-  - Cutoffs
-  - Static evaluation correction
-- MVV and SEE ordering of captures
-- History Heuristic (standard history, 1 ply conthist, and noisy history) 
-- Reverse futility pruning
-- Null move pruning
-- Razoring
-- Mate distance pruning
-- History pruning
-- Singular extensions
-  - Double extension
-  - Multicut
-  - Negative extensions
-- Correction history
+The search is a standard alpha-beta search with many enhancements.
 
 ### Evaluation
-The evaluation is done using a neural net trained entirely on self play games from zero knowledge using the excellent open source [bullet](https://github.com/jw1912/bullet) neural network trainer.
-The architecture of the network is (768x8hm -> 1280)x2 -> 1x8
+The evaluation is done using a neural net trained on self play games from zero knowledge, as well as games played by [Vine](https://github.com/vine-chess/vine), the MCTS Chess engine that [@aronpetko](https://github.com/aronpetko) and I have been working on.
+The networks are trained using the excellent open source [bullet](https://github.com/jw1912/bullet) neural network trainer. For specifics about the network please see [src/nnue.zig](src/nnue.zig).
 
 ## Build instructions
 1. Get the network with `git submodule update --init --depth 1`
-2. Install zig (0.14.0)
+2. Install zig (0.15.2)
 3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
 The Makefile is only intended to be used for testing on Openbench.
 
@@ -78,7 +59,7 @@ The Makefile is only intended to be used for testing on Openbench.
 ## Credit
  - [Pyrrhic](https://github.com/JonathanHallstrom/Pyrrhic/tree/patch-1) by [Andrew Grant](https://github.com/AndyGrant) for tablebase probing, under the MIT license.
  - [src/bounded_array.zig](src/bounded_array.zig) from the [zig standard library](https://github.com/ziglang/zig/blob/6d1f0eca773e688c802e441589495b7bde2f9e3f/lib/std/bounded_array.zig) under the MIT License with some minor modifications.
- - [Jackal](https://github.com/TomaszJaworski777/Jackal) by [snekkers](https://github.com/TomaszJaworski777) for inspiration styling this readme
+ - [Jackal](https://github.com/TomaszJaworski777/Jackal) by [snekkers](https://github.com/TomaszJaworski777) for inspiration for styling this readme
 
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0
 [v1.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.1
@@ -93,6 +74,7 @@ The Makefile is only intended to be used for testing on Openbench.
 [v1.7]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7
 [v1.7.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7.2
 [v1.8]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.8
+[v1.9]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.9
 
 [324top15]:https://e4e6.com/324/
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
