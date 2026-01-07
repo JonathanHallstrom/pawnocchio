@@ -30,6 +30,7 @@ const Colour = root.Colour;
 const Rank = root.Rank;
 const File = root.File;
 const WDL = root.WDL;
+const CastlingRights = root.CastlingRights;
 
 fn LittleEndian(comptime T: type) type {
     return packed struct {
@@ -47,9 +48,9 @@ fn LittleEndian(comptime T: type) type {
     };
 }
 
-const MarlinPackedBoard = extern struct {
+pub const MarlinPackedBoard = extern struct {
     occupancy: LittleEndian(u64),
-    pieces: [16]u8 align(8),
+    pieces: [16]u8,
     stm_ep_square: u8,
     halfmove_clock: u8,
     fullmove_number: LittleEndian(u16),
@@ -58,6 +59,111 @@ const MarlinPackedBoard = extern struct {
     extra: u8,
 
     const unmoved_rook = 6;
+
+    pub fn toBoard(self: MarlinPackedBoard) !Board {
+        var res: Board = .{};
+
+        const occ = self.occupancy.toNative();
+        if (@popCount(occ) > 32) {
+            return error.TooManyPieces;
+        }
+        var iter = Bitboard.iterator(occ);
+        var castling_rooks: u64 = 0;
+        var i: usize = 0;
+        while (iter.next()) |sq| : (i += 1) {
+            const code = (self.pieces[i / 2] >> if (i % 2 == 0) 0 else 4) & 0b1111;
+            const is_black = code & 8 != 0;
+            const col: Colour = if (is_black) .black else .white;
+            const pt: PieceType = switch (code & 0b111) {
+                0 => .pawn,
+                1 => .knight,
+                2 => .bishop,
+                3 => .rook,
+                4 => .queen,
+                5 => .king,
+                6 => blk: {
+                    castling_rooks |= sq.toBitboard();
+                    break :blk .rook;
+                },
+                else => undefined,
+            };
+            switch (col) {
+                inline else => |ccol| res.addPiece(ccol, pt, sq, Board.NullEvalState{}),
+            }
+        }
+        if (@popCount(res.kingFor(.white)) != 1 or @popCount(res.kingFor(.black)) != 1) {
+            return error.MissingKing;
+        }
+        const first = 0xff00000000000000;
+        const last = 0x00000000000000ff;
+        const first_last = first | last;
+        if (first_last & res.pawns() != 0) {
+            return error.PawnsOnFirstLastRank;
+        }
+
+        var white_queenside_file: ?File = null;
+        var white_kingside_file: ?File = null;
+        const white_castling_rooks = castling_rooks & 0b1111_1111;
+        var black_queenside_file: ?File = null;
+        var black_kingside_file: ?File = null;
+        const black_castling_rooks = castling_rooks >> 56;
+
+        iter = Bitboard.iterator(white_castling_rooks);
+        var rights_flag: u8 = 0;
+        while (iter.next()) |sq| {
+            const king = Square.fromBitboard(res.kingFor(.white));
+
+            if (king.getFile().toInt() < sq.getFile().toInt()) {
+                white_kingside_file = sq.getFile();
+                rights_flag |= CastlingRights.white_kingside_castle;
+            } else {
+                white_queenside_file = sq.getFile();
+                rights_flag |= CastlingRights.white_queenside_castle;
+            }
+        }
+        iter = Bitboard.iterator(black_castling_rooks);
+        while (iter.next()) |sq| {
+            const king = Square.fromBitboard(res.kingFor(.black));
+
+            if (king.getFile().toInt() < sq.getFile().toInt()) {
+                black_kingside_file = sq.getFile();
+                rights_flag |= CastlingRights.black_kingside_castle;
+            } else {
+                black_queenside_file = sq.getFile();
+                rights_flag |= CastlingRights.black_queenside_castle;
+            }
+        }
+
+        res.castling_rights = .initFromParts(
+            rights_flag,
+            white_kingside_file orelse .a,
+            black_kingside_file orelse .a,
+            white_queenside_file orelse .h,
+            black_queenside_file orelse .h,
+        );
+        if (res.kingFor(.white) & first_last == 0 and rights_flag & (CastlingRights.white_kingside_castle | CastlingRights.white_queenside_castle) != 0) {
+            return error.KingOnWrongRankAndCanCastle;
+        }
+        if (res.kingFor(.black) & first_last == 0 and rights_flag & (CastlingRights.black_kingside_castle | CastlingRights.black_queenside_castle) != 0) {
+            return error.KingOnWrongRankAndCanCastle;
+        }
+
+        const ep_target = self.stm_ep_square & 0b0111_1111;
+        res.ep_target = if (ep_target < 64) Square.fromInt(ep_target) else null;
+        res.stm = if (self.stm_ep_square & 0b1000_0000 == 0) .white else .black;
+        if (res.ep_target) |ep_sq| {
+            const proper_rank: Rank = if (res.stm == .white) .sixth else .third;
+            if (ep_sq.getRank() != proper_rank) {
+                return error.InvalidEpSquare;
+            }
+        }
+        res.halfmove = self.halfmove_clock;
+        res.fullmove = self.fullmove_number.toNative();
+        res.updateMasks(res.stm);
+        res.resetHash();
+
+        return res;
+    }
 
     pub fn from(board: Board, loss_draw_win: u8, score: i16) MarlinPackedBoard {
         const occ = board.white | board.black;
@@ -102,7 +208,7 @@ const MarlinPackedBoard = extern struct {
     }
 };
 
-const ViriMove = struct {
+pub const ViriMove = struct {
     const promo_flag_bits: u16 = 0b1100_0000_0000_0000;
     const ep_flag_bits: u16 = 0b0100_0000_0000_0000;
     const castle_flag_bits: u16 = 0b1000_0000_0000_0000;
@@ -117,17 +223,17 @@ const ViriMove = struct {
         Castle = castle_flag_bits,
     };
 
-    pub fn newWithPromo(from: Square, to: Square, promotion: PieceType) Self {
+    pub fn newWithPromo(from_: Square, to_: Square, promotion: PieceType) Self {
         const promotion_int = promotion.toInt() - 1;
-        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 | @as(u16, promotion_int) << 12 | promo_flag_bits };
+        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @as(u16, promotion_int) << 12 | promo_flag_bits };
     }
 
-    pub fn newWithFlags(from: Square, to: Square, flags: MoveFlags) Self {
-        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 | @intFromEnum(flags) };
+    pub fn newWithFlags(from_: Square, to_: Square, flags: MoveFlags) Self {
+        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @intFromEnum(flags) };
     }
 
-    pub fn new(from: Square, to: Square) Self {
-        return .{ .data = @as(u16, from.toInt()) | @as(u16, to.toInt()) << 6 };
+    pub fn new(from_: Square, to_: Square) Self {
+        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 };
     }
 
     pub fn isPromo(self: Self) bool {
@@ -142,24 +248,72 @@ const ViriMove = struct {
         return self.data & castle_flag_bits == castle_flag_bits;
     }
 
+    pub fn from(self: Self) Square {
+        return @enumFromInt(self.data & 0b111111);
+    }
+
+    pub fn to(self: Self) Square {
+        return @enumFromInt(self.data >> 6 & 0b111111);
+    }
+
     pub fn fromMove(move: Move) Self {
         if (move.tp() == .castling) return newWithFlags(move.from(), move.to(), .Castle);
         if (move.tp() == .ep) return newWithFlags(move.from(), move.to(), .EnPassant);
         if (move.tp() == .promotion) return newWithPromo(move.from(), move.to(), move.promoType());
         return new(move.from(), move.to());
     }
+
+    // pub fn toMove(self: Self, board: *const Board) Move {
+    //     var moves = root.movegen.MoveListReceiver{};
+    //     root.movegen.generateAll(board, &moves);
+    //
+    //     var correct: Move = .init();
+    //     for (moves.vals.slice()) |move| {
+    //         if (ViriMove.fromMove(move).data == self.data) {
+    //             correct = move;
+    //         }
+    //     }
+    //     const res = self.toMoveImpl(board);
+    //
+    //     if (res != correct) {
+    //         std.debug.print("{s} {s} {s}\n", .{ board.toFen().slice(), res.toString(board).slice(), correct.toString(board).slice() });
+    //     }
+    //     return res;
+    // }
+    pub fn toMove(self: Self, board: *const Board) Move {
+        if (self.isPromo()) {
+            const promo_type = PieceType.fromInt(@intCast(1 + ((self.data & ~promo_flag_bits) >> 12)));
+            return Move.promo(self.from(), self.to(), promo_type);
+        }
+        if (self.isCastle()) {
+            if (self.from().toInt() < self.to().toInt()) {
+                return Move.castlingKingside(board.stm, self.from(), self.to());
+            } else {
+                return Move.castlingQueenside(board.stm, self.from(), self.to());
+            }
+        }
+        if (self.isEp()) {
+            return Move.enPassant(self.from(), self.to());
+        }
+        const is_capture = board.pieceOn(self.to()) != null;
+        if (is_capture) {
+            return Move.capture(self.from(), self.to());
+        } else {
+            return Move.quiet(self.from(), self.to());
+        }
+    }
 };
 
-const MoveEvalPair = struct {
+pub const MoveEvalPair = struct {
     move: ViriMove,
     eval: LittleEndian(i16),
 };
 
 pub const Game = struct {
     initial_position: MarlinPackedBoard,
-    moves: std.ArrayList(MoveEvalPair),
+    moves: std.array_list.Managed(MoveEvalPair),
 
-    pub fn serializeInto(self: Game, writer: anytype) !void {
+    pub fn serializeInto(self: Game, writer: *std.Io.Writer) !void {
         // std.debug.print("{any}\n", .{std.mem.asBytes(&self.initial_position)});
         try writer.writeAll(std.mem.asBytes(&self.initial_position));
         for (self.moves.items) |move_eval_pair| {
@@ -186,14 +340,14 @@ pub const Game = struct {
     }
 
     pub fn reset(self: *Game, board: Board) void {
-        self.initial_position = MarlinPackedBoard.from(board, 1, 0);
+        self.initial_position = .from(board, 1, 0);
         self.moves.clearRetainingCapacity();
     }
 
     pub fn from(board: Board, allocator: Allocator) Game {
         return Game{
-            .initial_position = MarlinPackedBoard.from(board, 1, 0),
-            .moves = std.ArrayList(MoveEvalPair).init(allocator),
+            .initial_position = .from(board, 1, 0),
+            .moves = .init(allocator),
         };
     }
 
@@ -220,9 +374,9 @@ fn viriformatTest(fen: []const u8, move: Move, expected: u32) !void {
     defer game.deinit();
     try game.addMove(move, 0);
     var buf: [40]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try game.serializeInto(fbs.writer());
-    try std.testing.expectEqual(expected, std.mem.readInt(u32, fbs.getWritten()[32..][0..4], .little));
+    var fbs = std.Io.Writer.fixed(&buf);
+    try game.serializeInto(&fbs);
+    try std.testing.expectEqual(expected, std.mem.readInt(u32, fbs.buffered()[32..][0..4], .little));
 }
 
 test "viriformat moves" {
@@ -244,12 +398,22 @@ test "all edge cases i could think of in one position" {
     try game.addMove(Move.promo(.a7, .a8, .queen), 0);
 
     var buf: [64]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try game.serializeInto(fbs.writer());
+    var fbs = std.Io.Writer.fixed(&buf);
+    try game.serializeInto(&fbs);
 
     // var file = try std.fs.cwd().createFile("tmp.bin", .{});
     // defer file.close();
     // try file.writeAll(fbs.getWritten());
 
-    try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.getWritten());
+    try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.buffered());
+}
+
+test {
+    const board_original = Board.startpos();
+
+    const marlin_board = MarlinPackedBoard.from(board_original, 1, 0);
+
+    const round_trip = marlin_board.toBoard();
+
+    try std.testing.expectEqualDeep(board_original, round_trip);
 }

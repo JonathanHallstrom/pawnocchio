@@ -89,7 +89,7 @@ pub fn probeWDL(board: *const Board) ?WDL {
 pub fn probeRootDTZ(
     board: *const Board,
     has_repetition: bool,
-) ?struct { WDL, std.BoundedArray(ScoredMove, c.TB_MAX_MOVES) } {
+) ?struct { WDL, root.BoundedArray(ScoredMove, c.TB_MAX_MOVES) } {
     if (!use_tbs or !tbs_init) {
         return null;
     }
@@ -132,7 +132,7 @@ pub fn probeRootDTZ(
     }
 
     const tb_moves = tb_results.moves[0..tb_results.size];
-    var res: std.BoundedArray(ScoredMove, c.TB_MAX_MOVES) = .{};
+    var res: root.BoundedArray(ScoredMove, c.TB_MAX_MOVES) = .{};
     for (tb_moves) |tb_move| {
         const from = Square.fromInt(@intCast(c.PYRRHIC_MOVE_FROM(tb_move.move)));
         const to = Square.fromInt(@intCast(c.PYRRHIC_MOVE_TO(tb_move.move)));

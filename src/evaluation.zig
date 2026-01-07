@@ -43,6 +43,14 @@ pub fn initThreadLocals() void {
 pub const State = impl.State;
 pub const evaluate = impl.evaluate;
 
+pub fn evalPosition(board: *const Board) i16 {
+    return impl.evalPosition(board);
+}
+
+pub fn evalFen(fen: []const u8) !i16 {
+    return evalPosition(&try Board.parseFen(fen, true));
+}
+
 pub const inf_score: i16 = 32767;
 pub const checkmate_score: i16 = 32000;
 pub const highest_non_mate_score = checkmate_score - root.Searcher.MAX_PLY - 1;
@@ -103,9 +111,9 @@ pub fn isTBScore(score: i32) bool {
     return @abs(score) > highest_non_TB_score;
 }
 
-pub fn formatScore(score: i16) std.BoundedArray(u8, 15) {
+pub fn formatScore(score: i16) root.BoundedArray(u8, 15) {
     var print_buf: [15]u8 = undefined;
-    var res: std.BoundedArray(u8, 15) = .{};
+    var res: root.BoundedArray(u8, 15) = .{};
     if (isMateScore(score)) {
         const plies_to_mate = if (score > 0) checkmate_score - score else checkmate_score + score;
         const moves_to_mate = @divTrunc(plies_to_mate + 1, 2);

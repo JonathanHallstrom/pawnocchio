@@ -2,7 +2,7 @@
 
 curl https://raw.githubusercontent.com/tristanisham/zvm/master/install.sh | bash
 
-VERSION=0.14.1
+VERSION=0.15.2
 $HOME/.zvm/self/zvm i $VERSION
 $HOME/.zvm/self/zvm use $VERSION
 

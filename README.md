@@ -77,6 +77,7 @@ The Makefile is only intended to be used for testing on Openbench.
 
 ## Credit
  - [Pyrrhic](https://github.com/JonathanHallstrom/Pyrrhic/tree/patch-1) by [Andrew Grant](https://github.com/AndyGrant) for tablebase probing, under the MIT license.
+ - [src/bounded_array.zig](src/bounded_array.zig) from the [zig standard library](https://github.com/ziglang/zig/blob/6d1f0eca773e688c802e441589495b7bde2f9e3f/lib/std/bounded_array.zig) under the MIT License with some minor modifications.
  - [Jackal](https://github.com/TomaszJaworski777/Jackal) by [snekkers](https://github.com/TomaszJaworski777) for inspiration styling this readme
 
 [v1.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.0

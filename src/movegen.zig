@@ -17,6 +17,7 @@
 const std = @import("std");
 const root = @import("root.zig");
 
+const BoundedArray = root.BoundedArray;
 const Board = root.Board;
 const Colour = root.Colour;
 const Move = root.Move;
@@ -26,7 +27,7 @@ const Square = root.Square;
 const Rank = root.Rank;
 
 pub const MoveListReceiver = struct {
-    vals: std.BoundedArray(Move, 256) = .{},
+    vals: BoundedArray(Move, 256) = .{},
 
     fn receive(self: *@This(), move: Move) void {
         self.vals.appendAssumeCapacity(move);

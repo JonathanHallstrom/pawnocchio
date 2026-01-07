@@ -19,6 +19,7 @@ const std = @import("std");
 const root = @import("root.zig");
 const nnue = @import("nnue.zig");
 
+const BoundedArray = root.BoundedArray;
 const evaluation = root.evaluation;
 const movegen = root.movegen;
 const Move = root.Move;
@@ -43,7 +44,7 @@ pub const MAX_HALFMOVE = 100;
 pub const Params = struct {
     board: Board,
     limits: Limits,
-    previous_hashes: std.BoundedArray(u64, 200),
+    previous_hashes: BoundedArray(u64, 200),
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
     normalize: bool,
@@ -113,9 +114,9 @@ limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
 should_stop: std.atomic.Value(bool),
-previous_hashes: std.BoundedArray(u64, MAX_HALFMOVE * 2),
+previous_hashes: BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTCluster,
-pvs: [MAX_PLY]std.BoundedArray(Move, 256),
+pvs: [MAX_PLY]BoundedArray(Move, 256),
 is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
@@ -124,7 +125,7 @@ normalize: bool = false,
 minimal: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
-winning_root_moves: std.BoundedArray(Move, 256),
+winning_root_moves: BoundedArray(Move, 256),
 refresh_cache: if (evaluation.use_hce) void else root.refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT),
 histories: history.HistoryTable,
 
@@ -901,8 +902,8 @@ fn search(
     defer mp.deinit();
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
-    var searched_quiets: std.BoundedArray(Move, 16) = .{};
-    var searched_noisies: std.BoundedArray(Move, 8) = .{};
+    var searched_quiets: BoundedArray(Move, 16) = .{};
+    var searched_noisies: BoundedArray(Move, 8) = .{};
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
@@ -1322,12 +1323,12 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         tbhits += searcher.tbhits;
     }
     var pv_buf: [6 * 256 + 32]u8 = undefined;
-    var fixed_buffer_pv_writer = std.io.fixedBufferStream(&pv_buf);
+    var fixed_buffer_pv_writer = std.Io.Writer.fixed(&pv_buf);
     const root_board = self.searchStackRoot()[0].board;
     {
         var board = root_board;
         for (self.pvs[0].slice()) |pv_move| {
-            fixed_buffer_pv_writer.writer().print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
+            fixed_buffer_pv_writer.print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
             board.stm = board.stm.flipped();
         }
     }
@@ -1356,7 +1357,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
         hashfull,
         tbhits,
         (elapsed + std.time.ns_per_ms / 2) / std.time.ns_per_ms,
-        std.mem.trim(u8, fixed_buffer_pv_writer.getWritten(), &std.ascii.whitespace),
+        std.mem.trim(u8, fixed_buffer_pv_writer.buffered(), &std.ascii.whitespace),
     });
 }
 

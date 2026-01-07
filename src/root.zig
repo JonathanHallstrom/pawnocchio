@@ -27,6 +27,7 @@ comptime {
     }
 }
 pub const use_tbs = @import("build_options").use_tbs;
+pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 pub const pyrrhic = @import("pyrrhic.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const Board = @import("Board.zig");
@@ -85,7 +86,8 @@ pub const Colour = enum(u1) {
 pub fn init() void {
     const globals = struct {
         fn initImpl() void {
-            stdout = std.io.getStdOut();
+            stdout = std.fs.File.stdout();
+            stdout_writer = stdout.writer(&stdout_buf);
             attacks.init();
             evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
             engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
@@ -100,6 +102,7 @@ pub fn deinit() void {
         fn deinitImpl() void {
             pyrrhic.deinit();
             evaluation.deinit();
+            stdout_writer.interface.flush() catch std.debug.panic("failed to flush stdout", .{});
         }
         var deinit_once = std.once(deinitImpl);
     };
@@ -399,7 +402,7 @@ pub const ScoredMove = packed struct {
 };
 
 pub const ScoredMoveReceiver = struct {
-    vals: std.BoundedArray(ScoredMove, 256) = .{},
+    vals: BoundedArray(ScoredMove, 256) = .{},
 
     pub fn receive(self: *@This(), move: Move) void {
         self.vals.appendAssumeCapacity(.{ .move = move, .score = 0 });
@@ -407,7 +410,7 @@ pub const ScoredMoveReceiver = struct {
 };
 
 pub const FilteringScoredMoveReceiver = struct {
-    vals: std.BoundedArray(ScoredMove, 256) = .{},
+    vals: BoundedArray(ScoredMove, 256) = .{},
     filter: Move,
 
     pub fn receive(self: *@This(), move: Move) void {
@@ -505,16 +508,19 @@ comptime {
     assert(@sizeOf(TTCluster) == 32);
 }
 
+pub var stdout_writer: std.fs.File.Writer = undefined;
+var stdout_buf: [4096]u8 = undefined;
 var stdout: std.fs.File = undefined;
 var write_mutex: std.Thread.Mutex = .{};
 pub fn write(comptime fmt: []const u8, args: anytype) void {
     write_mutex.lock();
     defer write_mutex.unlock();
-    var buf: [4096]u8 = undefined;
-    const to_print = std.fmt.bufPrint(&buf, fmt, args) catch "";
 
-    stdout.writer().writeAll(to_print) catch |e| {
+    stdout_writer.interface.print(fmt, args) catch |e| {
         std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
+    };
+    stdout_writer.interface.flush() catch |e| {
+        std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
     };
 }
 

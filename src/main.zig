@@ -20,7 +20,7 @@ const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const VERSION_STRING = "1.9.0";
+const VERSION_STRING = "1.9";
 
 pub fn main() !void {
     root.init();
@@ -31,7 +31,7 @@ pub fn main() !void {
     }
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = if (std.debug.runtime_safety) gpa.allocator() else std.heap.smp_allocator;
 
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
@@ -55,51 +55,66 @@ pub fn main() !void {
         while (args.next()) |arg| {
             if (std.mem.count(u8, arg, "help") != 0) {
                 std.debug.print(
-                    \\pawnocchio {s} - UCI Chess Engine
-                    \\Usage: pawnocchio [COMMAND] [OPTIONS]
+                    \\pawnocchio {s} - UCI chess engine
                     \\
-                    \\COMMAND-LINE ARGUMENTS:
-                    \\  (Processed first. If none are matched, engine enters UCI mode.)
+                    \\USAGE:
+                    \\  pawnocchio [COMMAND] [ARGUMENTS]
+                    \\  pawnocchio (starts in UCI mode)
                     \\
-                    \\  bench [BENCH_DEPTH]
-                    \\      Run benchmark for OB.
-                    \\      Defaults: BENCH_DEPTH={d}
-                    \\      Example: pawnocchio bench 12
+                    \\TOOLS:
                     \\
-                    \\  datagen [threads=<COUNT>] [nodes=<NODE_COUNT>] [positions=<POS_COUNT>]
-                    \\      Generate training data.
-                    \\      Defaults: threads={d} (all CPU cores), nodes={d}
-                    \\      Example: pawnocchio datagen threads=4 nodes=100000
+                    \\  bench [DEPTH]
+                    \\      run benchmark. default depth: {d}
+                    \\
+                    \\  datagen [threads=N] [nodes=N] positions=N
+                    \\      generate training data. 'positions' is required
+                    \\      defaults: threads={d}, nodes={d}
+                    \\
+                    \\  genfens "<COUNT> <SEED> <BOOK> [OUTPUT]"
+                    \\      generate FENs. note: must be enclosed in quotes due to argument parsing
+                    \\      example: pawnocchio "genfens 100 12345 book.bin"
+                    \\
+                    \\  pgntovf <INPUT.pgn> [--skip-broken-games] [OUTPUT.vf]
+                    \\      convert PGN to viriformat. output is input name + .vf
+                    \\
+                    \\  epdtovf <INPUT.epd> [--skip-broken-games] [--white-relative] [OUTPUT.vf]
+                    \\      convert EPD to viriformat
+                    \\
+                    \\  vftotxt <INPUT.vf>
+                    \\      convert viriformat binary file to <FEN> | <SCORE> | <WDL>
+                    \\
+                    \\  sanitise <INPUT.vf>
+                    \\      sanitise a viriformat file
+                    \\
+                    \\  analyse <INPUT.vf> [--approximate] [--tb-path <PATH>]
+                    \\      analyze a dataset file
+                    \\      --approximate: use HyperLogLog for faster unique count
+                    \\      --tb-path: required for TB statistics
+                    \\
+                    \\  relabel-tb <INPUT.vf> --tb-path <PATH>
+                    \\      relabel dataset outcomes based on Syzygy tablebases
                     \\
                     \\  help
-                    \\      Show this help message and exit.
+                    \\      show this help message and exit
                     \\
-                    \\UCI MODE COMMANDS:
-                    \\  (Used when engine is run without specific command-line arguments above.)
-                    \\
-                    \\  uci                 - Display engine info, list options. Responds with 'uciok'.
-                    \\  spsa_inputs         - Display SPSA inputs.
-                    \\  isready             - Check if ready. Responds with 'readyok'.
-                    \\  ucinewgame          - Reset engine for a new game.
-                    \\  setoption name <NAME> value <VALUE>
-                    \\                      - Set option (e.g., Hash, Threads, UCI_Chess960,
-                    \\                        Move Overhead, tunable parameters).
-                    \\                        Example: setoption name Hash value 128
-                    \\  position (fen <FEN> | startpos) [moves <MOVES...>]
-                    \\                      - Set board position.
-                    \\                        Example: position startpos moves e2e4 e7e5
-                    \\  go [PARAMS...]      - Start search. Parameters include:
-                    \\                          depth <PLY>, nodes <NODE_COUNT>, movetime <MS>,
-                    \\                          wtime <MS>, btime <MS>, [winc <MS>], [binc <MS>],
-                    \\                          mate <DEPTH>, perft <DEPTH> (current pos),
-                    \\                          perft_file <FILEPATH> (from EPD).
-                    \\  stop                - Stop current search.
-                    \\  quit                - Exit engine.
-                    \\  wait                - Wait for search to complete.
-                    \\  d                   - Display Zobrist hash and FEN for current board.
-                    \\  nneval              - Display NNUE evaluation for current position.
-                    \\  bullet_evals        - Display NNUE evaluations for predefined FENs.
-                    \\  hceval              - Display HCE evaluation for current position.
+                    \\UCI COMMANDS:
+                    \\  uci                     - handshake
+                    \\  isready                 - synchronization
+                    \\  setoption               - set Hash, Threads, SyzygyPath, EnableWeirdTCs, etc
+                    \\  ucinewgame              - clear hash and reset
+                    \\  position                - set board (fen <FEN> | startpos) [moves ...]
+                    \\  go                      - search. params: depth, nodes, softnodes, movetime,
+                    \\                            wtime, btime, winc, binc, mate, perft, perft_file
+                    \\  stop                    - stop current search
+                    \\  wait                    - wait for search to complete
+                    \\  d                       - print position
+                    \\  banner                  - print engine logo
+                    \\  nneval                  - show raw/scaled NNUE evaluation
+                    \\  hceval                  - show hand crafted evaluation
+                    \\  get_scale               - read evaluation scale from file
+                    \\  bullet_evals            - run eval on a set of known test positions
+                    \\  ProbeWDL                - query Syzygy tablebase
+                    \\  quit                    - exit
                     \\
                 , .{ VERSION_STRING, bench_depth_default, datagen_threads_default, datagen_nodes_default });
                 return;
@@ -148,15 +163,19 @@ pub fn main() !void {
                         genfens_book = path;
                     }
                 }
-                try root.engine.genfens(genfens_book, genfens_count, genfens_seed, std.io.getStdOut().writer().any(), allocator);
+                try root.engine.genfens(genfens_book, genfens_count, genfens_seed, &root.stdout_writer, allocator);
                 return;
             }
             if (std.mem.count(u8, arg, "pgntovf") > 0) {
-                var input = args.next() orelse "";
+                var input: []const u8 = "";
                 var skip_broken_games = false;
-                if (std.ascii.eqlIgnoreCase(input, "--skip-broken-games")) {
-                    skip_broken_games = true;
-                    input = args.next() orelse "";
+                while (args.next()) |sub_arg| {
+                    if (std.ascii.eqlIgnoreCase(sub_arg, "--skip-broken-games")) {
+                        std.debug.print("skipping broken games\n", .{});
+                        skip_broken_games = true;
+                    } else {
+                        input = sub_arg;
+                    }
                 }
                 const extension_len = std.mem.indexOf(u8, input, ".pgn") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
                 const output_base = args.next() orelse input[0..extension_len];
@@ -167,21 +186,494 @@ pub fn main() !void {
                 var input_file = std.fs.cwd().openFile(input, .{}) catch try std.fs.openFileAbsolute(input, .{});
                 defer input_file.close();
 
-                const stat = try input_file.stat();
-                const input_bytes = if (@import("builtin").target.os.tag == .windows)
-                    try input_file.readToEndAlloc(allocator, std.math.maxInt(usize))
-                else
-                    try std.posix.mmap(null, stat.size, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, input_file.handle, 0);
+                var output_file = try std.fs.cwd().createFile(output, .{});
+                defer output_file.close();
 
-                defer if (@import("builtin").target.os.tag == .windows)
-                    allocator.free(input_bytes)
-                else
-                    std.posix.munmap(input_bytes);
+                var input_buf: [4096]u8 = undefined;
+                var output_buf: [4096]u8 = undefined;
+
+                var input_reader = input_file.reader(&input_buf);
+                var output_writer = output_file.writer(&output_buf);
+
+                try @import("pgn_to_vf.zig").convert(
+                    &input_reader.interface,
+                    &output_writer.interface,
+                    skip_broken_games,
+                    std.heap.smp_allocator,
+                );
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "epdtovf") > 0) {
+                var input: []const u8 = "";
+                var skip_broken_games = false;
+                var white_relative = false;
+                while (args.next()) |sub_arg| {
+                    if (std.ascii.eqlIgnoreCase(sub_arg, "--skip-broken-games")) {
+                        std.debug.print("skipping broken games\n", .{});
+                        skip_broken_games = true;
+                    } else if (std.ascii.eqlIgnoreCase(sub_arg, "--white-relative")) {
+                        std.debug.print("treating scores as white relative\n", .{});
+                        white_relative = true;
+                    } else {
+                        input = sub_arg;
+                    }
+                }
+                const extension_len = std.mem.indexOf(u8, input, ".epd") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
+                const output_base = args.next() orelse input[0..extension_len];
+
+                const output = try std.fmt.allocPrint(allocator, "{s}.vf", .{output_base});
+                defer allocator.free(output);
+
+                var input_file = std.fs.cwd().openFile(input, .{}) catch try std.fs.openFileAbsolute(input, .{});
+                defer input_file.close();
 
                 var output_file = try std.fs.cwd().createFile(output, .{});
                 defer output_file.close();
 
-                try @import("pgn_to_vf.zig").convert(input_bytes, skip_broken_games, output_file.writer(), std.heap.smp_allocator);
+                var input_buf: [4096]u8 = undefined;
+                var output_buf: [4096]u8 = undefined;
+
+                var input_reader = input_file.reader(&input_buf);
+                var output_writer = output_file.writer(&output_buf);
+
+                try @import("epd_to_vf.zig").convert(
+                    &input_reader.interface,
+                    &output_writer.interface,
+                    skip_broken_games,
+                    white_relative,
+                    std.heap.smp_allocator,
+                );
+
+                return;
+            }
+
+            if (std.mem.count(u8, arg, "vftotxt") > 0) {
+                var file = try std.fs.cwd().openFile(args.next() orelse "", .{});
+                defer file.close();
+
+                var buf: [4096]u8 = undefined;
+                var br = file.reader(&buf);
+
+                // mapped_weights = try std.posix.mmap(null, Weights.WEIGHT_COUNT * @sizeOf(i16), std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
+                // var rng = std.Random.DefaultPrng.init(@bitCast((try br.interface.peekArray(8)).*));
+
+                const viriformat = root.viriformat;
+                while (!br.atEnd()) {
+                    var marlin_board: viriformat.MarlinPackedBoard = undefined;
+                    br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+                        if (e == error.EndOfStream) {
+                            break;
+                        } else {
+                            return e;
+                        }
+                    };
+
+                    var board = try marlin_board.toBoard();
+                    const wdl = @as(f64, @floatFromInt(marlin_board.wdl)) / 2.0;
+                    const sigmoid = struct {
+                        fn impl(score: i16) f64 {
+                            const f: f64 = @floatFromInt(score);
+
+                            return 1.0 / (1.0 + @exp(-f / 400.0));
+                        }
+                    }.impl;
+
+                    // var chosen_board: Board = undefined;
+                    // var chosen_eval: i16 = undefined;
+
+                    for (0..std.math.maxInt(usize)) |_| {
+                        var move_eval_pair: viriformat.MoveEvalPair = undefined;
+                        br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                            if (e == error.EndOfStream) {
+                                break;
+                            } else {
+                                return e;
+                            }
+                        };
+                        const viri_move = move_eval_pair.move;
+
+                        if (viri_move.data == 0) {
+                            break;
+                        }
+
+                        const move = viri_move.toMove(&board);
+
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                board.makeMove(stm, move, Board.NullEvalState{});
+                            },
+                        }
+
+                        write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(move_eval_pair.eval.toNative()), wdl });
+                        // if (rng.random().int(u32) % (i + 1) == 0) {
+                        //     chosen_board = board;
+                        //     chosen_eval = move_eval_pair.eval.toNative();
+                        // }
+                    }
+                    // write("{s} | {d:.10} | {d:.1}\n", .{ chosen_board.toFen().slice(), sigmoid(chosen_eval), wdl });
+                }
+                return;
+            }
+
+            if (std.mem.count(u8, arg, "analyse") > 0) {
+                var file: ?std.fs.File = null;
+                var approximate = false;
+                var use_tbs = false;
+                while (args.next()) |a| {
+                    if (std.mem.eql(u8, a, "--approximate")) {
+                        approximate = true;
+                    } else if (std.mem.eql(u8, a, "--tb-path")) {
+                        const null_terminated = try allocator.dupeZ(u8, args.next() orelse "");
+                        defer allocator.free(null_terminated);
+                        try root.pyrrhic.init(null_terminated);
+                        use_tbs = true;
+                    } else {
+                        file = try std.fs.cwd().openFile(a, .{});
+                    }
+                }
+                if (!use_tbs) {
+                    std.debug.print("not using TBs, if you want TB stats please pass --tb-path\n", .{});
+                }
+                if (approximate) {
+                    std.debug.print("unique count is using HyperLogLog, and so may be slightly wrong\n", .{});
+                } else {
+                    std.debug.print("unique count is using a hashset, for better performance try --approximate\n", .{});
+                }
+
+                defer file.?.close();
+                const stat = try file.?.stat();
+
+                var buf: [4096]u8 = undefined;
+                var br = file.?.reader(&buf);
+
+                var sum_exits: i64 = 0;
+                var game_count: u64 = 0;
+                var position_count: u64 = 0;
+                var wins: u64 = 0;
+                var draws: u64 = 0;
+                var losses: u64 = 0;
+                var tb_results = std.mem.zeroes([3][3]u64);
+                var king_pos: [64]u64 = .{0} ** 64;
+                var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
+                defer zobrist_set.deinit();
+                var score_counts: []u64 = try allocator.alloc(u64, 1 + std.math.maxInt(u16));
+                defer allocator.free(score_counts);
+                var piece_counts: [33]u64 = .{0} ** 33;
+                var phase_counts: [25]u64 = .{0} ** 25;
+
+                if (!approximate) {
+                    try zobrist_set.ensureTotalCapacity(@intCast((stat.size + 3) / 4));
+                }
+
+                var approximator = if (approximate) try @import("HyperLogLog.zig").init(20, allocator) else undefined;
+                defer if (approximate) approximator.deinit(allocator);
+
+                const viriformat = root.viriformat;
+                while (!br.atEnd()) {
+                    var marlin_board: viriformat.MarlinPackedBoard = undefined;
+                    br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+                        if (e == error.EndOfStream) {
+                            break;
+                        } else {
+                            return e;
+                        }
+                    };
+
+                    game_count += 1;
+                    switch (marlin_board.wdl) {
+                        0 => losses += 1,
+                        1 => draws += 1,
+                        2 => wins += 1,
+                        else => unreachable,
+                    }
+
+                    if (game_count % 16384 == 0) {
+                        const unique_count = if (approximate) approximator.count() else zobrist_set.count();
+                        write("\rprogress: {}% average exit so far: {d:.2} unique positions: {}/{} ({}%)", .{
+                            @as(u128, br.logicalPos() * 100) / stat.size,
+                            @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(game_count)),
+                            unique_count,
+                            position_count,
+                            @as(u64, unique_count) * 100 / position_count,
+                        });
+                    }
+                    var board = try marlin_board.toBoard();
+                    var had_tb_win = false;
+                    var had_tb_draw = false;
+                    var had_tb_loss = false;
+                    for (0..std.math.maxInt(usize)) |move_idx| {
+                        var move_eval_pair: viriformat.MoveEvalPair = undefined;
+                        br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                            if (e == error.EndOfStream) {
+                                break;
+                            } else {
+                                return e;
+                            }
+                        };
+                        const viri_move = move_eval_pair.move;
+
+                        if (move_idx == 0) {
+                            const exit = if (board.stm == .white) move_eval_pair.eval.toNative() else -@as(i32, move_eval_pair.eval.toNative());
+
+                            sum_exits += exit;
+                        }
+
+                        if (viri_move.data == 0) {
+                            break;
+                        }
+
+                        const move = viri_move.toMove(&board);
+
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                @setEvalBranchQuota(1 << 30);
+                                board.makeMove(stm, move, Board.NullEvalState{});
+                            },
+                        }
+                        var king: root.Square = .fromBitboard(board.kingFor(board.stm));
+                        if (board.stm == .black) {
+                            king = king.flipRank();
+                        }
+                        king_pos[king.toInt()] += 1;
+
+                        if (use_tbs) {
+                            if (root.pyrrhic.probeWDL(&board)) |res| {
+                                switch (if (board.stm == .black) res.flipped() else res) {
+                                    .loss => had_tb_loss = true,
+                                    .draw => had_tb_draw = true,
+                                    .win => had_tb_win = true,
+                                }
+                            }
+                        }
+                        piece_counts[@popCount(board.occupancy())] += 1;
+                        phase_counts[@min(24, board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 }))] += 1;
+                        score_counts[@intCast(@as(isize, move_eval_pair.eval.toNative()) - std.math.minInt(i16))] += 1;
+                        if (approximate) {
+                            approximator.add(board.hash);
+                        } else {
+                            try zobrist_set.put(board.hash, void{});
+                        }
+                        position_count += 1;
+                    }
+                    if (had_tb_loss)
+                        tb_results[marlin_board.wdl][0] += 1;
+                    if (had_tb_draw)
+                        tb_results[marlin_board.wdl][1] += 1;
+                    if (had_tb_win)
+                        tb_results[marlin_board.wdl][2] += 1;
+                }
+
+                const unique_count = if (approximate) approximator.count() else zobrist_set.count();
+
+                var total_tb: u64 = 0;
+                for (tb_results) |tb_arr| for (tb_arr) |tb_count| {
+                    total_tb += tb_count;
+                };
+                const incorrect_tb = total_tb - (tb_results[0][0] + tb_results[1][1] + tb_results[2][2]);
+                write(
+                    \\
+                    \\average exit: {d:.2}
+                    \\unique positions: {}/{} ({}%)
+                    \\piece count distribution: {any}
+                    \\phase distribution: {any}
+                    \\king position distribution: {any}
+                    \\tb results: {any}
+                    \\games whose outcome do not match TBs: {d:.2}%
+                    \\wins: {} ({}%)
+                    \\draws: {} ({}%)
+                    \\losses: {} ({}%)
+                    \\
+                , .{
+                    @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(game_count)),
+                    unique_count,
+                    position_count,
+                    @as(u64, unique_count) * 100 / position_count,
+                    piece_counts,
+                    phase_counts,
+                    king_pos,
+                    tb_results,
+                    @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(1, total_tb))),
+                    wins,
+                    100 * wins / game_count,
+                    draws,
+                    100 * draws / game_count,
+                    losses,
+                    100 * losses / game_count,
+                });
+                write("king bucket distr:\n", .{});
+                for (0..8) |i| {
+                    for (0..8) |j| {
+                        const count = king_pos[i * 8 + j];
+                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(position_count))});
+                    }
+                    write("\n", .{});
+                }
+                write("king bucket distr (with mirroring):\n", .{});
+                for (0..8) |i| {
+                    for (0..4) |j| {
+                        const count = king_pos[i * 8 + j] + king_pos[i * 8 + 7 - j];
+                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(position_count))});
+                    }
+                    write("\n", .{});
+                }
+
+                write("writing score distribution to 'score_distribution.txt'\n", .{});
+                var score_distr_file = try std.fs.cwd().createFile("score_distribution.txt", .{});
+                defer score_distr_file.close();
+
+                // its fine to reuse the buffer since we finished reading the file
+                var writer = score_distr_file.writer(&buf);
+                try writer.interface.print("{any}\n", .{score_counts});
+                try writer.interface.flush();
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "relabel-tb") > 0) {
+                var input_file: ?std.fs.File = null;
+                var output_file: ?std.fs.File = null;
+                var use_tbs = false;
+                while (args.next()) |a| {
+                    if (std.mem.eql(u8, a, "--tb-path")) {
+                        const null_terminated = try allocator.dupeZ(u8, args.next() orelse "");
+                        defer allocator.free(null_terminated);
+                        try root.pyrrhic.init(null_terminated);
+                        use_tbs = true;
+                    } else {
+                        input_file = try std.fs.cwd().openFile(a, .{});
+                        var name_writer = std.Io.Writer.Allocating.init(allocator);
+                        defer name_writer.deinit();
+                        try name_writer.writer.print("{s}_relabeled", .{a});
+                        output_file = try std.fs.cwd().createFile(name_writer.written(), .{});
+                    }
+                }
+                if (!use_tbs) {
+                    std.debug.panic("must specify --tb-path\n", .{});
+                }
+                if (input_file == null or output_file == null) {
+                    std.debug.panic("must specify an input file\n", .{});
+                }
+                defer input_file.?.close();
+                const stat = try input_file.?.stat();
+
+                var input_buf: [4096]u8 = undefined;
+                var br = input_file.?.reader(&input_buf);
+                var output_buf: [4096]u8 = undefined;
+                var bw = output_file.?.writer(&output_buf);
+
+                var game_count: u64 = 0;
+                var position_count: u64 = 0;
+                var incorrect_wdl_count: u64 = 0;
+
+                const viriformat = root.viriformat;
+                while (!br.atEnd()) {
+                    var marlin_board: viriformat.MarlinPackedBoard = undefined;
+                    br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+                        if (e == error.EndOfStream) {
+                            break;
+                        } else {
+                            return e;
+                        }
+                    };
+
+                    game_count += 1;
+
+                    if (game_count % 16384 == 0) {
+                        write("\rprogress: {}%", .{
+                            @as(u128, br.logicalPos() * 100) / stat.size,
+                        });
+                    }
+                    var board = try marlin_board.toBoard();
+                    var game = viriformat.Game.from(board, allocator);
+                    game.initial_position = marlin_board;
+                    defer game.moves.deinit();
+                    var skipping = false;
+                    var final_correct_wdl_idx: ?usize = null;
+                    for (0..std.math.maxInt(usize)) |move_idx| {
+                        var move_eval_pair: viriformat.MoveEvalPair = undefined;
+                        br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                            if (e == error.EndOfStream) {
+                                break;
+                            } else {
+                                return e;
+                            }
+                        };
+                        const viri_move = move_eval_pair.move;
+
+                        if (viri_move.data == 0) {
+                            break;
+                        }
+
+                        const move = viri_move.toMove(&board);
+                        if (!skipping) {
+                            try game.addMove(move, move_eval_pair.eval.toNative());
+                        }
+
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                @setEvalBranchQuota(1 << 30);
+                                board.makeMove(stm, move, Board.NullEvalState{});
+                            },
+                        }
+
+                        if (!skipping) {
+                            if (root.pyrrhic.probeWDL(&board)) |res| {
+                                const white_relative_result = if (board.stm == .black) res.flipped() else res;
+                                const game_result: root.WDL = @enumFromInt(marlin_board.wdl);
+                                if (white_relative_result != game_result) {
+                                    if (final_correct_wdl_idx) |final_corr_idx| {
+                                        while (game.moves.items.len > final_corr_idx + 1) {
+                                            _ = game.moves.pop();
+                                        }
+                                    } else {
+                                        incorrect_wdl_count += 1;
+                                        game.setOutCome(white_relative_result);
+                                    }
+                                    skipping = true;
+                                } else {
+                                    final_correct_wdl_idx = move_idx;
+                                }
+                            }
+                        }
+                        position_count += 1;
+                    }
+                    try game.serializeInto(&bw.interface);
+                }
+                try bw.interface.flush();
+
+                write(
+                    \\
+                    \\relabeled {}/{} games
+                    \\
+                , .{
+                    incorrect_wdl_count,
+                    game_count,
+                });
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "sanitise") > 0) {
+                const input_name = args.next() orelse "";
+                var input_file = try std.fs.cwd().openFile(input_name, .{});
+                defer input_file.close();
+
+                var name_writer = std.Io.Writer.Allocating.init(allocator);
+                defer name_writer.deinit();
+
+                try name_writer.writer.print("{s}_sanitised", .{input_name});
+
+                var output_file = try std.fs.cwd().createFile(name_writer.written(), .{});
+                defer output_file.close();
+
+                const mapped = try @import("MappedFile.zig").init(input_file);
+                defer mapped.deinit();
+
+                var output_buf: [4096]u8 = undefined;
+                var bw = output_file.writer(&output_buf);
+
+                try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(mapped.data, &bw.interface, allocator);
+
+                try bw.interface.flush();
 
                 return;
             }
@@ -331,8 +823,13 @@ pub fn main() !void {
 
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);
-    const reader = std.io.getStdIn().reader();
-    var previous_hashes = std.BoundedArray(u64, 200){};
+    var line_writer = std.Io.Writer.fixed(line_buf);
+
+    var stdin_buf: [4096]u8 = undefined;
+    var stdin = std.fs.File.stdin();
+    var reader = stdin.reader(&stdin_buf);
+
+    var previous_hashes = root.BoundedArray(u64, 200){};
 
     var board = Board.startpos();
     try previous_hashes.append(board.hash);
@@ -343,14 +840,16 @@ pub fn main() !void {
     var normalize: bool = true;
     var softnodes: bool = false;
     var weird_tcs: bool = false;
-    loop: while (reader.readUntilDelimiter(line_buf, '\n') catch |e| switch (e) {
+    loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
             std.debug.print("WARNING: encountered '{any}'\n", .{e});
-            break :blk "";
+            break :blk 0;
         },
-    }) |line_raw| {
-        const line = std.mem.trim(u8, line_raw, &std.ascii.whitespace);
+    }) |line_len| {
+        defer _ = line_writer.consumeAll();
+        std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
+        const line = std.mem.trim(u8, line_buf[0..line_len], &std.ascii.whitespace);
         for (line) |c| {
             if (!std.ascii.isPrint(c)) {
                 continue :loop;
@@ -359,6 +858,7 @@ pub fn main() !void {
         var parts = std.mem.tokenizeScalar(u8, line, ' ');
 
         const command = parts.next() orelse {
+            try std.Thread.yield();
             continue; // empty command
         };
 
@@ -850,32 +1350,32 @@ pub fn main() !void {
             return;
         } else if (std.ascii.eqlIgnoreCase(command, "wait")) {
             root.engine.waitUntilDoneSearching();
-        } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "get_scale")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "get_scale")) {
             const filename = parts.next() orelse "";
             var file = try std.fs.cwd().openFile(filename, .{});
             defer file.close();
 
-            var br = std.io.bufferedReader(file.reader());
+            var reader_buf: [4096]u8 = undefined;
+            var file_reader = file.reader(&reader_buf);
 
-            var buf: [128]u8 = undefined;
             var sum: i64 = 0;
 
-            while (br.reader().readUntilDelimiter(&buf, '\n')) |data_line| {
+            while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
                 const end = std.mem.indexOfScalar(u8, data_line, '[') orelse data_line.len;
                 const fen = data_line[0..end];
 
-                const raw_eval = @import("nnue.zig").nnEval(&(try Board.parseFen(fen, true)));
+                const raw_eval = try root.evaluation.evalFen(fen);
                 sum += raw_eval;
             } else |_| {}
             std.debug.print("{}\n", .{sum});
         } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "nneval")) {
-            const raw_eval = @import("nnue.zig").nnEval(&board);
+            const raw_eval = @import("nnue.zig").evalPosition(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
             const normalized = root.wdl.normalize(scaled, board.classicalMaterial());
             write("raw eval: {}\n", .{raw_eval});
             write("scaled eval: {}\n", .{scaled});
             write("scaled and normalized eval: {}\n", .{normalized});
-        } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
+        } else if (std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
             for ([_][]const u8{
                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
                 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
@@ -890,15 +1390,12 @@ pub fn main() !void {
                 "1nbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk - 0 1",
             }) |fen| {
                 write("FEN: {s}\n", .{fen});
-                write("EVAL: {}\n", .{@import("nnue.zig").nnEval(&try Board.parseFen(fen, false))});
+                write("EVAL: {}\n", .{try root.evaluation.evalFen(fen)});
             }
         } else if (std.ascii.eqlIgnoreCase(command, "hceval")) {
             const hce = @import("hce.zig");
-            var state = hce.State.init(&board);
 
-            switch (board.stm) {
-                inline else => |stm| write("{}\n", .{hce.evaluate(stm, &board, &state, .{})}),
-            }
+            write("{}\n", .{hce.evalPosition(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
             var prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
             var mutex = std.Thread.Mutex{};
@@ -910,8 +1407,8 @@ pub fn main() !void {
                         m.unlock();
                         b.frc = true;
                         var buf: [256]u8 = undefined;
-                        var fbs = std.io.fixedBufferStream(&buf);
-                        fbs.writer().print("{s} ;D1 {}; D2 {}; D3 {}; D4 {}; D5 {}; D6 {}\n", .{
+                        var fbs = std.Io.Writer.fixed(&buf);
+                        fbs.print("{s} ;D1 {}; D2 {}; D3 {}; D4 {}; D5 {}; D6 {}\n", .{
                             b.toFen().slice(),
                             b.perft(true, 1),
                             b.perft(true, 2),
@@ -921,7 +1418,7 @@ pub fn main() !void {
                             b.perft(true, 6),
                         }) catch unreachable;
                         m.lock();
-                        write("{s}", .{fbs.getWritten()});
+                        write("{s}", .{fbs.buffered()});
                         m.unlock();
                     }
                 }.impl;

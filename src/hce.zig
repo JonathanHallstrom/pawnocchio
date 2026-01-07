@@ -403,3 +403,10 @@ pub fn evaluate(comptime stm: Colour, _: *const Board, state: *State, _: anytype
     if (stm == .black) res = -res;
     return res;
 }
+
+pub fn evalPosition(board: *const Board) i16 {
+    const state = State.init(board);
+    var res = evaluation.clampScore(state.eval());
+    if (board.stm == .black) res = -res;
+    return res;
+}
