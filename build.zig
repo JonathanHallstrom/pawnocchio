@@ -11,6 +11,19 @@ pub fn build(b: *std.Build) !void {
         break :blk "pawnocchio-nets/networks/" ++ net_name;
     };
 
+    const dynamic = b.option(bool, "dynamic", "build a dynamic executable") orelse false;
+    const static = b.option(bool, "static", "build a static executable") orelse false;
+    if (static and dynamic) {
+        std.log.err("build cannot be both dynamic and static!\n", .{});
+        return error.IncompatibleFlags;
+    }
+    var linkage_mode: ?std.builtin.LinkMode = null;
+    if (dynamic) {
+        linkage_mode = .dynamic;
+    }
+    if (static) {
+        linkage_mode = .static;
+    }
     const emit_symbols = b.option(bool, "emit_symbols", "force debug symbols not to be strippped") orelse false;
     const use_tbs = b.option(bool, "use_tbs", "whether to enable tablebases") orelse true;
     const minimal_executable = switch (optimize) {
@@ -37,6 +50,7 @@ pub fn build(b: *std.Build) !void {
             .strip = minimal_executable,
             .link_libc = target.result.os.tag == .windows or use_tbs,
         }),
+        .linkage = linkage_mode,
     });
 
     const exe_options = b.addOptions();
