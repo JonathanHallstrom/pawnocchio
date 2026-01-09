@@ -1187,7 +1187,7 @@ fn search(
                         break :blk 0;
                     }
                     if (is_quiet and (s <= alpha or s >= beta)) {
-                        self.histories.updateCont(board, move, conthist_tables, new_depth, s >= beta, 0);
+                        self.histories.updateCont(board, move, self.histories.getConthistTables(stm, self.getUsableMoves()), new_depth, s >= beta, 0);
                     }
                 }
             } else if (!is_pv or num_searched > 1) {
@@ -1255,11 +1255,11 @@ fn search(
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
                         self.histories.updateQuiet(board, move, hist_depth, true, faillow_bonus);
-                        self.histories.updateCont(board, move, conthist_tables, hist_depth, true, faillow_bonus);
+                        self.histories.updateCont(board, move, self.histories.getConthistTables(stm, self.getUsableMoves()), hist_depth, true, faillow_bonus);
 
                         for (searched_quiets.slice()) |searched_move| {
                             self.histories.updateQuiet(board, searched_move, hist_depth, false, 0);
-                            self.histories.updateCont(board, searched_move, conthist_tables, hist_depth, false, 0);
+                            self.histories.updateCont(board, searched_move, self.histories.getConthistTables(stm, self.getUsableMoves()), hist_depth, false, 0);
                         }
                     }
                 } else {
