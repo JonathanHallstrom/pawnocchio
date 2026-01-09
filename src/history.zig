@@ -496,7 +496,7 @@ fn gravityUpdateCont(entry: *i16, total: i64, adjustment: anytype) void {
     const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));
     const magnitude: i32 = @abs(clamped);
     const current_value: i32 = entry.*;
-    entry.* = @intCast(current_value +| std.math.clamp(clamped - ((magnitude * total) >> SHIFT), -MAX_HISTORY, MAX_HISTORY));
+    entry.* = @intCast(std.math.clamp(current_value + clamped - ((magnitude * total) >> SHIFT), -MAX_HISTORY, MAX_HISTORY));
 }
 
 fn gravityUpdate(entry: *i16, adjustment: anytype) void {
