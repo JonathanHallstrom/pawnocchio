@@ -39,7 +39,7 @@ stage: Stage,
 skip_quiets: bool,
 histories: *const history.HistoryTable,
 ttmove: Move,
-moves: history.ConthistMoves,
+conthist_tables: history.ConthistTables,
 last_bad_noisy: usize = 0,
 next_func: *const fn (*MovePicker) ScoredMove,
 
@@ -58,7 +58,7 @@ pub fn init(
     movelist_: *MoveReceiver,
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
-    moves_: history.ConthistMoves,
+    tables_: history.ConthistTables,
     is_singular_search: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
@@ -73,7 +73,7 @@ pub fn init(
         .skip_quiets = false,
         .histories = histories_,
         .ttmove = ttmove_,
-        .moves = moves_,
+        .conthist_tables = tables_,
     };
 }
 
@@ -82,7 +82,7 @@ pub fn initQs(
     movelist_: *MoveReceiver,
     histories_: *root.history.HistoryTable,
     ttmove_: Move,
-    moves_: history.ConthistMoves,
+    tables_: history.ConthistTables,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
@@ -96,7 +96,7 @@ pub fn initQs(
         .skip_quiets = board_.checkers == 0,
         .histories = histories_,
         .ttmove = ttmove_,
-        .moves = moves_,
+        .conthist_tables = tables_,
     };
 }
 
@@ -162,8 +162,8 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     return res;
 }
 
-fn quietValue(self: MovePicker, move: Move) i32 {
-    return self.histories.readQuietOrdering(self.board, move, self.moves);
+inline fn quietValue(self: MovePicker, move: Move) i32 {
+    return self.histories.readQuietOrdering(self.board, move, self.conthist_tables);
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;

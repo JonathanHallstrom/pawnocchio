@@ -438,7 +438,7 @@ fn qsearch(
         &cur.movelist,
         &self.histories,
         tt_entry.move,
-        self.getUsableMoves(),
+        self.histories.getConthistTables(stm, self.getUsableMoves()),
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
@@ -891,12 +891,13 @@ fn search(
         }
     }
 
+    const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
     var mp = MovePicker.init(
         board,
         &cur.movelist,
         &self.histories,
         if (is_singular_search) cur.excluded else tt_entry.move,
-        self.getUsableMoves(),
+        conthist_tables,
         is_singular_search,
     );
     defer mp.deinit();
@@ -954,7 +955,7 @@ fn search(
         const history_score = if (is_quiet) self.histories.readQuietPruning(
             board,
             move,
-            self.getUsableMoves(),
+            conthist_tables,
         ) else self.histories.readNoisy(board, move);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
@@ -1186,7 +1187,7 @@ fn search(
                         break :blk 0;
                     }
                     if (is_quiet and (s <= alpha or s >= beta)) {
-                        self.histories.updateCont(board, move, self.getUsableMoves(), new_depth, s >= beta, 0);
+                        self.histories.updateCont(board, move, conthist_tables, new_depth, s >= beta, 0);
                     }
                 }
             } else if (!is_pv or num_searched > 1) {
@@ -1222,6 +1223,7 @@ fn search(
         }
 
         num_searched_quiets += @intFromBool(is_quiet);
+
         if (score <= alpha) {
             if (is_quiet) {
                 searched_quiets.append(move) catch {};
@@ -1249,13 +1251,15 @@ fn search(
                 const hist_depth = depth + @as(i32, if (score >= beta + tunables.high_eval_offs) 1 else 0);
                 score_type = .lower;
                 cur.failhighs += 1;
-                const usable_moves = self.getUsableMoves();
                 const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, move, usable_moves, hist_depth, true, faillow_bonus);
+                        self.histories.updateQuiet(board, move, hist_depth, true, faillow_bonus);
+                        self.histories.updateCont(board, move, conthist_tables, hist_depth, true, faillow_bonus);
+
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, usable_moves, hist_depth, false, 0);
+                            self.histories.updateQuiet(board, searched_move, hist_depth, false, 0);
+                            self.histories.updateCont(board, searched_move, conthist_tables, hist_depth, false, 0);
                         }
                     }
                 } else {
