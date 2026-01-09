@@ -1359,6 +1359,8 @@ pub fn main() !void {
             var file_reader = file.reader(&reader_buf);
 
             var sum: i64 = 0;
+            var abs_sum: i64 = 0;
+            var count: i64 = 0;
 
             while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
                 const end = std.mem.indexOfScalar(u8, data_line, '[') orelse data_line.len;
@@ -1366,8 +1368,13 @@ pub fn main() !void {
 
                 const raw_eval = try root.evaluation.evalFen(fen);
                 sum += raw_eval;
+                abs_sum += @abs(raw_eval);
+                count += 1;
             } else |_| {}
-            std.debug.print("{}\n", .{sum});
+            const average = @as(f64, @floatFromInt(sum)) / @as(f64, @floatFromInt(count));
+            const abs_average = @as(f64, @floatFromInt(abs_sum)) / @as(f64, @floatFromInt(count));
+            std.debug.print("sum: {} sum abs: {}\n", .{ sum, abs_sum });
+            std.debug.print("average: {d:.4} average abs: {d:.4}\n", .{ average, abs_average });
         } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "nneval")) {
             const raw_eval = @import("nnue.zig").evalPosition(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
