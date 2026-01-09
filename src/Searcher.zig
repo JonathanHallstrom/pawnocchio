@@ -1309,7 +1309,7 @@ const InfoType = enum {
     upper,
 };
 
-fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
+fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) void {
     const elapsed = @max(1, self.limits.timer.read());
     const type_str = switch (tp) {
         .completed => "",
@@ -1326,6 +1326,9 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType) void {
     var fixed_buffer_pv_writer = std.Io.Writer.fixed(&pv_buf);
     const root_board = self.searchStackRoot()[0].board;
     {
+        if (self.pvs[0].len == 0) {
+            self.pvs[0].appendAssumeCapacity(move);
+        }
         var board = root_board;
         for (self.pvs[0].slice()) |pv_move| {
             fixed_buffer_pv_writer.print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
@@ -1520,8 +1523,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction = @min(failhigh_reduction + tunables.failhigh_add, tunables.failhigh_max);
                     if (should_print) {
-                        if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
-                            self.writeInfo(score, depth, .lower);
+                        if (!quiet and !self.minimal and !evaluation.isMateScore(score) and !self.root_move.isNull()) {
+                            self.writeInfo(score, depth, .lower, self.root_move);
                         }
                     }
                 } else if (score <= aspiration_lower) {
@@ -1529,8 +1532,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction = failhigh_reduction * tunables.failhigh_mult >> 10;
                     if (should_print) {
-                        if (!quiet and !self.minimal and !evaluation.isMateScore(score)) {
-                            self.writeInfo(score, depth, .upper);
+                        if (!quiet and !self.minimal and !evaluation.isMateScore(score) and !self.root_move.isNull()) {
+                            self.writeInfo(score, depth, .upper, self.root_move);
                         }
                     }
                 } else {
@@ -1558,7 +1561,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         completed_depth = depth;
         if (is_main_thread) {
             if (!quiet and !self.minimal) {
-                self.writeInfo(self.full_width_score, depth, .completed);
+                std.debug.assert(!self.root_move.isNull());
+                self.writeInfo(self.full_width_score, depth, .completed, self.root_move);
             }
         }
 
@@ -1625,7 +1629,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 }
             }
             if (self.minimal) {
-                self.writeInfo(self.full_width_score, completed_depth, .completed);
+                self.writeInfo(self.full_width_score, completed_depth, .completed, move);
             }
             write("bestmove {s}\n", .{move.toString(&board).slice()});
         }
