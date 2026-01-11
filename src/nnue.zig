@@ -597,10 +597,10 @@ pub fn evalPosition(board: *const Board) i16 {
 
 pub const VEC_SIZE = @min(HIDDEN_SIZE & -%HIDDEN_SIZE, 2 * (std.simd.suggestVectorLength(i16) orelse 8));
 pub const HORIZONTAL_MIRRORING = true;
-pub const INPUT_BUCKET_COUNT: usize = 16;
+pub const INPUT_BUCKET_COUNT: usize = 1;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
-pub const HIDDEN_SIZE: usize = 1536;
+pub const HIDDEN_SIZE: usize = 512;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
