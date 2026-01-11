@@ -52,7 +52,7 @@ fn mullo(
 const Weights = extern struct {
     hidden_layer_weights: [HIDDEN_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
     hidden_layer_biases: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
-    output_weights: [HIDDEN_SIZE * 2 * OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
+    output_weights: [HIDDEN_SIZE * OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
     output_biases: [OUTPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
     const WEIGHT_COUNT = blk: {
         var res = 0;
@@ -336,21 +336,26 @@ const Accumulator = struct {
         const ONE: Vec = @splat(QA);
         var i: usize = 0;
         const which_bucket = whichOutputBucket(board);
-        const bucket_offset = which_bucket * HIDDEN_SIZE * 2;
-        while (i < HIDDEN_SIZE) {
+        const bucket_offset = which_bucket * HIDDEN_SIZE;
+        while (i < HIDDEN_SIZE / 2) {
             inline for (&accs) |*acc| {
                 defer i += VEC_SIZE;
-                const us: Vec = us_acc[i..][0..VEC_SIZE].*;
-                const us_clamped: Vec = @max(@min(us, ONE), ZERO);
-                const them: Vec = them_acc[i..][0..VEC_SIZE].*;
-                const them_clamped: Vec = @max(@min(them, ONE), ZERO);
+                const us1: Vec = us_acc[i..][0..VEC_SIZE].*;
+                const us1_clamped: Vec = @max(@min(us1, ONE), ZERO);
+                const us2: Vec = us_acc[i + HIDDEN_SIZE / 2 ..][0..VEC_SIZE].*;
+                const us2_clamped: Vec = @max(@min(us2, ONE), ZERO);
+
+                const them1: Vec = them_acc[i..][0..VEC_SIZE].*;
+                const them1_clamped: Vec = @max(@min(them1, ONE), ZERO);
+                const them2: Vec = them_acc[i + HIDDEN_SIZE / 2 ..][0..VEC_SIZE].*;
+                const them2_clamped: Vec = @max(@min(them2, ONE), ZERO);
 
                 const us_weights: Vec = (&weights.output_weights)[bucket_offset..][i..][0..VEC_SIZE].*;
-                const them_weights: Vec = (&weights.output_weights)[bucket_offset..][i + HIDDEN_SIZE ..][0..VEC_SIZE].*;
+                const them_weights: Vec = (&weights.output_weights)[bucket_offset..][i + HIDDEN_SIZE / 2 ..][0..VEC_SIZE].*;
 
                 acc.* +=
-                    madd(VEC_SIZE, mullo(VEC_SIZE, us_weights, us_clamped), us_clamped) +
-                    madd(VEC_SIZE, mullo(VEC_SIZE, them_weights, them_clamped), them_clamped);
+                    madd(VEC_SIZE, mullo(VEC_SIZE, us_weights, us1_clamped), us2_clamped) +
+                    madd(VEC_SIZE, mullo(VEC_SIZE, them_weights, them1_clamped), them2_clamped);
             }
         }
         var acc = accs[0];
@@ -358,9 +363,15 @@ const Accumulator = struct {
         var res: i32 = @reduce(std.builtin.ReduceOp.Add, acc);
         if (@import("builtin").mode == .Debug) {
             var verify_res: i32 = 0;
-            for (0..HIDDEN_SIZE) |j| {
-                verify_res += screlu(us_acc[j]) * (&weights.output_weights)[bucket_offset..][j];
-                verify_res += screlu(them_acc[j]) * (&weights.output_weights)[bucket_offset..][j + HIDDEN_SIZE];
+            for (0..HIDDEN_SIZE / 2) |j| {
+                verify_res +=
+                    crelu(us_acc[j]) *
+                    crelu(us_acc[j + HIDDEN_SIZE / 2]) *
+                    (&weights.output_weights)[bucket_offset..][j];
+                verify_res +=
+                    crelu(them_acc[j]) *
+                    crelu(them_acc[j + HIDDEN_SIZE / 2]) *
+                    (&weights.output_weights)[bucket_offset..][j + HIDDEN_SIZE / 2];
             }
             std.debug.assert(res == verify_res);
         }
@@ -517,6 +528,10 @@ pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State, r
     return eval_state.forward(stm, board, refresh_cache);
 }
 
+fn crelu(x: i32) i32 {
+    return std.math.clamp(x, 0, QA);
+}
+
 fn screlu(x: i32) i32 {
     const clamped = std.math.clamp(x, 0, QA);
     return clamped * clamped;
@@ -600,7 +615,7 @@ pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 16;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
-pub const HIDDEN_SIZE: usize = 1536;
+pub const HIDDEN_SIZE: usize = 2048;
 pub const SCALE = 400;
 pub const QA = 255;
 pub const QB = 64;
