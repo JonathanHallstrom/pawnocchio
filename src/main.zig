@@ -637,7 +637,9 @@ pub fn main() !void {
                         }
                         position_count += 1;
                     }
-                    try game.serializeInto(&bw.interface);
+                    if (!skipping) {
+                        try game.serializeInto(&bw.interface);
+                    }
                 }
                 try bw.interface.flush();
 
