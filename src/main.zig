@@ -827,7 +827,7 @@ pub fn main() !void {
 
     var stdin_buf: [4096]u8 = undefined;
     var stdin = std.fs.File.stdin();
-    var reader = stdin.reader(&stdin_buf);
+    var reader = stdin.readerStreaming(&stdin_buf);
 
     var previous_hashes = root.BoundedArray(u64, 200){};
 
