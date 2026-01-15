@@ -204,6 +204,42 @@ pub fn main() !void {
 
                 return;
             }
+
+            const sigmoid = struct {
+                fn impl(score: i16) f64 {
+                    const f: f64 = @floatFromInt(score);
+
+                    return 1.0 / (1.0 + @exp(-f / 400.0));
+                }
+            }.impl;
+            if (std.mem.count(u8, arg, "persytosirius") > 0) {
+                var file = try std.fs.cwd().openFile(args.next() orelse "", .{});
+                defer file.close();
+
+                var buf: [4096]u8 = undefined;
+                var br = file.reader(&buf);
+
+                while (br.interface.takeDelimiterInclusive('\n')) |line| {
+                    const semicolon_index = std.mem.indexOfScalar(u8, line, ';') orelse continue;
+
+                    const fen = line[0..semicolon_index];
+                    const outcome = line[semicolon_index + 1];
+                    const wdl: f64 = switch (outcome) {
+                        'w' => 1.0,
+                        'd' => 0.5,
+                        'b' => 0.0,
+                        else => continue,
+                    };
+
+                    const board = Board.parseFen(fen, true) catch continue;
+                    const eval = root.evaluation.evalPosition(&board);
+                    const stm_eval = if (board.stm == .white) eval else -eval;
+
+                    write("{s} | {d:.10} | {d:.1}\n", .{ fen, sigmoid(stm_eval), wdl });
+                } else |_| {}
+                return;
+            }
+
             if (std.mem.count(u8, arg, "epdtovf") > 0) {
                 var input: []const u8 = "";
                 var skip_broken_games = false;
@@ -271,13 +307,6 @@ pub fn main() !void {
 
                     var board = try marlin_board.toBoard();
                     const wdl = @as(f64, @floatFromInt(marlin_board.wdl)) / 2.0;
-                    const sigmoid = struct {
-                        fn impl(score: i16) f64 {
-                            const f: f64 = @floatFromInt(score);
-
-                            return 1.0 / (1.0 + @exp(-f / 400.0));
-                        }
-                    }.impl;
 
                     // var chosen_board: Board = undefined;
                     // var chosen_eval: i16 = undefined;
