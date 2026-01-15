@@ -87,7 +87,7 @@ pub fn init() void {
     const globals = struct {
         fn initImpl() void {
             stdout = std.fs.File.stdout();
-            stdout_writer = stdout.writer(&stdout_buf);
+            stdout_writer = stdout.writerStreaming(&stdout_buf);
             attacks.init();
             evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
             engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
