@@ -15,20 +15,29 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 const std = @import("std");
 
+const ALIGNMENT = 64;
 pub const Weights = extern struct {
-    hidden_layer_weights: [L1_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(std.atomic.cache_line),
-    hidden_layer_biases: [L1_SIZE]i16 align(std.atomic.cache_line),
-    l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE][L1_SIZE]i8 align(std.atomic.cache_line),
-    l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]f32 align(std.atomic.cache_line),
-    l2w: [OUTPUT_BUCKET_COUNT][L3_SIZE][L2_SIZE]f32 align(std.atomic.cache_line),
-    l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(std.atomic.cache_line),
-    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(std.atomic.cache_line),
-    l3b: [OUTPUT_BUCKET_COUNT]f32 align(std.atomic.cache_line),
+    hidden_layer_weights: [L1_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
+    hidden_layer_biases: [L1_SIZE]i16 align(ALIGNMENT),
+    l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE][L1_SIZE]i8 align(ALIGNMENT),
+    l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]f32 align(ALIGNMENT),
+    l2w: [OUTPUT_BUCKET_COUNT][L3_SIZE][L2_SIZE]f32 align(ALIGNMENT),
+    l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(ALIGNMENT),
+    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(ALIGNMENT),
+    l3b: [OUTPUT_BUCKET_COUNT]f32 align(ALIGNMENT),
 
-    const WEIGHT_COUNT = blk: {
+    pub const WEIGHT_COUNT = blk: {
         var res = 0;
         for (std.meta.fields(Weights)) |field| {
             res += @typeInfo(field.type).array.len;
+        }
+        break :blk res;
+    };
+    pub const SIZE_BYTES = blk: {
+        var res = 0;
+        for (std.meta.fields(Weights)) |field| {
+            const array_info = @typeInfo(field.type).array;
+            res += array_info.len * @sizeOf(array_info.child);
         }
         break :blk res;
     };

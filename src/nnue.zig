@@ -62,7 +62,7 @@ fn vecSize(comptime T: type) comptime_int {
 }
 
 const builtin = @import("builtin");
-const CAN_VERBATIM_NET = builtin.cpu.arch.endian() == .little and builtin.mode == .ReleaseFast and !build_options.runtime_net;
+const CAN_VERBATIM_NET = builtin.cpu.arch.endian() == .little and !build_options.runtime_net;
 const build_options = @import("build_options");
 
 fn madd(
@@ -100,17 +100,12 @@ pub inline fn whichOutputBucket(board: *const Board) usize {
 
 var weights_file: std.fs.File = undefined;
 var mapped_weights: []align(std.heap.pageSize()) const u8 = undefined;
-const verbatim_weights = if (CAN_VERBATIM_NET)
-blk: {
-    var res: Weights = undefined;
-    @memcpy(std.mem.asBytes(&res)[0 .. Weights.WEIGHT_COUNT * @sizeOf(i16)], @embedFile("net")[0 .. Weights.WEIGHT_COUNT * @sizeOf(i16)]);
-    break :blk res;
-} else undefined;
+const net = @embedFile("net");
+const verbatim_weights: [net.len:0]u8 align(64) = net.*;
 
-pub var weights = if (CAN_VERBATIM_NET) &verbatim_weights else if (build_options.runtime_net) @as(*const Weights, undefined) else &(struct {
+pub var weights = if (CAN_VERBATIM_NET) @as(*const Weights, @ptrCast(&verbatim_weights)) else if (build_options.runtime_net) @as(*const Weights, undefined) else &(struct {
     var backing: Weights = undefined;
 }).backing;
-// @ptrCast(@alignCast(@as(*const anyopaque, @ptrCast(@embedFile("net")))));
 inline fn hiddenLayerWeightsVector() []const @Vector(vecSize(i16), i16) {
     return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.hidden_layer_weights))[0 .. weights.hidden_layer_weights.len / vecSize(i16)];
 }
@@ -441,7 +436,8 @@ const Accumulator = struct {
 
     pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, refresh_cache: anytype) i16 {
         self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
-        // return 0;
+        // if (true)
+        //     return 0;
         const stm_acc = if (board.stm == .white) &self.white else &self.black;
         const ntm_acc = if (board.stm == .white) &self.black else &self.white;
         // //             vvvvvvvv annotation to help zls
@@ -464,18 +460,17 @@ const Accumulator = struct {
         }
 
         var l1_intermediate: [L2_SIZE]i32 = @splat(0);
-        for (0..L1_SIZE) |i| {
-            const ft = activated_ft[i];
+        for (0..L2_SIZE) |j| {
+            for (0..L1_SIZE) |i| {
+                const ft = activated_ft[i];
 
-            for (0..L2_SIZE) |j| {
-                // now in 2^7 * 2^6 = 2^13 space
                 l1_intermediate[j] += @as(i32, (&(&(&weights.l1w)[output_bucket])[j])[i]) * ft;
             }
         }
 
         var l1_out: [L2_SIZE]f32 = undefined;
         for (0..L2_SIZE) |i| {
-            const dequantised = @as(f32, @floatFromInt(l1_intermediate[i])) * (1.0 / @as(f32, 2 << 13));
+            const dequantised = @as(f32, @floatFromInt(l1_intermediate[i])) * (1.0 / @as(f32, 1 << 13));
             const clamped = std.math.clamp(dequantised + (&(&weights.l1b)[output_bucket])[i], 0, 1);
             const activated = clamped * clamped;
             l1_out[i] = activated;
@@ -484,7 +479,7 @@ const Accumulator = struct {
         var l2_intermediate: [L3_SIZE]f32 = weights.l2b[output_bucket];
         for (0..L2_SIZE) |i| {
             for (0..L3_SIZE) |j| {
-                l2_intermediate[i] += l1_out[i] * (&(&(&weights.l2w)[output_bucket])[i])[j];
+                l2_intermediate[j] += l1_out[i] * (&(&(&weights.l2w)[output_bucket])[j])[i];
             }
         }
 
