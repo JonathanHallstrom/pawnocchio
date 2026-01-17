@@ -523,7 +523,7 @@ pub fn init() !void {
         if (@import("builtin").target.os.tag == .windows) {
             @compileError("sorry mmap-ing the network manually is not supported on windows");
         }
-        mapped_weights = try std.posix.mmap(null, Weights.WEIGHT_COUNT * @sizeOf(i16), std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
+        mapped_weights = try std.posix.mmap(null, Weights.SIZE_BYTES, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights_file.handle, 0);
 
         weights = @ptrCast(mapped_weights.ptr);
 
