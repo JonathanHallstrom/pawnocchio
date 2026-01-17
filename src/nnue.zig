@@ -441,7 +441,6 @@ const Accumulator = struct {
 
     pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, refresh_cache: anytype) i16 {
         self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
-        @compileLog(@sizeOf(Weights), @embedFile("net").len);
         // return 0;
         const stm_acc = if (board.stm == .white) &self.white else &self.black;
         const ntm_acc = if (board.stm == .white) &self.black else &self.white;
