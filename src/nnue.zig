@@ -433,7 +433,38 @@ const Accumulator = struct {
         // const i16Vec = @as(type, @Vector(vecSize(i16), i16));
 
         const output_bucket = whichOutputBucket(board);
+        const c = @cImport(@cInclude("simd.h"));
+        const w = struct {
 
+            // inline i16Vec dpbusd(i16Vec sum, u8Vec u1, i8Vec i1) {}
+            //
+            // inline u8Vec packus(i16Vec a, i16Vec b) {}
+            //
+            // inline i16Vec mulhi(i16Vec a, i16Vec b) {}
+
+            fn dpbusd(
+                sum: @Vector(vecSize(i16), i16),
+                u_1: @Vector(vecSize(u8), u8),
+                i_1: @Vector(vecSize(i8), i8),
+            ) @Vector(vecSize(i16), i16) {
+                return @bitCast(c.dpbusd(@bitCast(sum), @bitCast(u_1), @bitCast(i_1)));
+            }
+
+            fn packus(
+                a: @Vector(vecSize(i16), i16),
+                b: @Vector(vecSize(i16), i16),
+            ) @Vector(vecSize(i16), i16) {
+                return @bitCast(c.packus(@bitCast(a), @bitCast(b)));
+            }
+
+            fn mulhi(
+                a: @Vector(vecSize(i16), i16),
+                b: @Vector(vecSize(i16), i16),
+            ) @Vector(vecSize(i16), i16) {
+                return @bitCast(c.mulhi(@bitCast(a), @bitCast(b)));
+            }
+        };
+        _ = w;
         // accumulators are in 2^8 space
         var activated_ft: [L1_SIZE]u8 = undefined;
         for (0..L1_SIZE / 2) |i| {
