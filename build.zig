@@ -1,4 +1,59 @@
 const std = @import("std");
+const builtin = @import("builtin");
+
+const nnue_arch = @import("src/nnue_arch.zig");
+const Weights = nnue_arch.Weights;
+
+fn UltimateChild(comptime T: type) type {
+    const info = @typeInfo(T);
+
+    switch (info) {
+        inline else => |i| {
+            if (@hasField(@TypeOf(i), "child")) {
+                return UltimateChild(i.child);
+            }
+            return T;
+        },
+    }
+}
+
+fn totalElements(comptime T: type) comptime_int {
+    const info = @typeInfo(T);
+
+    switch (info) {
+        .array => |i| {
+            return i.len * totalElements(i.child);
+        },
+        inline else => |i| {
+            if (!@hasField(@TypeOf(i), "child")) {
+                return 1;
+            }
+            return totalElements(i.child);
+        },
+    }
+}
+
+fn readNet(path: []const u8, allocator: std.mem.Allocator) !*Weights {
+    var file = try std.fs.cwd().openFile(path, .{});
+    var buf: [4096]u8 = undefined;
+    var reader = file.reader(&buf);
+
+    var from_file: *Weights = try allocator.create(Weights);
+    inline for (@typeInfo(Weights).@"struct".fields) |struct_field| {
+        const field_ptr = &@field(from_file, struct_field.name);
+
+        const T = UltimateChild(@TypeOf(field_ptr));
+        const IntT = std.meta.Int(.unsigned, @bitSizeOf(T));
+        const flattened: [*]T = @ptrCast(field_ptr);
+        const num_elems = totalElements(@TypeOf(field_ptr));
+
+        for (0..num_elems) |i| {
+            flattened[i] = @bitCast(try reader.interface.takeInt(IntT, .little));
+        }
+    }
+
+    return from_file;
+}
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -7,9 +62,17 @@ pub fn build(b: *std.Build) !void {
     const runtime_net = b.option(bool, "runtime_net", "whether to exclude the binary from the binary") orelse false;
 
     const net_name = "mixed_data_2048pw.nnue";
+
     const net = b.option([]const u8, "net", "Change the net to be used") orelse blk: {
         break :blk "pawnocchio-nets/networks/" ++ net_name;
     };
+
+    const net_weights = try readNet(net, b.allocator);
+    nnue_arch.permuteNet(net_weights);
+    const permuted_net_writing_step = b.addWriteFiles();
+    const permuted_net_path = permuted_net_writing_step.add("net", std.mem.asBytes(net_weights));
+
+    const net_module = b.createModule(.{ .root_source_file = permuted_net_path });
 
     const dynamic = b.option(bool, "dynamic", "build a dynamic executable") orelse false;
     const static = b.option(bool, "static", "build a static executable") orelse false;
@@ -24,19 +87,13 @@ pub fn build(b: *std.Build) !void {
     if (static) {
         linkage_mode = .static;
     }
-    const emit_symbols = b.option(bool, "emit_symbols", "force debug symbols not to be strippped") orelse false;
+    const emit_symbols = b.option(bool, "emit_symbols", "force debug symbols not to be stripped") orelse false;
     const use_tbs = b.option(bool, "use_tbs", "whether to enable tablebases") orelse true;
     const minimal_executable = switch (optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
     } and !emit_symbols;
-    const net_module = b.createModule(
-        .{
-            .root_source_file = std.Build.LazyPath{
-                .cwd_relative = net, // OB passes the path as an absolute path so this is is the only way
-            },
-        },
-    );
+
     var net_abs_buf: [4096]u8 = undefined;
     const net_absolute = try std.fs.cwd().realpath(net, &net_abs_buf);
 
@@ -52,6 +109,9 @@ pub fn build(b: *std.Build) !void {
         }),
         .linkage = linkage_mode,
     });
+    exe.root_module.addImport("net", net_module);
+    exe.addIncludePath(b.path("src"));
+    exe.step.dependOn(&permuted_net_writing_step.step);
 
     const exe_options = b.addOptions();
     exe_options.addOption(bool, "use_tbs", use_tbs);
@@ -59,6 +119,14 @@ pub fn build(b: *std.Build) !void {
     exe_options.addOption([]const u8, "net_name", net_name);
     exe_options.addOption([]const u8, "net_path", net_absolute);
     exe.root_module.addOptions("build_options", exe_options);
+    exe.addCSourceFile(.{
+        .file = b.path("src/simd.c"),
+        .flags = &.{
+            "-fno-sanitize=undefined",
+            "-O3",
+        },
+        .language = .c,
+    });
     if (use_tbs) {
         exe.addCSourceFile(.{
             .file = b.path("src/Pyrrhic/tbprobe.c"),
@@ -70,7 +138,6 @@ pub fn build(b: *std.Build) !void {
         });
         exe.addIncludePath(b.path("src/Pyrrhic/"));
     }
-    exe.root_module.addImport("net", net_module);
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -96,6 +163,8 @@ pub fn build(b: *std.Build) !void {
     });
     exe_unit_tests.root_module.addImport("net", net_module);
     exe_unit_tests.root_module.addOptions("build_options", test_options);
+    exe_unit_tests.addIncludePath(b.path("src"));
+    exe_unit_tests.step.dependOn(&permuted_net_writing_step.step);
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
     const lib_unit_tests = b.addTest(.{
@@ -107,6 +176,9 @@ pub fn build(b: *std.Build) !void {
     });
     lib_unit_tests.root_module.addImport("net", net_module);
     lib_unit_tests.root_module.addOptions("build_options", test_options);
+    lib_unit_tests.addIncludePath(b.path("src"));
+    lib_unit_tests.step.dependOn(&permuted_net_writing_step.step);
+
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
     const test_step = b.step("test", "run unit tests");

@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 const std = @import("std");
+const builtin = @import("builtin");
 
 const ALIGNMENT = 64;
 pub const Weights = extern struct {
@@ -43,6 +44,69 @@ pub const Weights = extern struct {
     };
 };
 
+const cpu = builtin.cpu;
+pub const IS_AVX512 = cpu.has(.x86, .avx512f);
+pub const IS_AVX2 = cpu.has(.x86, .avx2);
+pub const IS_NEON = cpu.has(.arm, .neon);
+pub const VEC_BYTES = blk: {
+    if (IS_AVX512) {
+        break :blk 64;
+    }
+    if (IS_AVX2) {
+        break :blk 32;
+    }
+    if (IS_NEON) {
+        break :blk 16;
+    }
+    break :blk 1;
+};
+
+pub const PERMUTE_ORDER = blk: {
+    if (IS_AVX512) {
+        break :blk [_]u8{ 0, 2, 4, 6, 1, 3, 5, 7 };
+    }
+    if (IS_AVX2) {
+        break :blk [_]u8{ 0, 2, 1, 3 };
+    }
+    if (IS_NEON) {
+        break :blk [_]u8{0};
+    }
+    break :blk [_]u8{};
+};
+
+pub const NEEDS_PERMUTING = blk: {
+    if (IS_AVX512) {
+        break :blk true;
+    }
+    if (IS_AVX2) {
+        break :blk true;
+    }
+    if (IS_NEON) {
+        break :blk false;
+    }
+    break :blk false;
+};
+
+pub fn permuteNet(net: *Weights) void {
+    if (!NEEDS_PERMUTING) return;
+
+    const PERMUTE_LEN = PERMUTE_ORDER.len;
+
+    const block_size = @sizeOf(@Vector(8, u8));
+
+    inline for (.{ &net.l1w, &net.l1b }) |ptr| {
+        const vecs: [*]@Vector(8, u8) = @ptrCast(ptr);
+
+        var i: usize = 0;
+        while (i < @sizeOf(@TypeOf(ptr.*)) / block_size) : (i += PERMUTE_LEN) {
+            const weights: [PERMUTE_LEN]@Vector(8, u8) = vecs[i..][0..PERMUTE_LEN].*;
+            for (0..PERMUTE_LEN) |j| {
+                vecs[i + j] = weights[PERMUTE_ORDER[j]];
+            }
+        }
+    }
+}
+
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 16;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
@@ -51,6 +115,8 @@ pub const L1_SIZE: usize = 2048;
 pub const L2_SIZE: usize = 16;
 pub const L3_SIZE: usize = 32;
 pub const SCALE = 400;
+pub const QA = 255;
+pub const QB = 64;
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     0,  1,  2,  3,  3,  2,  1,  0,
     4,  5,  6,  7,  7,  6,  5,  4,
