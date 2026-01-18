@@ -18,8 +18,8 @@ const builtin = @import("builtin");
 
 const ALIGNMENT = 64;
 pub const Weights = extern struct {
-    hidden_layer_weights: [L1_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
-    hidden_layer_biases: [L1_SIZE]i16 align(ALIGNMENT),
+    ft_w: [L1_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
+    ft_b: [L1_SIZE]i16 align(ALIGNMENT),
     l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE][L1_SIZE]i8 align(ALIGNMENT),
     l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]f32 align(ALIGNMENT),
     l2w: [OUTPUT_BUCKET_COUNT][L3_SIZE][L2_SIZE]f32 align(ALIGNMENT),
@@ -88,18 +88,21 @@ pub const NEEDS_PERMUTING = blk: {
 };
 
 pub fn permuteNet(net: *Weights) void {
-    if (!NEEDS_PERMUTING) return;
+    if (!NEEDS_PERMUTING or true) return;
 
     const PERMUTE_LEN = PERMUTE_ORDER.len;
 
-    const block_size = @sizeOf(@Vector(8, u8));
+    const Block = @Vector(16, u8);
 
-    inline for (.{ &net.l1w, &net.l1b }) |ptr| {
-        const vecs: [*]@Vector(8, u8) = @ptrCast(ptr);
+    inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
+        const vecs: [*]Block = @ptrCast(ptr);
 
         var i: usize = 0;
-        while (i < @sizeOf(@TypeOf(ptr.*)) / block_size) : (i += PERMUTE_LEN) {
-            const weights: [PERMUTE_LEN]@Vector(8, u8) = vecs[i..][0..PERMUTE_LEN].*;
+        const num_blocks = @sizeOf(@TypeOf(ptr.*)) / @sizeOf(Block);
+
+        while (i < num_blocks) : (i += PERMUTE_LEN) {
+            const weights = vecs[i..][0..PERMUTE_LEN].*;
+
             for (0..PERMUTE_LEN) |j| {
                 vecs[i + j] = weights[PERMUTE_ORDER[j]];
             }

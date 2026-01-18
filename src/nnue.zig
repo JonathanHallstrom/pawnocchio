@@ -96,7 +96,7 @@ pub var weights = if (CAN_VERBATIM_NET) @as(*const Weights, @ptrCast(&verbatim_w
     var backing: Weights = undefined;
 }).backing;
 inline fn hiddenLayerWeightsVector() []const @Vector(vecSize(i16), i16) {
-    return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.hidden_layer_weights))[0 .. weights.hidden_layer_weights.len / vecSize(i16)];
+    return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.ft_w))[0 .. weights.ft_w.len / vecSize(i16)];
 }
 
 const SquarePieceType = struct {
@@ -156,8 +156,8 @@ const Accumulator = struct {
 
     pub inline fn default() Accumulator {
         return .{
-            .white = weights.hidden_layer_biases,
-            .black = weights.hidden_layer_biases,
+            .white = weights.ft_b,
+            .black = weights.ft_b,
             .white_mirrored = .{},
             .black_mirrored = .{},
             .dirty_piece = .{},
@@ -427,103 +427,39 @@ const Accumulator = struct {
         self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
         // if (true)
         //     return 0;
-        const stm_acc = self.vecAccFor(stm);
-        const ntm_acc = self.vecAccFor(stm.flipped());
-        //             vvvvvvvv annotation to help zls
-        const i32Vec = @as(type, @Vector(vecSize(i32), i32));
-        const i16Vec = @as(type, @Vector(vecSize(i16), i16));
-        const i8Vec = @as(type, @Vector(vecSize(i8), i8));
-        const u8Vec = @as(type, @Vector(vecSize(u8), u8));
-
-        // const f32Vec = @as(type, @Vector(vecSize(f32), f32));
+        const stm_acc = if (board.stm == .white) &self.white else &self.black;
+        const ntm_acc = if (board.stm == .white) &self.black else &self.white;
+        // //             vvvvvvvv annotation to help zls
+        // const i16Vec = @as(type, @Vector(vecSize(i16), i16));
 
         const output_bucket = whichOutputBucket(board);
 
-        const c = @cImport(@cInclude("simd.h"));
-        const w = struct {
-
-            // inline i16Vec dpbusd(i16Vec sum, u8Vec u1, i8Vec i1) {}
-            //
-            // inline u8Vec packus(i16Vec a, i16Vec b) {}
-            //
-            // inline i16Vec mulhi(i16Vec a, i16Vec b) {}
-
-            fn dpbusd(
-                sum: i32Vec,
-                u_1: u8Vec,
-                i_1: i8Vec,
-            ) i32Vec {
-                return @bitCast(c.dpbusd(@bitCast(sum), @bitCast(u_1), @bitCast(i_1)));
-            }
-
-            fn packus(
-                a: i16Vec,
-                b: i16Vec,
-            ) u8Vec {
-                return @bitCast(c.packus(@bitCast(a), @bitCast(b)));
-            }
-
-            fn mulhi(
-                a: i16Vec,
-                b: i16Vec,
-            ) i16Vec {
-                return @bitCast(c.mulhi(@bitCast(a), @bitCast(b)));
-            }
-        };
         // accumulators are in 2^8 space
-        const L1_VECS_16 = L1_SIZE / vecSize(i16);
-        const L1_VECS_8 = L1_SIZE / vecSize(u8);
-        var activated_ft: [L1_VECS_8]u8Vec = undefined;
-        {
-            const ZERO: i16Vec = @splat(0);
-            const ONE: i16Vec = @splat(255);
-            for (0..L1_VECS_8 / 2) |o| {
-                const i = 2 * o;
-                const s1: i16Vec = std.math.clamp(stm_acc[i], ZERO, ONE);
-                const s2: i16Vec = @min(stm_acc[i + L1_VECS_16 / 2], ONE);
+        var activated_ft: [L1_SIZE]u8 = undefined;
+        for (0..L1_SIZE / 2) |i| {
+            const s1: u8 = @intCast(std.math.clamp(stm_acc[i], 0, 255));
+            const s2: u8 = @intCast(std.math.clamp(stm_acc[i + L1_SIZE / 2], 0, 255));
 
-                const s3: i16Vec = std.math.clamp(stm_acc[i + 1], ZERO, ONE);
-                const s4: i16Vec = @min(stm_acc[i + 1 + L1_VECS_16 / 2], ONE);
+            const n1: u8 = @intCast(std.math.clamp(ntm_acc[i], 0, 255));
+            const n2: u8 = @intCast(std.math.clamp(ntm_acc[i + L1_SIZE / 2], 0, 255));
 
-                const n1: i16Vec = std.math.clamp(ntm_acc[i], ZERO, ONE);
-                const n2: i16Vec = @min(ntm_acc[i + L1_VECS_16 / 2], ONE);
+            // now activated is in (2^8)^2/(2^9) = 2^7 space
+            activated_ft[i] = @intCast(std.math.clamp(@as(i32, s1) * s2 << 7 >> 16, 0, 255));
+            activated_ft[i + L1_SIZE / 2] = @intCast(std.math.clamp(@as(i32, n1) * n2 << 7 >> 16, 0, 255));
+        }
 
-                const n3: i16Vec = std.math.clamp(ntm_acc[i + 1], ZERO, ONE);
-                const n4: i16Vec = @min(ntm_acc[i + 1 + L1_VECS_16 / 2], ONE);
+        var l1_intermediate: [L2_SIZE]i32 = @splat(0);
+        for (0..L2_SIZE) |j| {
+            for (0..L1_SIZE) |i| {
+                const ft = activated_ft[i];
 
-                const sp1: i16Vec = w.mulhi(s1 << @splat(7), s2);
-                const sp2: i16Vec = w.mulhi(s3 << @splat(7), s4);
-
-                const np1: i16Vec = w.mulhi(n1 << @splat(7), n2);
-                const np2: i16Vec = w.mulhi(n3 << @splat(7), n4);
-
-                // now activated is in (2^8)^2/(2^9) = 2^7 space
-                activated_ft[o] = w.packus(sp1, sp2);
-                activated_ft[o + L1_VECS_8 / 2] = w.packus(np1, np2);
+                l1_intermediate[j] += @as(i32, (&(&(&weights.l1w)[output_bucket])[j])[i]) * ft;
             }
         }
 
-        var l1_intermediate_v: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
-        for (0..L2_SIZE / vecSize(i32)) |l2| {
-            var acc: i32Vec = @splat(0);
-            const activated_i32: [*]const i32 = @ptrCast(&activated_ft);
-            const l1w = &(&(&weights.l1w)[output_bucket])[l2];
-            for (0..L1_SIZE / 4) |i| {
-                const vec: i32Vec = @splat(activated_i32[i]);
-
-                acc = w.dpbusd(
-                    acc,
-                    @bitCast(vec),
-                    l1w[i..][0..vecSize(i8)].*,
-                );
-            }
-            l1_intermediate_v[l2] = acc;
-        }
-
-        const l1_intermediate: [*]i32 = @ptrCast(&l1_intermediate_v);
         var l1_out: [L2_SIZE]f32 = undefined;
         for (0..L2_SIZE) |i| {
-            const dequantised = @as(f32, @floatFromInt(l1_intermediate[i])) * (@as(f32, 1 << 9) / @as(f32, QA * QA * QB));
+            const dequantised = @as(f32, @floatFromInt(l1_intermediate[i])) * (1.0 / @as(f32, 1 << 13));
             const clamped = std.math.clamp(dequantised + (&(&weights.l1b)[output_bucket])[i], 0, 1);
             const activated = clamped * clamped;
             l1_out[i] = activated;

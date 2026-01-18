@@ -35,21 +35,26 @@ fn totalElements(comptime T: type) comptime_int {
 
 fn readNet(path: []const u8, allocator: std.mem.Allocator) !*Weights {
     var file = try std.fs.cwd().openFile(path, .{});
-    var buf: [4096]u8 = undefined;
-    var reader = file.reader(&buf);
+    defer file.close();
+    // var buf: [4096]u8 = undefined;
+    // var reader = file.reader(&buf);
 
-    var from_file: *Weights = try allocator.create(Weights);
-    inline for (@typeInfo(Weights).@"struct".fields) |struct_field| {
-        const field_ptr = &@field(from_file, struct_field.name);
-
-        const T = UltimateChild(@TypeOf(field_ptr));
-        const IntT = std.meta.Int(.unsigned, @bitSizeOf(T));
-        const flattened: [*]T = @ptrCast(field_ptr);
-        const num_elems = totalElements(@TypeOf(field_ptr));
-
-        for (0..num_elems) |i| {
-            flattened[i] = @bitCast(try reader.interface.takeInt(IntT, .little));
-        }
+    const from_file: *Weights = try allocator.create(Weights);
+    _ = try file.readAll(std.mem.asBytes(from_file));
+    if (@import("builtin").cpu.arch.endian() != .little) {
+        // inline for (@typeInfo(Weights).@"struct".fields) |struct_field| {
+        //     const field_ptr = &@field(from_file, struct_field.name);
+        //
+        //     const T = UltimateChild(@TypeOf(field_ptr));
+        //     const IntT = std.meta.Int(.unsigned, @bitSizeOf(T));
+        //     const flattened: [*]T = @ptrCast(field_ptr);
+        //     const num_elems = totalElements(@TypeOf(field_ptr));
+        //
+        //     for (0..num_elems) |i| {
+        //         flattened[i] = @bitCast(@byteSwap(@as(IntT, @bitCast(flattened[i]))));
+        //     }
+        // }
+        return error.TODO;
     }
 
     return from_file;
