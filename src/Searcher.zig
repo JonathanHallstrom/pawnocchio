@@ -846,7 +846,7 @@ fn search(
 
         // null move pruning (nmp)
         if (depth >= 4 and
-            eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
+            eval >= @max(0, beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth) and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull())
