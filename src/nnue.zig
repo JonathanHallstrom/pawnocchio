@@ -443,10 +443,10 @@ const Accumulator = struct {
             // inline i16Vec mulhi(i16Vec a, i16Vec b) {}
 
             fn dpbusd(
-                sum: @Vector(vecSize(i16), i16),
+                sum: @Vector(vecSize(i32), i32),
                 u_1: @Vector(vecSize(u8), u8),
                 i_1: @Vector(vecSize(i8), i8),
-            ) @Vector(vecSize(i16), i16) {
+            ) @Vector(vecSize(i32), i32) {
                 return @bitCast(c.dpbusd(@bitCast(sum), @bitCast(u_1), @bitCast(i_1)));
             }
 
