@@ -40,17 +40,13 @@ pub const QA = arch.QA;
 pub const QB = arch.QB;
 pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
 
-pub const IS_AVX512 = arch.IS_AVX512;
-pub const IS_AVX2 = arch.IS_AVX2;
-pub const IS_NEON = arch.IS_NEON;
-pub const VEC_BYTES = arch.VEC_BYTES;
+pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
 
 fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
 }
 
 const builtin = @import("builtin");
-const CAN_VERBATIM_NET = !build_options.runtime_net;
 const build_options = @import("build_options");
 
 fn madd(
@@ -92,9 +88,8 @@ var mapper: @import("MappedFile.zig") = undefined;
 const net = @embedFile("net");
 const verbatim_weights: [net.len:0]u8 align(64) = net.*;
 
-pub var weights = if (CAN_VERBATIM_NET) @as(*const Weights, @ptrCast(&verbatim_weights)) else if (build_options.runtime_net) @as(*Weights, undefined) else &(struct {
-    var backing: Weights = undefined;
-}).backing;
+pub var weights = @as(*const Weights, @ptrCast(&verbatim_weights));
+
 inline fn hiddenLayerWeightsVector() []const @Vector(vecSize(i16), i16) {
     return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.ft_w))[0 .. weights.ft_w.len / vecSize(i16)];
 }
@@ -579,24 +574,6 @@ fn crelu(x: i32) i32 {
 fn screlu(x: i32) i32 {
     const clamped = std.math.clamp(x, 0, QA);
     return clamped * clamped;
-}
-
-pub fn init() !void {
-    if (build_options.runtime_net) {
-        weights_file = std.fs.openFileAbsolute(build_options.net_path, .{}) catch try std.fs.cwd().openFile(build_options.net_name, .{});
-
-        mapper = .init(weights_file);
-
-        weights = @ptrCast(mapper.data);
-        @import("nnue_arch.zig").permuteNet(weights);
-    }
-}
-
-pub fn deinit() void {
-    if (build_options.runtime_net) {
-        weights_file.close();
-        mapper.deinit();
-    }
 }
 
 pub fn evalPosition(board: *const Board) i16 {

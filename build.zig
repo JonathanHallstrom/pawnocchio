@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) !void {
     };
 
     const net_weights = try readNet(net, b.allocator);
-    nnue_arch.permuteNet(net_weights);
+    nnue_arch.permuteNet(target.result.cpu, net_weights);
     const permuted_net_writing_step = b.addWriteFiles();
     const permuted_net_path = permuted_net_writing_step.add("net", std.mem.asBytes(net_weights));
 

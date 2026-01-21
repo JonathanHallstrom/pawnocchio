@@ -44,58 +44,57 @@ pub const Weights = extern struct {
     };
 };
 
-const cpu = builtin.cpu;
-pub const IS_AVX512 = cpu.has(.x86, .avx512f);
-pub const IS_AVX2 = cpu.has(.x86, .avx2);
-pub const IS_NEON = cpu.has(.arm, .neon);
-pub const VEC_BYTES = blk: {
-    if (IS_AVX512) {
-        break :blk 64;
+pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
+    if (cpu.has(.x86, .avx512f)) {
+        return 64;
     }
-    if (IS_AVX2) {
-        break :blk 32;
+    if (cpu.has(.x86, .avx2)) {
+        return 32;
     }
-    if (IS_NEON) {
-        break :blk 16;
+    if (cpu.has(.arm, .neon)) {
+        return 16;
     }
-    break :blk 1;
-};
+    return 1;
+}
 
-pub const PERMUTE_ORDER = blk: {
-    if (IS_AVX512) {
-        break :blk [_]u8{ 0, 2, 4, 6, 1, 3, 5, 7 };
-    }
-    if (IS_AVX2) {
-        break :blk [_]u8{ 0, 2, 1, 3 };
-    }
-    if (IS_NEON) {
-        break :blk [_]u8{0};
-    }
-    break :blk [_]u8{};
-};
+const LONGEST_PERMUTE_LEN = 8;
 
-pub const NEEDS_PERMUTING = blk: {
-    if (IS_AVX512) {
-        break :blk true;
+pub fn permuteOrder(cpu: std.Target.Cpu) []const u8 {
+    if (cpu.has(.x86, .avx512f)) {
+        return &[_]u8{ 0, 2, 4, 6, 1, 3, 5, 7 };
     }
-    if (IS_AVX2) {
-        break :blk true;
+    if (cpu.has(.x86, .avx2)) {
+        return &[_]u8{ 0, 2, 1, 3 };
     }
-    if (IS_NEON) {
-        break :blk false;
+    if (cpu.has(.arm, .neon)) {
+        return &[_]u8{0};
     }
-    break :blk false;
-};
+    return &[_]u8{};
+}
+
+pub fn needsPermuting(cpu: std.Target.Cpu) bool {
+    if (cpu.has(.x86, .avx512f)) {
+        return true;
+    }
+    if (cpu.has(.x86, .avx2)) {
+        return true;
+    }
+    if (cpu.has(.arm, .neon)) {
+        return false;
+    }
+    return false;
+}
 
 pub fn permuteBuffer(ptr: anytype, order: anytype) void {
     const Block = @Vector(16, u8);
 
-    const vecs: [*]Block = @ptrCast(ptr);
+    const num_blocks = @sizeOf(@TypeOf(ptr.*)) / @sizeOf(Block);
+    const vecs: *[num_blocks]Block = @ptrCast(ptr);
 
     var i: usize = 0;
-    const num_blocks = @sizeOf(@TypeOf(ptr.*)) / @sizeOf(Block);
+    var weights: [LONGEST_PERMUTE_LEN]Block = undefined;
     while (i < num_blocks) : (i += order.len) {
-        const weights = vecs[i..][0..order.len].*;
+        @memcpy(weights[0..order.len], vecs[i..][0..order.len]);
 
         for (0..order.len) |j| {
             vecs[i + j] = weights[order[j]];
@@ -103,11 +102,11 @@ pub fn permuteBuffer(ptr: anytype, order: anytype) void {
     }
 }
 
-pub fn permuteNet(net: *Weights) void {
-    if (!NEEDS_PERMUTING) return;
+pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
+    if (!needsPermuting(cpu)) return;
 
     inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
-        permuteBuffer(ptr, PERMUTE_ORDER);
+        permuteBuffer(ptr, permuteOrder(cpu));
     }
 }
 
