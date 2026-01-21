@@ -64,7 +64,6 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
-    const runtime_net = b.option(bool, "runtime_net", "whether to exclude the binary from the binary") orelse false;
 
     const net_name = "mixed_data_2048pw.nnue";
 
@@ -120,7 +119,6 @@ pub fn build(b: *std.Build) !void {
 
     const exe_options = b.addOptions();
     exe_options.addOption(bool, "use_tbs", use_tbs);
-    exe_options.addOption(bool, "runtime_net", runtime_net);
     exe_options.addOption([]const u8, "net_name", net_name);
     exe_options.addOption([]const u8, "net_path", net_absolute);
     exe.root_module.addOptions("build_options", exe_options);
@@ -148,7 +146,6 @@ pub fn build(b: *std.Build) !void {
     run_step.dependOn(&run_cmd.step);
     const test_options = b.addOptions();
     test_options.addOption(bool, "use_tbs", false);
-    test_options.addOption(bool, "runtime_net", runtime_net);
     test_options.addOption([]const u8, "net_path", net);
 
     const exe_unit_tests = b.addTest(.{
