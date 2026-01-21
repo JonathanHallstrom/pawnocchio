@@ -62,6 +62,9 @@ fn readNet(path: []const u8, allocator: std.mem.Allocator) !*Weights {
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
+    if (!target.result.cpu.has(.x86, .avx512f)) {
+        return error.AVX512_ONLY;
+    }
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
 

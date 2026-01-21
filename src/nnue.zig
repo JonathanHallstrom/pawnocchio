@@ -534,6 +534,7 @@ const Accumulator = struct {
         }
         const l1_intermediate: [*]i32 = @ptrCast(&l1_intermediate_vec);
 
+        @setFloatMode(.optimized);
         var l1_out: [L2_SIZE]f32 = undefined;
         for (0..L2_SIZE) |i| {
             const dequantised = @as(f32, @floatFromInt(l1_intermediate[i])) * (1.0 / @as(f32, 1 << 13));
