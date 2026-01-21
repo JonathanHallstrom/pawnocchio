@@ -425,58 +425,88 @@ const Accumulator = struct {
 
     pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, refresh_cache: anytype) i16 {
         self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
+        std.debug.assert(board.stm == stm);
         // if (true)
         //     return 0;
-        const stm_acc = if (board.stm == .white) &self.white else &self.black;
-        const ntm_acc = if (board.stm == .white) &self.black else &self.white;
+        const stm_acc = self.accFor(stm);
+        const ntm_acc = self.accFor(stm.flipped());
+        // const stm_vec = self.vecAccFor(stm);
+        // const ntm_vec = self.vecAccFor(stm.flipped());
         // //             vvvvvvvv annotation to help zls
-        // const i16Vec = @as(type, @Vector(vecSize(i16), i16));
+        const i8Vec = @as(type, @Vector(vecSize(i8), i8));
+        const i16Vec = @as(type, @Vector(vecSize(i16), i16));
+        const i32Vec = @as(type, @Vector(vecSize(i32), i32));
+        const u8Vec = @as(type, @Vector(vecSize(u8), u8));
+        // const u16Vec = @as(type, @Vector(vecSize(u16), u16));
+        // const u32Vec = @as(type, @Vector(vecSize(u32), u32));
 
         const output_bucket = whichOutputBucket(board);
-        const c = @cImport(@cInclude("simd.h"));
-        const w = struct {
-
-            // inline i16Vec dpbusd(i16Vec sum, u8Vec u1, i8Vec i1) {}
-            //
-            // inline u8Vec packus(i16Vec a, i16Vec b) {}
-            //
-            // inline i16Vec mulhi(i16Vec a, i16Vec b) {}
-
-            fn dpbusd(
-                sum: @Vector(vecSize(i32), i32),
-                u_1: @Vector(vecSize(u8), u8),
-                i_1: @Vector(vecSize(i8), i8),
-            ) @Vector(vecSize(i32), i32) {
-                return @bitCast(c.dpbusd(@bitCast(sum), @bitCast(u_1), @bitCast(i_1)));
-            }
-
-            fn packus(
-                a: @Vector(vecSize(i16), i16),
-                b: @Vector(vecSize(i16), i16),
-            ) @Vector(vecSize(i16), i16) {
-                return @bitCast(c.packus(@bitCast(a), @bitCast(b)));
-            }
-
-            fn mulhi(
-                a: @Vector(vecSize(i16), i16),
-                b: @Vector(vecSize(i16), i16),
-            ) @Vector(vecSize(i16), i16) {
-                return @bitCast(c.mulhi(@bitCast(a), @bitCast(b)));
-            }
-        };
-        _ = w;
         // accumulators are in 2^8 space
         var activated_ft: [L1_SIZE]u8 = undefined;
-        for (0..L1_SIZE / 2) |i| {
-            const s1: u8 = @intCast(std.math.clamp(stm_acc[i], 0, 255));
-            const s2: u8 = @intCast(std.math.clamp(stm_acc[i + L1_SIZE / 2], 0, 255));
 
-            const n1: u8 = @intCast(std.math.clamp(ntm_acc[i], 0, 255));
-            const n2: u8 = @intCast(std.math.clamp(ntm_acc[i + L1_SIZE / 2], 0, 255));
+        const c = struct {
+            const impl = @cImport(@cInclude("simd.h"));
+            fn dpbusd(s: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
+                // var verify: i32Vec = s;
+                // impl.dpbusd_ptr(&verify, &u, &i);
+                const res = impl.dpbusd(s, u, i);
+                // std.debug.assert(std.meta.eql(res, verify));
+                return res;
+            }
+            fn mulhi(a: i16Vec, b: i16Vec) i16Vec {
+                // var verify: i16Vec = undefined;
+                // impl.mulhi_ptr(&a, &b, &verify);
+                const res = impl.mulhi(a, b);
+                // std.debug.assert(std.meta.eql(res, verify));
+                return res;
+            }
+            fn packus(a: i16Vec, b: i16Vec) u8Vec {
+                // var verify: u8Vec = undefined;
+                // impl.packus_ptr(&a, &b, &verify);
+                const res = impl.packus(a, b);
+                // std.debug.assert(std.meta.eql(res, verify));
+                return res;
+            }
+        };
 
-            // now activated is in (2^8)^2/(2^9) = 2^7 space
-            activated_ft[i] = @intCast(@as(i32, s1) * s2 << 7 >> 16);
-            activated_ft[i + L1_SIZE / 2] = @intCast(@as(i32, n1) * n2 << 7 >> 16);
+        {
+            const items_per_iter = vecSize(i16) * 2;
+            var i: usize = 0;
+            const LO: i16Vec = @splat(0);
+            const HI: i16Vec = @splat(255);
+            while (i < L1_SIZE / 2) : (i += items_per_iter) {
+                var s1: i16Vec = stm_acc[i..][0..vecSize(i16)].*;
+                var s2: i16Vec = stm_acc[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+                var s3: i16Vec = stm_acc[i + vecSize(i16) ..][0..vecSize(i16)].*;
+                var s4: i16Vec = stm_acc[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+
+                var n1: i16Vec = ntm_acc[i..][0..vecSize(i16)].*;
+                var n2: i16Vec = ntm_acc[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+                var n3: i16Vec = ntm_acc[i + vecSize(i16) ..][0..vecSize(i16)].*;
+                var n4: i16Vec = ntm_acc[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+
+                s1 = std.math.clamp(s1, LO, HI);
+                s2 = @min(s2, HI);
+                s3 = std.math.clamp(s3, LO, HI);
+                s4 = @min(s4, HI);
+
+                n1 = std.math.clamp(n1, LO, HI);
+                n2 = @min(n2, HI);
+                n3 = std.math.clamp(n3, LO, HI);
+                n4 = @min(n4, HI);
+
+                const sp1 = c.mulhi(s1 << @splat(7), s2);
+                const sp2 = c.mulhi(s3 << @splat(7), s4);
+
+                const np1 = c.mulhi(n1 << @splat(7), n2);
+                const np2 = c.mulhi(n3 << @splat(7), n4);
+
+                const p1: [vecSize(u8)]u8 = c.packus(sp1, sp2);
+                const p2: [vecSize(u8)]u8 = c.packus(np1, np2);
+
+                @memcpy(activated_ft[i..][0..vecSize(i8)], &p1);
+                @memcpy(activated_ft[i + L1_SIZE / 2 ..][0..vecSize(i8)], &p2);
+            }
         }
 
         var l1_intermediate: [L2_SIZE]i32 = @splat(0);

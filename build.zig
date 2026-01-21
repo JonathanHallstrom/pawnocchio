@@ -112,6 +112,7 @@ pub fn build(b: *std.Build) !void {
             .strip = minimal_executable,
             .link_libc = target.result.os.tag == .windows or use_tbs,
         }),
+        .use_llvm = true,
         .linkage = linkage_mode,
     });
     exe.root_module.addImport("net", net_module);

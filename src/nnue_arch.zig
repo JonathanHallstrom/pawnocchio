@@ -104,7 +104,7 @@ pub fn permuteBuffer(ptr: anytype, order: anytype) void {
 }
 
 pub fn permuteNet(net: *Weights) void {
-    if (!NEEDS_PERMUTING or true) return;
+    if (!NEEDS_PERMUTING) return;
 
     inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
         permuteBuffer(ptr, PERMUTE_ORDER);
