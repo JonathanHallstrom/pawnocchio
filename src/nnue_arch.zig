@@ -87,26 +87,27 @@ pub const NEEDS_PERMUTING = blk: {
     break :blk false;
 };
 
+pub fn permuteBuffer(ptr: anytype, order: anytype) void {
+    const Block = @Vector(16, u8);
+
+    const vecs: [*]Block = @ptrCast(ptr);
+
+    var i: usize = 0;
+    const num_blocks = @sizeOf(@TypeOf(ptr.*)) / @sizeOf(Block);
+    while (i < num_blocks) : (i += order.len) {
+        const weights = vecs[i..][0..order.len].*;
+
+        for (0..order.len) |j| {
+            vecs[i + j] = weights[order[j]];
+        }
+    }
+}
+
 pub fn permuteNet(net: *Weights) void {
     if (!NEEDS_PERMUTING or true) return;
 
-    const PERMUTE_LEN = PERMUTE_ORDER.len;
-
-    const Block = @Vector(16, u8);
-
     inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
-        const vecs: [*]Block = @ptrCast(ptr);
-
-        var i: usize = 0;
-        const num_blocks = @sizeOf(@TypeOf(ptr.*)) / @sizeOf(Block);
-
-        while (i < num_blocks) : (i += PERMUTE_LEN) {
-            const weights = vecs[i..][0..PERMUTE_LEN].*;
-
-            for (0..PERMUTE_LEN) |j| {
-                vecs[i + j] = weights[PERMUTE_ORDER[j]];
-            }
-        }
+        permuteBuffer(ptr, PERMUTE_ORDER);
     }
 }
 
