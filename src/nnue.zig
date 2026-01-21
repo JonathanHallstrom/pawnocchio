@@ -475,8 +475,8 @@ const Accumulator = struct {
             const n2: u8 = @intCast(std.math.clamp(ntm_acc[i + L1_SIZE / 2], 0, 255));
 
             // now activated is in (2^8)^2/(2^9) = 2^7 space
-            activated_ft[i] = @intCast(std.math.clamp(@as(i32, s1) * s2 << 7 >> 16, 0, 255));
-            activated_ft[i + L1_SIZE / 2] = @intCast(std.math.clamp(@as(i32, n1) * n2 << 7 >> 16, 0, 255));
+            activated_ft[i] = @intCast(@as(i32, s1) * s2 << 7 >> 16);
+            activated_ft[i + L1_SIZE / 2] = @intCast(@as(i32, n1) * n2 << 7 >> 16);
         }
 
         var l1_intermediate: [L2_SIZE]i32 = @splat(0);
