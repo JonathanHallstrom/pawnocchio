@@ -445,27 +445,41 @@ const Accumulator = struct {
         var activated_ft: [L1_SIZE]u8 = undefined;
 
         const c = struct {
-            const impl = @cImport(@cInclude("simd.h"));
             fn dpbusd(s: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
+                return asm ("vpdpbusd %[i], %[u], %[s]"
+                    : [s] "+x" (s), // Output (Read-Write)
+                    : [u] "x" (u), // Input
+                      [i] "x" (i), // Input
+                );
                 // var verify: i32Vec = s;
                 // impl.dpbusd_ptr(&verify, &u, &i);
-                const res = impl.dpbusd(s, u, i);
+                // const res = impl.dpbusd(s, u, i);
                 // std.debug.assert(std.meta.eql(res, verify));
-                return res;
+                // return res;
             }
             fn mulhi(a: i16Vec, b: i16Vec) i16Vec {
+                return asm ("vpmulhw %[b], %[a], %[ret]"
+                    : [ret] "=x" (-> i16Vec),
+                    : [a] "x" (a),
+                      [b] "x" (b),
+                );
                 // var verify: i16Vec = undefined;
                 // impl.mulhi_ptr(&a, &b, &verify);
-                const res = impl.mulhi(a, b);
+                // const res = impl.mulhi(a, b);
                 // std.debug.assert(std.meta.eql(res, verify));
-                return res;
+                // return res;
             }
             fn packus(a: i16Vec, b: i16Vec) u8Vec {
+                return asm ("vpackuswb %[b], %[a], %[ret]"
+                    : [ret] "=x" (-> u8Vec),
+                    : [a] "x" (a),
+                      [b] "x" (b),
+                );
                 // var verify: u8Vec = undefined;
                 // impl.packus_ptr(&a, &b, &verify);
-                const res = impl.packus(a, b);
+                // const res = impl.packus(a, b);
                 // std.debug.assert(std.meta.eql(res, verify));
-                return res;
+                // return res;
             }
         };
 

@@ -116,7 +116,6 @@ pub fn build(b: *std.Build) !void {
         .linkage = linkage_mode,
     });
     exe.root_module.addImport("net", net_module);
-    exe.addIncludePath(b.path("src"));
     exe.step.dependOn(&permuted_net_writing_step.step);
 
     const exe_options = b.addOptions();
@@ -125,14 +124,6 @@ pub fn build(b: *std.Build) !void {
     exe_options.addOption([]const u8, "net_name", net_name);
     exe_options.addOption([]const u8, "net_path", net_absolute);
     exe.root_module.addOptions("build_options", exe_options);
-    exe.addCSourceFile(.{
-        .file = b.path("src/simd.c"),
-        .flags = &.{
-            "-fno-sanitize=undefined",
-            "-O3",
-        },
-        .language = .c,
-    });
     if (use_tbs) {
         exe.addCSourceFile(.{
             .file = b.path("src/Pyrrhic/tbprobe.c"),
@@ -169,7 +160,6 @@ pub fn build(b: *std.Build) !void {
     });
     exe_unit_tests.root_module.addImport("net", net_module);
     exe_unit_tests.root_module.addOptions("build_options", test_options);
-    exe_unit_tests.addIncludePath(b.path("src"));
     exe_unit_tests.step.dependOn(&permuted_net_writing_step.step);
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
@@ -182,7 +172,6 @@ pub fn build(b: *std.Build) !void {
     });
     lib_unit_tests.root_module.addImport("net", net_module);
     lib_unit_tests.root_module.addOptions("build_options", test_options);
-    lib_unit_tests.addIncludePath(b.path("src"));
     lib_unit_tests.step.dependOn(&permuted_net_writing_step.step);
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
