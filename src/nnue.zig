@@ -437,15 +437,17 @@ const Accumulator = struct {
 
         const output_bucket = whichOutputBucket(board);
         // accumulators are in 2^8 space
-        var activated_ft: [L1_SIZE]u8 = undefined;
+        var activated_ft: [L1_SIZE]u8 align(64) = undefined;
 
         const c = struct {
-            fn dpbusd(s: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
-                return asm ("vpdpbusd %[i], %[u], %[s]"
+            fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
+                var s = sum;
+                asm ("vpdpbusd %[i], %[u], %[s]"
                     : [s] "+x" (s), // Output (Read-Write)
                     : [u] "x" (u), // Input
                       [i] "x" (i), // Input
                 );
+                return s;
                 // var verify: i32Vec = s;
                 // impl.dpbusd_ptr(&verify, &u, &i);
                 // const res = impl.dpbusd(s, u, i);
@@ -518,14 +520,19 @@ const Accumulator = struct {
             }
         }
 
-        var l1_intermediate: [L2_SIZE]i32 = @splat(0);
-        for (0..L2_SIZE) |j| {
-            for (0..L1_SIZE) |i| {
-                const ft = activated_ft[i];
+        var l1_intermediate_vec: [L2_SIZE / vecSize(i32)]i32Vec = @splat(@splat(0));
+        const ft_i32: [*]i32 = @ptrCast(&activated_ft);
+        for (0..L1_SIZE / 4) |i| {
+            const ft = ft_i32[i];
+            const ft_vec32: i32Vec = @splat(ft);
+            const ft_vec: u8Vec = @bitCast(ft_vec32);
+            const w: [*]const i8Vec = @ptrCast(@alignCast((&(&weights.l1w)[output_bucket])[i * 4 * L2_SIZE ..]));
 
-                l1_intermediate[j] += @as(i32, (&(&(&weights.l1w)[output_bucket])[j])[i]) * ft;
+            for (0..L2_SIZE / vecSize(i32)) |j| {
+                l1_intermediate_vec[j] = c.dpbusd(l1_intermediate_vec[j], ft_vec, w[j]);
             }
         }
+        const l1_intermediate: [*]i32 = @ptrCast(&l1_intermediate_vec);
 
         var l1_out: [L2_SIZE]f32 = undefined;
         for (0..L2_SIZE) |i| {
