@@ -139,10 +139,61 @@ pub fn permuteBuffer(ptr: anytype, order: anytype) void {
     }
 }
 
+fn UltimateChild(comptime T: type) type {
+    const info = @typeInfo(T);
+
+    switch (info) {
+        inline else => |i| {
+            if (@hasField(@TypeOf(i), "child")) {
+                return UltimateChild(i.child);
+            }
+            return T;
+        },
+    }
+}
+
+fn totalElements(comptime T: type) comptime_int {
+    const info = @typeInfo(T);
+
+    switch (info) {
+        .array => |i| {
+            return i.len * totalElements(i.child);
+        },
+        inline else => |i| {
+            if (!@hasField(@TypeOf(i), "child")) {
+                return 1;
+            }
+            return totalElements(i.child);
+        },
+    }
+}
+
 pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
     if (needsPermuting(cpu)) {
         inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
             permuteBuffer(ptr, permuteOrder(cpu));
+        }
+    }
+
+    if (cpu.arch.endian() != .little) {
+        inline for (.{
+            &net.ft_w,
+            &net.ft_b,
+            &net.l1w,
+            &net.l1b,
+            &net.l2w,
+            &net.l2b,
+            &net.l3w,
+            &net.l3b,
+        }) |field| {
+            const T = UltimateChild(@TypeOf(field));
+
+            const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
+
+            const p: *[totalElements(@TypeOf(field))]T = @ptrCast(field);
+            for (p) |*e| {
+                e.* = @bitCast(@byteSwap(@as(Int, @bitCast(e.*))));
+            }
         }
     }
 
