@@ -532,18 +532,38 @@ const Accumulator = struct {
             }
         }
 
+        const L2_UNROLL = 4;
         // in Q0² / 2⁹ * Q1
-        var l1_intermediate: [L2_SIZE / vecSize(i32)]i32Vec = @splat(@splat(0));
+        var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
         {
+            const w: [*]const i8 = &(&weights.l1w)[output_bucket];
             const ft_i32: [*]i32 = @ptrCast(&activated_ft);
-            for (0..L1_SIZE / 4) |i| {
-                const ft = ft_i32[i];
-                const ft_vec32: i32Vec = @splat(ft);
-                const ft_vec: u8Vec = @bitCast(ft_vec32);
-                const w: [*]const i8Vec = @ptrCast(@alignCast((&(&weights.l1w)[output_bucket])[i * 4 * L2_SIZE ..]));
+            var i_outer: usize = 0;
+            while (i_outer + L2_UNROLL <= L1_SIZE / 4) : (i_outer += L2_UNROLL) {
+                // [i * 4 * L2_SIZE ..];
 
                 for (0..L2_SIZE / vecSize(i32)) |j| {
-                    l1_intermediate[j] = c.dpbusd(l1_intermediate[j], ft_vec, w[j]);
+                    for (0..L2_UNROLL) |i_inner| {
+                        const i = i_outer + i_inner;
+                        const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
+                        l1_intermediate[j][i_inner] = c.dpbusd(
+                            l1_intermediate[j][i_inner],
+                            ft_vec,
+                            w[i * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
+                        );
+                    }
+                }
+            }
+            while (i_outer < L1_SIZE / 4) : (i_outer += 1) {
+                const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i_outer])));
+
+                for (0..L2_SIZE / vecSize(i32)) |j| {
+                    const i = i_outer;
+                    l1_intermediate[j][0] = c.dpbusd(
+                        l1_intermediate[j][0],
+                        ft_vec,
+                        w[i * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
+                    );
                 }
             }
         }
@@ -556,8 +576,13 @@ const Accumulator = struct {
                 const biases: i32Vec = l1_bias_vec[i];
                 const SHIFT = Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
 
+                var intermediate: i32Vec = @splat(0);
+                for (0..L2_UNROLL) |j| {
+                    intermediate += l1_intermediate[i][j];
+                }
+
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const shifted = l1_intermediate[i] + biases >> @splat(SHIFT);
+                const shifted = intermediate + biases >> @splat(SHIFT);
                 const clamped = clamp(i32Vec, shifted, @splat(0), @splat(arch.Q));
                 const activated = clamped * clamped;
                 l1_out_vec[i] = activated;
