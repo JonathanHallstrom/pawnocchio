@@ -4,35 +4,6 @@ const builtin = @import("builtin");
 const nnue_arch = @import("src/nnue_arch.zig");
 const Weights = nnue_arch.Weights;
 
-fn UltimateChild(comptime T: type) type {
-    const info = @typeInfo(T);
-
-    switch (info) {
-        inline else => |i| {
-            if (@hasField(@TypeOf(i), "child")) {
-                return UltimateChild(i.child);
-            }
-            return T;
-        },
-    }
-}
-
-fn totalElements(comptime T: type) comptime_int {
-    const info = @typeInfo(T);
-
-    switch (info) {
-        .array => |i| {
-            return i.len * totalElements(i.child);
-        },
-        inline else => |i| {
-            if (!@hasField(@TypeOf(i), "child")) {
-                return 1;
-            }
-            return totalElements(i.child);
-        },
-    }
-}
-
 fn readNet(path: []const u8, allocator: std.mem.Allocator) !*Weights {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();

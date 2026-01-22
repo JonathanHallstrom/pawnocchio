@@ -540,8 +540,6 @@ const Accumulator = struct {
             const ft_i32: [*]i32 = @ptrCast(&activated_ft);
             var i_outer: usize = 0;
             while (i_outer + L2_UNROLL <= L1_SIZE / 4) : (i_outer += L2_UNROLL) {
-                // [i * 4 * L2_SIZE ..];
-
                 for (0..L2_SIZE / vecSize(i32)) |j| {
                     for (0..L2_UNROLL) |i_inner| {
                         const i = i_outer + i_inner;
@@ -572,13 +570,13 @@ const Accumulator = struct {
         var l1_out_vec: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
         {
             const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&(&weights.l1b)[output_bucket]));
+            const SHIFT = comptime Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
             for (0..L2_SIZE / vecSize(i32)) |i| {
                 const biases: i32Vec = l1_bias_vec[i];
-                const SHIFT = Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
 
                 var intermediate: i32Vec = @splat(0);
-                for (0..L2_UNROLL) |j| {
-                    intermediate += l1_intermediate[i][j];
+                for (l1_intermediate[i]) |e| {
+                    intermediate += e;
                 }
 
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
