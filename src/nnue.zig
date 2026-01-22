@@ -427,20 +427,42 @@ const Accumulator = struct {
         // const u16Vec = @as(type, @Vector(vecSize(u16), u16));
         // const u32Vec = @as(type, @Vector(vecSize(u32), u32));
 
-        const output_bucket = whichOutputBucket(board);
-        // accumulators are in 2^8 space
-        var activated_ft: [L1_SIZE]u8 align(64) = undefined;
-
         const c = struct {
-            fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
-                var s = sum;
-                asm ("vpdpbusd %[i], %[u], %[s]"
-                    : [s] "+x" (s),
+            fn maddubs(u: u8Vec, i: i8Vec) i16Vec {
+                return asm ("vpmaddubsw %[i], %[u], %[ret]"
+                    : [ret] "=x" (-> i16Vec),
                     : [u] "x" (u),
                       [i] "x" (i),
                 );
-                return s;
             }
+
+            fn maddwd(a: i16Vec, b: i16Vec) i32Vec {
+                return asm ("vpmaddwd %[b], %[a], %[ret]"
+                    : [ret] "=x" (-> i32Vec),
+                    : [a] "x" (a),
+                      [b] "x" (b),
+                );
+            }
+
+            fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
+                if (builtin.cpu.has(.x86, .avx512vnni) and false) {
+                    var s = sum;
+                    asm ("vpdpbusd %[i], %[u], %[s]"
+                        : [s] "+x" (s),
+                        : [u] "x" (u),
+                          [i] "x" (i),
+                    );
+                    return s;
+                } else {
+                    const partial_sums = maddubs(u, i);
+
+                    const ones: i16Vec = @splat(1);
+                    const dot_products = maddwd(partial_sums, ones);
+
+                    return sum + dot_products;
+                }
+            }
+
             fn mulhi(a: i16Vec, b: i16Vec) i16Vec {
                 return asm ("vpmulhw %[b], %[a], %[ret]"
                     : [ret] "=x" (-> i16Vec),
@@ -462,6 +484,9 @@ const Accumulator = struct {
             }
         }.impl;
 
+        const output_bucket = whichOutputBucket(board);
+
+        var activated_ft: [L1_SIZE]u8 align(64) = undefined;
         {
             const items_per_iter = vecSize(i16) * 2;
             var i: usize = 0;
@@ -530,7 +555,6 @@ const Accumulator = struct {
         }
 
         var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast((&weights.l2b)[output_bucket]);
-
         {
             const l1_out: *const [L2_SIZE]i32 = @ptrCast(&l1_out_vec);
             const l2_weight_vec: *const [L2_SIZE][L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l2w)[output_bucket]));
