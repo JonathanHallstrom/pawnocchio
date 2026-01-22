@@ -21,11 +21,35 @@ pub const Weights = extern struct {
     ft_w: [L1_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
     ft_b: [L1_SIZE]i16 align(ALIGNMENT),
     l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 align(ALIGNMENT),
-    l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]f32 align(ALIGNMENT),
-    l2w: [OUTPUT_BUCKET_COUNT][L3_SIZE][L2_SIZE]f32 align(ALIGNMENT),
-    l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(ALIGNMENT),
-    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(ALIGNMENT),
-    l3b: [OUTPUT_BUCKET_COUNT]f32 align(ALIGNMENT),
+    l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]i32 align(ALIGNMENT),
+    l2w: [OUTPUT_BUCKET_COUNT][L3_SIZE * L2_SIZE]i32 align(ALIGNMENT),
+    l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
+    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
+    l3b: [OUTPUT_BUCKET_COUNT]i32 align(ALIGNMENT),
+
+    fn l1wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 {
+        return @ptrCast(&self.l1w);
+    }
+
+    fn l1wDisk(self: *Weights) *align(64) [L1_SIZE][OUTPUT_BUCKET_COUNT][L2_SIZE]i8 {
+        return @ptrCast(&self.l1w);
+    }
+
+    fn l2wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE * L2_SIZE]i8 {
+        return @ptrCast(&self.l2w);
+    }
+
+    fn l2wDisk(self: *Weights) *align(64) [L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i8 {
+        return @ptrCast(&self.l2w);
+    }
+
+    fn l3wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE]i8 {
+        return @ptrCast(&self.l3w);
+    }
+
+    fn l3wDisk(self: *Weights) *align(64) [L3_SIZE][OUTPUT_BUCKET_COUNT]i8 {
+        return @ptrCast(&self.l3w);
+    }
 
     pub const WEIGHT_COUNT = blk: {
         var res = 0;
@@ -85,6 +109,19 @@ pub fn needsPermuting(cpu: std.Target.Cpu) bool {
     return false;
 }
 
+pub fn hasSupportedSimd(cpu: std.Target.Cpu) bool {
+    if (cpu.has(.x86, .avx512f)) {
+        return true;
+    }
+    if (cpu.has(.x86, .avx2)) {
+        return true;
+    }
+    if (cpu.has(.arm, .neon)) {
+        return true;
+    }
+    return false;
+}
+
 pub fn permuteBuffer(ptr: anytype, order: anytype) void {
     const Block = @Vector(16, u8);
 
@@ -103,10 +140,70 @@ pub fn permuteBuffer(ptr: anytype, order: anytype) void {
 }
 
 pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
-    if (!needsPermuting(cpu)) return;
+    if (needsPermuting(cpu)) {
+        inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
+            permuteBuffer(ptr, permuteOrder(cpu));
+        }
+    }
 
-    inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
-        permuteBuffer(ptr, permuteOrder(cpu));
+    // permute l1w for dpbusd
+    {
+        // [L1_SIZE][OUTPUT_BUCKET_COUNT][L2_SIZE]i8
+        const l1w_disk = net.l1wDisk().*;
+
+        // [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8
+        const l1w_inf = net.l1wInference();
+
+        if (hasSupportedSimd(cpu)) {
+            for (0..OUTPUT_BUCKET_COUNT) |ob| {
+                for (0..L1_SIZE / 4) |i| {
+                    for (0..L2_SIZE) |j| {
+                        for (0..4) |k| {
+                            l1w_inf[ob][i * 4 * L2_SIZE + j * 4 + k] = l1w_disk[i * 4 + k][ob][j];
+                        }
+                    }
+                }
+            }
+        } else {
+            for (0..OUTPUT_BUCKET_COUNT) |ob| {
+                for (0..L1_SIZE) |i| {
+                    for (0..L2_SIZE) |j| {
+                        l1w_inf[ob][i * L2_SIZE + j] = l1w_disk[i][ob][j];
+                    }
+                }
+            }
+        }
+    }
+
+    // transpose l2w
+    {
+        // [L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32
+        const l2w_disk = net.l2wDisk().*;
+
+        // [OUTPUT_BUCKET_COUNT][L3_SIZE * L2_SIZE]i32
+        const l2w_inf = net.l2wInference();
+
+        for (0..OUTPUT_BUCKET_COUNT) |ob| {
+            for (0..L2_SIZE) |i| {
+                for (0..L3_SIZE) |j| {
+                    l2w_inf[ob][i * L3_SIZE + j] = l2w_disk[i][ob][j];
+                }
+            }
+        }
+    }
+    // transpose l2w
+    {
+        // [L3_SIZE][OUTPUT_BUCKET_COUNT]i32
+        const l3w_disk = net.l3wDisk().*;
+
+        // [OUTPUT_BUCKET_COUNT][L3_SIZE]i32
+        const l3w_inf = net.l3wInference();
+
+        for (0..OUTPUT_BUCKET_COUNT) |ob| {
+            for (0..L3_SIZE) |i| {
+                l3w_inf[ob][i] = l3w_disk[i][ob];
+            }
+        }
     }
 }
 
@@ -118,8 +215,9 @@ pub const L1_SIZE: usize = 2048;
 pub const L2_SIZE: usize = 16;
 pub const L3_SIZE: usize = 32;
 pub const SCALE = 400;
-pub const QA = 255;
-pub const QB = 64;
+pub const Q0 = 255;
+pub const Q1 = 128;
+pub const Q = 64;
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     0,  1,  2,  3,  3,  2,  1,  0,
     4,  5,  6,  7,  7,  6,  5,  4,
