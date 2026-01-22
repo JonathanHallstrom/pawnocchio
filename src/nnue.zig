@@ -36,8 +36,12 @@ pub const L1_SIZE = arch.L1_SIZE;
 pub const L2_SIZE = arch.L2_SIZE;
 pub const L3_SIZE = arch.L3_SIZE;
 pub const SCALE = arch.SCALE;
-pub const QA = arch.Q0;
-pub const QB = arch.Q1;
+pub const Q = arch.Q;
+pub const Q0 = arch.Q0;
+pub const Q1 = arch.Q1;
+pub const Q_BITS = std.math.log2_int_ceil(u32, Q);
+pub const Q0_BITS = std.math.log2_int_ceil(u32, Q0);
+pub const Q1_BITS = std.math.log2_int_ceil(u32, Q1);
 pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
 
 pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
@@ -486,6 +490,7 @@ const Accumulator = struct {
 
         const output_bucket = whichOutputBucket(board);
 
+        // in Q0² / 2⁹
         var activated_ft: [L1_SIZE]u8 align(64) = undefined;
         {
             const items_per_iter = vecSize(i16) * 2;
@@ -527,6 +532,7 @@ const Accumulator = struct {
             }
         }
 
+        // in Q0² / 2⁹ * Q1
         var l1_intermediate: [L2_SIZE / vecSize(i32)]i32Vec = @splat(@splat(0));
         {
             const ft_i32: [*]i32 = @ptrCast(&activated_ft);
@@ -542,18 +548,23 @@ const Accumulator = struct {
             }
         }
 
+        // in Q²
         var l1_out_vec: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
         {
             const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&(&weights.l1b)[output_bucket]));
             for (0..L2_SIZE / vecSize(i32)) |i| {
-                const shifted = l1_intermediate[i] >> @splat(7 + std.math.log2_int(u32, arch.Q1) - std.math.log2_int(u32, arch.Q));
                 const biases: i32Vec = l1_bias_vec[i];
-                const clamped = clamp(i32Vec, shifted + biases, @splat(0), @splat(arch.Q));
+                const SHIFT = Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
+
+                // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
+                const shifted = l1_intermediate[i] + biases >> @splat(SHIFT);
+                const clamped = clamp(i32Vec, shifted, @splat(0), @splat(arch.Q));
                 const activated = clamped * clamped;
                 l1_out_vec[i] = activated;
             }
         }
 
+        // in Q³
         var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast((&weights.l2b)[output_bucket]);
         {
             const l1_out: *const [L2_SIZE]i32 = @ptrCast(&l1_out_vec);
@@ -566,6 +577,7 @@ const Accumulator = struct {
             }
         }
 
+        // in Q⁴
         var l3_sum: i32Vec = @splat(0);
         {
             const l3_weight_vec: *const [L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l3w)[output_bucket]));
@@ -586,15 +598,6 @@ pub const State = Accumulator;
 
 pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State, refresh_cache: anytype) i16 {
     return eval_state.forward(stm, board, refresh_cache);
-}
-
-fn crelu(x: i32) i32 {
-    return std.math.clamp(x, 0, QA);
-}
-
-fn screlu(x: i32) i32 {
-    const clamped = std.math.clamp(x, 0, QA);
-    return clamped * clamped;
 }
 
 pub fn evalPosition(board: *const Board) i16 {

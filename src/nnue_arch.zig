@@ -191,7 +191,7 @@ pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
             }
         }
     }
-    // transpose l2w
+    // transpose l3w
     {
         // [L3_SIZE][OUTPUT_BUCKET_COUNT]i32
         const l3w_disk = net.l3wDisk().*;
