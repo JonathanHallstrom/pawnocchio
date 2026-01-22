@@ -423,6 +423,7 @@ const Accumulator = struct {
         const i8Vec = @as(type, @Vector(vecSize(i8), i8));
         const i16Vec = @as(type, @Vector(vecSize(i16), i16));
         const i32Vec = @as(type, @Vector(vecSize(i32), i32));
+        const f32Vec = @as(type, @Vector(vecSize(f32), f32));
         const u8Vec = @as(type, @Vector(vecSize(u8), u8));
         // const u16Vec = @as(type, @Vector(vecSize(u16), u16));
         // const u32Vec = @as(type, @Vector(vecSize(u32), u32));
@@ -542,43 +543,44 @@ const Accumulator = struct {
             }
         }
 
-        var l1_out_vec: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
+        var l1_out_vec: [L2_SIZE / vecSize(f32)]f32Vec = undefined;
         {
-            const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&(&weights.l1b)[output_bucket]));
-            for (0..L2_SIZE / vecSize(i32)) |i| {
-                const shifted = l1_intermediate[i] >> @splat(7 + std.math.log2_int(u32, arch.Q1) - std.math.log2_int(u32, arch.Q));
-                const biases: i32Vec = l1_bias_vec[i];
-                const clamped = clamp(i32Vec, shifted + biases, @splat(0), @splat(arch.Q));
+            const l1_bias_vec: [*]const f32Vec = @ptrCast(@alignCast(&(&weights.l1b)[output_bucket]));
+            for (0..L2_SIZE / vecSize(f32)) |i| {
+                const converted: f32Vec = @floatFromInt(l1_intermediate[i]);
+                const shifted = converted * @as(f32Vec, @splat(1.0 / @as(f32, 1 << 14)));
+                const biases: f32Vec = l1_bias_vec[i];
+                const clamped = clamp(f32Vec, shifted + biases, @splat(0.0), @splat(1.0));
                 const activated = clamped * clamped;
                 l1_out_vec[i] = activated;
             }
         }
 
-        var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast((&weights.l2b)[output_bucket]);
+        var l2_intermediate: [L3_SIZE / vecSize(f32)]f32Vec = @bitCast((&weights.l2b)[output_bucket]);
         {
-            const l1_out: *const [L2_SIZE]i32 = @ptrCast(&l1_out_vec);
-            const l2_weight_vec: *const [L2_SIZE][L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l2w)[output_bucket]));
+            const l1_out: *const [L2_SIZE]f32 = @ptrCast(&l1_out_vec);
+            const l2_weight_vec: *const [L2_SIZE][L3_SIZE / vecSize(f32)]f32Vec = @ptrCast(@alignCast(&(&weights.l2w)[output_bucket]));
             for (0..L2_SIZE) |i| {
-                const l1_vec: i32Vec = @splat(l1_out[i]);
-                for (0..L3_SIZE / vecSize(i32)) |j| {
+                const l1_vec: f32Vec = @splat(l1_out[i]);
+                for (0..L3_SIZE / vecSize(f32)) |j| {
                     l2_intermediate[j] += l1_vec * (&l2_weight_vec[i])[j];
                 }
             }
         }
 
-        var l3_sum: i32Vec = @splat(0);
+        var l3_sum: f32Vec = @splat(0);
         {
-            const l3_weight_vec: *const [L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l3w)[output_bucket]));
-            for (0..L3_SIZE / vecSize(i32)) |i| {
-                const activated = clamp(i32Vec, l2_intermediate[i], @splat(0), @splat(arch.Q * arch.Q * arch.Q));
+            const l3_weight_vec: *const [L3_SIZE / vecSize(f32)]f32Vec = @ptrCast(@alignCast(&(&weights.l3w)[output_bucket]));
+            for (0..L3_SIZE / vecSize(f32)) |i| {
+                const activated = clamp(f32Vec, l2_intermediate[i], @splat(0.0), @splat(1.0));
                 l3_sum += activated * l3_weight_vec[i];
             }
         }
 
         const bias = (&weights.l3b)[output_bucket];
-        const scaled = (@reduce(.Add, l3_sum) + bias) * SCALE;
+        const result: i32 = @intFromFloat((@reduce(.Add, l3_sum) + bias) * SCALE);
 
-        return evaluation.clampScore(@divTrunc(scaled, arch.Q * arch.Q * arch.Q * arch.Q));
+        return evaluation.clampScore(result);
     }
 };
 

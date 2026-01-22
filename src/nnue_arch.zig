@@ -21,11 +21,11 @@ pub const Weights = extern struct {
     ft_w: [L1_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
     ft_b: [L1_SIZE]i16 align(ALIGNMENT),
     l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 align(ALIGNMENT),
-    l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]i32 align(ALIGNMENT),
-    l2w: [OUTPUT_BUCKET_COUNT][L3_SIZE * L2_SIZE]i32 align(ALIGNMENT),
-    l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
-    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
-    l3b: [OUTPUT_BUCKET_COUNT]i32 align(ALIGNMENT),
+    l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]f32 align(ALIGNMENT),
+    l2w: [OUTPUT_BUCKET_COUNT][L3_SIZE * L2_SIZE]f32 align(ALIGNMENT),
+    l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(ALIGNMENT),
+    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(ALIGNMENT),
+    l3b: [OUTPUT_BUCKET_COUNT]f32 align(ALIGNMENT),
 
     fn l1wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 {
         return @ptrCast(&self.l1w);
@@ -35,19 +35,19 @@ pub const Weights = extern struct {
         return @ptrCast(&self.l1w);
     }
 
-    fn l2wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE * L2_SIZE]i32 {
+    fn l2wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE * L2_SIZE]f32 {
         return @ptrCast(&self.l2w);
     }
 
-    fn l2wDisk(self: *Weights) *align(64) [L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
+    fn l2wDisk(self: *Weights) *align(64) [L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]f32 {
         return @ptrCast(&self.l2w);
     }
 
-    fn l3wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
+    fn l3wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 {
         return @ptrCast(&self.l3w);
     }
 
-    fn l3wDisk(self: *Weights) *align(64) [L3_SIZE][OUTPUT_BUCKET_COUNT]i32 {
+    fn l3wDisk(self: *Weights) *align(64) [L3_SIZE][OUTPUT_BUCKET_COUNT]f32 {
         return @ptrCast(&self.l3w);
     }
 
@@ -191,7 +191,7 @@ pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
             }
         }
     }
-    // transpose l2w
+    // transpose l3w
     {
         // [L3_SIZE][OUTPUT_BUCKET_COUNT]i32
         const l3w_disk = net.l3wDisk().*;
@@ -214,7 +214,7 @@ pub const INPUT_SIZE: usize = 768;
 pub const L1_SIZE: usize = 2048;
 pub const L2_SIZE: usize = 16;
 pub const L3_SIZE: usize = 32;
-pub const SCALE: i64 = 400;
+pub const SCALE = 400;
 pub const Q0 = 255;
 pub const Q1 = 128;
 pub const Q = 64;
