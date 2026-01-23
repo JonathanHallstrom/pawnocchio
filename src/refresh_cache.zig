@@ -24,7 +24,7 @@ const Colour = root.Colour;
 const nnue = @import("nnue.zig");
 
 const NNCacheEntry = struct {
-    accumulator: [nnue.HIDDEN_SIZE]i16,
+    accumulator: [nnue.L1_SIZE]i16,
     pieces: [6]u64,
     sides: [2]u64,
 
@@ -58,33 +58,33 @@ const NNCacheEntry = struct {
             }
         }
         while (num_adds >= 4) : (num_adds -= 4) {
-            for (0..nnue.HIDDEN_SIZE) |i| {
+            for (0..nnue.L1_SIZE) |i| {
                 self.accumulator[i] +=
-                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 4] * nnue.HIDDEN_SIZE + i] +
-                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 3] * nnue.HIDDEN_SIZE + i] +
-                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 2] * nnue.HIDDEN_SIZE + i] +
-                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
+                    (&nnue.weights.ft_w)[adds[num_adds - 4] * nnue.L1_SIZE + i] +
+                    (&nnue.weights.ft_w)[adds[num_adds - 3] * nnue.L1_SIZE + i] +
+                    (&nnue.weights.ft_w)[adds[num_adds - 2] * nnue.L1_SIZE + i] +
+                    (&nnue.weights.ft_w)[adds[num_adds - 1] * nnue.L1_SIZE + i];
             }
         }
         while (num_adds >= 1) : (num_adds -= 1) {
-            for (0..nnue.HIDDEN_SIZE) |i| {
+            for (0..nnue.L1_SIZE) |i| {
                 self.accumulator[i] +=
-                    (&nnue.weights.hidden_layer_weights)[adds[num_adds - 1] * nnue.HIDDEN_SIZE + i];
+                    (&nnue.weights.ft_w)[adds[num_adds - 1] * nnue.L1_SIZE + i];
             }
         }
         while (num_subs >= 4) : (num_subs -= 4) {
-            for (0..nnue.HIDDEN_SIZE) |i| {
+            for (0..nnue.L1_SIZE) |i| {
                 self.accumulator[i] -=
-                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 4] * nnue.HIDDEN_SIZE + i] +
-                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 3] * nnue.HIDDEN_SIZE + i] +
-                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 2] * nnue.HIDDEN_SIZE + i] +
-                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
+                    (&nnue.weights.ft_w)[subs[num_subs - 4] * nnue.L1_SIZE + i] +
+                    (&nnue.weights.ft_w)[subs[num_subs - 3] * nnue.L1_SIZE + i] +
+                    (&nnue.weights.ft_w)[subs[num_subs - 2] * nnue.L1_SIZE + i] +
+                    (&nnue.weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
             }
         }
         while (num_subs >= 1) : (num_subs -= 1) {
-            for (0..nnue.HIDDEN_SIZE) |i| {
+            for (0..nnue.L1_SIZE) |i| {
                 self.accumulator[i] -=
-                    (&nnue.weights.hidden_layer_weights)[subs[num_subs - 1] * nnue.HIDDEN_SIZE + i];
+                    (&nnue.weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
             }
         }
         self.pieces = board.pieces;
@@ -105,7 +105,7 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             for (&self.data) |*stm| {
                 for (stm) |*subarray| {
                     for (subarray) |*e| {
-                        @memcpy(&e.accumulator, &nnue.weights.hidden_layer_biases);
+                        @memcpy(&e.accumulator, &nnue.weights.ft_b);
                         @memset(&e.pieces, 0);
                         @memset(&e.sides, 0);
                     }
