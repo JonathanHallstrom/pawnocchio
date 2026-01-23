@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "Change the name of the binary") orelse "pawnocchio";
 
-    const net_name = "mixed_data_2048pw_ml_int.nnue";
+    const net_name = "mixed_data_dualact.nnue";
 
     const net = b.option([]const u8, "net", "Change the net to be used") orelse blk: {
         break :blk "pawnocchio-nets/networks/" ++ net_name;
