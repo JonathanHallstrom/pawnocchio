@@ -543,18 +543,6 @@ const Accumulator = struct {
 
             var i_outer: usize = 0;
 
-            // const global = struct {
-            //     var nonzero: usize = 0;
-            //     var total: usize = 0;
-            // };
-            //
-            // global.nonzero += num_nonzero_indices;
-            // global.total += nonzero_indices.len;
-            //
-            // if (global.nonzero % 1024 == 0) {
-            //     std.debug.print("{d:.4}\n", .{@as(f64, @floatFromInt(global.nonzero)) / @as(f64, @floatFromInt(global.total))});
-            // }
-
             while (i_outer + L2_UNROLL <= num_nonzero_indices) : (i_outer += L2_UNROLL) {
                 for (0..L2_SIZE / vecSize(i32)) |j| {
                     for (0..L2_UNROLL) |i_inner| {
