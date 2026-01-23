@@ -25,18 +25,17 @@ const nnue = @import("nnue.zig");
 const L1_SIZE = nnue.L1_SIZE;
 
 const NONZERO_INDICES = blk: {
-    var res: [256]struct { @Vector(8, u16), u16 } = @splat(.{ @splat(0), 0 });
+    var res: [256]@Vector(8, u16) = @splat(@splat(0));
 
     @setEvalBranchQuota(256 * 8 * 2);
     for (0..256) |i| {
         var count = 0;
         for (0..8) |j| {
             if (i & 1 << j != 0) {
-                res[i].@"0"[count] = j;
+                res[i][count] = j;
                 count += 1;
             }
         }
-        res[i].@"1" = count;
     }
     break :blk res;
 };
@@ -65,14 +64,12 @@ pub inline fn findNonZeroIndices(
         inline for (0..nnue.vecSize(i32) / 8) |j| {
             const byte = mask >> (8 * j) & 0xff;
 
-            const mask_indices, const mask_count = NONZERO_INDICES[byte];
+            const mask_indices = NONZERO_INDICES[byte];
 
             const actual_indices: [8]u16 = mask_indices + base;
             @memcpy(indices[count..][0..8], &actual_indices);
 
-            std.debug.assert(mask_count == @popCount(byte));
-
-            count += mask_count;
+            count += @popCount(byte);
             base += @splat(8);
         }
     }
