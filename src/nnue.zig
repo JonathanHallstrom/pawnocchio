@@ -46,7 +46,7 @@ pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
 
 pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
 
-fn vecSize(comptime T: type) comptime_int {
+pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
 }
 
@@ -538,11 +538,15 @@ const Accumulator = struct {
         {
             const w: [*]const i8 = &(&weights.l1w)[output_bucket];
             const ft_i32: [*]i32 = @ptrCast(&activated_ft);
+
+            const nonzero_indices, const num_nonzero_indices = @import("sparse.zig").findNonZeroIndices(&activated_ft);
+
             var i_outer: usize = 0;
-            while (i_outer + L2_UNROLL <= L1_SIZE / 4) : (i_outer += L2_UNROLL) {
+
+            while (i_outer + L2_UNROLL <= num_nonzero_indices) : (i_outer += L2_UNROLL) {
                 for (0..L2_SIZE / vecSize(i32)) |j| {
                     for (0..L2_UNROLL) |i_inner| {
-                        const i = i_outer + i_inner;
+                        const i = nonzero_indices[i_outer + i_inner];
                         const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
                         l1_intermediate[j][i_inner] = c.dpbusd(
                             l1_intermediate[j][i_inner],
@@ -552,11 +556,11 @@ const Accumulator = struct {
                     }
                 }
             }
-            while (i_outer < L1_SIZE / 4) : (i_outer += 1) {
-                const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i_outer])));
+            while (i_outer < num_nonzero_indices) : (i_outer += 1) {
+                const i = nonzero_indices[i_outer];
+                const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
 
                 for (0..L2_SIZE / vecSize(i32)) |j| {
-                    const i = i_outer;
                     l1_intermediate[j][0] = c.dpbusd(
                         l1_intermediate[j][0],
                         ft_vec,
