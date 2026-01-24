@@ -610,10 +610,13 @@ const Accumulator = struct {
         // in Q⁴
         var l3_sum: i32Vec = @splat(0);
         {
-            const l3_weight_vec: *const [L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l3w)[output_bucket]));
+            const l3_weight_vec: *const [2 * L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l3w)[output_bucket]));
             for (0..L3_SIZE / vecSize(i32)) |i| {
-                const activated = clamp(i32Vec, l2_intermediate[i], @splat(0), @splat(arch.Q * arch.Q * arch.Q));
-                l3_sum += activated * l3_weight_vec[i];
+                const one = arch.Q * arch.Q * arch.Q;
+                const activated1 = clamp(i32Vec, l2_intermediate[i], @splat(0), @splat(one));
+                const activated2 = clamp(i32Vec, l2_intermediate[i] + @as(i32Vec, @splat(4 * one)) >> @splat(3), @splat(0), @splat(one));
+                l3_sum += activated1 * l3_weight_vec[i];
+                l3_sum += activated2 * l3_weight_vec[i + L3_SIZE / vecSize(i32)];
             }
         }
 

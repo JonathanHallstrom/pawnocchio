@@ -24,7 +24,7 @@ pub const Weights = extern struct {
     l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]i32 align(ALIGNMENT),
     l2w: [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32 align(ALIGNMENT),
     l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
-    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
+    l3w: [OUTPUT_BUCKET_COUNT][2 * L3_SIZE]i32 align(ALIGNMENT),
     l3b: [OUTPUT_BUCKET_COUNT]i32 align(ALIGNMENT),
 
     fn l1wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 {
@@ -43,11 +43,11 @@ pub const Weights = extern struct {
         return @ptrCast(&self.l2w);
     }
 
-    fn l3wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
+    fn l3wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][2 * L3_SIZE]i32 {
         return @ptrCast(&self.l3w);
     }
 
-    fn l3wDisk(self: *Weights) *align(64) [L3_SIZE][OUTPUT_BUCKET_COUNT]i32 {
+    fn l3wDisk(self: *Weights) *align(64) [2 * L3_SIZE][OUTPUT_BUCKET_COUNT]i32 {
         return @ptrCast(&self.l3w);
     }
 
@@ -251,7 +251,7 @@ pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
         const l3w_inf = net.l3wInference();
 
         for (0..OUTPUT_BUCKET_COUNT) |ob| {
-            for (0..L3_SIZE) |i| {
+            for (0..2 * L3_SIZE) |i| {
                 l3w_inf[ob][i] = l3w_disk[i][ob];
             }
         }
