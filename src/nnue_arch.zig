@@ -134,7 +134,7 @@ pub fn permuteBuffer(ptr: anytype, order: anytype) void {
         @memcpy(weights[0..order.len], vecs[i..][0..order.len]);
 
         for (0..order.len) |j| {
-            vecs[i + j] = weights[order[j]];
+            vecs[i + j] = (&weights)[order[j]];
         }
     }
 }
@@ -242,6 +242,7 @@ pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
             }
         }
     }
+
     // transpose l3w
     {
         // [L3_SIZE][OUTPUT_BUCKET_COUNT]i32
