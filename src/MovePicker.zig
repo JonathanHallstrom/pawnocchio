@@ -148,14 +148,7 @@ inline fn findBest(noalias self: *MovePicker) usize {
 fn noisyValue(self: MovePicker, move: Move) i32 {
     var res: i32 = 0;
 
-    // if (self.board.isPromo(move)) {
-    //     res += SEE.value(move.promoType());
-    // }
-    if (self.board.pieceOn(move.to())) |captured_type| {
-        res += SEE.value(captured_type, .ordering);
-    } else if (self.board.isEnPassant(move)) {
-        res += SEE.value(.pawn, .ordering);
-    }
+    res += SEE.value(self.board.pieceOn(move.to()) orelse .pawn, .ordering);
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += self.histories.readNoisy(self.board, move);
 
