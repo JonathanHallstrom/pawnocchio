@@ -889,6 +889,36 @@ fn search(
                 }
             }
         }
+        const previous_move_destination = cur.move.move.to();
+
+        const prev_move_dest_bb = previous_move_destination.toBitboard();
+        const margin = 100 + 50 * depth;
+        // we can recapture
+        if (depth <= 5 and
+            eval - margin >= beta and
+            prev_move_dest_bb & (&board.threats)[stm.toInt()] != 0)
+        {
+            var moves = movegen.MoveListReceiver{};
+
+            inline for (.{
+                movegen.generatePawnNoisies,
+                movegen.generateKnightNoisies,
+                movegen.generateSliderNoisies,
+            }) |f| {
+                moves.vals.len = 0;
+                f(stm, board, prev_move_dest_bb, &moves);
+
+                for (moves.vals.slice()) |move| {
+                    if (!board.isLegal(stm, move)) {
+                        continue;
+                    }
+
+                    if (SEE.scoreMove(board, move, beta - eval, .pruning)) {
+                        return eval;
+                    }
+                }
+            }
+        }
     }
 
     const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
@@ -917,6 +947,7 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
