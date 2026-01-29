@@ -32,7 +32,6 @@ var current_num_threads: usize align(std.atomic.cache_line) = 0; // 0 for uninit
 pub var searchers: []*align(MAX_ALIGN) Searcher align(std.atomic.cache_line) = &.{};
 var done_searching_mutex: std.Thread.Mutex = .{};
 var done_searching_cv: std.Thread.Condition = .{};
-var needs_full_reset: bool = true; // should be set to true when starting a new game, used to tell threads they need to clear their histories
 pub var tt: []align(MAX_ALIGN) root.TTCluster = &.{};
 
 pub var debug_stats_lock: std.Thread.Mutex = .{};
@@ -44,22 +43,25 @@ pub const SearchSettings = struct {
     quiet: bool = false,
 };
 
-fn resetTT() void {
+fn resetState(comptime mode: enum { tt, searchers, both }) void {
     const reset_worker = struct {
-        fn impl(start: usize, end: usize) void {
-            @memset(tt[start..end], .{});
+        fn impl(start: usize, end: usize, i: usize) void {
+            if (mode != .searchers)
+                @memset(tt[start..end], .{});
+            if (mode != .tt)
+                @memset(std.mem.asBytes(searchers[i]), 0);
         }
     }.impl;
 
     if (current_num_threads <= 1) {
-        @memset(tt, .{});
+        reset_worker(0, tt.len, 0);
     } else {
         var wg = std.Thread.WaitGroup{};
         const amt_per_thread = (tt.len + current_num_threads - 1) / current_num_threads;
         var start: usize = 0;
         var end: usize = amt_per_thread;
-        for (0..current_num_threads) |_| {
-            thread_pool.spawnWg(&wg, reset_worker, .{ start, end });
+        for (0..current_num_threads) |i| {
+            thread_pool.spawnWg(&wg, reset_worker, .{ start, end, i });
             start = end;
             end = @min(end + amt_per_thread, tt.len);
         }
@@ -68,8 +70,7 @@ fn resetTT() void {
 }
 
 pub fn reset() void {
-    resetTT();
-    needs_full_reset = true;
+    resetState(.both);
 }
 
 fn adviseHugePages(p: anytype) !void {
@@ -85,7 +86,7 @@ fn adviseHugePages(p: anytype) !void {
 pub fn setTTSize(new_size: usize) !void {
     tt = try std.heap.page_allocator.realloc(tt, @intCast(new_size * @as(u128, 1 << 20) / @sizeOf(root.TTCluster)));
     try adviseHugePages(tt);
-    resetTT();
+    resetState(.tt);
 }
 
 pub fn setThreadCount(thread_count: usize) !void {
@@ -111,7 +112,7 @@ pub fn setThreadCount(thread_count: usize) !void {
                 try adviseHugePages(s.*[0..1]);
             }
         }
-        needs_full_reset = true;
+        resetState(.searchers);
     }
 }
 
@@ -157,7 +158,6 @@ pub fn printDebugStats() void {
 }
 
 pub fn init() !void {
-    reset();
     try setTTSize(16);
     try setThreadCount(1);
     debug_stats = .init(std.heap.page_allocator); // yes its inefficient no i don't care
@@ -175,9 +175,6 @@ pub fn deinit() void {
 }
 
 fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {
-    if (needs_full_reset) {
-        @memset(std.mem.asBytes(searchers[i]), 0);
-    }
     searchers[i].tt = tt;
     searchers[i].startSearch(settings, i == 0, quiet);
     _ = num_finished_threads.fetchAdd(1, .seq_cst);
@@ -197,12 +194,9 @@ pub fn startSearch(settings: SearchSettings) void {
     num_finished_threads.store(0, .seq_cst);
     is_searching.store(true, .seq_cst);
     stop_searching.store(false, .seq_cst);
-    var search_params = settings.search_params;
-    search_params.needs_full_reset = needs_full_reset;
     for (0..current_num_threads) |i| {
-        thread_pool.spawn(searchWorker, .{ i, search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
+        thread_pool.spawn(searchWorker, .{ i, settings.search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
     }
-    needs_full_reset = false; // don't clear state unnecessarily
 }
 
 const DatagenStats = struct {
