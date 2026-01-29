@@ -85,16 +85,17 @@ pub fn checkSearch(self: *Limits, nodes: u64) bool {
 }
 
 fn computeNodeCountFactor(_: *const Limits, best_move_count: u64, total_nodes: u64) u128 {
-    const node_fraction = @as(u128, best_move_count) * 1024 / @max(1, total_nodes);
-    return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) - node_fraction);
+    const best_count = @min(best_move_count, total_nodes);
+    const node_fraction = @as(u128, best_count) * 1024 / @max(1, total_nodes);
+    return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) -| node_fraction);
 }
 
 fn computeEvalStabilityFactor(_: *const Limits, stab: i64) u64 {
-    return @intCast(@max(tunable_constants.eval_stab_lim, tunable_constants.eval_stab_base - @divTrunc(tunable_constants.eval_stab_offs * stab, 1024)));
+    return @intCast(@max(tunable_constants.eval_stab_lim, tunable_constants.eval_stab_base -| @divTrunc(tunable_constants.eval_stab_offs * stab, 1024)));
 }
 
 fn computeMoveStabilityFactor(_: *const Limits, stab: i64) u64 {
-    return @intCast(@max(tunable_constants.move_stab_lim, tunable_constants.move_stab_base - @divTrunc(tunable_constants.move_stab_offs * stab, 1024)));
+    return @intCast(@max(tunable_constants.move_stab_lim, tunable_constants.move_stab_base -| @divTrunc(tunable_constants.move_stab_offs * stab, 1024)));
 }
 
 pub fn checkRoot(
@@ -150,7 +151,7 @@ pub fn checkRootTime(
 
 pub fn shouldPrintInfoInAspiration(self: *Limits) bool {
     const cur_time = self.timer.read();
-    if (cur_time - self.last_aspiration_print > std.time.ns_per_s) {
+    if (cur_time -| self.last_aspiration_print > std.time.ns_per_s) {
         self.last_aspiration_print = cur_time;
         return true;
     }
