@@ -913,8 +913,16 @@ fn search(
                         continue;
                     }
 
-                    if (SEE.scoreMove(board, move, beta - eval, .pruning)) {
-                        return eval;
+                    if (!SEE.scoreMove(board, move, beta - eval, .pruning)) {
+                        continue;
+                    }
+
+                    self.makeMove(stm, move);
+                    const score = -self.qsearch(false, false, stm.flipped(), -beta + 1, -beta);
+                    self.unmakeMove(stm, move);
+
+                    if (score >= beta) {
+                        return score;
                     }
                 }
             }
