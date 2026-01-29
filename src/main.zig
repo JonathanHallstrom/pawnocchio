@@ -654,6 +654,194 @@ pub fn main() !void {
 
                 return;
             }
+            if (std.mem.count(u8, arg, "apply-wdl") > 0) {
+                var input_file: ?std.fs.File = null;
+                var output_file: ?std.fs.File = null;
+                const input_name = args.next() orelse "";
+                input_file = try std.fs.cwd().openFile(input_name, .{});
+                var name_writer = std.Io.Writer.Allocating.init(allocator);
+                defer name_writer.deinit();
+                try name_writer.writer.print("{s}_normalised", .{input_name});
+                output_file = try std.fs.cwd().createFile(name_writer.written(), .{});
+                if (input_file == null or output_file == null) {
+                    std.debug.panic("must specify an input file\n", .{});
+                }
+                var as: [4]f64 = undefined;
+                for (0..4) |i| {
+                    as[i] = try std.fmt.parseFloat(f64, std.mem.trim(u8, args.next() orelse "", ",{}"));
+                }
+                var bs: [4]f64 = undefined;
+                for (0..4) |i| {
+                    bs[i] = try std.fmt.parseFloat(f64, std.mem.trim(u8, args.next() orelse "", ",{}"));
+                }
+                defer input_file.?.close();
+                const stat = try input_file.?.stat();
+
+                var input_buf: [4096]u8 = undefined;
+                var br = input_file.?.reader(&input_buf);
+                var output_buf: [4096]u8 = undefined;
+                var bw = output_file.?.writer(&output_buf);
+
+                var game_count: u64 = 0;
+                var position_count: u64 = 0;
+
+                const viriformat = root.viriformat;
+                while (!br.atEnd()) {
+                    var marlin_board: viriformat.MarlinPackedBoard = undefined;
+                    br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+                        if (e == error.EndOfStream) {
+                            break;
+                        } else {
+                            return e;
+                        }
+                    };
+
+                    game_count += 1;
+
+                    if (game_count % 16384 == 0) {
+                        write("\rprogress: {}%", .{
+                            @as(u128, br.logicalPos() * 100) / stat.size,
+                        });
+                    }
+                    var board = try marlin_board.toBoard();
+                    var game = viriformat.Game.from(board, allocator);
+                    game.initial_position = marlin_board;
+                    defer game.moves.deinit();
+                    for (0..std.math.maxInt(usize)) |_| {
+                        var move_eval_pair: viriformat.MoveEvalPair = undefined;
+                        br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                            if (e == error.EndOfStream) {
+                                break;
+                            } else {
+                                return e;
+                            }
+                        };
+                        const viri_move = move_eval_pair.move;
+
+                        if (viri_move.data == 0) {
+                            break;
+                        }
+
+                        const move = viri_move.toMove(&board);
+
+                        const score = move_eval_pair.eval.toNative();
+                        const normalised = root.wdl.normalizeUsingModel(
+                            score,
+                            board.classicalMaterial(),
+                            as,
+                            bs,
+                        );
+                        try game.addMove(move, normalised);
+
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                @setEvalBranchQuota(1 << 30);
+                                board.makeMove(stm, move, Board.NullEvalState{});
+                            },
+                        }
+
+                        position_count += 1;
+                    }
+                    try game.serializeInto(&bw.interface);
+                }
+                try bw.interface.flush();
+
+                return;
+            }
+            if (std.mem.count(u8, arg, "revert-wdl") > 0) {
+                var input_file: ?std.fs.File = null;
+                var output_file: ?std.fs.File = null;
+                const input_name = args.next() orelse "";
+                input_file = try std.fs.cwd().openFile(input_name, .{});
+                var name_writer = std.Io.Writer.Allocating.init(allocator);
+                defer name_writer.deinit();
+                try name_writer.writer.print("{s}_unnormalised", .{input_name});
+                output_file = try std.fs.cwd().createFile(name_writer.written(), .{});
+                if (input_file == null or output_file == null) {
+                    std.debug.panic("must specify an input file\n", .{});
+                }
+                var as: [4]f64 = undefined;
+                for (0..4) |i| {
+                    as[i] = try std.fmt.parseFloat(f64, std.mem.trim(u8, args.next() orelse "", ",{}"));
+                }
+                var bs: [4]f64 = undefined;
+                for (0..4) |i| {
+                    bs[i] = try std.fmt.parseFloat(f64, std.mem.trim(u8, args.next() orelse "", ",{}"));
+                }
+                defer input_file.?.close();
+                const stat = try input_file.?.stat();
+
+                var input_buf: [4096]u8 = undefined;
+                var br = input_file.?.reader(&input_buf);
+                var output_buf: [4096]u8 = undefined;
+                var bw = output_file.?.writer(&output_buf);
+
+                var game_count: u64 = 0;
+                var position_count: u64 = 0;
+
+                const viriformat = root.viriformat;
+                while (!br.atEnd()) {
+                    var marlin_board: viriformat.MarlinPackedBoard = undefined;
+                    br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+                        if (e == error.EndOfStream) {
+                            break;
+                        } else {
+                            return e;
+                        }
+                    };
+
+                    game_count += 1;
+
+                    if (game_count % 16384 == 0) {
+                        write("\rprogress: {}%", .{
+                            @as(u128, br.logicalPos() * 100) / stat.size,
+                        });
+                    }
+                    var board = try marlin_board.toBoard();
+                    var game = viriformat.Game.from(board, allocator);
+                    game.initial_position = marlin_board;
+                    defer game.moves.deinit();
+                    for (0..std.math.maxInt(usize)) |_| {
+                        var move_eval_pair: viriformat.MoveEvalPair = undefined;
+                        br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                            if (e == error.EndOfStream) {
+                                break;
+                            } else {
+                                return e;
+                            }
+                        };
+                        const viri_move = move_eval_pair.move;
+
+                        if (viri_move.data == 0) {
+                            break;
+                        }
+
+                        const move = viri_move.toMove(&board);
+
+                        const score = move_eval_pair.eval.toNative();
+                        const normalised = root.wdl.unnormalizeUsingModel(
+                            score,
+                            board.classicalMaterial(),
+                            as,
+                            bs,
+                        );
+                        try game.addMove(move, normalised);
+
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                @setEvalBranchQuota(1 << 30);
+                                board.makeMove(stm, move, Board.NullEvalState{});
+                            },
+                        }
+
+                        position_count += 1;
+                    }
+                    try game.serializeInto(&bw.interface);
+                }
+                try bw.interface.flush();
+
+                return;
+            }
             if (std.mem.count(u8, arg, "sanitise") > 0) {
                 const input_name = args.next() orelse "";
                 var input_file = try std.fs.cwd().openFile(input_name, .{});
