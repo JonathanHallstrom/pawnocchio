@@ -46,10 +46,13 @@ pub const SearchSettings = struct {
 fn resetState(comptime mode: enum { tt, searchers, both }) void {
     const reset_worker = struct {
         fn impl(start: usize, end: usize, i: usize) void {
-            if (mode != .searchers)
+            if (mode != .searchers) {
                 @memset(tt[start..end], .{});
-            if (mode != .tt)
+            }
+            if (mode != .tt) {
                 @memset(std.mem.asBytes(searchers[i]), 0);
+                searchers[i].refresh_cache.initInPlace();
+            }
         }
     }.impl;
 
