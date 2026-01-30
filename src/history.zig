@@ -63,7 +63,8 @@ pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
 pub const ConthistTables = [NUM_CONTHISTS]*ContHistory.ContHistTable;
 
 pub const QuietHistory = struct {
-    vals: [2 * 64 * 64 * 2 * 2]i16,
+    from_to_vals: [2 * 64 * 64 * 2 * 2]i16,
+    piece_to_vals: [2 * 6 * 64 * 2 * 2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -80,27 +81,41 @@ pub const QuietHistory = struct {
     }
 
     fn age(self: *QuietHistory) void {
-        for (&self.vals) |*e| {
+        for (&self.from_to_vals) |*e| {
+            e.* = @intCast(@divTrunc(@as(i32, e.*) * 3, 4));
+        }
+        for (&self.piece_to_vals) |*e| {
             e.* = @intCast(@divTrunc(@as(i32, e.*) * 3, 4));
         }
     }
 
     inline fn reset(self: *QuietHistory) void {
-        @memset(std.mem.asBytes(&self.vals), 0);
+        @memset(std.mem.asBytes(&self.from_to_vals), 0);
+        @memset(std.mem.asBytes(&self.piece_to_vals), 0);
     }
 
-    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+    inline fn entryPieceTo(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = board.stm.toInt();
+        const from_to_offs: usize = @as(usize, move.move.from().toInt()) * 6 + move.tp.toInt();
+        const threats = (&board.threats)[board.stm.flipped().toInt()];
+        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
+        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
+
+        return &(&self.piece_to_vals)[col_offs * 6 * 64 * 2 * 2 + from_to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
+    }
+    inline fn entryFromTo(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = board.stm.toInt();
         const from_to_offs: usize = move.move.fromTo();
         const threats = (&board.threats)[board.stm.flipped().toInt()];
         const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
         const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
 
-        return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + from_to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
+        return &(&self.from_to_vals)[col_offs * 64 * 64 * 2 * 2 + from_to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
     pub inline fn updateRaw(self: *QuietHistory, board: *const Board, move: TypedMove, upd: i32) void {
-        gravityUpdate(self.entry(board, move), upd);
+        gravityUpdate(self.entryFromTo(board, move), upd);
+        gravityUpdate(self.entryPieceTo(board, move), upd);
     }
 
     inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool, extra: i32) void {
@@ -108,7 +123,7 @@ pub const QuietHistory = struct {
     }
 
     inline fn read(self: *const QuietHistory, board: *const Board, move: TypedMove) i16 {
-        return self.entry(board, move).*;
+        return @divFloor(self.entryFromTo(board, move).* + self.entryPieceTo(board, move).*, 2);
     }
 };
 
