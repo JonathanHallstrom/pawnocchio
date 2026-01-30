@@ -357,10 +357,48 @@ fn isRepetition(self: *Searcher) bool {
     return false;
 }
 
-fn hasUpcomingRepetition(self: *const Searcher) bool {
-    const board = &self.stackEntry(0).board;
+fn hasUpcomingRepetition(self: *Searcher, comptime stm: Colour) bool {
+    const board: *const Board = &self.stackEntry(0).board;
 
-    return cuckoo.hasUpcomingRepetition(board, self.ply, self.hashes[0 .. self.ply + 1]);
+    const res = cuckoo.hasUpcomingRepetition(board, self.ply, self.hashes[0 .. self.ply + 1]);
+
+    if (std.debug.runtime_safety or true) {
+        var repeat_move: ?Move = null;
+        var repeat_hash: u64 = 0;
+
+        var ml = movegen.MoveListReceiver{};
+        movegen.generateAll(board, &ml);
+
+        for (ml.vals.slice()) |mv| {
+            if (board.isPseudoLegal(stm, mv) and board.isLegal(stm, mv)) {
+                self.makeMove(stm, mv);
+
+                if (self.isRepetition()) {
+                    repeat_move = mv;
+                    repeat_hash = self.stackEntry(0).board.hash;
+                }
+
+                self.unmakeMove(stm, mv);
+            }
+        }
+
+        const correct_answer = repeat_move != null;
+        if (res != correct_answer) {
+            for (0..self.ply) |i| {
+                const stackentry: StackEntry = self.searchStackRoot()[i];
+                std.debug.print("{s} {} {s}\n", .{
+                    stackentry.board.toFen().slice(),
+                    stackentry.board.hash,
+                    stackentry.move.move.toString(board).slice(),
+                });
+            }
+            std.debug.print("wrong answer! {s} {} {} {s}\n", .{ board.toFen().slice(), correct_answer, res, if (repeat_move) |c| c.toString(board).slice() else "" });
+            std.process.exit(0);
+        }
+        std.debug.assert(res == correct_answer);
+    }
+
+    return res;
 }
 
 fn qsearch(
@@ -384,7 +422,7 @@ fn qsearch(
     const cur: *StackEntry = self.stackEntry(0);
     const board = &cur.board;
     if (!is_root) {
-        if (alpha < 0 and self.hasUpcomingRepetition()) {
+        if (alpha < 0 and self.hasUpcomingRepetition(stm)) {
             alpha = self.drawScore(stm);
 
             if (alpha >= beta) {
@@ -665,7 +703,7 @@ fn search(
     }
 
     if (!is_root) {
-        if (alpha < 0 and self.hasUpcomingRepetition()) {
+        if (alpha < 0 and self.hasUpcomingRepetition(stm)) {
             alpha = self.drawScore(stm);
 
             if (alpha >= beta) {
