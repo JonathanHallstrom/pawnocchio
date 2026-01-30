@@ -30,6 +30,7 @@ pub const use_tbs = @import("build_options").use_tbs;
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 pub const pyrrhic = @import("pyrrhic.zig");
 pub const Bitboard = @import("Bitboard.zig");
+pub const cuckoo = @import("cuckoo.zig");
 pub const Board = @import("Board.zig");
 pub const Move = @import("move.zig").Move;
 pub const MoveType = @import("move.zig").MoveType;
@@ -89,6 +90,7 @@ pub fn init() void {
             stdout = std.fs.File.stdout();
             stdout_writer = stdout.writerStreaming(&stdout_buf);
             attacks.init();
+            cuckoo.init();
             evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
             engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
         }
