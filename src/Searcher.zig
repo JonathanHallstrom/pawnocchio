@@ -1040,6 +1040,7 @@ fn search(
             }
         }
 
+        var new_depth = depth - 1;
         var extension: i32 = 0;
         if (!is_root and
             depth >= 6 and
@@ -1079,6 +1080,10 @@ fn search(
                     double_ext_margin += tunables.singular_dext_pv_margin;
                 }
 
+                if (depth < 10) {
+                    depth += 1;
+                }
+
                 if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
 
@@ -1102,6 +1107,7 @@ fn search(
                 extension -= 2;
             }
         }
+        new_depth += extension;
         num_searched += 1;
 
         if (std.debug.runtime_safety) {
@@ -1127,7 +1133,6 @@ fn search(
             const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
 
             var s: i16 = 0;
-            var new_depth = depth + extension - 1;
             if (depth >= 3 and num_searched > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
