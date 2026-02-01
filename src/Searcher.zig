@@ -357,10 +357,10 @@ fn isRepetition(self: *Searcher) bool {
     return false;
 }
 
-fn hasUpcomingRepetition(self: *const Searcher) bool {
-    const board = &self.stackEntry(0).board;
+fn hasUpcomingRepetition(self: *Searcher) bool {
+    const board: *const Board = &self.stackEntry(0).board;
 
-    return cuckoo.hasUpcomingRepetition(board, self.ply, self.hashes[0 .. self.ply + 1]);
+    return cuckoo.hasUpcomingRepetition(board, self.hashes[0 .. self.ply + 1], self.previous_hashes.slice());
 }
 
 fn qsearch(

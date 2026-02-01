@@ -78,27 +78,20 @@ pub fn init() void {
 
 pub fn hasUpcomingRepetition(
     b: *const Board,
-    ply: usize,
-    prev_hashes: []const u64,
+    tree_hashes: []const u64,
+    before_root_hashes: []const u64,
 ) bool {
-    const num_to_check = @min(b.halfmove, prev_hashes.len - 1);
-    if (num_to_check < 3) {
-        return false;
-    }
     const occ: u64 = b.occupancy();
     const original = b.hash;
 
-    var other_diffs_hash = ~(b.hash ^ prev_hashes[prev_hashes.len - 2]);
+    const num_to_check = @min(b.halfmove, tree_hashes.len - 1);
+    if (num_to_check < 3) {
+        return false;
+    }
 
     var i: usize = 3;
     while (i <= num_to_check) : (i += 2) {
-        const cur = prev_hashes[prev_hashes.len - i - 1];
-
-        other_diffs_hash ^= ~(cur ^ prev_hashes[prev_hashes.len - i]);
-
-        if (other_diffs_hash != 0) {
-            continue;
-        }
+        const cur = tree_hashes[tree_hashes.len - i - 1];
 
         const diff = original ^ cur;
         var slot = h1(diff);
@@ -111,11 +104,25 @@ pub fn hasUpcomingRepetition(
         const move = moves[slot];
 
         if (occ & root.Bitboard.queenRayBetweenExclusive(move.from(), move.to()) == 0) {
-            if (ply > i) {
+            if (b.occupancyFor(b.stm) & (move.from().toBitboard() | move.to().toBitboard()) != 0) {
                 return true;
             }
+        }
+    }
 
-            return b.occupancyFor(b.stm) & (move.from().toBitboard() | move.to().toBitboard()) != 0;
+    for (before_root_hashes) |cur| {
+        const diff = original ^ cur;
+        var slot = h1(diff);
+        slot = if (diff == keys[slot]) slot else h2(diff);
+
+        if (diff != keys[slot]) {
+            continue;
+        }
+
+        const move = moves[slot];
+
+        if (occ & root.Bitboard.queenRayBetweenExclusive(move.from(), move.to()) == 0) {
+            return true;
         }
     }
     return false;
