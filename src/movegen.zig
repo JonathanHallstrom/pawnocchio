@@ -25,6 +25,7 @@ const Bitboard = root.Bitboard;
 const attacks = root.attacks;
 const Square = root.Square;
 const Rank = root.Rank;
+const PieceType = root.PieceType;
 
 pub const MoveListReceiver = struct {
     vals: BoundedArray(Move, 256) = .{},
@@ -126,6 +127,17 @@ pub fn attackersFor(comptime col: Colour, noalias board: *const Board, square: S
         (Bitboard.kingMoves(square) & board.kings());
 
     return attacks_from_square & board.occupancyFor(col);
+}
+
+pub inline fn getAttacks(comptime col: Colour, pt: PieceType, square: Square, occ: u64) u64 {
+    return switch (pt) {
+        .pawn => Bitboard.pawnAttacks(square, col.flipped()),
+        .bishop => attacks.getBishopAttacks(square, occ),
+        .knight => Bitboard.knightMoves(square),
+        .rook => attacks.getRookAttacks(square, occ),
+        .queen => attacks.getBishopAttacks(square, occ) | attacks.getRookAttacks(square, occ),
+        .king => Bitboard.kingMoves(square),
+    };
 }
 
 pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
