@@ -145,7 +145,7 @@ inline fn findBest(noalias self: *MovePicker) usize {
     return res;
 }
 
-fn noisyValue(self: MovePicker, move: Move) i32 {
+fn noisyValue(noalias self: *const MovePicker, move: Move) i32 {
     var res: i32 = 0;
 
     res += @intFromBool(move.tp() == .ep) * SEE.value(.pawn, .ordering);
@@ -156,8 +156,14 @@ fn noisyValue(self: MovePicker, move: Move) i32 {
     return res;
 }
 
-inline fn quietValue(self: MovePicker, move: Move) i32 {
-    return self.histories.readQuietOrdering(self.board, move, self.conthist_tables);
+inline fn quietValue(noalias self: *const MovePicker, move: Move) i32 {
+    var res = self.histories.readQuietOrdering(self.board, move, self.conthist_tables);
+
+    const threats = (&self.board.threats)[self.board.stm.flipped().toInt()];
+
+    res += @as(i32, 10000) * @intFromBool(root.Bitboard.contains(threats, move.from()));
+    res -= @as(i32, 10000) * @intFromBool(root.Bitboard.contains(threats, move.to()));
+    return res;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;
