@@ -915,6 +915,64 @@ fn search(
                 }
             }
         }
+        const previous_move_destination = cur.move.move.to();
+
+        const prev_move_dest_bb = previous_move_destination.toBitboard();
+        // const margin = 100 + 50 * depth;
+        // we can recapture
+        if (depth <= 5 and
+            prev_move_dest_bb & (&board.threats)[stm.toInt()] != 0)
+        {
+            // const prev_board: *const Board = &self.stackEntry(-1).board;
+            // std.debug.print("{s} {s}\n", .{ board.toFen().slice(), cur.move.move.toString(board).slice() });
+            // const should_fail_high = self.search(false, true, stm, alpha, beta, depth, cutnode) > beta;
+            var moves = movegen.MoveListReceiver{};
+
+            // var recapture_fails_high = false;
+            // defer {
+            //     engine.dbgStats("rp fails high", @intFromBool(recapture_fails_high));
+            //     engine.dbgStats("should fail high", @intFromBool(should_fail_high));
+            //     if (should_fail_high) {
+            //         engine.dbgStats("rp correctly fails high", @intFromBool(recapture_fails_high));
+            //     } else {
+            //         engine.dbgStats("rp correctly fails low", @intFromBool(!recapture_fails_high));
+            //     }
+            //     if (recapture_fails_high) {
+            //         engine.dbgStats("should fail high when it did", @intFromBool(should_fail_high));
+            //     } else {
+            //         engine.dbgStats("should fail low when it did", @intFromBool(!should_fail_high));
+            //     }
+            // }
+
+            inline for (.{
+                movegen.generatePawnNoisies,
+                movegen.generateKnightNoisies,
+                movegen.generateSliderNoisies,
+            }) |f| {
+                moves.vals.len = 0;
+                f(stm, board, prev_move_dest_bb, &moves);
+
+                for (moves.vals.slice()) |move| {
+                    if (!board.isLegal(stm, move)) {
+                        continue;
+                    }
+                    // std.debug.print("{s}\n", .{move.toString(board).slice()});
+
+                    if (!SEE.scoreMove(board, move, 0, .pruning)) {
+                        continue;
+                    }
+
+                    self.makeMove(stm, move);
+                    const score = -self.qsearch(false, false, stm.flipped(), -beta - 1, -beta);
+                    self.unmakeMove(stm, move);
+
+                    if (score >= beta) {
+                        // recapture_fails_high = true;
+                        return score;
+                    }
+                }
+            }
+        }
     }
 
     const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
@@ -943,6 +1001,7 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
