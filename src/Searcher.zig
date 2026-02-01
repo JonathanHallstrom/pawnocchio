@@ -943,6 +943,9 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+    const our_threats = (&board.threats)[board.stm.toInt()];
+    const their_threats = (&board.threats)[board.stm.flipped().toInt()];
+    const our_winning_threats = (&board.lesser_threats)[board.stm.toInt()] | (our_threats & ~their_threats);
     while (mp.next()) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
@@ -984,7 +987,8 @@ fn search(
             conthist_tables,
         ) else self.histories.readNoisy(board, move);
 
-        if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
+        const is_easily_winning = root.Bitboard.contains(our_winning_threats, move.to());
+        if (!is_root and best_score >= evaluation.matedIn(MAX_PLY) and !is_easily_winning) {
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
