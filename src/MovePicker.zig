@@ -148,6 +148,9 @@ inline fn findBest(noalias self: *MovePicker) usize {
 fn noisyValue(self: MovePicker, move: Move) i32 {
     var res: i32 = 0;
 
+    const threats = (&self.board.lesser_threats)[self.board.stm.toInt()];
+    res += @as(i32, 10000) * @intFromBool(root.Bitboard.contains(threats, move.to()));
+
     res += @intFromBool(move.tp() == .ep) * SEE.value(.pawn, .ordering);
     res += SEE.value(self.board.pieceOn(move.to()) orelse .king, .ordering);
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
