@@ -1103,6 +1103,8 @@ fn search(
             if (s_score < s_beta) {
                 extension += 1;
 
+                const corrplexity = self.histories.summedCorrectionTerms(board, cur.move, cur.prev);
+
                 var double_ext_margin = if (is_quiet)
                     tunables.singular_dext_margin_quiet
                 else
@@ -1110,6 +1112,8 @@ fn search(
                 if (is_pv) {
                     double_ext_margin += tunables.singular_dext_pv_margin;
                 }
+
+                double_ext_margin -= @intCast(@divFloor(corrplexity, 2048));
 
                 if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
