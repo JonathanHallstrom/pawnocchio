@@ -232,13 +232,12 @@ pub const StackEntry = struct {
 
 inline fn getConthistTables(self: *Searcher) history.ConthistTables {
     var res: history.ConthistTables = undefined;
-    // const usable = self.stackEntry(0).usable_moves;
-    // const default = (&self.conthist_tables)[0];
+    const usable = self.stackEntry(0).usable_moves;
+    const default = (&self.conthist_tables)[0];
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
         const table = (&self.conthist_tables)[self.ply + STACK_PADDING - i];
 
-        res[j] = table;
-        // res[j] = if (i < usable) table else default;
+        res[j] = if (i < usable) table else default;
     }
     return res;
 }
@@ -1477,8 +1476,14 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     for (&self.search_stack) |*stack_entry| {
         stack_entry.reset();
     }
-    @memset(&self.conthist_tables, self.histories.countermove.table(.white, TypedMove.init()));
-    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
+    {
+        var stm = if (STACK_PADDING % 2 == 0) board.stm else board.stm.flipped();
+        for (&self.conthist_tables) |*t| {
+            t.* = self.histories.countermove.table(stm, .init());
+            stm = stm.flipped();
+        }
+    }
+    self.searchStackRoot()[0].init(&board, .init(), .init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
         self.refresh_cache.initInPlace();
