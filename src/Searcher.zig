@@ -293,7 +293,13 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
     const prev_move = prev_stack_entry.move.move;
     var typed = TypedMove.fromBoard(board, move);
-    typed.is_recapture = move.to() == prev_move.to() and !prev_move.isNull();
+
+    typed.setRecapture(move.to() == prev_move.to() and !prev_move.isNull());
+
+    const opponent_threats = (&board.threats)[board.stm.flipped().toInt()];
+    typed.setFromThreatened(move.from().toBitboard() & opponent_threats != 0);
+    typed.setToThreatened(move.to().toBitboard() & opponent_threats != 0);
+
     new_stack_entry.init(
         board,
         typed,
