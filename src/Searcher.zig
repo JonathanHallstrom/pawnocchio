@@ -233,7 +233,7 @@ pub const StackEntry = struct {
 inline fn getConthistTables(self: *Searcher) history.ConthistTables {
     var res: history.ConthistTables = undefined;
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
-        res[j] = self.conthist_tables[self.ply + STACK_PADDING - i];
+        res[j] = (&self.conthist_tables)[self.ply + STACK_PADDING - i];
     }
     return res;
 }
