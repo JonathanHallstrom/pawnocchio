@@ -75,7 +75,7 @@ pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
     if (cpu.has(.x86, .avx2)) {
         return 32;
     }
-    if (cpu.has(.arm, .neon)) {
+    if (cpu.has(.aarch64, .neon)) {
         return 16;
     }
     return 1;
@@ -90,7 +90,7 @@ pub fn permuteOrder(cpu: std.Target.Cpu) []const u8 {
     if (cpu.has(.x86, .avx2)) {
         return &[_]u8{ 0, 2, 1, 3 };
     }
-    if (cpu.has(.arm, .neon)) {
+    if (cpu.has(.aarch64, .neon)) {
         return &[_]u8{0};
     }
     return &[_]u8{};
@@ -103,7 +103,7 @@ pub fn needsPermuting(cpu: std.Target.Cpu) bool {
     if (cpu.has(.x86, .avx2)) {
         return true;
     }
-    if (cpu.has(.arm, .neon)) {
+    if (cpu.has(.aarch64, .neon)) {
         return false;
     }
     return false;
@@ -116,7 +116,7 @@ pub fn hasSupportedSimd(cpu: std.Target.Cpu) bool {
     if (cpu.has(.x86, .avx2)) {
         return true;
     }
-    if (cpu.has(.arm, .neon)) {
+    if (cpu.has(.aarch64, .neon)) {
         return true;
     }
     return false;
