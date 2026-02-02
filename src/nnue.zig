@@ -534,9 +534,8 @@ const Accumulator = struct {
 
         std.debug.print("ft after clamping and packing: {any}\n", .{activated_ft});
 
-        const L2_UNROLL = 4;
-        // in Q0² / 2⁹ * Q1
-        var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
+        // in Q0² / 2⁹ *rQ1
+        var l1_intermediate: [L2_SIZE / vecSize(i32)]i32Vec = @splat(@splat(0));
         {
             const w: [*]const i8 = &(&weights.l1w)[output_bucket];
             const ft_i32: [*]i32 = @ptrCast(&activated_ft);
@@ -545,26 +544,13 @@ const Accumulator = struct {
 
             var i_outer: usize = 0;
 
-            while (i_outer + L2_UNROLL <= num_nonzero_indices) : (i_outer += L2_UNROLL) {
-                for (0..L2_SIZE / vecSize(i32)) |j| {
-                    for (0..L2_UNROLL) |i_inner| {
-                        const i = nonzero_indices[i_outer + i_inner];
-                        const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
-                        l1_intermediate[j][i_inner] = c.dpbusd(
-                            l1_intermediate[j][i_inner],
-                            ft_vec,
-                            w[i * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
-                        );
-                    }
-                }
-            }
             while (i_outer < num_nonzero_indices) : (i_outer += 1) {
                 const i = nonzero_indices[i_outer];
                 const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
 
                 for (0..L2_SIZE / vecSize(i32)) |j| {
-                    l1_intermediate[j][0] = c.dpbusd(
-                        l1_intermediate[j][0],
+                    l1_intermediate[j] = c.dpbusd(
+                        l1_intermediate[j],
                         ft_vec,
                         w[i * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
                     );
@@ -572,18 +558,7 @@ const Accumulator = struct {
             }
         }
 
-        var l1_intermediate_flattened: [L2_SIZE]i32 = undefined;
-
-        for (0..L2_SIZE / vecSize(i32)) |i| {
-            var intermediate: i32Vec = @splat(0);
-            for (l1_intermediate[i]) |e| {
-                intermediate += e;
-            }
-            const ar: [vecSize(i32)]i32 = intermediate;
-            @memcpy(l1_intermediate_flattened[i * vecSize(i32) ..][0..vecSize(i32)], &ar);
-        }
-
-        std.debug.print("l1 after matmul: {any}\n", .{l1_intermediate_flattened});
+        std.debug.print("l1 after matmul: {any}\n", .{@as([L2_SIZE]i32, @bitCast(l1_intermediate))});
 
         // in Q²
         var l1_out_vec: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
@@ -593,13 +568,8 @@ const Accumulator = struct {
             for (0..L2_SIZE / vecSize(i32)) |i| {
                 const biases: i32Vec = l1_bias_vec[i];
 
-                var intermediate: i32Vec = @splat(0);
-                for (l1_intermediate[i]) |e| {
-                    intermediate += e;
-                }
-
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const shifted = intermediate >> @splat(SHIFT);
+                const shifted = l1_intermediate[i] >> @splat(SHIFT);
 
                 const crelu = clamp(i32Vec, shifted + biases, @splat(0), @splat(arch.Q));
                 const screlu = crelu * crelu;
