@@ -232,12 +232,13 @@ pub const StackEntry = struct {
 
 inline fn getConthistTables(self: *Searcher) history.ConthistTables {
     var res: history.ConthistTables = undefined;
-    const usable = self.stackEntry(0).usable_moves;
-    const default = (&self.conthist_tables)[0];
+    // const usable = self.stackEntry(0).usable_moves;
+    // const default = (&self.conthist_tables)[0];
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
         const table = (&self.conthist_tables)[self.ply + STACK_PADDING - i];
 
-        res[j] = if (i < usable) table else default;
+        res[j] = table;
+        // res[j] = if (i < usable) table else default;
     }
     return res;
 }
@@ -311,7 +312,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
         prev_stack_entry.usable_moves + 1,
     );
     self.ply += 1;
-    self.conthist_tables[self.ply] = self.histories.countermove.table(stm, typed);
+    self.conthist_tables[self.ply + STACK_PADDING] = self.histories.countermove.table(stm, typed);
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -339,7 +340,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
         0,
     );
     self.ply += 1;
-    self.conthist_tables[self.ply] = self.histories.countermove.table(stm, TypedMove.init());
+    self.conthist_tables[self.ply + STACK_PADDING] = self.histories.countermove.table(stm, TypedMove.init());
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
