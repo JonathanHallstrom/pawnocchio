@@ -92,7 +92,7 @@ pub const CONTHIST_OFFSETS = [_]comptime_int{
 };
 pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
 pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
-pub const ConthistTables = [NUM_CONTHISTS]*ContHistory.ContHistTable;
+pub const ConthistTables = [NUM_CONTHISTS]?*ContHistory.ContHistTable;
 
 pub const QuietHistory = struct {
     vals: [2 * 64 * 64 * 2 * 2]i16,
@@ -370,7 +370,9 @@ pub const HistoryTable = struct {
 
         inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            res += weights[i] * table.read(stm, typed);
+            if (table) |t| {
+                res += weights[i] * t.read(stm, typed);
+            }
         }
 
         return @divTrunc(res, 1024);
@@ -393,7 +395,9 @@ pub const HistoryTable = struct {
         };
         inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            res += weights[i] * table.read(stm, typed);
+            if (table) |t| {
+                res += weights[i] * t.read(stm, typed);
+            }
         }
 
         return @divTrunc(res, 1024);
@@ -413,11 +417,16 @@ pub const HistoryTable = struct {
         const stm = board.stm;
         inline for (CONTHIST_OFFSETS, tables) |offs, table| {
             const cstm = if (offs % 2 == 0) stm.flipped() else stm;
-            cont += table.read(cstm, typed);
+
+            if (table) |t| {
+                cont += t.read(cstm, typed);
+            }
         }
         inline for (CONTHIST_OFFSETS, tables) |offs, table| {
             const cstm = if (offs % 2 == 0) stm.flipped() else stm;
-            table.update(cont, cstm, typed, depth, is_bonus, extra);
+            if (table) |t| {
+                t.update(cont, cstm, typed, depth, is_bonus, extra);
+            }
         }
     }
 
