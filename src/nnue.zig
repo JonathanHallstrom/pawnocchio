@@ -464,41 +464,41 @@ const Accumulator = struct {
             for (0..L1_SIZE) |i| {
                 const ft = activated_ft[i];
 
-                l1_intermediate[j] += @as(i32, (&(&(&weights.l1w)[output_bucket])[j])[i]) * ft;
+                l1_intermediate[j] += @as(i32, (&(&(&weights.l1w)[output_bucket])[i])[j]) * ft;
             }
         }
 
-        var l1_out: [L2_SIZE]f32 = undefined;
+        var l1_out: [L2_SIZE]i32 = undefined;
         for (0..L2_SIZE) |i| {
-            const dequantised = @as(f32, @floatFromInt(l1_intermediate[i])) * (1.0 / @as(f32, 1 << 13));
-            const clamped = std.math.clamp(dequantised + (&(&weights.l1b)[output_bucket])[i], 0, 1);
+            const dequantised = l1_intermediate[i] >> 8;
+            const clamped = std.math.clamp(dequantised + (&(&weights.l1b)[output_bucket])[i], 0, 1 << 6);
             const activated = clamped * clamped;
             l1_out[i] = activated;
         }
 
-        var l2_intermediate: [L3_SIZE]f32 = weights.l2b[output_bucket];
+        var l2_intermediate: [L3_SIZE]i32 = weights.l2b[output_bucket];
         for (0..L2_SIZE) |i| {
             for (0..L3_SIZE) |j| {
-                l2_intermediate[j] += l1_out[i] * (&(&(&weights.l2w)[output_bucket])[j])[i];
+                l2_intermediate[j] += l1_out[i] * (&(&(&weights.l2w)[output_bucket])[i])[j];
             }
         }
 
-        var l2_out: [L3_SIZE]f32 = undefined;
+        var l2_out: [L3_SIZE]i32 = undefined;
         for (0..L3_SIZE) |i| {
             const value = l2_intermediate[i];
-            const clamped = std.math.clamp(value, 0, 1);
-            const activated = clamped * clamped;
+            const clamped = std.math.clamp(value, 0, 1 << 18);
+            const activated = clamped;
             l2_out[i] = activated;
         }
 
-        var l3_out: f32 = (&weights.l3b)[output_bucket];
+        var l3_out: i32 = (&weights.l3b)[output_bucket];
         for (0..L3_SIZE) |i| {
             l3_out += l2_out[i] * ((&weights.l3w)[output_bucket])[i];
         }
 
-        const scaled: i32 = @intFromFloat(l3_out * SCALE);
+        const scaled = l3_out * @as(i64, SCALE);
 
-        return evaluation.clampScore(scaled);
+        return evaluation.clampScore(@divTrunc(scaled, 1 << 24));
     }
 };
 
