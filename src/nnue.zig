@@ -482,6 +482,7 @@ const Accumulator = struct {
                 );
             }
         };
+        _ = c;
         const clamp = struct {
             fn impl(comptime T: type, x: T, lo: T, hi: T) T {
                 return @min(@max(x, lo), hi);
@@ -491,69 +492,28 @@ const Accumulator = struct {
         const output_bucket = whichOutputBucket(board);
 
         // in Q0² / 2⁹
-        var activated_ft: [L1_SIZE]u8 align(64) = undefined;
-        {
-            const items_per_iter = vecSize(i16) * 2;
-            var i: usize = 0;
-            const LO: i16Vec = @splat(0);
-            const HI: i16Vec = @splat(arch.Q0);
-            while (i < L1_SIZE / 2) : (i += items_per_iter) {
-                var s1: i16Vec = stm_acc[i..][0..vecSize(i16)].*;
-                var s2: i16Vec = stm_acc[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
-                var s3: i16Vec = stm_acc[i + vecSize(i16) ..][0..vecSize(i16)].*;
-                var s4: i16Vec = stm_acc[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
 
-                var n1: i16Vec = ntm_acc[i..][0..vecSize(i16)].*;
-                var n2: i16Vec = ntm_acc[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
-                var n3: i16Vec = ntm_acc[i + vecSize(i16) ..][0..vecSize(i16)].*;
-                var n4: i16Vec = ntm_acc[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+        var activated_ft: [L1_SIZE]u8 = undefined;
+        for (0..L1_SIZE / 2) |i| {
+            const s1: u8 = @intCast(std.math.clamp(stm_acc[i], 0, 255));
+            const s2: u8 = @intCast(std.math.clamp(stm_acc[i + L1_SIZE / 2], 0, 255));
 
-                s1 = clamp(i16Vec, s1, LO, HI);
-                s2 = @min(s2, HI);
-                s3 = clamp(i16Vec, s3, LO, HI);
-                s4 = @min(s4, HI);
+            const n1: u8 = @intCast(std.math.clamp(ntm_acc[i], 0, 255));
+            const n2: u8 = @intCast(std.math.clamp(ntm_acc[i + L1_SIZE / 2], 0, 255));
 
-                n1 = clamp(i16Vec, n1, LO, HI);
-                n2 = @min(n2, HI);
-                n3 = clamp(i16Vec, n3, LO, HI);
-                n4 = @min(n4, HI);
-
-                const sp1 = c.mulhi(s1 << @splat(7), s2);
-                const sp2 = c.mulhi(s3 << @splat(7), s4);
-
-                const np1 = c.mulhi(n1 << @splat(7), n2);
-                const np2 = c.mulhi(n3 << @splat(7), n4);
-
-                const p1: [vecSize(u8)]u8 = c.packus(sp1, sp2);
-                const p2: [vecSize(u8)]u8 = c.packus(np1, np2);
-
-                @memcpy(activated_ft[i..][0..vecSize(i8)], &p1);
-                @memcpy(activated_ft[i + L1_SIZE / 2 ..][0..vecSize(i8)], &p2);
-            }
+            // now activated is in (2^8)^2/(2^9) = 2^7 space
+            activated_ft[i] = @intCast(std.math.clamp(@as(i32, s1) * s2 << 7 >> 16, 0, 255));
+            activated_ft[i + L1_SIZE / 2] = @intCast(std.math.clamp(@as(i32, n1) * n2 << 7 >> 16, 0, 255));
         }
 
         std.debug.print("ft after clamping and packing: {any}\n", .{activated_ft});
 
         // in Q0² / 2⁹ *rQ1
-        var l1_intermediate: [L2_SIZE / vecSize(i32)]i32Vec = @splat(@splat(0));
+        var l1_intermediate: [L2_SIZE]i32 = @splat(0);
         {
-            const w: [*]const i8 = &(&weights.l1w)[output_bucket];
-            const ft_i32: [*]i32 = @ptrCast(&activated_ft);
-
-            const nonzero_indices, const num_nonzero_indices = @import("sparse.zig").findNonZeroIndices(&activated_ft);
-
-            var i_outer: usize = 0;
-
-            while (i_outer < num_nonzero_indices) : (i_outer += 1) {
-                const i = nonzero_indices[i_outer];
-                const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
-
-                for (0..L2_SIZE / vecSize(i32)) |j| {
-                    l1_intermediate[j] = c.dpbusd(
-                        l1_intermediate[j],
-                        ft_vec,
-                        w[i * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
-                    );
+            for (0..L1_SIZE) |i| {
+                for (0..L2_SIZE) |j| {
+                    l1_intermediate[j] += @as(i32, activated_ft[i]) * weights.l1w[output_bucket][i * L2_SIZE + j];
                 }
             }
         }
@@ -568,8 +528,9 @@ const Accumulator = struct {
             for (0..L2_SIZE / vecSize(i32)) |i| {
                 const biases: i32Vec = l1_bias_vec[i];
 
+                const intermediate: i32Vec = l1_intermediate[i * vecSize(i32) ..][0..vecSize(i32)].*;
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const shifted = l1_intermediate[i] >> @splat(SHIFT);
+                const shifted = intermediate >> @splat(SHIFT);
 
                 const crelu = clamp(i32Vec, shifted + biases, @splat(0), @splat(arch.Q));
                 const screlu = crelu * crelu;

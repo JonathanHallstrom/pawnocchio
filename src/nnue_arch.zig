@@ -169,7 +169,7 @@ fn totalElements(comptime T: type) comptime_int {
 }
 
 pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
-    if (needsPermuting(cpu)) {
+    if (needsPermuting(cpu) and false) {
         inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
             permuteBuffer(ptr, permuteOrder(cpu));
         }
@@ -205,7 +205,7 @@ pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
         // [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8
         const l1w_inf = net.l1wInference();
 
-        if (hasSupportedSimd(cpu)) {
+        if (hasSupportedSimd(cpu) and false) {
             for (0..OUTPUT_BUCKET_COUNT) |ob| {
                 for (0..L1_SIZE / 4) |i| {
                     for (0..L2_SIZE) |j| {
@@ -228,10 +228,10 @@ pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
 
     // transpose l2w
     {
-        // [2 * L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32
+        // [L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32
         const l2w_disk = net.l2wDisk().*;
 
-        // [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32
+        // [OUTPUT_BUCKET_COUNT][L3_SIZE * L2_SIZE]i32
         const l2w_inf = net.l2wInference();
 
         for (0..OUTPUT_BUCKET_COUNT) |ob| {
