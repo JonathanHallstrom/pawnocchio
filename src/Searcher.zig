@@ -97,12 +97,13 @@ const EvalPair = struct {
     }
 };
 
-const STACK_PADDING = 1;
+const STACK_PADDING = 5;
 
 nodes: u64,
 hashes: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
+conthist_tables: [MAX_PLY + STACK_PADDING]*history.ContHistory.ContHistTable,
 root_move: Move,
 root_score: i16,
 full_width_score: i16,
@@ -229,12 +230,10 @@ pub const StackEntry = struct {
     }
 };
 
-inline fn getUsableMoves(self: *const Searcher) history.ConthistMoves {
-    var res: history.ConthistMoves = undefined;
-    const usable = self.stackEntry(0).usable_moves;
-    std.debug.assert(usable <= self.ply);
+inline fn getConthistTables(self: *Searcher) history.ConthistTables {
+    var res: history.ConthistTables = undefined;
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
-        res[j] = if (i < usable) self.stackEntry(-i).move else TypedMove.init();
+        res[j] = self.conthist_tables[self.ply + STACK_PADDING - i];
     }
     return res;
 }
@@ -308,6 +307,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
         prev_stack_entry.usable_moves + 1,
     );
     self.ply += 1;
+    self.conthist_tables[self.ply] = self.histories.countermove.table(stm, typed);
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -335,6 +335,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
         0,
     );
     self.ply += 1;
+    self.conthist_tables[self.ply] = self.histories.countermove.table(stm, TypedMove.init());
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -460,7 +461,7 @@ fn qsearch(
         &cur.movelist,
         &self.histories,
         tt_entry.move,
-        self.histories.getConthistTables(stm, self.getUsableMoves()),
+        self.getConthistTables(),
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
@@ -923,7 +924,7 @@ fn search(
         }
     }
 
-    const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
+    const conthist_tables = self.getConthistTables();
     var mp = MovePicker.init(
         board,
         &cur.movelist,
@@ -1471,6 +1472,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     for (&self.search_stack) |*stack_entry| {
         stack_entry.reset();
     }
+    @memset(&self.conthist_tables, self.histories.countermove.table(.white, TypedMove.init()));
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
     if (params.needs_full_reset) {
