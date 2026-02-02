@@ -532,6 +532,8 @@ const Accumulator = struct {
             }
         }
 
+        std.debug.print("ft after clamping and packing: {any}\n", .{activated_ft});
+
         const L2_UNROLL = 4;
         // in Q0² / 2⁹ * Q1
         var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
@@ -570,6 +572,19 @@ const Accumulator = struct {
             }
         }
 
+        var l1_intermediate_flattened: [L2_SIZE]i32 = undefined;
+
+        for (0..L2_SIZE / vecSize(i32)) |i| {
+            var intermediate: i32Vec = @splat(0);
+            for (l1_intermediate[i]) |e| {
+                intermediate += e;
+            }
+            const ar: [vecSize(i32)]i32 = intermediate;
+            @memcpy(l1_intermediate_flattened[i * vecSize(i32) ..][0..vecSize(i32)], &ar);
+        }
+
+        std.debug.print("l1 after matmul: {any}\n", .{l1_intermediate_flattened});
+
         // in Q²
         var l1_out_vec: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
         {
@@ -593,6 +608,8 @@ const Accumulator = struct {
             }
         }
 
+        std.debug.print("l1 activated: {any}\n", .{@as([L2_SIZE]i32, @bitCast(l1_out_vec))});
+
         // in Q³
         var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast((&weights.l2b)[output_bucket]);
         {
@@ -606,6 +623,8 @@ const Accumulator = struct {
             }
         }
 
+        std.debug.print("l2 intermediate: {any}\n", .{@as([L3_SIZE]i32, @bitCast(l2_intermediate))});
+
         // in Q⁴
         var l3_sum: i32Vec = @splat(0);
         {
@@ -617,6 +636,7 @@ const Accumulator = struct {
         }
 
         const bias = (&weights.l3b)[output_bucket];
+        std.debug.print("l3 output: {any}\n", .{@reduce(.Add, l3_sum) + bias});
         const scaled = (@reduce(.Add, l3_sum) + bias) * SCALE;
 
         return evaluation.clampScore(@divTrunc(scaled, arch.Q * arch.Q * arch.Q * arch.Q));
