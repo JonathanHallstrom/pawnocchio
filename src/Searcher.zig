@@ -232,8 +232,12 @@ pub const StackEntry = struct {
 
 inline fn getConthistTables(self: *Searcher) history.ConthistTables {
     var res: history.ConthistTables = undefined;
+    const usable = self.stackEntry(0).usable_moves;
+    const default = (&self.conthist_tables)[0];
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
-        res[j] = (&self.conthist_tables)[self.ply + STACK_PADDING - i];
+        const table = (&self.conthist_tables)[self.ply + STACK_PADDING - i];
+
+        res[j] = if (i < usable) table else default;
     }
     return res;
 }
