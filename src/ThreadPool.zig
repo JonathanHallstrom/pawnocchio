@@ -21,6 +21,7 @@ const TTCluster = root.TTCluster;
 const evaluation = root.evaluation;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
+const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
 fn adviseHugePages(p: anytype) !void {
     const bytes = std.mem.sliceAsBytes(p);
@@ -164,7 +165,7 @@ pub const ThreadPool = struct {
         if (IS_WINDOWS) {
             searcher = try self.allocator.create(Searcher);
         } else {
-            const ptr = try self.allocator.alignedAlloc(Searcher, .fromByteUnits(2 << 20), 1);
+            const ptr = try self.allocator.alignedAlloc(Searcher, .fromByteUnits(MAX_ALIGN), 1);
             searcher = @ptrCast(ptr);
             try adviseHugePages(ptr);
         }
@@ -193,7 +194,7 @@ pub const ThreadPool = struct {
         if (IS_WINDOWS) {
             self.allocator.destroy(searcher);
         } else {
-            const slice: []align(2 << 20) Searcher = @as([*]align(2 << 20) Searcher, @ptrCast(@alignCast(searcher)))[0..1];
+            const slice: []align(MAX_ALIGN) Searcher = @as([*]align(MAX_ALIGN) Searcher, @ptrCast(@alignCast(searcher)))[0..1];
             self.allocator.free(slice);
         }
     }
@@ -219,7 +220,7 @@ pub const ThreadPool = struct {
         }
         const num_clusters = size_mb * (1024 * 1024) / @sizeOf(TTCluster);
 
-        const slice = try self.allocator.alignedAlloc(TTCluster, .fromByteUnits(std.atomic.cache_line), num_clusters);
+        const slice = try self.allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), num_clusters);
         self.tt = slice;
         try adviseHugePages(self.tt);
 
