@@ -15,109 +15,18 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
-
 const root = @import("root.zig");
-
+const ThreadPool = @import("ThreadPool.zig").ThreadPool;
 const Searcher = root.Searcher;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
-var is_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
-var stop_searching: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
-pub var infinite: std.atomic.Value(bool) align(std.atomic.cache_line) = std.atomic.Value(bool).init(false);
-pub var thread_pool: std.Thread.Pool align(std.atomic.cache_line) = undefined;
-var num_finished_threads: std.atomic.Value(usize) align(std.atomic.cache_line) = std.atomic.Value(usize).init(0);
-var current_num_threads: usize align(std.atomic.cache_line) = 0; // 0 for uninitialized
-pub var searchers: []*align(MAX_ALIGN) Searcher align(std.atomic.cache_line) = &.{};
-var done_searching_mutex: std.Thread.Mutex = .{};
-var done_searching_cv: std.Thread.Condition = .{};
-pub var tt: []align(MAX_ALIGN) root.TTCluster = &.{};
+pub var thread_pool: ThreadPool = undefined;
 
 pub var debug_stats_lock: std.Thread.Mutex = .{};
 pub var debug_stats: std.StringHashMap(@import("DebugStats.zig")) = .init(std.heap.page_allocator);
 pub var debug_rng: std.Random.DefaultPrng = undefined;
-
-pub const SearchSettings = struct {
-    search_params: Searcher.Params,
-    quiet: bool = false,
-};
-
-fn resetState(comptime mode: enum { tt, searchers, both }) void {
-    const reset_worker = struct {
-        fn impl(start: usize, end: usize, i: usize) void {
-            if (mode != .searchers) {
-                @memset(tt[start..end], .{});
-            }
-            if (mode != .tt) {
-                @memset(std.mem.asBytes(searchers[i]), 0);
-                searchers[i].refresh_cache.initInPlace();
-            }
-        }
-    }.impl;
-
-    if (current_num_threads <= 1) {
-        reset_worker(0, tt.len, 0);
-    } else {
-        var wg = std.Thread.WaitGroup{};
-        const amt_per_thread = (tt.len + current_num_threads - 1) / current_num_threads;
-        var start: usize = 0;
-        var end: usize = amt_per_thread;
-        for (0..current_num_threads) |i| {
-            thread_pool.spawnWg(&wg, reset_worker, .{ start, end, i });
-            start = end;
-            end = @min(end + amt_per_thread, tt.len);
-        }
-        thread_pool.waitAndWork(&wg);
-    }
-}
-
-pub fn reset() void {
-    resetState(.both);
-}
-
-fn adviseHugePages(p: anytype) !void {
-    const bytes = std.mem.sliceAsBytes(p);
-    if (@import("builtin").os.tag == .linux and @import("builtin").link_libc) {
-        try std.posix.madvise(bytes.ptr, bytes.len, @cImport({
-            @cDefine("_GNU_SOURCE", "");
-            @cInclude("sys/mman.h");
-        }).MADV_HUGEPAGE);
-    }
-}
-
-pub fn setTTSize(new_size: usize) !void {
-    tt = try std.heap.page_allocator.realloc(tt, @intCast(new_size * @as(u128, 1 << 20) / @sizeOf(root.TTCluster)));
-    try adviseHugePages(tt);
-    resetState(.tt);
-}
-
-pub fn setThreadCount(thread_count: usize) !void {
-    if (current_num_threads != thread_count) { // need a new threadpool
-        if (current_num_threads > 0) { // deinit old threadpool
-            thread_pool.deinit();
-        }
-
-        current_num_threads = thread_count;
-        try thread_pool.init(.{
-            .allocator = std.heap.page_allocator,
-            .n_jobs = @intCast(thread_count),
-        });
-        for (searchers) |s| {
-            std.heap.page_allocator.destroy(s);
-        }
-        searchers = try std.heap.page_allocator.realloc(searchers, thread_count);
-        for (searchers) |*s| {
-            if (IS_WINDOWS) {
-                s.* = try std.heap.page_allocator.create(Searcher);
-            } else {
-                s.* = @ptrCast(try std.heap.page_allocator.alignedAlloc(Searcher, .fromByteUnits(2 << 20), 1));
-                try adviseHugePages(s.*[0..1]);
-            }
-        }
-        resetState(.searchers);
-    }
-}
 
 pub fn dbgStats(comptime name: []const u8, value: i64) void {
     debug_stats_lock.lock();
@@ -161,45 +70,53 @@ pub fn printDebugStats() void {
 }
 
 pub fn init() !void {
-    try setTTSize(16);
-    try setThreadCount(1);
+    thread_pool = ThreadPool.init(std.heap.page_allocator);
+    try thread_pool.setTTSize(16);
+    try thread_pool.setThreadCount(1);
     debug_stats = .init(std.heap.page_allocator); // yes its inefficient no i don't care
     debug_rng.seed(@bitCast(std.time.microTimestamp()));
 }
 
 pub fn deinit() void {
-    std.heap.page_allocator.free(tt);
-    for (searchers) |searcher| {
-        std.heap.page_allocator.destroy(searcher);
-    }
-    std.heap.page_allocator.free(searchers);
+    thread_pool.deinit();
     printDebugStats();
     debug_stats.deinit();
 }
 
-fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {
-    searchers[i].tt = tt;
-    searchers[i].startSearch(settings, i == 0, quiet);
-    _ = num_finished_threads.fetchAdd(1, .seq_cst);
-    if (num_finished_threads.load(.seq_cst) == current_num_threads) {
-        is_searching.store(false, .seq_cst);
-        done_searching_mutex.lock();
-        defer done_searching_mutex.unlock();
-        done_searching_cv.signal();
-    }
+pub fn reset() void {
+    thread_pool.reset();
 }
 
-pub fn startSearch(settings: SearchSettings) void {
-    if (!std.debug.runtime_safety) {
-        stopSearch();
+pub fn setTTSize(new_size: usize) !void {
+    try thread_pool.setTTSize(new_size);
+}
+
+pub fn setThreadCount(thread_count: usize) !void {
+    try thread_pool.setThreadCount(thread_count);
+}
+
+pub fn startSearch(settings: ThreadPool.SearchSettings) void {
+    thread_pool.startSearch(settings.search_params, settings.quiet);
+}
+
+pub fn stopSearch() void {
+    thread_pool.stopSearch();
+}
+
+pub fn shouldStopSearching() bool {
+    return thread_pool.shouldStopSearching();
+}
+
+pub fn waitUntilDoneSearching() void {
+    thread_pool.waitUntilDoneSearching();
+}
+
+pub fn querySearchedNodes() u64 {
+    var res: u64 = 0;
+    for (thread_pool.searchers.items) |searcher| {
+        res += searcher.nodes;
     }
-    waitUntilDoneSearching();
-    num_finished_threads.store(0, .seq_cst);
-    is_searching.store(true, .seq_cst);
-    stop_searching.store(false, .seq_cst);
-    for (0..current_num_threads) |i| {
-        thread_pool.spawn(searchWorker, .{ i, settings.search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
-    }
+    return res;
 }
 
 const DatagenStats = struct {
@@ -220,7 +137,7 @@ fn datagenWorker(
     writer_mutex: *std.Thread.Mutex,
     stats: *DatagenStats,
 ) void {
-    const searcher = searchers[i];
+    const searcher = thread_pool.searchers.items[i];
     const old_tt = searcher.tt;
     defer searcher.tt = old_tt;
     @memset(std.mem.asBytes(searcher), 0);
@@ -396,11 +313,18 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
 
     var writer_mutex = std.Thread.Mutex{};
     var stats = DatagenStats{};
-    for (0..current_num_threads) |i| {
-        try thread_pool.spawn(datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer, &writer_mutex, &stats });
+
+    var threads = try std.ArrayList(std.Thread).initCapacity(std.heap.page_allocator, thread_pool.threads.items.len);
+    defer {
+        for (threads.items) |t| t.join();
+        threads.deinit(std.heap.page_allocator);
     }
-    defer for (0..current_num_threads) |i| {
-        std.heap.page_allocator.free(searchers[i].tt);
+
+    for (0..thread_pool.threads.items.len) |i| {
+        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer, &writer_mutex, &stats }));
+    }
+    defer for (0..thread_pool.threads.items.len) |i| {
+        std.heap.page_allocator.free(thread_pool.searchers.items[i].tt);
     };
     var prev_positions: usize = 0;
     var prev_time = timer.read();
@@ -494,34 +418,5 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allo
 
         try writer.interface.print("info string genfens {s}\n", .{board.toFen().slice()});
         remaining -= 1;
-    }
-}
-
-pub fn querySearchedNodes() u64 {
-    var res: u64 = 0;
-    for (searchers) |searcher| {
-        res += searcher.nodes;
-    }
-    return res;
-}
-
-pub fn stopSearch() void {
-    stop_searching.store(true, .seq_cst);
-    for (searchers) |searcher| {
-        searcher.stop.store(true, .release);
-    }
-}
-
-pub fn shouldStopSearching() bool {
-    return stop_searching.load(.seq_cst);
-}
-
-pub fn waitUntilDoneSearching() void {
-    if (is_searching.load(.seq_cst)) {
-        done_searching_mutex.lock();
-        defer done_searching_mutex.unlock();
-        while (num_finished_threads.load(.seq_cst) < current_num_threads) {
-            done_searching_cv.wait(&done_searching_mutex);
-        }
     }
 }
