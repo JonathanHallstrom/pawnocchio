@@ -174,8 +174,8 @@ pub fn deinit() void {
     debug_stats.deinit();
 }
 
-fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {
-    if (needs_full_reset) {
+fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool, full_reset: bool) void {
+    if (full_reset) {
         @memset(std.mem.asBytes(searchers[i]), 0);
     }
     searchers[i].tt = tt;
@@ -190,9 +190,7 @@ fn searchWorker(i: usize, settings: Searcher.Params, quiet: bool) void {
 }
 
 pub fn startSearch(settings: SearchSettings) void {
-    if (!std.debug.runtime_safety) {
-        stopSearch();
-    }
+    stopSearch();
     waitUntilDoneSearching();
     num_finished_threads.store(0, .seq_cst);
     is_searching.store(true, .seq_cst);
@@ -200,7 +198,7 @@ pub fn startSearch(settings: SearchSettings) void {
     var search_params = settings.search_params;
     search_params.needs_full_reset = needs_full_reset;
     for (0..current_num_threads) |i| {
-        thread_pool.spawn(searchWorker, .{ i, search_params, settings.quiet }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
+        thread_pool.spawn(searchWorker, .{ i, search_params, settings.quiet, needs_full_reset }) catch |e| std.debug.panic("Fatal: spawning thread failed with error '{}'\n", .{e});
     }
     needs_full_reset = false; // don't clear state unnecessarily
 }

@@ -1464,6 +1464,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     }
     self.fixupPreviousHashes();
 
+    self.hashes[0] = board.hash;
     self.root_move = Move.init();
     self.root_score = 0;
     self.search_stack[0].board = Board{};
