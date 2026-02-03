@@ -303,7 +303,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
         prev_stack_entry.evals,
     );
     self.ply += 1;
-    self.conthist_tables[self.ply + STACK_PADDING] = self.histories.countermove.table(stm, typed);
+    self.conthist_tables[self.ply + STACK_PADDING] = self.histories.countermove.table(stm, board, typed);
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -330,7 +330,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
         prev_stack_entry.evals,
     );
     self.ply += 1;
-    self.conthist_tables[self.ply + STACK_PADDING] = self.histories.countermove.table(stm, TypedMove.init());
+    self.conthist_tables[self.ply + STACK_PADDING] = self.histories.countermove.table(stm, board, TypedMove.init());
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;

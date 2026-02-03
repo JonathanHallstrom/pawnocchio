@@ -281,7 +281,7 @@ pub const ContHistory = struct {
         }
     };
 
-    vals: [2 * 6 * 64]ContHistTable,
+    vals: [2 * 2 * 2 * 6 * 64]ContHistTable,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -301,10 +301,12 @@ pub const ContHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    pub inline fn table(self: anytype, col: Colour, move: TypedMove) root.inheritConstness(@TypeOf(self), *ContHistTable) {
+    pub inline fn table(self: anytype, col: Colour, b: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *ContHistTable) {
+        const capture: usize = @intFromBool(b.isCapture(move.move));
+        const is_in_check: usize = @intFromBool(b.checkers != 0);
         const col_offs: usize = col.toInt();
         const move_offs: usize = @as(usize, move.tp.toInt()) * 64 + move.move.to().toInt();
-        return &(&self.vals)[col_offs * 6 * 64 + move_offs];
+        return &(&self.vals)[col_offs * 6 * 64 * 4 + move_offs * 4 + 2 * capture + is_in_check];
     }
 };
 
@@ -335,20 +337,6 @@ pub const HistoryTable = struct {
 
     pub fn age(self: *HistoryTable) void {
         self.quiet.age();
-    }
-
-    pub fn getConthistTables(
-        self: *HistoryTable,
-        col: Colour,
-        moves: ConthistMoves,
-    ) ConthistTables {
-        var res: ConthistTables = undefined;
-
-        for (0..NUM_CONTHISTS) |i| {
-            res[i] = self.countermove.table(col, moves[i]);
-        }
-
-        return res;
     }
 
     pub inline fn readQuietPruning(
