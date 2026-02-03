@@ -115,6 +115,7 @@ limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
 should_stop: std.atomic.Value(bool),
+stopped: bool = false,
 previous_hashes: BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTCluster,
 pvs: [MAX_PLY]BoundedArray(Move, 256),
@@ -383,8 +384,13 @@ fn qsearch(
     var alpha = alpha_original;
     var beta = beta_original;
     self.nodes += 1;
-    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+    if (self.stopped or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+        self.stopped = true;
         self.stop.store(true, .release);
+        return 0;
+    }
+    if ((self.nodes & 1023) == 0 and self.stop.load(.acquire)) {
+        self.stopped = true;
         return 0;
     }
     const cur: *StackEntry = self.stackEntry(0);
@@ -658,8 +664,13 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (!(is_root and self.is_main_thread and self.root_move.isNull()) and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
+    if (!(is_root and self.is_main_thread and self.root_move.isNull()) and (self.stopped or self.limits.checkSearch(self.nodes))) {
+        self.stopped = true;
         self.stop.store(true, .release);
+        return 0;
+    }
+    if ((self.nodes & 1023) == 0 and self.stop.load(.acquire)) {
+        self.stopped = true;
         return 0;
     }
 
@@ -1442,6 +1453,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.ply = 0;
     self.should_stop.store(false, .release);
     self.stop.store(false, .release);
+    self.stopped = false;
     self.nodes = 0;
     self.tbhits = 0;
     const board = params.board;
