@@ -40,6 +40,7 @@ pub const zobrist = @import("zobrist.zig");
 pub const PerftEPDParser = @import("PerftEPDParser.zig");
 pub const evaluation = @import("evaluation.zig");
 pub const Searcher = @import("Searcher.zig");
+pub const ThreadPool = @import("ThreadPool.zig").ThreadPool;
 pub const engine = @import("engine.zig");
 pub const Limits = @import("Limits.zig");
 pub const MovePicker = @import("MovePicker.zig");

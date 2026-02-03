@@ -25,6 +25,8 @@ const ScoredMove = root.ScoredMove;
 const use_tbs = root.use_tbs;
 
 const c = if (use_tbs) @cImport(@cInclude("tbprobe.h")) else undefined;
+const tb_max_moves: usize = if (use_tbs) c.TB_MAX_MOVES else 0;
+const TbRootMoves = if (use_tbs) c.TbRootMoves else void;
 
 var tbs_init = false;
 pub fn init(path: [*:0]const u8) error{TBInitializationFailed}!void {
@@ -89,7 +91,7 @@ pub fn probeWDL(board: *const Board) ?WDL {
 pub fn probeRootDTZ(
     board: *const Board,
     has_repetition: bool,
-) ?struct { WDL, root.BoundedArray(ScoredMove, c.TB_MAX_MOVES) } {
+) ?struct { WDL, root.BoundedArray(ScoredMove, tb_max_moves) } {
     if (!use_tbs or !tbs_init) {
         return null;
     }
@@ -98,7 +100,7 @@ pub fn probeRootDTZ(
     {
         return null;
     }
-    var tb_results = std.mem.zeroes(c.TbRootMoves);
+    var tb_results = std.mem.zeroes(TbRootMoves);
 
     const probe_result = c.tb_probe_root_dtz(
         board.white,
@@ -132,7 +134,7 @@ pub fn probeRootDTZ(
     }
 
     const tb_moves = tb_results.moves[0..tb_results.size];
-    var res: root.BoundedArray(ScoredMove, c.TB_MAX_MOVES) = .{};
+    var res: root.BoundedArray(ScoredMove, tb_max_moves) = .{};
     for (tb_moves) |tb_move| {
         const from = Square.fromInt(@intCast(c.PYRRHIC_MOVE_FROM(tb_move.move)));
         const to = Square.fromInt(@intCast(c.PYRRHIC_MOVE_TO(tb_move.move)));

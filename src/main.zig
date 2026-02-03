@@ -1408,6 +1408,10 @@ pub fn main() !void {
         } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
             var prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
             var mutex = std.Thread.Mutex{};
+            var tp: std.Thread.Pool = undefined;
+            try tp.init(.{ .allocator = allocator });
+            defer tp.deinit();
+
             for (0..1024) |_| {
                 const worker_fn = struct {
                     fn impl(rng: std.Random, m: *std.Thread.Mutex) void {
@@ -1431,7 +1435,7 @@ pub fn main() !void {
                         m.unlock();
                     }
                 }.impl;
-                try root.engine.thread_pool.spawn(worker_fn, .{ prng.random(), &mutex });
+                try tp.spawn(worker_fn, .{ prng.random(), &mutex });
             }
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
