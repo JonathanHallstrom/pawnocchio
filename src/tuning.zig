@@ -109,6 +109,8 @@ const tunable_defaults = struct {
     pub const cont2_pruning_weight: i32 = 1175 * 8 / 10;
     pub const cont4_ordering_weight: i32 = 846 * 8 / 10;
     pub const cont4_pruning_weight: i32 = 290 * 8 / 10;
+    pub const cont6_ordering_weight: i32 = 500 * 8 / 10;
+    pub const cont6_pruning_weight: i32 = 100 * 8 / 10;
     pub const rfp_min_margin: i32 = 21;
     pub const rfp_base: i32 = 44633;
     pub const rfp_mult: i32 = 33322;
@@ -298,6 +300,8 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont2_pruning_weight", .default = tunable_defaults.cont2_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont4_ordering_weight", .default = tunable_defaults.cont4_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont6_ordering_weight", .default = tunable_defaults.cont6_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont6_pruning_weight", .default = tunable_defaults.cont6_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_min_margin", .default = tunable_defaults.rfp_min_margin },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult },
@@ -487,6 +491,8 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var cont2_pruning_weight = tunable_defaults.cont2_pruning_weight;
     pub var cont4_ordering_weight = tunable_defaults.cont4_ordering_weight;
     pub var cont4_pruning_weight = tunable_defaults.cont4_pruning_weight;
+    pub var cont6_ordering_weight = tunable_defaults.cont6_ordering_weight;
+    pub var cont6_pruning_weight = tunable_defaults.cont6_pruning_weight;
     pub var rfp_min_margin = tunable_defaults.rfp_min_margin;
     pub var rfp_base = tunable_defaults.rfp_base;
     pub var rfp_mult = tunable_defaults.rfp_mult;
