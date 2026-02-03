@@ -38,6 +38,7 @@ const write = root.write;
 const evaluate = evaluation.evaluate;
 const TTEntry = root.TTEntry;
 const TTCluster = root.TTCluster;
+const cuckoo = root.cuckoo;
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -292,7 +293,13 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
     const prev_move = prev_stack_entry.move.move;
     var typed = TypedMove.fromBoard(board, move);
-    typed.is_recapture = move.to() == prev_move.to() and !prev_move.isNull();
+
+    typed.setRecapture(move.to() == prev_move.to() and !prev_move.isNull());
+
+    const opponent_threats = (&board.threats)[board.stm.flipped().toInt()];
+    typed.setFromThreatened(move.from().toBitboard() & opponent_threats != 0);
+    typed.setToThreatened(move.to().toBitboard() & opponent_threats != 0);
+
     new_stack_entry.init(
         board,
         typed,
@@ -356,6 +363,12 @@ fn isRepetition(self: *Searcher) bool {
     return false;
 }
 
+fn hasUpcomingRepetition(self: *Searcher) bool {
+    const board: *const Board = &self.stackEntry(0).board;
+
+    return cuckoo.hasUpcomingRepetition(board, self.hashes[0 .. self.ply + 1], self.previous_hashes.slice());
+}
+
 fn qsearch(
     self: *Searcher,
     comptime is_root: bool,
@@ -376,6 +389,15 @@ fn qsearch(
     }
     const cur: *StackEntry = self.stackEntry(0);
     const board = &cur.board;
+    if (!is_root) {
+        if (alpha < 0 and self.hasUpcomingRepetition()) {
+            alpha = self.drawScore(stm);
+
+            if (alpha >= beta) {
+                return @intCast(alpha);
+            }
+        }
+    }
     const is_in_check = board.checkers != 0;
 
     const tt_hash = board.getHashWithHalfmove();
@@ -646,6 +668,16 @@ fn search(
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
+    }
+
+    if (!is_root) {
+        if (alpha < 0 and self.hasUpcomingRepetition()) {
+            alpha = self.drawScore(stm);
+
+            if (alpha >= beta) {
+                return @intCast(alpha);
+            }
+        }
     }
 
     if (is_pv) {
