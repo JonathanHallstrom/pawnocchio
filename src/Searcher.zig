@@ -1350,7 +1350,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
     };
     var nodes: u64 = 0;
     var tbhits: u64 = 0;
-    for (engine.searchers) |searcher| {
+    for (engine.thread_pool.searchers.items) |searcher| {
         nodes += searcher.nodes;
         tbhits += searcher.tbhits;
     }
@@ -1470,13 +1470,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     @memset(&self.conthist_tables, null);
     self.searchStackRoot()[0].init(&board, .init(), .init(), .{});
     self.evalStateRoot()[0].initInPlace(&board);
-    if (params.needs_full_reset) {
-        self.refresh_cache.initInPlace();
-        self.histories.reset();
-        self.ttage = 0;
-    } else {
-        self.histories.age();
-    }
+    self.histories.age();
     self.ttage +%= 1;
     @memset(std.mem.asBytes(&self.node_counts), 0);
     evaluation.initThreadLocals();
@@ -1487,10 +1481,10 @@ fn pickBestMove() struct { i16, Move } {
     var best_move = Move.init();
     var best_score: i16 = -evaluation.inf_score;
     var max_score: i32 = std.math.minInt(i32);
-    for (engine.searchers) |searcher| {
+    for (engine.thread_pool.searchers.items) |searcher| {
         max_score = @max(max_score, searcher.full_width_score);
     }
-    for (engine.searchers) |searcher| {
+    for (engine.thread_pool.searchers.items) |searcher| {
         const move = searcher.root_move;
         const score = tunables.voting_score_max - std.math.clamp(max_score - searcher.full_width_score, 0, tunables.voting_score_max);
         const normalized = searcher.full_width_score_normalized;
@@ -1611,7 +1605,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             var move_stability: u32 = 0;
             var best_move_count: u64 = 0;
             var total_nodes: u64 = 0;
-            for (engine.searchers) |searcher| {
+            for (engine.thread_pool.searchers.items) |searcher| {
                 eval_stability += searcher.eval_stability;
                 if (searcher.root_move == self.root_move) {
                     move_stability += searcher.move_stability;
@@ -1619,7 +1613,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 total_nodes += searcher.nodes;
                 best_move_count += searcher.node_counts[self.root_move.from().toInt()][self.root_move.to().toInt()];
             }
-            const num_searchers: u32 = @intCast(engine.searchers.len);
+            const num_searchers: u32 = @intCast(engine.thread_pool.searchers.items.len);
             if (self.limits.checkRootTime(
                 eval_stability * 1024 / num_searchers,
                 move_stability * 1024 / num_searchers,

@@ -693,6 +693,7 @@ pub fn main() !void {
             defer root.engine.printDebugStats();
             var total_nodes: u64 = 0;
             var timer = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start\n", .{});
+            root.engine.reset();
             for ([_][]const u8{
                 "1B6/4R1p1/1p4kp/p7/r7/8/5P2/5K2 w - - 2 42",
                 "1N6/1kp5/1p1p4/n3p3/5n2/P7/KP6/3R4 w - - 4 39",
@@ -795,7 +796,6 @@ pub fn main() !void {
                 "rnkbnrbq/1pp3p1/3pp2p/p6P/P4pP1/2PP1P2/1P2P3/RKRBBNQN b KQkq - 0 7",
                 "rqnk2r1/2p1b2p/6b1/p2p4/1p1P2PB/PP6/2P4Q/NNKR3R b kq - 0 15",
             }) |fen| {
-                root.engine.reset();
                 root.engine.startSearch(.{
                     .search_params = .{
                         .board = try Board.parseFen(fen, false),
@@ -1408,6 +1408,10 @@ pub fn main() !void {
         } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
             var prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
             var mutex = std.Thread.Mutex{};
+            var tp: std.Thread.Pool = undefined;
+            try tp.init(.{ .allocator = allocator });
+            defer tp.deinit();
+
             for (0..1024) |_| {
                 const worker_fn = struct {
                     fn impl(rng: std.Random, m: *std.Thread.Mutex) void {
@@ -1431,7 +1435,7 @@ pub fn main() !void {
                         m.unlock();
                     }
                 }.impl;
-                try root.engine.thread_pool.spawn(worker_fn, .{ prng.random(), &mutex });
+                try tp.spawn(worker_fn, .{ prng.random(), &mutex });
             }
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
