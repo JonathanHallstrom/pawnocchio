@@ -227,6 +227,9 @@ pub const ThreadPool = struct {
         for (self.searchers.items) |s| {
             s.tt = self.tt;
         }
+        for (self.threads.items) |t| {
+            t.tt = self.tt;
+        }
         self.reset();
     }
 
