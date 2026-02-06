@@ -1479,7 +1479,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     evaluation.initThreadLocals();
 }
 
-fn pickBestMove() struct { i16, Move } {
+fn pickBestMove(b: *const Board) struct { i16, Move } {
     var votes = std.mem.zeroes([64][64]i64);
     var best_move = Move.init();
     var best_score: i16 = -evaluation.inf_score;
@@ -1487,8 +1487,16 @@ fn pickBestMove() struct { i16, Move } {
     for (engine.thread_pool.searchers.items) |searcher| {
         max_score = @max(max_score, searcher.full_width_score);
     }
+
     for (engine.thread_pool.searchers.items) |searcher| {
         const move = searcher.root_move;
+        switch (b.stm) {
+            inline else => |stm| {
+                if (!b.isPseudoLegal(stm, move) or !b.isLegal(stm, move)) {
+                    continue;
+                }
+            },
+        }
         const score = tunables.voting_score_max - std.math.clamp(max_score - searcher.full_width_score, 0, tunables.voting_score_max);
         const normalized = searcher.full_width_score_normalized;
         const d = searcher.limits.root_depth;
@@ -1634,8 +1642,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
 
     if (is_main_thread) {
         if (!quiet) {
-            const board: Board = self.stackEntry(0).board;
-            const score, var move = pickBestMove();
+            const board: *const Board = &self.stackEntry(0).board;
+            const score, var move = pickBestMove(board);
             _ = score;
             if (move.isNull()) {
                 const tt_entry = self.readTT(board.hash);
@@ -1652,7 +1660,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
 
                 if (move.isNull()) {
                     var list = movegen.MoveListReceiver{};
-                    movegen.generateAll(&board, &list);
+                    movegen.generateAll(board, &list);
                     if (list.vals.len > 0) {
                         move = list.vals.slice()[0];
                     }
@@ -1661,7 +1669,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             if (self.minimal) {
                 self.writeInfo(self.full_width_score, completed_depth, .completed, move);
             }
-            write("bestmove {s}\n", .{move.toString(&board).slice()});
+            write("bestmove {s}\n", .{move.toString(board).slice()});
         }
         engine.stopSearch();
     }

@@ -52,6 +52,29 @@ pub inline fn generateAll(noalias board: *const Board, noalias move_receiver: an
     }
 }
 
+pub inline fn legalMoveList(noalias board: *const Board) MoveListReceiver {
+    var move_receiver = MoveListReceiver{};
+    switch (board.stm) {
+        inline else => |stm| {
+            generateAllNoisies(stm, board, &move_receiver);
+            generateAllQuiets(stm, board, &move_receiver);
+
+            var num_legal: usize = 0;
+
+            const slice = move_receiver.vals.slice();
+            for (slice) |move| {
+                slice[num_legal] = move;
+                if (board.isLegal(stm, move)) {
+                    num_legal += 1;
+                }
+            }
+
+            move_receiver.vals.len = num_legal;
+        },
+    }
+    return move_receiver;
+}
+
 pub inline fn generateAllQuiets(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
     var check_mask = ~@as(u64, 0);
     if (board.checkers != 0) {
