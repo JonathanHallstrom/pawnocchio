@@ -35,12 +35,9 @@ const MovePicker = @This();
 movelist: *MoveReceiver,
 first: usize,
 last: usize,
-board: *const Board,
 stage: Stage,
 skip_quiets: bool,
-histories: *const history.HistoryTable,
 ttmove: Move,
-conthist_tables: history.ConthistTables,
 last_bad_noisy: usize = 0,
 
 pub const Stage = enum {
@@ -54,47 +51,36 @@ pub const Stage = enum {
 };
 
 pub fn init(
-    board_: *const Board,
     movelist_: *MoveReceiver,
-    histories_: *root.history.HistoryTable,
     ttmove_: Move,
-    tables_: history.ConthistTables,
     is_singular_search: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
     return .{
         .movelist = movelist_,
-        .board = board_,
         .first = 0,
         .last = 0,
         .stage = if (is_singular_search) .generate_noisies else .tt,
         .skip_quiets = false,
-        .histories = histories_,
         .ttmove = ttmove_,
-        .conthist_tables = tables_,
     };
 }
 
 pub fn initQs(
-    board_: *const Board,
     movelist_: *MoveReceiver,
-    histories_: *root.history.HistoryTable,
     ttmove_: Move,
-    tables_: history.ConthistTables,
+    skip_quiets: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
     return .{
         .movelist = movelist_,
-        .board = board_,
         .first = 0,
         .last = 0,
         .stage = .tt,
-        .skip_quiets = board_.checkers == 0,
-        .histories = histories_,
+        .skip_quiets = skip_quiets,
         .ttmove = ttmove_,
-        .conthist_tables = tables_,
     };
 }
 
@@ -143,31 +129,46 @@ inline fn findBest(noalias self: *MovePicker) usize {
     return res;
 }
 
-fn noisyValue(self: MovePicker, move: Move) i32 {
+inline fn noisyValue(
+    noalias histories: *const Historytable,
+    noalias board: *const Board,
+    move: Move,
+) i32 {
     var res: i32 = 0;
 
     res += @intFromBool(move.tp() == .ep) * SEE.value(.pawn, .ordering);
-    res += SEE.value(self.board.pieceOn(move.to()) orelse .king, .ordering);
+    res += SEE.value(board.pieceOn(move.to()) orelse .king, .ordering);
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
-    res += self.histories.readNoisy(self.board, move);
+    res += histories.readNoisy(board, move);
 
     return res;
 }
 
-inline fn quietValue(self: MovePicker, move: Move) i32 {
-    return self.histories.readQuietOrdering(self.board, move, self.conthist_tables);
+inline fn quietValue(
+    noalias histories: *const Historytable,
+    conthist_tables: history.ConthistTables,
+    noalias board: *const Board,
+    move: Move,
+) i32 {
+    return histories.readQuietOrdering(board, move, conthist_tables);
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;
 
-pub inline fn next(self: *MovePicker, comptime stm: Colour) ?ScoredMove {
+pub inline fn next(
+    noalias self: *MovePicker,
+    comptime stm: Colour,
+    noalias histories: *const Historytable,
+    conthist_tables: history.ConthistTables,
+    noalias board: *const Board,
+) ?ScoredMove {
     return sw: switch (self.stage) {
         .tt => {
-            if (self.skip_quiets and self.board.isQuiet(self.ttmove)) {
+            if (self.skip_quiets and board.isQuiet(self.ttmove)) {
                 continue :sw .generate_noisies;
             }
             self.stage = .generate_noisies;
-            if (self.board.isPseudoLegal(stm, self.ttmove)) {
+            if (board.isPseudoLegal(stm, self.ttmove)) {
                 return ScoredMove{ .move = self.ttmove, .score = 0 };
             }
             continue :sw .generate_noisies;
@@ -175,9 +176,9 @@ pub inline fn next(self: *MovePicker, comptime stm: Colour) ?ScoredMove {
         .generate_noisies => {
             self.movelist.vals.len = 0;
             std.debug.assert(self.movelist.vals.len == 0);
-            movegen.generateAllNoisies(stm, self.board, self.movelist);
+            movegen.generateAllNoisies(stm, board, self.movelist);
             for (self.movelist.vals.slice()) |*scored_move| {
-                scored_move.score = self.noisyValue(scored_move.move);
+                scored_move.score = noisyValue(histories, board, scored_move.move);
             }
             self.last = self.movelist.vals.len;
             self.stage = .good_noisies;
@@ -186,14 +187,13 @@ pub inline fn next(self: *MovePicker, comptime stm: Colour) ?ScoredMove {
         },
         .good_noisies => {
             if (self.first == self.last) {
-                self.stage = .generate_quiets;
                 continue :sw .generate_quiets;
             }
             const res = self.movelist.vals.slice()[self.findBest()];
-            const history_score = self.histories.readNoisy(self.board, res.move);
+            const history_score = histories.readNoisy(board, res.move);
             const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                 root.tuning.tunable_constants.good_noisy_ordering_base;
-            if (SEE.scoreMove(self.board, res.move, margin, .ordering)) {
+            if (SEE.scoreMove(board, res.move, margin, .ordering)) {
                 return res;
             }
             self.movelist.vals.slice()[self.last_bad_noisy] = res;
@@ -203,13 +203,12 @@ pub inline fn next(self: *MovePicker, comptime stm: Colour) ?ScoredMove {
         },
         .generate_quiets => {
             if (self.skip_quiets) {
-                self.stage = .quiets;
                 return null;
             }
             self.first = self.movelist.vals.len;
-            movegen.generateAllQuiets(stm, self.board, self.movelist);
+            movegen.generateAllQuiets(stm, board, self.movelist);
             for (self.movelist.vals.slice()[self.last..]) |*scored_move| {
-                scored_move.score = self.quietValue(scored_move.move);
+                scored_move.score = quietValue(histories, conthist_tables, board, scored_move.move);
             }
             self.last = self.movelist.vals.len;
             self.stage = .quiets;

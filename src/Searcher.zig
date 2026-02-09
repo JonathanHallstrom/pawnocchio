@@ -456,11 +456,9 @@ fn qsearch(
     var best_move = Move.init();
     var score_type: ScoreType = .upper;
     var mp = MovePicker.initQs(
-        board,
         &cur.movelist,
-        &self.histories,
         tt_entry.move,
-        self.histories.getConthistTables(stm, self.getUsableMoves()),
+        board.checkers == 0,
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
@@ -469,7 +467,14 @@ fn qsearch(
 
     const previous_move_destination = cur.move.move.to();
 
-    while (mp.next(stm)) |scored_move| {
+    const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
+
+    while (mp.next(
+        stm,
+        &self.histories,
+        conthist_tables,
+        board,
+    )) |scored_move| {
         const move = scored_move.move;
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
@@ -925,11 +930,8 @@ fn search(
 
     const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
     var mp = MovePicker.init(
-        board,
         &cur.movelist,
-        &self.histories,
         if (is_singular_search) cur.excluded else tt_entry.move,
-        conthist_tables,
         is_singular_search,
     );
     defer mp.deinit();
@@ -949,7 +951,12 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
-    while (mp.next(stm)) |scored_move| {
+    while (mp.next(
+        stm,
+        &self.histories,
+        conthist_tables,
+        board,
+    )) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
             continue;
