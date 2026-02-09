@@ -185,7 +185,14 @@ pub fn prefetch(self: *const Searcher, move: Move) void {
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
-    return self.tt[self.ttIndex(hash)].read(TTEntry.compress(hash));
+    const cluster = &self.tt[self.ttIndex(hash)];
+    const res = cluster.read(TTEntry.compress(hash));
+
+    if (!res.hashEql(hash)) {
+        @prefetch(cluster, .{ .rw = .write });
+    }
+
+    return res;
 }
 
 pub const StackEntry = struct {
