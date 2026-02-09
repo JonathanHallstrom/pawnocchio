@@ -99,7 +99,9 @@ const EvalPair = struct {
 
 const STACK_PADDING = 1;
 
-nodes: u64,
+search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
+is_ready: bool align(std.atomic.cache_line) = false,
+nodes: u64 align(std.atomic.cache_line),
 hashes: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
@@ -398,6 +400,16 @@ fn qsearch(
             }
         }
     }
+    if (!is_root) {
+        const worst_possible = evaluation.matedIn(self.ply);
+        const best_possible = -evaluation.matedIn(self.ply + 1);
+
+        alpha = @max(alpha, worst_possible);
+        beta = @min(beta, best_possible);
+        if (alpha >= beta) {
+            return @intCast(alpha);
+        }
+    }
     const is_in_check = board.checkers != 0;
 
     const tt_hash = board.getHashWithHalfmove();
@@ -434,17 +446,6 @@ fn qsearch(
         }
         if (static_eval > alpha) {
             alpha = static_eval;
-        }
-    }
-
-    if (!is_root) {
-        const worst_possible = evaluation.matedIn(self.ply);
-        const best_possible = -evaluation.matedIn(self.ply + 1);
-
-        alpha = @max(alpha, worst_possible);
-        beta = @min(beta, best_possible);
-        if (alpha >= beta) {
-            return @intCast(alpha);
         }
     }
 
@@ -693,6 +694,9 @@ fn search(
 
         alpha = @max(alpha, worst_possible);
         beta = @min(beta, best_possible);
+        // if (self.ply > 9) {
+        //     std.debug.print("{} {s} {s} {s}\n", .{ self.ply, evaluation.formatScore(self.root_score).slice(), evaluation.formatScore(@intCast(alpha)).slice(), evaluation.formatScore(@intCast(beta)).slice() });
+        // }
         if (alpha >= beta) {
             return @intCast(alpha);
         }
@@ -1078,7 +1082,8 @@ fn search(
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + @as(i32, 3) >= depth and
-            tt_entry.flags.score_type != .upper)
+            tt_entry.flags.score_type != .upper and
+            beta > evaluation.matedIn(MAX_PLY))
         {
             var beta_mult: i32 = tunables.singular_beta_mult;
             beta_mult -= @intFromBool(is_pv) * tunables.singular_beta_pv_mult;
@@ -1354,7 +1359,11 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
     };
     var nodes: u64 = 0;
     var tbhits: u64 = 0;
+    const cur_id = self.search_id.load(.seq_cst);
     for (engine.thread_pool.searchers.items) |searcher| {
+        if (searcher.search_id.load(.seq_cst) != cur_id) {
+            continue;
+        }
         nodes += searcher.nodes;
         tbhits += searcher.tbhits;
     }
@@ -1434,16 +1443,31 @@ fn dbgHit(self: *Searcher, comptime name: []const u8, a: bool, b: bool) void {
     return self.dbg(name, @intFromBool(a == b));
 }
 
-fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
+pub fn ensureInvariants(self: *Searcher) void {
+    if (self.is_ready) {
+        return;
+    }
+    self.is_ready = true;
     self.seldepth = 0;
+    self.ply = 0;
+    self.nodes = 0;
+    self.tbhits = 0;
+    self.root_move = Move.init();
+    self.root_score = 0;
+    self.pvs[0].len = 0;
+    for (&self.search_stack) |*stack_entry| {
+        stack_entry.reset();
+    }
+    @memset(std.mem.asBytes(&self.node_counts), 0);
+}
+
+fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
+    self.ensureInvariants();
     self.limits = params.limits;
     self.syzygy_depth = params.syzygy_depth;
     self.is_main_thread = is_main_thread;
-    self.ply = 0;
     self.should_stop.store(false, .release);
     self.stop.store(false, .release);
-    self.nodes = 0;
-    self.tbhits = 0;
     const board = params.board;
     self.previous_hashes.len = 0;
     self.normalize = params.normalize;
@@ -1464,19 +1488,10 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     }
     self.fixupPreviousHashes();
 
-    self.root_move = Move.init();
-    self.root_score = 0;
-    self.search_stack[0].board = Board{};
-    self.pvs[0].len = 0;
-    for (&self.search_stack) |*stack_entry| {
-        stack_entry.reset();
-    }
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
     self.evalStateRoot()[0].initInPlace(&board);
     self.histories.age();
     self.ttage +%= 1;
-    @memset(std.mem.asBytes(&self.node_counts), 0);
-    evaluation.initThreadLocals();
 }
 
 fn pickBestMove(b: *const Board) struct { i16, Move } {
@@ -1484,11 +1499,18 @@ fn pickBestMove(b: *const Board) struct { i16, Move } {
     var best_move = Move.init();
     var best_score: i16 = -evaluation.inf_score;
     var max_score: i32 = std.math.minInt(i32);
+    const cur_id = engine.thread_pool.searchers.items[0].search_id.load(.seq_cst);
     for (engine.thread_pool.searchers.items) |searcher| {
+        if (searcher.search_id.load(.seq_cst) != cur_id) {
+            continue;
+        }
         max_score = @max(max_score, searcher.full_width_score);
     }
 
     for (engine.thread_pool.searchers.items) |searcher| {
+        if (searcher.search_id.load(.seq_cst) != cur_id) {
+            continue;
+        }
         const move = searcher.root_move;
         switch (b.stm) {
             inline else => |stm| {
@@ -1521,6 +1543,9 @@ fn pickBestMove(b: *const Board) struct { i16, Move } {
 
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
     self.init(params, is_main_thread);
+    self.is_ready = false;
+    _ = self.search_id.fetchAdd(1, .seq_cst);
+
     var previous_score: i32 = 0;
     var previous_move: Move = Move.init();
     var completed_depth: i32 = 0;
@@ -1528,6 +1553,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     self.move_stability = 0;
     self.full_width_score = 0;
     var average_score: i64 = 0;
+    std.debug.print("{D}\n", .{@import("main.zig").search_timer.read()});
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
@@ -1539,9 +1565,15 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.inf_score));
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
+        if (evaluation.isTBScore(previous_score)) {
+            aspiration_lower = previous_score - 1;
+            aspiration_upper = previous_score + 1;
+        }
+        var iters: usize = 0;
         switch (params.board.stm) {
             inline else => |stm| while (true) {
                 defer quantized_window = quantized_window * tunables.aspiration_multiplier >> 10;
+                iters += 1;
 
                 score = self.search(
                     true,
