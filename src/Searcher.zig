@@ -469,7 +469,7 @@ fn qsearch(
 
     const previous_move_destination = cur.move.move.to();
 
-    while (mp.next()) |scored_move| {
+    while (mp.next(stm)) |scored_move| {
         const move = scored_move.move;
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
@@ -949,7 +949,7 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
-    while (mp.next()) |scored_move| {
+    while (mp.next(stm)) |scored_move| {
         const move = scored_move.move;
         if (move == cur.excluded) {
             continue;
