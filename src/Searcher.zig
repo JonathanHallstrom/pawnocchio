@@ -181,7 +181,7 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
 
 pub fn prefetch(self: *const Searcher, move: Move) void {
     const board = &self.stackEntry(0).board;
-    @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
+    @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{ .rw = .write });
 }
 
 pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
