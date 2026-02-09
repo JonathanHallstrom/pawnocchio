@@ -571,7 +571,7 @@ const Accumulator = struct {
         }
 
         // in Q²
-        var l1_out_vec: [2 * L2_SIZE / vecSize(i32)]i32Vec = undefined;
+        var l1_out_vec: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
         {
             const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&(&weights.l1b)[output_bucket]));
             const SHIFT = comptime Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
@@ -584,22 +584,20 @@ const Accumulator = struct {
                 }
 
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const shifted = intermediate + biases >> @splat(SHIFT);
+                const shifted = intermediate >> @splat(SHIFT);
 
-                const crelu = clamp(i32Vec, shifted, @splat(0), @splat(arch.Q)) << @splat(Q_BITS);
-                const csrelu = clamp(i32Vec, shifted * shifted, @splat(0), @splat(arch.Q * arch.Q));
+                const crelu = clamp(i32Vec, shifted + biases, @splat(0), @splat(arch.Q));
 
-                l1_out_vec[i] = crelu;
-                l1_out_vec[i + L2_SIZE / vecSize(i32)] = csrelu;
+                l1_out_vec[i] = crelu * crelu;
             }
         }
 
         // in Q³
         var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast((&weights.l2b)[output_bucket]);
         {
-            const l1_out: *const [2 * L2_SIZE]i32 = @ptrCast(&l1_out_vec);
-            const l2_weight_vec: *const [2 * L2_SIZE][L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l2w)[output_bucket]));
-            for (0..L2_SIZE * 2) |i| {
+            const l1_out: *const [L2_SIZE]i32 = @ptrCast(&l1_out_vec);
+            const l2_weight_vec: *const [L2_SIZE][L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l2w)[output_bucket]));
+            for (0..L2_SIZE) |i| {
                 const l1_vec: i32Vec = @splat(l1_out[i]);
                 for (0..L3_SIZE / vecSize(i32)) |j| {
                     l2_intermediate[j] += l1_vec * (&l2_weight_vec[i])[j];
