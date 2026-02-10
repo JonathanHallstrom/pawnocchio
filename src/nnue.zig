@@ -532,7 +532,9 @@ const Accumulator = struct {
             }
         }
 
-        const L2_UNROLL = 4;
+        std.debug.print("l0 out {any}\n", .{@as([L1_SIZE]u8, @bitCast(activated_ft))});
+
+        const L2_UNROLL = 1;
         // in Q0² / 2⁹ * Q1
         var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
         {
@@ -569,6 +571,7 @@ const Accumulator = struct {
                 }
             }
         }
+        std.debug.print("l1 intermediate {any}\n", .{@as([L2_SIZE]i32, @bitCast(l1_intermediate))});
 
         // in Q²
         var l1_out_vec: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
@@ -592,6 +595,8 @@ const Accumulator = struct {
             }
         }
 
+        std.debug.print("l1 out {any}\n", .{@as([L2_SIZE]i32, @bitCast(l1_out_vec))});
+
         // in Q³
         var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast((&weights.l2b)[output_bucket]);
         {
@@ -604,6 +609,8 @@ const Accumulator = struct {
                 }
             }
         }
+
+        std.debug.print("l2 intermediate {any}\n", .{@as([L3_SIZE]i32, @bitCast(l2_intermediate))});
 
         // in Q⁴
         var l3_sum: i32Vec = @splat(0);
