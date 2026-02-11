@@ -22,8 +22,6 @@ const Board = root.Board;
 
 const VERSION_STRING = "1.9.2";
 
-pub var search_timer: std.time.Timer = undefined;
-
 pub fn main() !void {
     root.init();
     defer root.deinit();
@@ -851,7 +849,6 @@ pub fn main() !void {
             break :blk 0;
         },
     }) |line_len| {
-        search_timer = try std.time.Timer.start();
         defer _ = line_writer.consumeAll();
         std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
         const line = std.mem.trim(u8, line_buf[0..line_len], &std.ascii.whitespace);

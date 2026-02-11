@@ -1082,8 +1082,7 @@ fn search(
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + @as(i32, 3) >= depth and
-            tt_entry.flags.score_type != .upper and
-            beta > evaluation.matedIn(MAX_PLY))
+            tt_entry.flags.score_type != .upper)
         {
             var beta_mult: i32 = tunables.singular_beta_mult;
             beta_mult -= @intFromBool(is_pv) * tunables.singular_beta_pv_mult;
@@ -1553,7 +1552,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     self.move_stability = 0;
     self.full_width_score = 0;
     var average_score: i64 = 0;
-    std.debug.print("{D}\n", .{@import("main.zig").search_timer.read()});
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
@@ -1565,15 +1563,9 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.inf_score));
         var failhigh_reduction: i32 = 0;
         var score = -evaluation.inf_score;
-        if (evaluation.isTBScore(previous_score)) {
-            aspiration_lower = previous_score - 1;
-            aspiration_upper = previous_score + 1;
-        }
-        var iters: usize = 0;
         switch (params.board.stm) {
             inline else => |stm| while (true) {
                 defer quantized_window = quantized_window * tunables.aspiration_multiplier >> 10;
-                iters += 1;
 
                 score = self.search(
                     true,
