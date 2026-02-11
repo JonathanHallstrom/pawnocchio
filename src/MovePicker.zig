@@ -164,6 +164,7 @@ pub inline fn next(
 ) ?ScoredMove {
     return sw: switch (self.stage) {
         .tt => {
+            @branchHint(.unpredictable);
             if (self.skip_quiets and board.isQuiet(self.ttmove)) {
                 continue :sw .generate_noisies;
             }
@@ -203,7 +204,7 @@ pub inline fn next(
         },
         .generate_quiets => {
             if (self.skip_quiets) {
-                return null;
+                continue :sw .bad_noisy_prep;
             }
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
