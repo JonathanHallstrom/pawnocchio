@@ -171,7 +171,7 @@ inline fn quietValue(
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;
 
-pub fn next(
+pub inline fn next(
     noalias self: *MovePicker,
     comptime stm: Colour,
     noalias histories: *const Historytable,
