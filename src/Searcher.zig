@@ -694,9 +694,6 @@ fn search(
 
         alpha = @max(alpha, worst_possible);
         beta = @min(beta, best_possible);
-        // if (self.ply > 9) {
-        //     std.debug.print("{} {s} {s} {s}\n", .{ self.ply, evaluation.formatScore(self.root_score).slice(), evaluation.formatScore(@intCast(alpha)).slice(), evaluation.formatScore(@intCast(beta)).slice() });
-        // }
         if (alpha >= beta) {
             return @intCast(alpha);
         }
