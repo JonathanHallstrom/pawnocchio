@@ -107,35 +107,15 @@ pub fn deinit(self: MovePicker) void {
 inline fn findBest(noalias self: *MovePicker) usize {
     const scored_moves = self.movelist.vals.slice()[self.first..self.last];
 
-    const unroll = 4;
-    const loadVals = struct {
-        fn impl(mvs: []ScoredMove, i: usize) @Vector(unroll, u64) {
-            var res: @Vector(unroll, u64) = undefined;
-            inline for (0..unroll) |j| {
-                res[j] = mvs.ptr[i + j].toScoreU64();
-            }
-            return res;
-        }
-    }.impl;
-    const masks = comptime blk: {
-        var res: [unroll]@Vector(unroll, u64) = undefined;
-        res[0] = @splat(0);
-        for (1..unroll) |j| {
-            res[j] = res[j - 1];
-            res[j][j - 1] = std.math.maxInt(u64);
-        }
-        break :blk res;
-    };
-    var best: @Vector(unroll, u64) = [_]u64{scored_moves[0].toScoreU64()} ** unroll;
-    var i: u64 = 0;
-    var index_vec = std.simd.iota(u64, unroll);
-    while (i + unroll <= scored_moves.len) : (i += unroll) {
-        best = @max(best, loadVals(scored_moves, i) | index_vec);
-        index_vec += @splat(unroll);
+    var best: i64 = 0;
+    for (scored_moves, 0..) |scored_move, i| {
+        const score: i64 = scored_move.score;
+        std.debug.assert(@abs(score) < 1 << 20);
+        const i_signed: i64 = @intCast(i);
+        best = @max(best, (score + (1 << 20)) << 8 | i_signed);
     }
-    best = @max(best, (loadVals(scored_moves, i) & masks[scored_moves.len % unroll]) | index_vec);
 
-    const best_idx: u64 = @reduce(.Max, best) & std.math.maxInt(u32);
+    const best_idx: usize = @intCast(best & 0xff);
 
     if (best_idx != 0) {
         std.mem.swap(ScoredMove, &scored_moves[0], &scored_moves[best_idx]);
