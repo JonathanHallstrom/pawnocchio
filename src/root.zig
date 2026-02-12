@@ -413,14 +413,19 @@ pub const ScoredMoveReceiver = struct {
 };
 
 pub const FilteringMoveReceiver = struct {
-    vals: BoundedArray(Move, 256) = .{},
+    buffer: [*]Move,
+    len: u8,
     filter: Move,
 
     pub fn receive(self: *@This(), move: Move) void {
-        var len = self.vals.len;
-        self.vals.buffer[len] = move;
+        var len = self.len;
+        self.buffer[len] = move;
         len += @intFromBool(move != self.filter);
-        self.vals.len = len;
+        self.len = len;
+    }
+
+    pub fn slice(self: *@This()) []Move {
+        return self.buffer[0..self.len];
     }
 };
 

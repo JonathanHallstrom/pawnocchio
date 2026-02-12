@@ -103,6 +103,9 @@ nodes: u64,
 hashes: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
+move_stack: [MAX_PLY * 256]Move,
+move_score_stack: [MAX_PLY * 256]i32,
+used_moves: usize,
 root_move: Move,
 root_score: i16,
 full_width_score: i16,
@@ -190,8 +193,6 @@ pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
 
 pub const StackEntry = struct {
     board: Board,
-    movelist: root.FilteringMoveReceiver,
-    scores: [256]i32,
     move: TypedMove,
     move_is_noisy: bool,
     prev: TypedMove,
@@ -457,12 +458,12 @@ fn qsearch(
     var best_move = Move.init();
     var score_type: ScoreType = .upper;
     var mp = MovePicker.initQs(
-        &cur.movelist,
-        &cur.scores,
+        self.move_stack[self.used_moves..].ptr,
+        self.move_score_stack[self.used_moves..].ptr,
         tt_entry.move,
         board.checkers == 0,
     );
-    defer mp.deinit();
+    defer mp.deinit(&self.used_moves);
     var num_searched: u8 = 0;
 
     const futility = static_eval + tunables.qs_futility_margin;
@@ -476,6 +477,7 @@ fn qsearch(
         &self.histories,
         conthist_tables,
         board,
+        &self.used_moves,
     )) |move| {
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
@@ -931,12 +933,12 @@ fn search(
 
     const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
     var mp = MovePicker.init(
-        &cur.movelist,
-        &cur.scores,
+        self.move_stack[self.used_moves..].ptr,
+        self.move_score_stack[self.used_moves..].ptr,
         if (is_singular_search) cur.excluded else tt_entry.move,
         is_singular_search,
     );
-    defer mp.deinit();
+    defer mp.deinit(&self.used_moves);
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
     var searched_quiets: BoundedArray(Move, 16) = .{};
@@ -958,6 +960,7 @@ fn search(
         &self.histories,
         conthist_tables,
         board,
+        &self.used_moves,
     )) |move| {
         if (move == cur.excluded) {
             continue;
