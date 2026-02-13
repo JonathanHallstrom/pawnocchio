@@ -49,23 +49,18 @@ fn getMask(vals: @Vector(nnue.vecSize(u8), u8)) std.meta.Int(.unsigned, nnue.vec
 
 pub inline fn findNonZeroIndices(
     ft: *align(64) const [L1_SIZE]u8,
-) struct {
-    [L1_SIZE / 4]u16,
-    usize,
-} {
+    indices: [*]u16,
+) usize {
     return if (@import("builtin").cpu.has(.x86, .avx512vbmi))
-        findNonZeroIndicesVBMI(ft)
+        findNonZeroIndicesVBMI(ft, indices)
     else
-        findNonZeroIndicesBase(ft);
+        findNonZeroIndicesBase(ft, indices);
 }
 
 pub inline fn findNonZeroIndicesVBMI(
     ft: *align(64) const [L1_SIZE]u8,
-) struct {
-    [L1_SIZE / 4]u16,
-    usize,
-} {
-    var indices: [L1_SIZE / 4]u16 = undefined;
+    indices: [*]u16,
+) usize {
     var count: usize = 0;
     var base: @Vector(32, u16) = std.simd.iota(u16, 32);
     var i: usize = 0;
@@ -94,16 +89,13 @@ pub inline fn findNonZeroIndicesVBMI(
         base += @splat(32);
     }
 
-    return .{ indices, count };
+    return count;
 }
 
 pub inline fn findNonZeroIndicesBase(
     ft: *align(64) const [L1_SIZE]u8,
-) struct {
-    [L1_SIZE / 4]u16,
-    usize,
-} {
-    var indices: [L1_SIZE / 4]u16 = undefined;
+    indices: [*]u16,
+) usize {
     var count: usize = 0;
     var base: @Vector(8, u16) = @splat(0);
 
@@ -124,5 +116,5 @@ pub inline fn findNonZeroIndicesBase(
         }
     }
 
-    return .{ indices, count };
+    return count;
 }

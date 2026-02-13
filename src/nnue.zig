@@ -552,7 +552,11 @@ const Accumulator = struct {
             const w: [*]const i8 = &(&weights.l1w)[output_bucket];
             const ft_i32: [*]i32 = @ptrCast(&activated_ft);
 
-            const nonzero_indices, const num_nonzero_indices = @import("sparse.zig").findNonZeroIndices(&activated_ft);
+            var nonzero_indices: [L1_SIZE / 4]u16 = undefined;
+            const num_nonzero_indices = @import("sparse.zig").findNonZeroIndices(
+                &activated_ft,
+                &nonzero_indices,
+            );
 
             var i_outer: usize = 0;
 
