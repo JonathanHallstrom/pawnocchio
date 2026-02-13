@@ -53,6 +53,56 @@ pub inline fn findNonZeroIndices(
     [L1_SIZE / 4]u16,
     usize,
 } {
+    return if (@import("builtin").cpu.has(.x86, .avx512vbmi))
+        findNonZeroIndicesVBMI(ft)
+    else
+        findNonZeroIndicesBase(ft);
+}
+
+pub inline fn findNonZeroIndicesVBMI(
+    ft: *align(64) const [L1_SIZE]u8,
+) struct {
+    [L1_SIZE / 4]u16,
+    usize,
+} {
+    var indices: [L1_SIZE / 4]u16 = undefined;
+    var count: usize = 0;
+    var base: @Vector(32, u16) = std.simd.iota(u16, 32);
+    var i: usize = 0;
+    while (i < nnue.L1_SIZE) : (i += 2 * nnue.vecSize(u8)) {
+        const mask1: u16 = getMask(ft[i..][0..nnue.vecSize(u8)].*);
+        const mask2: u16 = getMask(ft[i + nnue.vecSize(u8) ..][0..nnue.vecSize(u8)].*);
+
+        const mask = asm (
+            \\kunpckwd %[l], %[h], %%k1;
+            \\vpcompressw %[v], %%zmm0{%%k1};
+            \\vmovdqu64 %%zmm0, (%[out_ptr]);
+            \\kmovd %%k1, %[ret]
+            : [ret] "=r" (-> u32),
+            : [l] "k" (mask1),
+              [h] "k" (mask2),
+              [v] "x" (base),
+              [out_ptr] "r" (&indices[count]),
+            : .{
+              .memory = true,
+              .zmm0 = true,
+              // .k1 = true,
+              // cant clobber mask registers yet, just pray™
+            });
+
+        count += @popCount(mask);
+        base += @splat(32);
+    }
+
+    return .{ indices, count };
+}
+
+pub inline fn findNonZeroIndicesBase(
+    ft: *align(64) const [L1_SIZE]u8,
+) struct {
+    [L1_SIZE / 4]u16,
+    usize,
+} {
     var indices: [L1_SIZE / 4]u16 = undefined;
     var count: usize = 0;
     var base: @Vector(8, u16) = @splat(0);
