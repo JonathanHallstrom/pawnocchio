@@ -48,6 +48,14 @@ pub const TypedMove = struct {
         };
     }
 
+    pub fn fromBoardThreats(board: *const Board, move_: Move) TypedMove {
+        var res = fromBoard(board, move_);
+        const opponent_threats = (&board.threats)[board.stm.flipped().toInt()];
+        res.setFromThreatened(move_.from().toBitboard() & opponent_threats != 0);
+        res.setToThreatened(move_.to().toBitboard() & opponent_threats != 0);
+        return res;
+    }
+
     const FROM_THREATENED = 1;
     const TO_THREATENED = 2;
     const RECAPTURE = 4;
@@ -233,7 +241,7 @@ pub const NoisyHistory = struct {
 
 pub const ContHistory = struct {
     pub const ContHistTable = struct {
-        vals: [2 * 6 * 64]i16,
+        vals: [2 * 6 * 64 * 2 * 2]i16,
 
         inline fn entry(
             self: anytype,
@@ -242,7 +250,8 @@ pub const ContHistory = struct {
         ) root.inheritConstness(@TypeOf(self), *i16) {
             const col_offs: usize = col.toInt();
             const move_offs: usize = @as(usize, move.tp.toInt()) * 64 + move.move.to().toInt();
-            return &(&self.vals)[col_offs * 6 * 64 + move_offs];
+            const threat_offs: usize = @as(usize, @intFromBool(move.fromThreatened())) * 2 + @intFromBool(move.toThreatened());
+            return &(&self.vals)[col_offs * 6 * 64 * 2 * 2 + move_offs * 2 * 2 + threat_offs];
         }
 
         pub inline fn updateRaw(
@@ -357,7 +366,7 @@ pub const HistoryTable = struct {
         move: Move,
         tables: ConthistTables,
     ) i32 {
-        const typed = TypedMove.fromBoard(board, move);
+        const typed = TypedMove.fromBoardThreats(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
@@ -382,7 +391,7 @@ pub const HistoryTable = struct {
         move: Move,
         tables: ConthistTables,
     ) i32 {
-        const typed = TypedMove.fromBoard(board, move);
+        const typed = TypedMove.fromBoardThreats(board, move);
         var res: i32 = 0;
         res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
         res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
@@ -408,7 +417,7 @@ pub const HistoryTable = struct {
         is_bonus: bool,
         extra: i32,
     ) void {
-        const typed = TypedMove.fromBoard(board, move);
+        const typed = TypedMove.fromBoardThreats(board, move);
         var cont: i64 = 0;
         const stm = board.stm;
         inline for (CONTHIST_OFFSETS, tables) |offs, table| {
