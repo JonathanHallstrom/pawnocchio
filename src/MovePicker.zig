@@ -170,6 +170,7 @@ pub inline fn next(
     noalias histories: *const Historytable,
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
+    comptime mode: enum { normal, qs },
 ) ?Move {
     return sw: switch (self.stage) {
         .tt => {
@@ -221,7 +222,7 @@ pub inline fn next(
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
             for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
-                self.scores[self.first + i] = quietValue(histories, conthist_tables, board, move);
+                self.scores[self.first + i] = if (mode == .qs) histories.quiet.read(board, move) else histories.readQuietOrdering(board, move, conthist_tables);
             }
             self.last = self.movelist.vals.len;
             self.stage = .quiets;

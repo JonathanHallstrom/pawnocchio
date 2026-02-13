@@ -121,25 +121,25 @@ pub const QuietHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
-    inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+    inline fn entry(self: anytype, board: *const Board, move: Move) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = board.stm.toInt();
-        const from_to_offs: usize = move.move.fromTo();
+        const from_to_offs: usize = move.fromTo();
         const threats = (&board.threats)[board.stm.flipped().toInt()];
-        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
-        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
+        const from_threatened_offs: usize = @intFromBool(threats & move.from().toBitboard() != 0);
+        const to_threatened_offs: usize = @intFromBool(threats & move.to().toBitboard() != 0);
 
         return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + from_to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
-    pub inline fn updateRaw(self: *QuietHistory, board: *const Board, move: TypedMove, upd: i32) void {
+    pub inline fn updateRaw(self: *QuietHistory, board: *const Board, move: Move, upd: i32) void {
         gravityUpdate(self.entry(board, move), upd);
     }
 
-    inline fn update(self: *QuietHistory, board: *const Board, move: TypedMove, depth: i32, is_bonus: bool, extra: i32) void {
+    inline fn update(self: *QuietHistory, board: *const Board, move: Move, depth: i32, is_bonus: bool, extra: i32) void {
         self.updateRaw(board, move, extra + if (is_bonus) bonus(depth) else -penalty(depth));
     }
 
-    inline fn read(self: *const QuietHistory, board: *const Board, move: TypedMove) i16 {
+    pub inline fn read(self: *const QuietHistory, board: *const Board, move: Move) i16 {
         return self.entry(board, move).*;
     }
 };
@@ -359,7 +359,7 @@ pub const HistoryTable = struct {
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
+        res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, move);
         res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
 
         const weights = [NUM_CONTHISTS]i32{
@@ -384,7 +384,7 @@ pub const HistoryTable = struct {
     ) i32 {
         const typed = TypedMove.fromBoard(board, move);
         var res: i32 = 0;
-        res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
+        res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, move);
         res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
         const weights = [NUM_CONTHISTS]i32{
             tunable_constants.cont1_ordering_weight,
@@ -430,7 +430,7 @@ pub const HistoryTable = struct {
         extra: i32,
     ) void {
         const typed = TypedMove.fromBoard(board, move);
-        self.quiet.update(board, typed, depth, is_bonus, extra);
+        self.quiet.update(board, move, depth, is_bonus, extra);
         self.pawn.update(board, typed, depth, is_bonus, extra);
     }
 

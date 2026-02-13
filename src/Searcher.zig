@@ -469,13 +469,12 @@ fn qsearch(
 
     const previous_move_destination = cur.move.move.to();
 
-    const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
-
     while (mp.next(
         stm,
         &self.histories,
-        conthist_tables,
+        undefined,
         board,
+        .qs,
     )) |move| {
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
@@ -795,7 +794,7 @@ fn search(
             );
             self.histories.quiet.updateRaw(
                 &self.stackEntry(-1).board,
-                cur.move,
+                cur.move.move,
                 update,
             );
         }
@@ -958,6 +957,7 @@ fn search(
         &self.histories,
         conthist_tables,
         board,
+        .normal,
     )) |move| {
         if (move == cur.excluded) {
             continue;
