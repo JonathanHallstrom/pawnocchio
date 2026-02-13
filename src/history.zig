@@ -188,7 +188,7 @@ pub const PawnHistory = struct {
 };
 
 pub const NoisyHistory = struct {
-    vals: [64 * 64 * 13 * 2 * 2]i16,
+    vals: [64 * 64 * 6 * 13 * 2 * 2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -209,13 +209,14 @@ pub const NoisyHistory = struct {
     }
 
     inline fn entry(self: anytype, board: *const Board, move: TypedMove) root.inheritConstness(@TypeOf(self), *i16) {
+        const type_offs: usize = move.tp.toInt();
         const from_to_offs: usize = move.move.fromTo();
         const captured = board.colouredPieceOn(move.move.to());
         const captured_offs = if (captured) |capt| capt.toInt() else 12;
         const threats = (&board.threats)[board.stm.flipped().toInt()];
         const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
         const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
-        return &(&self.vals)[from_to_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
+        return &(&self.vals)[from_to_offs * 13 * 2 * 2 * 6 + type_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
     }
 
     pub inline fn updateRaw(self: *NoisyHistory, board: *const Board, move: TypedMove, upd: i32) void {
