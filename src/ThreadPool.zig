@@ -41,6 +41,20 @@ const ThreadAction = enum {
     exit,
 };
 
+fn pinCurrentThread(cpu: usize) !void {
+    if (@import("builtin").os.tag == .linux) {
+        var set: std.os.linux.cpu_set_t = std.mem.zeroes(std.os.linux.cpu_set_t);
+
+        const word_bits = @bitSizeOf(usize);
+        const idx = cpu / word_bits;
+        const bit = cpu % word_bits;
+
+        set[idx] |= (@as(usize, 1) << @intCast(bit));
+
+        try std.os.linux.sched_setaffinity(0, &set);
+    }
+}
+
 const Thread = struct {
     mutex: std.Thread.Mutex = .{},
     cond: std.Thread.Condition = .{},
@@ -56,12 +70,14 @@ const Thread = struct {
     search_quiet: bool = false,
 
     reset_tt_slice: []TTCluster = &.{},
+    idx: usize,
 
-    pub fn init(allocator: std.mem.Allocator, searcher: *Searcher) !*Thread {
+    pub fn init(allocator: std.mem.Allocator, searcher: *Searcher, idx: usize) !*Thread {
         const self = try allocator.create(Thread);
         self.* = .{
             .searcher = searcher,
             .thread = undefined,
+            .idx = idx,
         };
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
         return self;
@@ -83,6 +99,7 @@ const Thread = struct {
                     self.searcher.startSearch(self.search_params, self.search_main, self.search_quiet);
                 },
                 .reset => {
+                    // pinCurrentThread(self.idx) catch {};
                     @memset(std.mem.asBytes(self.searcher), 0);
                     self.searcher.refresh_cache.initInPlace();
                     self.searcher.histories.reset();
@@ -176,7 +193,7 @@ pub const ThreadPool = struct {
         searcher.histories.reset();
         searcher.tt = self.tt;
 
-        const thread = try Thread.init(self.allocator, searcher);
+        const thread = try Thread.init(self.allocator, searcher, self.threads.items.len);
         thread.tt = self.tt;
         try self.threads.append(self.allocator, thread);
         try self.searchers.append(self.allocator, searcher);
