@@ -490,7 +490,8 @@ fn qsearch(
             {
                 break;
             }
-            if (!is_in_check and
+            if (!board.isPromo(move) and
+                !is_in_check and
                 futility <= alpha and
                 !is_recapture and
                 @abs(alpha) <= 2000 and
