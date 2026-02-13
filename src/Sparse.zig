@@ -62,17 +62,17 @@ pub inline fn add(
     vals1: [nnue.vecSize(u8)]u8,
     vals2: [nnue.vecSize(u8)]u8,
 ) void {
-    const mask = @as(u64, getMask(vals2)) << nnue.vecSize(i32) | getMask(vals1);
+    inline for (.{ getMask(vals1), getMask(vals2) }) |mask| {
+        inline for (0..nnue.vecSize(i32) / 8) |j| {
+            const byte = mask >> (8 * j) & 0xff;
 
-    inline for (0..2 * nnue.vecSize(i32) / 8) |j| {
-        const byte = mask >> (8 * j) & 0xff;
+            const mask_indices = NONZERO_INDICES[byte];
 
-        const mask_indices = NONZERO_INDICES[byte];
+            const actual_indices: [8]u16 = mask_indices + self.base;
+            @memcpy(self.indices[self.len..][0..8], &actual_indices);
 
-        const actual_indices: [8]u16 = mask_indices + self.base;
-        @memcpy(self.indices[self.len..][0..8], &actual_indices);
-
-        self.len += @popCount(byte);
-        self.base += @splat(8);
+            self.len += @popCount(byte);
+            self.base += @splat(8);
+        }
     }
 }

@@ -511,8 +511,8 @@ const Accumulator = struct {
             const LO: i16Vec = @splat(0);
             const HI: i16Vec = @splat(arch.Q0);
             inline for (.{ stm_acc, ntm_acc }, .{ 0, L1_SIZE / 2 }) |acc, offs| {
-                var i: usize = 0;
-                while (i < L1_SIZE / 2) : (i += 2 * items_per_iter) {
+                comptime var i = 0;
+                inline while (i < L1_SIZE / 2) : (i += 2 * items_per_iter) {
                     var s1: i16Vec = acc[i..][0..vecSize(i16)].*;
                     var s2: i16Vec = acc[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
                     var s3: i16Vec = acc[i + vecSize(i16) ..][0..vecSize(i16)].*;
