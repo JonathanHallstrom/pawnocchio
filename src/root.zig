@@ -412,13 +412,15 @@ pub const ScoredMoveReceiver = struct {
     }
 };
 
-pub const FilteringScoredMoveReceiver = struct {
-    vals: BoundedArray(ScoredMove, 256) = .{},
+pub const FilteringMoveReceiver = struct {
+    vals: BoundedArray(Move, 256) = .{},
     filter: Move,
 
     pub fn receive(self: *@This(), move: Move) void {
-        if (move == self.filter) return;
-        self.vals.appendAssumeCapacity(.{ .move = move, .score = 0 });
+        var len = self.vals.len;
+        self.vals.buffer[len] = move;
+        len += @intFromBool(move != self.filter);
+        self.vals.len = len;
     }
 };
 
