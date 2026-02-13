@@ -47,32 +47,32 @@ fn getMask(vals: @Vector(nnue.vecSize(u8), u8)) std.meta.Int(.unsigned, nnue.vec
     return @bitCast(as_i32 != zero);
 }
 
-pub inline fn findNonZeroIndices(
-    ft: *align(64) const [L1_SIZE]u8,
-) struct {
-    [L1_SIZE / 4]u16,
-    usize,
-} {
-    var indices: [L1_SIZE / 4]u16 = undefined;
-    var count: usize = 0;
-    var base: @Vector(8, u16) = @splat(0);
+const Sparse = @This();
 
-    var i: usize = 0;
-    while (i < nnue.L1_SIZE) : (i += nnue.vecSize(u8)) {
-        const mask = getMask(ft[i..][0..nnue.vecSize(i8)].*);
+indices: [L1_SIZE / 4]u16 = undefined,
+len: usize = 0,
+base: @Vector(8, u16) = @splat(0),
 
-        inline for (0..nnue.vecSize(i32) / 8) |j| {
-            const byte = mask >> (8 * j) & 0xff;
+pub fn init() Sparse {
+    return .{};
+}
 
-            const mask_indices = NONZERO_INDICES[byte];
+pub inline fn add(
+    self: *Sparse,
+    vals1: [nnue.vecSize(u8)]u8,
+    vals2: [nnue.vecSize(u8)]u8,
+) void {
+    const mask = @as(u64, getMask(vals2)) << nnue.vecSize(i32) | getMask(vals1);
 
-            const actual_indices: [8]u16 = mask_indices + base;
-            @memcpy(indices[count..][0..8], &actual_indices);
+    inline for (0..2 * nnue.vecSize(i32) / 8) |j| {
+        const byte = mask >> (8 * j) & 0xff;
 
-            count += @popCount(byte);
-            base += @splat(8);
-        }
+        const mask_indices = NONZERO_INDICES[byte];
+
+        const actual_indices: [8]u16 = mask_indices + self.base;
+        @memcpy(self.indices[self.len..][0..8], &actual_indices);
+
+        self.len += @popCount(byte);
+        self.base += @splat(8);
     }
-
-    return .{ indices, count };
 }
