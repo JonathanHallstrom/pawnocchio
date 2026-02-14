@@ -45,7 +45,7 @@ pub const MAX_HALFMOVE = 100;
 pub const Params = struct {
     board: Board,
     limits: Limits,
-    previous_hashes: BoundedArray(u64, 200),
+    previous_positions: BoundedArray(Board, 200),
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
     normalize: bool,
@@ -103,6 +103,7 @@ search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
 is_ready: bool align(std.atomic.cache_line) = false,
 nodes: u64 align(std.atomic.cache_line),
 hashes: [MAX_PLY]u64,
+occupancies: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: Move,
@@ -118,6 +119,7 @@ ply: u8,
 stop: std.atomic.Value(bool),
 should_stop: std.atomic.Value(bool),
 previous_hashes: BoundedArray(u64, MAX_HALFMOVE * 2),
+previous_occupancies: BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTCluster,
 pvs: [MAX_PLY]BoundedArray(Move, 256),
 is_main_thread: bool = true,
@@ -314,6 +316,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
     self.hashes[self.ply] = new_stack_entry.board.hash;
+    self.occupancies[self.ply] = new_stack_entry.board.occupancy();
 }
 
 fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
@@ -341,6 +344,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
+    self.occupancies[self.ply] = new_stack_entry.board.occupancy();
 }
 
 fn unmakeNullMove(self: *Searcher, comptime stm: Colour) void {
@@ -1413,34 +1417,32 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
     });
 }
 
-fn retainOnlyDuplicates(slice: []u64) usize {
-    std.sort.pdq(u64, slice, void{}, std.sort.asc(u64));
-    var write_idx: usize = 0;
-    var last: u64 = 0;
-    var count: usize = 0;
-    for (slice) |hash| {
-        if (hash == last) {
-            count += 1;
-            if (count == 2) {
-                slice[write_idx] = last;
-                write_idx += 1;
-            }
-        } else {
-            count = 1;
-        }
-        last = hash;
-    }
-    return write_idx;
-}
-
-test retainOnlyDuplicates {
-    var vals = [_]u64{ 0, 1, 1, 2, 2, 2, 8, 2, 2, 2, 3, 8, 4, 4 };
-    const count = retainOnlyDuplicates(&vals);
-    try std.testing.expectEqualSlices(u64, &.{ 1, 2, 4, 8 }, vals[0..count]);
-}
 /// we make the previous hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
 fn fixupPreviousHashes(self: *Searcher) void {
-    self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
+    var seen_hashes = BoundedArray(u64, MAX_PLY){};
+
+    var num_duplicates: usize = 0;
+
+    for (
+        self.previous_hashes.slice(),
+        self.previous_occupancies.slice(),
+    ) |hash, occ| {
+        var count: usize = 0;
+        for (seen_hashes.slice()) |prev| {
+            count += @intFromBool(hash == prev);
+        }
+        if (count != 1) {
+            continue;
+        }
+
+        seen_hashes.appendAssumeCapacity(hash);
+
+        self.previous_hashes.slice()[num_duplicates] = hash;
+        self.previous_occupancies.slice()[num_duplicates] = occ;
+        num_duplicates += 1;
+    }
+    self.previous_hashes.len = num_duplicates;
+    self.previous_occupancies.len = num_duplicates;
 }
 
 fn dbgHit(self: *Searcher, comptime name: []const u8, a: bool, b: bool) void {
@@ -1477,11 +1479,12 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.normalize = params.normalize;
     self.minimal = params.minimal;
     var num_repeitions: u8 = 0;
-    for (params.previous_hashes.slice()) |previous_hash| {
-        if (params.board.hash == previous_hash) {
+    for (params.previous_positions.slice()) |previous_position| {
+        if (params.board.hash == previous_position.hash) {
             num_repeitions += 1;
         }
-        self.previous_hashes.append(previous_hash) catch @panic("too many hashes!");
+        self.previous_hashes.append(previous_position.hash) catch @panic("too many hashes!");
+        self.previous_occupancies.append(previous_position.occupancy()) catch @panic("too many positions!");
     }
     self.winning_root_moves = .{};
     if (root.pyrrhic.probeRootDTZ(&params.board, num_repeitions > 0)) |root_probe| {

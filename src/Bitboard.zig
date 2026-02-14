@@ -227,6 +227,8 @@ const rook_attacks: [64]u64 = blk: {
 
 const queen_attacks: [64]u64 = @as(@Vector(64, u64), bishop_attacks) | @as(@Vector(64, u64), rook_attacks);
 
+const superpiece_attacks: [64]u64 = @as(@Vector(64, u64), queen_attacks) | @as(@Vector(64, u64), knight_moves);
+
 const extending_ray_bb: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
@@ -443,6 +445,10 @@ pub fn rookAttacks(square: anytype) u64 {
 
 pub fn queenAttacks(square: anytype) u64 {
     return (&queen_attacks)[idx(square)];
+}
+
+pub fn superPieceAttacks(square: anytype) u64 {
+    return (&superpiece_attacks)[idx(square)];
 }
 
 pub fn extendingRayBb(from: anytype, to: anytype) u64 {

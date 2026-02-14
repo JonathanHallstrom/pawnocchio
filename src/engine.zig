@@ -165,13 +165,13 @@ fn datagenWorker(
         const write_buffer = fba.allocator().alloc(u8, 1 << 16) catch @panic("failed to allocate write buffer");
         defer fba.allocator().free(write_buffer);
 
-        var hashes = root.BoundedArray(u64, 200){};
+        var positions = root.BoundedArray(root.Board, 200){};
         const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
         for (0..random_move_count) |_| {
             if (!board.makeMoveDatagen(rng.random())) {
                 continue :datagen_loop;
             }
-            hashes.append(board.hash) catch @panic("failed to append hash");
+            positions.append(board) catch @panic("failed to append hash");
         }
         var game: viriformat.Game = viriformat.Game.from(board, fba.allocator());
         var num_adj_win: u8 = 0;
@@ -188,7 +188,7 @@ fn datagenWorker(
                     .board = board,
                     .limits = limits,
                     .needs_full_reset = false,
-                    .previous_hashes = hashes,
+                    .previous_positions = positions,
                     .normalize = false,
                     .minimal = false,
                 },
@@ -229,8 +229,8 @@ fn datagenWorker(
                 },
             }
             var repetitions: u8 = 0;
-            for (hashes.slice()) |prev_hash| {
-                repetitions += @intFromBool(prev_hash == board.hash);
+            for (positions.slice()) |prev| {
+                repetitions += @intFromBool(prev.hash == board.hash);
             }
             if (repetitions >= 3) {
                 break :game_loop;
@@ -239,10 +239,10 @@ fn datagenWorker(
                 break :game_loop;
             }
             if (board.halfmove == 0) {
-                hashes.clear();
+                positions.clear();
             }
             game.addMove(search_move, adjusted) catch unreachable;
-            hashes.append(board.hash) catch unreachable;
+            positions.append(board) catch unreachable;
             if (root.evaluation.isMateScore(search_score) or root.evaluation.isTBScore(search_score)) {
                 if (adjusted > 0) {
                     game.setOutCome(.win);

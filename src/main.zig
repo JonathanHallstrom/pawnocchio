@@ -24,6 +24,7 @@ const VERSION_STRING = "1.9.2";
 
 pub fn main() !void {
     root.init();
+    _ = @import("cuckoo.zig").tryMagics();
     defer root.deinit();
     defer {
         root.engine.stopSearch();
@@ -800,7 +801,7 @@ pub fn main() !void {
                     .search_params = .{
                         .board = try Board.parseFen(fen, false),
                         .limits = root.Limits.initFixedDepth(bench_depth),
-                        .previous_hashes = .{},
+                        .previous_positions = .{},
                         .normalize = false,
                         .minimal = false,
                     },
@@ -831,10 +832,9 @@ pub fn main() !void {
     var stdin = std.fs.File.stdin();
     var reader = stdin.readerStreaming(&stdin_buf);
 
-    var previous_hashes = root.BoundedArray(u64, 200){};
+    var previous_positions = root.BoundedArray(root.Board, 200){};
 
     var board = Board.startpos();
-    try previous_hashes.append(board.hash);
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
@@ -933,7 +933,7 @@ pub fn main() !void {
             }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
-            previous_hashes = .{};
+            previous_positions = .{};
             board = Board.startpos();
         } else if (std.ascii.eqlIgnoreCase(command, "setoption") or std.ascii.eqlIgnoreCase(command, "so")) {
             var option_name = parts.next() orelse "";
@@ -1340,7 +1340,7 @@ pub fn main() !void {
                 .search_params = .{
                     .board = board,
                     .limits = limits,
-                    .previous_hashes = previous_hashes,
+                    .previous_positions = previous_positions,
                     .syzygy_depth = syzygy_depth,
                     .normalize = normalize,
                     .minimal = minimal,
@@ -1473,8 +1473,8 @@ pub fn main() !void {
                 board = Board.startpos();
             }
 
-            previous_hashes.clear();
-            try previous_hashes.append(board.hash);
+            previous_positions.clear();
+            try previous_positions.append(board);
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
             while (move_iter.next()) |played_move| {
                 if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
@@ -1483,9 +1483,9 @@ pub fn main() !void {
                     continue;
                 };
                 if (board.halfmove == 0) {
-                    previous_hashes.clear();
+                    previous_positions.clear();
                 }
-                try previous_hashes.append(board.hash);
+                try previous_positions.append(board);
             }
         }
     }

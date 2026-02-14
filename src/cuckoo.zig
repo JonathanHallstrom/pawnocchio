@@ -76,6 +76,63 @@ pub fn init() void {
     std.debug.assert(count == 3668);
 }
 
+fn tryMagic(i: usize, x: u64) struct { u64, bool } {
+    var successes: u64 = 0;
+    var seen: [256]bool = @splat(false);
+
+    var bb: u64 = 0;
+    inline for ([_]Colour{ .white, .black }) |col| {
+        for ([_]PieceType{ .knight, .bishop, .rook, .queen, .king }) |pt| {
+            const from = Square.fromInt(@intCast(i));
+            var iter = root.Bitboard.iterator(movegen.getAttacks(col, pt, from, 0));
+            while (iter.next()) |to| {
+                if (to.toInt() < from.toInt()) {
+                    // if we swap to and from it will collide
+                    continue;
+                }
+                bb |= to.toBitboard();
+                const key =
+                    root.zobrist.piece(col, pt, from) ^
+                    root.zobrist.piece(col, pt, to) ^
+                    root.zobrist.turn();
+                // var move = Move.quiet(from, to);
+
+                const entry = &seen[(key *% x >> 32) % seen.len];
+                if (entry.*) {
+                    return .{ successes, false };
+                }
+                entry.* = true;
+                successes += 1;
+            }
+        }
+    }
+    std.debug.print("{}\n", .{bb});
+    return .{ successes, true };
+}
+
+pub fn tryMagics() bool {
+    var prng = std.Random.DefaultCsprng.init(@splat(0));
+
+    for (0..64) |i| {
+        var highest: u64 = 0;
+        for (0..16 << 30) |iter| {
+            const val = prng.random().int(u64);
+            // const val = iter;
+
+            const successes, const worked = tryMagic(i, val);
+
+            if (worked) {
+                std.debug.print("{} {} {}\n", .{ i, successes, iter });
+            }
+            highest = @max(highest, successes);
+            if (worked) {
+                break;
+            }
+        }
+    }
+    return false;
+}
+
 pub fn hasUpcomingRepetition(
     b: *const Board,
     tree_hashes: []const u64,
