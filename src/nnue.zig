@@ -136,7 +136,7 @@ fn vecIdx(comptime perspective: Colour, comptime side: Colour, king_sq: Square, 
     return idx(perspective, side, king_sq, tp, sq, mirror) * L1_SIZE / vecSize(i16);
 }
 
-const Accumulator = struct {
+pub const Accumulator = struct {
     white: [L1_SIZE]i16 align(std.atomic.cache_line),
     black: [L1_SIZE]i16 align(std.atomic.cache_line),
 
@@ -155,7 +155,7 @@ const Accumulator = struct {
         };
     }
 
-    inline fn accFor(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *align(std.atomic.cache_line) [L1_SIZE]i16) {
+    pub inline fn accFor(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *align(std.atomic.cache_line) [L1_SIZE]i16) {
         return if (col == .white) &self.white else &self.black;
     }
 

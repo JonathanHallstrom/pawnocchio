@@ -1169,6 +1169,32 @@ pub fn main() !void {
                     write("evals: {} in {D} ({} eps) res: {}\n", .{ iterations, elapsed_ns, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
                     continue :loop;
                 }
+                if (std.ascii.eqlIgnoreCase(command_part, "refreshbench")) {
+                    const refresh_fens = @import("refresh_fens.zig").fens;
+                    const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
+                    var cache: RC = undefined;
+                    cache.initInPlace();
+                    var acc = root.nnue.Accumulator.default();
+
+                    var boards = try allocator.alloc(root.Board, refresh_fens.len);
+                    defer allocator.free(boards);
+                    for (refresh_fens, 0..) |fen, i| {
+                        boards[i] = root.Board.parseFen(fen, true) catch unreachable;
+                    }
+
+                    var timer = std.time.Timer.start() catch unreachable;
+                    const iterations = 1_000_000;
+                    var res: i16 = 0;
+                    for (0..iterations) |i| {
+                        const b = &boards[i % boards.len];
+                        cache.refresh(.white, b, acc.accFor(.white));
+                        res +%= acc.accFor(.white)[0];
+                        std.mem.doNotOptimizeAway(res);
+                    }
+                    const elapsed_ns = timer.read();
+                    write("refreshes: {} in {d:.3}ms ({} eps) res: {}\n", .{ iterations, @as(f64, @floatFromInt(elapsed_ns)) / 1e6, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
+                    continue :loop;
+                }
                 if (std.ascii.eqlIgnoreCase(command_part, "perft_file")) {
                     const file_name = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     var epd_parser = root.PerftEPDParser.init(file_name, allocator) catch |e| {
