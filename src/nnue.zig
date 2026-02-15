@@ -321,10 +321,10 @@ pub const Accumulator = struct {
             self.white_mirrored = other.white_mirrored;
             self.black_mirrored = other.black_mirrored;
             self.dirty_piece = other.dirty_piece;
-            @memcpy(self.accFor(stm), other.accFor(stm));
         }
         if (self.dirty_piece.adds.len | self.dirty_piece.subs.len == 0) {
             if (mode == .copy) {
+                @memcpy(self.accFor(stm), other.accFor(stm));
                 @memcpy(self.accFor(stm.flipped()), other.accFor(stm.flipped()));
             }
             return;

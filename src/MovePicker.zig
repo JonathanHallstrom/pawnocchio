@@ -118,13 +118,11 @@ noinline fn findBest(noalias self: *MovePicker) usize {
         indices += @splat(UNROLL);
     }) {
         best_vec = @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices));
-        std.mem.doNotOptimizeAway(i);
     }
 
     var best: u32 = @reduce(.Max, best_vec);
     while (i < scores.len) : (i += 1) {
         best = @max(best, packScore(scores[i], i));
-        std.mem.doNotOptimizeAway(i);
     }
 
     const best_idx: usize = best & 0xff;
