@@ -1301,13 +1301,6 @@ pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool
         return attackers == 0;
     }
 
-    if (self.checkers == 0) {
-        // pinned pieces
-        if (Bitboard.extendingRayBb(from, to) & self.kingFor(stm) != 0) {
-            return true;
-        }
-    }
-
     if (move_tp == .ep) {
         const pawn_d_rank = if (stm == .white) 1 else -1;
         const captured = to.move(-pawn_d_rank, 0);
@@ -1322,8 +1315,8 @@ pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool
         return attackers == 0;
     }
 
-    if (pt.toPieceType() == .pawn) {
-        return self.pinned[stm.toInt()] & from.toBitboard() == 0;
+    if (self.pinned[stm.toInt()] & from.toBitboard() != 0) {
+        return Bitboard.extendingRayBb(from, to) & self.kingFor(stm) != 0;
     }
 
     return true;
