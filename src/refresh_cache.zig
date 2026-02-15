@@ -23,6 +23,17 @@ const Bitboard = root.Bitboard;
 const Colour = root.Colour;
 const nnue = @import("nnue.zig");
 
+inline fn copyAccumulator(noalias dst: [*]i16, noalias src: *const [nnue.L1_SIZE]i16) void {
+    const Vec = @Vector(nnue.vecSize(i16), i16);
+    const vec_len = nnue.L1_SIZE / nnue.vecSize(i16);
+    const src_vec: *const [vec_len]Vec = @ptrCast(@alignCast(src));
+    const dst_vec: *[vec_len]Vec = @ptrCast(@alignCast(dst));
+
+    inline for (0..vec_len) |i| {
+        dst_vec[i] = src_vec[i];
+    }
+}
+
 const NNCacheEntry = struct {
     accumulator: [nnue.L1_SIZE]i16 align(64),
     pieces: [6]u64,
@@ -89,7 +100,7 @@ const NNCacheEntry = struct {
         }
         self.pieces = board.pieces;
         self.sides = .{ board.white, board.black };
-        @memcpy(acc, &self.accumulator);
+        copyAccumulator(acc, &self.accumulator);
     }
 };
 
