@@ -1136,6 +1136,39 @@ pub fn main() !void {
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;
                 }
+                if (std.ascii.eqlIgnoreCase(command_part, "evalbench")) {
+                    const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
+                    var cache: RC = undefined;
+                    cache.initInPlace();
+                    var acc = root.evaluation.State.init(&board);
+
+                    var timer = std.time.Timer.start() catch unreachable;
+                    const iterations = 100_000_000;
+                    var res: i16 = 0;
+                    switch (board.stm) {
+                        inline else => |stm| {
+                            const rank_from: u3 = if (stm == .white) 1 else 6;
+                            const rank_to: u3 = if (stm == .white) 3 else 4;
+                            for (0..iterations) |i| {
+                                const file: u3 = @intCast(i % 8);
+                                const is_back = (i / 8) % 2 == 1;
+                                const from = root.Square.fromRankFile(rank_from, file);
+                                const to = root.Square.fromRankFile(rank_to, file);
+
+                                if (!is_back) {
+                                    acc.addSub(stm, .pawn, to, stm, .pawn, from);
+                                } else {
+                                    acc.addSub(stm, .pawn, from, stm, .pawn, to);
+                                }
+                                res +%= acc.forward(stm, &board, &cache);
+                                std.mem.doNotOptimizeAway(res);
+                            }
+                        },
+                    }
+                    const elapsed_ns = timer.read();
+                    write("evals: {} in {D} ({} eps) res: {}\n", .{ iterations, elapsed_ns, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
+                    continue :loop;
+                }
                 if (std.ascii.eqlIgnoreCase(command_part, "perft_file")) {
                     const file_name = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
                     var epd_parser = root.PerftEPDParser.init(file_name, allocator) catch |e| {

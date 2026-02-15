@@ -29,6 +29,7 @@ comptime {
 pub const use_tbs = @import("build_options").use_tbs;
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 pub const pyrrhic = @import("pyrrhic.zig");
+pub const nnue = @import("nnue.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const cuckoo = @import("cuckoo.zig");
 pub const Board = @import("Board.zig");

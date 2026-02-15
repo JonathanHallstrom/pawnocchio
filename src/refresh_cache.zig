@@ -24,7 +24,7 @@ const Colour = root.Colour;
 const nnue = @import("nnue.zig");
 
 const NNCacheEntry = struct {
-    accumulator: [nnue.L1_SIZE]i16,
+    accumulator: [nnue.L1_SIZE]i16 align(64),
     pieces: [6]u64,
     sides: [2]u64,
 
