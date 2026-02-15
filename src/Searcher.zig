@@ -313,6 +313,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     self.ply += 1;
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
+    new_eval_state.bindBoard(&new_stack_entry.board);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
 
@@ -340,6 +341,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     self.ply += 1;
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
+    new_eval_state.bindBoard(&new_stack_entry.board);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
 

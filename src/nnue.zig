@@ -141,6 +141,8 @@ pub const Accumulator = struct {
     black: [L1_SIZE]i16 align(std.atomic.cache_line),
 
     dirty_piece: DirtyPiece,
+    parent: ?*Accumulator,
+    board_ref: ?*const Board,
 
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
@@ -152,6 +154,8 @@ pub const Accumulator = struct {
             .white_mirrored = .{},
             .black_mirrored = .{},
             .dirty_piece = .{},
+            .parent = null,
+            .board_ref = null,
         };
     }
 
@@ -176,6 +180,8 @@ pub const Accumulator = struct {
         self.white_mirrored.write(Square.fromBitboard(board.kingFor(.white)).getFile().toInt() >= 4);
         self.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
         self.dirty_piece = .{};
+        self.parent = null;
+        self.board_ref = board;
 
         const white_king_sq = Square.fromBitboard(board.kingFor(.white));
         const black_king_sq = Square.fromBitboard(board.kingFor(.black));
@@ -197,11 +203,28 @@ pub const Accumulator = struct {
         }
     }
 
-    pub fn update(noalias self: *Accumulator, other: *const Accumulator, board: *const Board, refresh_cache: anytype) void {
-        switch (board.stm) {
-            inline else => |stm| {
-                self.applyUpdate(.copy, other, stm.flipped(), board, refresh_cache);
-            },
+    pub fn update(noalias self: *Accumulator, other: *Accumulator, board: *const Board, refresh_cache: anytype) void {
+        _ = board;
+        _ = refresh_cache;
+        self.parent = other;
+        self.board_ref = null;
+        self.dirty_piece = .{};
+    }
+
+    pub fn bindBoard(noalias self: *Accumulator, board: *const Board) void {
+        self.board_ref = board;
+    }
+
+    fn resolvePending(noalias self: *Accumulator, refresh_cache: anytype) void {
+        if (self.parent) |parent| {
+            parent.resolvePending(refresh_cache);
+            const board = self.board_ref orelse unreachable;
+            switch (board.stm) {
+                inline else => |stm| {
+                    self.applyUpdate(.copy, parent, stm.flipped(), board, refresh_cache);
+                },
+            }
+            self.parent = null;
         }
     }
 
@@ -320,7 +343,6 @@ pub const Accumulator = struct {
         if (mode == .copy) {
             self.white_mirrored = other.white_mirrored;
             self.black_mirrored = other.black_mirrored;
-            self.dirty_piece = other.dirty_piece;
         }
         if (self.dirty_piece.adds.len | self.dirty_piece.subs.len == 0) {
             if (mode == .copy) {
@@ -415,7 +437,10 @@ pub const Accumulator = struct {
     }
 
     pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, refresh_cache: anytype) i16 {
-        self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
+        self.resolvePending(refresh_cache);
+        if (self.dirty_piece.adds.len | self.dirty_piece.subs.len != 0) {
+            self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
+        }
         std.debug.assert(board.stm == stm);
         // if (true)
         //     return 0;
