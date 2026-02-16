@@ -32,13 +32,14 @@ const Historytable = history.HistoryTable;
 
 const MovePicker = @This();
 
-movelist: *MoveReceiver,
+movelist: MoveReceiver,
 scores: [*]i32,
 first: usize,
 last: usize,
 stage: Stage,
 skip_quiets: bool,
 ttmove: Move,
+used_moves: *usize,
 last_bad_noisy: usize = 0,
 
 pub const Stage = enum {
@@ -52,13 +53,12 @@ pub const Stage = enum {
 };
 
 pub fn init(
-    movelist_: *MoveReceiver,
+    moves_: [*]Move,
     scores_: [*]i32,
     ttmove_: Move,
     is_singular_search: bool,
+    used_moves_: *usize,
 ) MovePicker {
-    movelist_.vals.len = 0;
-    movelist_.filter = ttmove_;
     var stage: Stage = undefined;
     if (is_singular_search or ttmove_.isNull()) {
         @branchHint(.unpredictable);
@@ -67,24 +67,28 @@ pub fn init(
         stage = .tt;
     }
     return .{
-        .movelist = movelist_,
+        .movelist = .{
+            .buffer = moves_,
+            .len = 0,
+            .filter = ttmove_,
+        },
         .scores = scores_,
         .first = 0,
         .last = 0,
         .stage = stage,
         .skip_quiets = false,
         .ttmove = ttmove_,
+        .used_moves = used_moves_,
     };
 }
 
 pub fn initQs(
-    movelist_: *MoveReceiver,
+    moves_: [*]Move,
     scores_: [*]i32,
     ttmove_: Move,
     skip_quiets: bool,
+    used_moves_: *usize,
 ) MovePicker {
-    movelist_.vals.len = 0;
-    movelist_.filter = ttmove_;
     var stage: Stage = undefined;
     if (ttmove_.isNull()) {
         @branchHint(.unpredictable);
@@ -93,18 +97,27 @@ pub fn initQs(
         stage = .tt;
     }
     return .{
-        .movelist = movelist_,
+        .movelist = .{
+            .buffer = moves_,
+            .len = 0,
+            .filter = ttmove_,
+        },
         .scores = scores_,
         .first = 0,
         .last = 0,
         .stage = stage,
         .skip_quiets = skip_quiets,
         .ttmove = ttmove_,
+        .used_moves = used_moves_,
     };
 }
 
-pub fn deinit(self: MovePicker) void {
-    self.movelist.vals.len = 0;
+pub fn deinit(self: *MovePicker) void {
+    self.used_moves.* -= self.movelist.len;
+}
+
+pub fn usedMoves(self: *const MovePicker) usize {
+    return self.movelist.len;
 }
 
 fn packScore(score: i32, idx: usize) u32 {
@@ -119,7 +132,7 @@ fn packScores(comptime N: usize, scores: @Vector(N, i32), indices: @Vector(N, u3
 }
 
 noinline fn findBest(noalias self: *MovePicker) usize {
-    const moves = self.movelist.vals.slice()[self.first..self.last];
+    const moves = self.movelist.slice()[self.first..self.last];
     const scores = self.scores[self.first..self.last];
 
     const UNROLL = std.simd.suggestVectorLength(u32) orelse 1;
@@ -196,13 +209,13 @@ pub fn next(
             continue :sw .generate_noisies;
         },
         .generate_noisies => {
-            self.movelist.vals.len = 0;
-            std.debug.assert(self.movelist.vals.len == 0);
-            movegen.generateAllNoisies(stm, board, self.movelist);
-            for (self.movelist.vals.slice(), 0..) |move, i| {
+            std.debug.assert(self.movelist.len == 0);
+            movegen.generateAllNoisies(stm, board, &self.movelist);
+            self.used_moves.* += self.movelist.len;
+            for (self.movelist.slice(), 0..) |move, i| {
                 self.scores[i] = noisyValue(histories, board, move);
             }
-            self.last = self.movelist.vals.len;
+            self.last = self.movelist.len;
             self.stage = .good_noisies;
 
             continue :sw .good_noisies;
@@ -212,7 +225,7 @@ pub fn next(
                 continue :sw .generate_quiets;
             }
             const best_idx = self.findBest();
-            const res = self.movelist.vals.slice()[best_idx];
+            const res = self.movelist.slice()[best_idx];
             const history_score = histories.readNoisy(board, res);
             const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                 root.tuning.tunable_constants.good_noisy_ordering_base;
@@ -220,7 +233,7 @@ pub fn next(
                 return res;
             }
             const score = self.scores[best_idx];
-            self.movelist.vals.slice()[self.last_bad_noisy] = res;
+            self.movelist.slice()[self.last_bad_noisy] = res;
             self.scores[self.last_bad_noisy] = score;
             self.last_bad_noisy += 1;
 
@@ -230,12 +243,16 @@ pub fn next(
             if (self.skip_quiets) {
                 return null;
             }
-            self.first = self.movelist.vals.len;
-            movegen.generateAllQuiets(stm, board, self.movelist);
-            for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
+            const prev_len = self.movelist.len;
+            self.movelist.len = @intCast(self.last_bad_noisy);
+            self.first = self.last_bad_noisy;
+            movegen.generateAllQuiets(stm, board, &self.movelist);
+            self.used_moves.* -= prev_len;
+            self.used_moves.* += self.movelist.len;
+            for (self.movelist.slice()[self.first..], 0..) |move, i| {
                 self.scores[self.first + i] = quietValue(histories, conthist_tables, board, move);
             }
-            self.last = self.movelist.vals.len;
+            self.last = self.movelist.len;
             self.stage = .quiets;
             continue :sw .quiets;
         },
@@ -243,7 +260,7 @@ pub fn next(
             if (self.first == self.last or self.skip_quiets) {
                 continue :sw .bad_noisy_prep;
             }
-            return self.movelist.vals.slice()[self.findBest()];
+            return self.movelist.slice()[self.findBest()];
         },
         .bad_noisy_prep => {
             self.first = 0;
@@ -255,7 +272,7 @@ pub fn next(
             if (self.first == self.last) {
                 return null;
             }
-            return self.movelist.vals.slice()[self.findBest()];
+            return self.movelist.slice()[self.findBest()];
         },
     };
 }
