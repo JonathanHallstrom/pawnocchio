@@ -59,12 +59,19 @@ pub fn init(
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
+    var stage: Stage = undefined;
+    if (is_singular_search or ttmove_.isNull()) {
+        @branchHint(.unpredictable);
+        stage = .generate_noisies;
+    } else {
+        stage = .tt;
+    }
     return .{
         .movelist = movelist_,
         .scores = scores_,
         .first = 0,
         .last = 0,
-        .stage = if (is_singular_search) .generate_noisies else .tt,
+        .stage = stage,
         .skip_quiets = false,
         .ttmove = ttmove_,
     };
@@ -78,12 +85,19 @@ pub fn initQs(
 ) MovePicker {
     movelist_.vals.len = 0;
     movelist_.filter = ttmove_;
+    var stage: Stage = undefined;
+    if (ttmove_.isNull()) {
+        @branchHint(.unpredictable);
+        stage = .generate_noisies;
+    } else {
+        stage = .tt;
+    }
     return .{
         .movelist = movelist_,
         .scores = scores_,
         .first = 0,
         .last = 0,
-        .stage = .tt,
+        .stage = stage,
         .skip_quiets = skip_quiets,
         .ttmove = ttmove_,
     };
