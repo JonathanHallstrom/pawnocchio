@@ -1001,6 +1001,7 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
 
     switch (move.tp()) {
         .default => {
+            @branchHint(.likely);
             const from = move.from();
             const to = move.to();
             const pt = self.pieceOn(from).?;
@@ -1031,6 +1032,7 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
             }
         },
         .ep => {
+            @branchHint(.unlikely);
             const from = move.from();
             const to = move.to();
             const target = move.getEnPassantPawnSquare(stm);
@@ -1038,6 +1040,7 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
             self.movePieceCapture(stm, .pawn, from, to, .pawn, target, eval_state);
         },
         .castling => {
+            @branchHint(.unlikely);
             const king_from = move.from();
             const king_to = self.castlingKingDestFor(move, stm);
             const rook_from = move.to();
@@ -1046,6 +1049,7 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
             self.movePieceCastling(stm, king_from, king_to, rook_from, rook_to, eval_state);
         },
         .promotion => {
+            @branchHint(.unlikely);
             const from = move.from();
             const to = move.to();
             updated_halfmove = 0;
@@ -1053,8 +1057,7 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
                 updated_castling_rights.updateSquare(to, stm.flipped());
                 self.movePiecePromoCapture(stm, move.promoType(), from, to, cap, to, eval_state);
             } else {
-                self.addPiece(stm, move.promoType(), to, eval_state);
-                self.removePiece(stm, .pawn, from, eval_state);
+                self.movePiecePromo(stm, move.promoType(), from, to, eval_state);
             }
         },
     }

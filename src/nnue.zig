@@ -16,7 +16,6 @@
 
 const std = @import("std");
 const root = @import("root.zig");
-const BoundedArray = root.BoundedArray;
 const Board = root.Board;
 const Square = root.Square;
 const PieceType = root.PieceType;
@@ -95,9 +94,34 @@ const SquarePieceType = struct {
     pt: PieceType,
 };
 
-const DirtyPiece = struct {
-    adds: BoundedArray(SquarePieceType, 2) = .{},
-    subs: BoundedArray(SquarePieceType, 2) = .{},
+const DirtyPiece = union(enum) {
+    clean,
+    add_sub: struct {
+        add: SquarePieceType,
+        sub: SquarePieceType,
+    },
+    add_sub_sub: struct {
+        add: SquarePieceType,
+        sub1: SquarePieceType,
+        sub2: SquarePieceType,
+    },
+    add_add_sub_sub: struct {
+        add1: SquarePieceType,
+        add2: SquarePieceType,
+        sub1: SquarePieceType,
+        sub2: SquarePieceType,
+    },
+
+    inline fn clear(self: *DirtyPiece) void {
+        self.* = .clean;
+    }
+
+    inline fn isClean(self: DirtyPiece) bool {
+        return switch (self) {
+            .clean => true,
+            else => false,
+        };
+    }
 };
 
 pub const MirroringType = if (HORIZONTAL_MIRRORING) struct {
@@ -153,7 +177,7 @@ pub const Accumulator = struct {
             .black = weights.ft_b,
             .white_mirrored = .{},
             .black_mirrored = .{},
-            .dirty_piece = .{},
+            .dirty_piece = .clean,
             .pending_parent = false,
             .board_ref = null,
         };
@@ -179,7 +203,7 @@ pub const Accumulator = struct {
         self.* = default();
         self.white_mirrored.write(Square.fromBitboard(board.kingFor(.white)).getFile().toInt() >= 4);
         self.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
-        self.dirty_piece = .{};
+        self.dirty_piece = .clean;
         self.pending_parent = false;
         self.board_ref = board;
 
@@ -209,7 +233,7 @@ pub const Accumulator = struct {
         std.debug.assert(@intFromPtr(other) + @sizeOf(Accumulator) == @intFromPtr(self));
         self.pending_parent = true;
         self.board_ref = null;
-        self.dirty_piece = .{};
+        self.dirty_piece = .clean;
     }
 
     pub fn bindBoard(noalias self: *Accumulator, board: *const Board) void {
@@ -347,85 +371,72 @@ pub const Accumulator = struct {
             self.white_mirrored = other.white_mirrored;
             self.black_mirrored = other.black_mirrored;
         }
-        if (self.dirty_piece.adds.len | self.dirty_piece.subs.len == 0) {
+        if (self.dirty_piece.isClean()) {
             if (mode == .copy) {
                 @memcpy(self.accFor(stm), other.accFor(stm));
                 @memcpy(self.accFor(stm.flipped()), other.accFor(stm.flipped()));
             }
             return;
         }
-        defer self.dirty_piece = .{};
+        defer self.dirty_piece.clear();
         const copy = if (mode == .inplace) self else other;
         const us_king_sq = Square.fromBitboard(board.kingFor(stm));
         const them_king_sq = Square.fromBitboard(board.kingFor(stm.flipped()));
-        if (self.dirty_piece.adds.len == 1 and self.dirty_piece.subs.len == 1) {
-            const add1 = self.dirty_piece.adds.slice()[0];
-            const sub1 = self.dirty_piece.subs.slice()[0];
-            // std.debug.print("{} {}\n", .{ add1, sub1 });
-            self.doAddSubCopy(copy, stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq);
-            if (add1.pt == .king and needsRefresh(stm, add1.sq, sub1.sq)) {
-                // std.debug.print("refresh\n", .{});
-                // self.mirrorFor(col: Colour)
-                self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                refresh_cache.refresh(stm, board, self.accFor(stm));
-            } else {
-                self.doAddSubCopy(copy, stm, stm, us_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq);
-            }
-        } else if (self.dirty_piece.adds.len == 1 and self.dirty_piece.subs.len == 2) {
-            const add1 = self.dirty_piece.adds.slice()[0];
-            const sub1 = self.dirty_piece.subs.slice()[0];
-            const sub2 = self.dirty_piece.subs.slice()[1];
-            self.doAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
-            if (add1.pt == .king and needsRefresh(stm, add1.sq, sub1.sq)) {
-                self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                refresh_cache.refresh(stm, board, self.accFor(stm));
-            } else {
-                self.doAddSubSubCopy(copy, stm, stm, us_king_sq, add1.pt, add1.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
-            }
-        } else if (self.dirty_piece.adds.len == 2 and self.dirty_piece.subs.len == 2) {
-            const add1 = self.dirty_piece.adds.slice()[0];
-            const add2 = self.dirty_piece.adds.slice()[1];
-            const sub1 = self.dirty_piece.subs.slice()[0];
-            const sub2 = self.dirty_piece.subs.slice()[1];
-            // std.debug.print("{} {}\n", .{ add1.sq, sub1.sq });
-            self.doAddAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
-            if (needsRefresh(stm, add1.sq, sub1.sq)) {
-                // std.debug.print("castling refresh\n", .{});
-                // std.debug.print("{} {s}\n", .{stm, old_board.toFen().slice()});
-                self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                refresh_cache.refresh(stm, board, self.accFor(stm));
-            } else {
-                self.doAddAddSubSubCopy(copy, stm, stm, us_king_sq, add1.pt, add1.sq, add2.pt, add2.sq, sub1.pt, sub1.sq, sub2.pt, sub2.sq);
-            }
-        } else {
-            unreachable;
+        switch (self.dirty_piece) {
+            .clean => unreachable,
+            .add_sub => |state| {
+                self.doAddSubCopy(copy, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq);
+                if (state.add.pt == .king and needsRefresh(stm, state.add.sq, state.sub.sq)) {
+                    @branchHint(.unlikely);
+                    self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
+                    refresh_cache.refresh(stm, board, self.accFor(stm));
+                } else {
+                    self.doAddSubCopy(copy, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq);
+                }
+            },
+            .add_sub_sub => |state| {
+                self.doAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                if (state.add.pt == .king and needsRefresh(stm, state.add.sq, state.sub1.sq)) {
+                    @branchHint(.unlikely);
+                    self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
+                    refresh_cache.refresh(stm, board, self.accFor(stm));
+                } else {
+                    self.doAddSubSubCopy(copy, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                }
+            },
+            .add_add_sub_sub => |state| {
+                self.doAddAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                if (needsRefresh(stm, state.add1.sq, state.sub1.sq)) {
+                    @branchHint(.unlikely);
+                    self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
+                    refresh_cache.refresh(stm, board, self.accFor(stm));
+                } else {
+                    self.doAddAddSubSubCopy(copy, stm, stm, us_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                }
+            },
         }
-    }
-
-    pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
-        _ = col;
-        self.dirty_piece.adds.appendAssumeCapacity(.{ .pt = pt, .sq = square });
-    }
-
-    pub fn sub(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
-        _ = col;
-        self.dirty_piece.subs.appendAssumeCapacity(.{ .pt = pt, .sq = square });
     }
 
     pub fn addSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
         _ = add_col;
         _ = sub_col;
-        self.dirty_piece.adds.appendAssumeCapacity(.{ .pt = add_pt, .sq = add_square });
-        self.dirty_piece.subs.appendAssumeCapacity(.{ .pt = sub_pt, .sq = sub_square });
+        std.debug.assert(self.dirty_piece.isClean());
+        self.dirty_piece = .{ .add_sub = .{
+            .add = .{ .pt = add_pt, .sq = add_square },
+            .sub = .{ .pt = sub_pt, .sq = sub_square },
+        } };
     }
 
     pub fn addSubSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
         _ = add_col;
         _ = sub1_col;
         _ = sub2_col;
-        self.dirty_piece.adds.appendAssumeCapacity(.{ .pt = add_pt, .sq = add_square });
-        self.dirty_piece.subs.appendAssumeCapacity(.{ .pt = sub1_pt, .sq = sub1_square });
-        self.dirty_piece.subs.appendAssumeCapacity(.{ .pt = sub2_pt, .sq = sub2_square });
+        std.debug.assert(self.dirty_piece.isClean());
+        self.dirty_piece = .{ .add_sub_sub = .{
+            .add = .{ .pt = add_pt, .sq = add_square },
+            .sub1 = .{ .pt = sub1_pt, .sq = sub1_square },
+            .sub2 = .{ .pt = sub2_pt, .sq = sub2_square },
+        } };
     }
 
     pub fn addAddSubSub(self: *State, comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
@@ -433,15 +444,18 @@ pub const Accumulator = struct {
         _ = add2_col;
         _ = sub1_col;
         _ = sub2_col;
-        self.dirty_piece.adds.appendAssumeCapacity(.{ .pt = add1_pt, .sq = add1_square });
-        self.dirty_piece.adds.appendAssumeCapacity(.{ .pt = add2_pt, .sq = add2_square });
-        self.dirty_piece.subs.appendAssumeCapacity(.{ .pt = sub1_pt, .sq = sub1_square });
-        self.dirty_piece.subs.appendAssumeCapacity(.{ .pt = sub2_pt, .sq = sub2_square });
+        std.debug.assert(self.dirty_piece.isClean());
+        self.dirty_piece = .{ .add_add_sub_sub = .{
+            .add1 = .{ .pt = add1_pt, .sq = add1_square },
+            .add2 = .{ .pt = add2_pt, .sq = add2_square },
+            .sub1 = .{ .pt = sub1_pt, .sq = sub1_square },
+            .sub2 = .{ .pt = sub2_pt, .sq = sub2_square },
+        } };
     }
 
     pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, refresh_cache: anytype) i16 {
         self.resolvePending(refresh_cache);
-        if (self.dirty_piece.adds.len | self.dirty_piece.subs.len != 0) {
+        if (!self.dirty_piece.isClean()) {
             self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
         }
         std.debug.assert(board.stm == stm);
