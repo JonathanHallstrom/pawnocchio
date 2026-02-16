@@ -1696,8 +1696,17 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 if (move.isNull()) {
                     var list = movegen.MoveListReceiver{};
                     movegen.generateAll(board, &list);
-                    if (list.vals.len > 0) {
-                        move = list.vals.slice()[0];
+                    for (list.vals.slice()) |mv| {
+                        switch (board.stm) {
+                            inline else => |stm| {
+                                if (board.isPseudoLegal(stm, mv) and
+                                    board.isLegal(stm, mv))
+                                {
+                                    move = mv;
+                                    break;
+                                }
+                            },
+                        }
                     }
                 }
             }
