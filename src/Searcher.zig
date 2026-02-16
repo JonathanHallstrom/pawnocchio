@@ -232,12 +232,14 @@ pub const StackEntry = struct {
     }
 };
 
-inline fn getUsableMoves(self: *const Searcher) history.ConthistMoves {
-    var res: history.ConthistMoves = undefined;
+inline fn getConthistTables(self: *Searcher, stm: Colour) history.ConthistTables {
+    var res: history.ConthistTables = undefined;
     const usable = self.stackEntry(0).usable_moves;
+    const null_move = TypedMove.init();
     std.debug.assert(usable <= self.ply);
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
-        res[j] = if (i < usable) self.stackEntry(-i).move else TypedMove.init();
+        const move = if (i < usable) self.stackEntry(-i).move else null_move;
+        res[j] = self.histories.countermove.table(stm, move);
     }
     return res;
 }
@@ -472,7 +474,7 @@ fn qsearch(
 
     const previous_move_destination = cur.move.move.to();
 
-    const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
+    const conthist_tables = self.getConthistTables(stm);
 
     while (mp.next(
         stm,
@@ -731,7 +733,7 @@ fn search(
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
-    // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getUsableMoves()) else self.histories.readNoisy(board, tt_entry.move) else 0;
+    // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getConthistTables(stm)) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
@@ -932,7 +934,7 @@ fn search(
         }
     }
 
-    const conthist_tables = self.histories.getConthistTables(stm, self.getUsableMoves());
+    const conthist_tables = self.getConthistTables(stm);
     var mp = MovePicker.init(
         &cur.movelist,
         &cur.scores,
