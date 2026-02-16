@@ -39,9 +39,7 @@ pub const TypedMove = struct {
     }
 
     pub fn fromBoard(board: *const Board, move_: Move) TypedMove {
-        if (move_.isNull()) {
-            return init();
-        }
+        std.debug.assert(!move_.isNull());
         return .{
             .move = move_,
             .tp = board.pieceOn(move_.from()).?,
