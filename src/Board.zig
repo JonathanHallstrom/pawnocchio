@@ -708,7 +708,7 @@ pub inline fn castlingRookDestFor(self: Board, move: Move, col: Colour) Square {
     }
 }
 
-inline fn zobristPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square) void {
+fn zobristPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square) void {
     const zobrist_update = root.zobrist.piece(col, pt, sq);
     self.hash ^= zobrist_update;
     if (pt == .pawn) {
@@ -724,7 +724,7 @@ inline fn zobristPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Sq
     }
 }
 
-pub inline fn addPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square, eval_state: anytype) void {
+pub fn addPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square, eval_state: anytype) void {
     const bb = sq.toBitboard();
     self.occupancyPtrFor(col).* |= bb;
     self.pieces[pt.toInt()] |= bb;
@@ -733,7 +733,7 @@ pub inline fn addPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Sq
     eval_state.add(col, pt, sq);
 }
 
-pub inline fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square, eval_state: anytype) void {
+pub fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square, eval_state: anytype) void {
     const bb = sq.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.pieces[pt.toInt()] ^= bb;
@@ -742,7 +742,7 @@ pub inline fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq:
     eval_state.sub(col, pt, sq);
 }
 
-pub inline fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from: Square, to: Square, eval_state: anytype) void {
+pub fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from: Square, to: Square, eval_state: anytype) void {
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.pieces[pt.toInt()] ^= bb;
@@ -753,7 +753,7 @@ pub inline fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from:
     eval_state.addSub(col, pt, to, col, pt, from);
 }
 
-pub inline fn movePiecePromo(self: *Board, comptime col: Colour, promo_pt: PieceType, from: Square, to: Square, eval_state: anytype) void {
+pub fn movePiecePromo(self: *Board, comptime col: Colour, promo_pt: PieceType, from: Square, to: Square, eval_state: anytype) void {
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.pieces[PieceType.pawn.toInt()] ^= from.toBitboard();
@@ -765,7 +765,7 @@ pub inline fn movePiecePromo(self: *Board, comptime col: Colour, promo_pt: Piece
     eval_state.addSub(col, promo_pt, to, col, .pawn, from);
 }
 
-pub inline fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType, from: Square, to: Square, captured_pt: PieceType, captured_square: Square, eval_state: anytype) void {
+pub fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType, from: Square, to: Square, captured_pt: PieceType, captured_square: Square, eval_state: anytype) void {
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.occupancyPtrFor(col.flipped()).* ^= captured_square.toBitboard();
@@ -780,7 +780,7 @@ pub inline fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType
     eval_state.addSubSub(col, pt, to, col, pt, from, col.flipped(), captured_pt, captured_square);
 }
 
-pub inline fn movePiecePromoCapture(self: *Board, comptime col: Colour, promo_pt: PieceType, from: Square, to: Square, captured_pt: PieceType, captured_square: Square, eval_state: anytype) void {
+pub fn movePiecePromoCapture(self: *Board, comptime col: Colour, promo_pt: PieceType, from: Square, to: Square, captured_pt: PieceType, captured_square: Square, eval_state: anytype) void {
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.occupancyPtrFor(col.flipped()).* ^= captured_square.toBitboard();
@@ -796,7 +796,7 @@ pub inline fn movePiecePromoCapture(self: *Board, comptime col: Colour, promo_pt
     eval_state.addSubSub(col, promo_pt, to, col, .pawn, from, col.flipped(), captured_pt, captured_square);
 }
 
-pub inline fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, king_to: Square, rook_from: Square, rook_to: Square, eval_state: anytype) void {
+pub fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, king_to: Square, rook_from: Square, rook_to: Square, eval_state: anytype) void {
     const king_bb = king_from.toBitboard() ^ king_to.toBitboard();
     const rook_bb = rook_from.toBitboard() ^ rook_to.toBitboard();
     self.occupancyPtrFor(col).* ^= king_bb ^ rook_bb;
@@ -992,7 +992,7 @@ pub fn makeMoveSimple(noalias self: *Board, move: Move) void {
     }
 }
 
-pub inline fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
+pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;
     var updated_castling_rights = self.castling_rights;
