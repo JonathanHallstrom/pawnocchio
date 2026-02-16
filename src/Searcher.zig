@@ -949,6 +949,7 @@ fn search(
     var num_searched: u8 = 0;
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
+    var alpha_raises: u8 = 0;
     const lmp_base = if (improving) tunables.lmp_improving_base else tunables.lmp_standard_base;
     const lmp_linear_mult = if (improving) tunables.lmp_improving_linear_mult else tunables.lmp_standard_linear_mult;
     const lmp_quadratic_mult = if (improving) tunables.lmp_improving_quadratic_mult else tunables.lmp_standard_quadratic_mult;
@@ -1187,6 +1188,7 @@ fn search(
                     is_root,
                     cur.failhighs > 2,
                 });
+                reduction += @as(i32, 1024) * alpha_raises;
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
@@ -1315,9 +1317,7 @@ fn search(
                 }
                 break;
             }
-            if (2 <= depth and depth <= 12) {
-                depth -= 1;
-            }
+            alpha_raises += 1;
         }
     }
 
