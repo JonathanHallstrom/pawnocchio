@@ -83,7 +83,7 @@ pub fn main() !void {
                     \\  vftotxt <INPUT.vf>
                     \\      convert viriformat binary file to <FEN> | <SCORE> | <WDL>
                     \\
-                    \\  sanitise <INPUT.vf>
+                    \\  sanitise <INPUT.vf> [--print-errors]
                     \\      sanitise a viriformat file
                     \\
                     \\  analyse <INPUT.vf> [--approximate] [--tb-path <PATH>]
@@ -655,7 +655,15 @@ pub fn main() !void {
                 return;
             }
             if (std.mem.count(u8, arg, "sanitise") > 0) {
-                const input_name = args.next() orelse "";
+                var input_name: []const u8 = "";
+                var print_errors = false;
+                while (args.next()) |sub_arg| {
+                    if (std.ascii.eqlIgnoreCase(sub_arg, "--print-errors")) {
+                        print_errors = true;
+                    } else {
+                        input_name = sub_arg;
+                    }
+                }
                 var input_file = try std.fs.cwd().openFile(input_name, .{});
                 defer input_file.close();
 
@@ -673,7 +681,12 @@ pub fn main() !void {
                 var output_buf: [4096]u8 = undefined;
                 var bw = output_file.writer(&output_buf);
 
-                try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(mapped.data, &bw.interface, allocator);
+                try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(
+                    mapped.data,
+                    &bw.interface,
+                    allocator,
+                    print_errors,
+                );
 
                 try bw.interface.flush();
 

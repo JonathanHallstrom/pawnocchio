@@ -27,18 +27,53 @@ const PieceType = root.PieceType;
 const Move = root.Move;
 const WDL = root.WDL;
 
-fn parseSingleGame(input: []const u8, game: *Game) !usize {
+const ParseSingleGameError = error{
+    InputTooShortForHeader,
+    InvalidWdl,
+    InputTooShortForMoveEvalPair,
+    MoveNotPseudoLegal,
+    MoveNotLegal,
+} || error{
+    TooManyPieces,
+    MissingKing,
+    PawnsOnFirstLastRank,
+    KingOnWrongRankAndCanCastle,
+    InvalidEpSquare,
+} || std.mem.Allocator.Error;
+
+fn isRecoverableParseError(e: anyerror) bool {
+    return switch (e) {
+        error.InputTooShortForHeader,
+        error.InvalidWdl,
+        error.TooManyPieces,
+        error.MissingKing,
+        error.PawnsOnFirstLastRank,
+        error.KingOnWrongRankAndCanCastle,
+        error.InvalidEpSquare,
+        error.InputTooShortForMoveEvalPair,
+        error.MoveNotPseudoLegal,
+        error.MoveNotLegal,
+        => true,
+        else => false,
+    };
+}
+
+fn parseSingleGame(input: []const u8, game: *Game) ParseSingleGameError!usize {
+    if (input.len < 32) return error.InputTooShortForHeader;
+
     var i: usize = 0;
     var initial: viriformat.MarlinPackedBoard = undefined;
     @memcpy(std.mem.asBytes(&initial), input[0..32]);
     i += 32;
-    if (initial.wdl > 2) return error.FailedToParse;
+    if (initial.wdl > 2) return error.InvalidWdl;
 
-    var board = initial.toBoard() catch return error.FailedToParse;
+    var board = try initial.toBoard();
     game.reset(board);
     game.setOutCome(@enumFromInt(initial.wdl));
 
     while (i < input.len) {
+        if (input.len - i < 4) return error.InputTooShortForMoveEvalPair;
+
         var move_eval: viriformat.MoveEvalPair = undefined;
         @memcpy(std.mem.asBytes(&move_eval), input[i..][0..4]);
         i += 4;
@@ -50,12 +85,11 @@ fn parseSingleGame(input: []const u8, game: *Game) !usize {
 
         switch (board.stm) {
             inline else => |stm| {
-                if (board.isPseudoLegal(stm, move) and board.isLegal(stm, move)) {
-                    board.makeMove(stm, move, Board.NullEvalState{});
-                    try game.addMove(move, move_eval.eval.toNative());
-                } else {
-                    return error.FailedToParse;
-                }
+                if (!board.isPseudoLegal(stm, move)) return error.MoveNotPseudoLegal;
+                if (!board.isLegal(stm, move)) return error.MoveNotLegal;
+
+                board.makeMove(stm, move, Board.NullEvalState{});
+                try game.addMove(move, move_eval.eval.toNative());
             },
         }
     }
@@ -66,6 +100,7 @@ pub fn sanitiseBufferToFile(
     input: []const u8,
     output: *std.Io.Writer,
     allocator: std.mem.Allocator,
+    print_errors: bool,
 ) !void {
     var game: Game = .from(.startpos(), allocator);
     defer game.moves.deinit();
@@ -78,13 +113,19 @@ pub fn sanitiseBufferToFile(
         if (i / 4 % (1 << 10) == 0) {
             std.debug.print("progress: {}/{}\r", .{ i, input.len });
         }
-        const bytes_used = parseSingleGame(input[i..], &game) catch |e| switch (e) {
-            error.FailedToParse => {
+        const bytes_used = parseSingleGame(input[i..], &game) catch |e| {
+            if (isRecoverableParseError(e)) {
+                if (print_errors) {
+                    std.debug.print("failed to parse game at byte offset {}: {}\n", .{ i, e });
+                }
                 skipped += 1;
                 i += 1;
                 continue;
-            },
-            else => return e,
+            }
+            if (print_errors) {
+                std.debug.print("fatal sanitiser error at byte offset {}: {}\n", .{ i, e });
+            }
+            return e;
         };
         i += bytes_used;
         parsed += 1;
