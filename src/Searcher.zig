@@ -202,6 +202,7 @@ pub const StackEntry = struct {
     static_eval: i16,
     corrected_eval: i16,
     failhighs: u8,
+    child_failhighs: u8,
     usable_moves: u8,
     reduction: i32,
     history_score: i32,
@@ -950,6 +951,7 @@ fn search(
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
     self.stackEntry(1).failhighs = 0;
+    self.stackEntry(2).child_failhighs = 0;
     var num_legal: u8 = 0;
     var alpha_raises: u8 = 0;
     const lmp_base = if (improving) tunables.lmp_improving_base else tunables.lmp_standard_base;
@@ -1159,6 +1161,7 @@ fn search(
             }
         }
 
+        const child_failhighs = self.stackEntry(1).child_failhighs;
         const score = blk: {
             self.makeMove(stm, move);
             self.stackEntry(0).history_score = history_score;
@@ -1190,6 +1193,7 @@ fn search(
                     is_root,
                     cur.failhighs > 2,
                 });
+                reduction += @as(i32, 1024) * @as(i32, @intFromBool(child_failhighs > 2));
                 reduction += @as(i32, 1024) * alpha_raises;
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
@@ -1300,6 +1304,7 @@ fn search(
                 const hist_depth = depth + @as(i32, if (score >= beta + tunables.high_eval_offs) 1 else 0);
                 score_type = .lower;
                 cur.failhighs += 1;
+                cur.child_failhighs +|= 1;
                 const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
