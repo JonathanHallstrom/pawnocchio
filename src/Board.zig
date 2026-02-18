@@ -100,8 +100,12 @@ pub inline fn pieceFor(self: Board, col: Colour, piece: PieceType) u64 {
     return self.pieces[piece.toInt()] & self.occupancyFor(col);
 }
 
+pub inline fn threatenedBy(self: *const Board, col: Colour) u64 {
+    return (&self.threats)[col.toInt()];
+}
+
 pub inline fn threatenedFor(self: *const Board, col: Colour) u64 {
-    return self.occupancyFor(col) & (&self.threats)[col.flipped().toInt()];
+    return self.occupancyFor(col) & self.threatenedBy(col.flipped());
 }
 
 pub inline fn seriouslyThreatenedFor(self: *const Board, col: Colour) u64 {

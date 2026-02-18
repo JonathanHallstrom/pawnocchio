@@ -475,7 +475,6 @@ fn qsearch(
     const previous_move_destination = cur.move.move.to();
 
     const conthist_tables = self.getConthistTables(stm);
-    const winning_targets = board.seriouslyThreatenedFor(stm.flipped());
 
     while (mp.next(
         stm,
@@ -495,25 +494,7 @@ fn qsearch(
         }
         const skip_see_pruning = mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
-        // var lo: i16 = -2000;
-        // var hi: i16 = 2000;
-        //
-        // for (0..20) |_| {
-        //     const mid = lo + (hi - lo >> 1);
-        //
-        //     if (SEE.scoreMove(board, move, mid, .pruning)) {
-        //         lo = mid;
-        //     } else {
-        //         hi = mid;
-        //     }
-        // }
-        // engine.dbgStats(" SEE value", lo);
-        // if (root.Bitboard.contains(winning_targets, move.to())) {
-        //     engine.dbgStats("winning threat SEE neutral", @intFromBool(SEE.scoreMove(board, move, 0, .pruning)));
-        //     engine.dbgStats("winning threat SEE success", @intFromBool(SEE.scoreMove(board, move, 1, .pruning)));
-        //     engine.dbgStats("winning threat SEE value", lo);
-        // }
-        if (best_score > evaluation.matedIn(MAX_PLY) and !root.Bitboard.contains(winning_targets, move.to())) {
+        if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, move);
             if (num_searched >= 2 and
                 history_score < tunables.qs_hp_margin)
@@ -988,6 +969,14 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+    const threatened_squares = board.threatenedBy(stm.flipped());
+    const double_attacked_squares = (&board.double_threats)[stm.flipped().toInt()];
+
+    // if we use normal threats destination will always appear defended
+    const defended_squares = (&board.double_threats)[stm.toInt()];
+
+    const dangerous_squares = (threatened_squares & ~defended_squares | double_attacked_squares) & ~board.occupancy();
+
     while (mp.next(
         stm,
         &self.histories,
@@ -1221,6 +1210,28 @@ fn search(
                 });
                 reduction += @as(i32, 1024) * alpha_raises;
 
+                // if (dangerous_squares != 0) {
+                //     std.debug.print("{s}", .{board.toFen().slice()});
+                //
+                //     var iter = root.Bitboard.iterator(dangerous_squares);
+                //     while (iter.next()) |sq| {
+                //         std.debug.print(" {s}", .{@tagName(sq)});
+                //     }
+                //     std.debug.print("\n", .{});
+                // }
+                // if (is_quiet) {
+                //     if (root.Bitboard.contains(dangerous_squares, move.to())) {
+                //         root.engine.dbgStats("dangerous move fails see", @intFromBool(!SEE.scoreMove(board, move, 0, .pruning)));
+                //     } else {
+                //         root.engine.dbgStats("safe move fails see", @intFromBool(!SEE.scoreMove(board, move, 0, .pruning)));
+                //     }
+                // }
+                if (is_quiet and
+                    root.Bitboard.contains(dangerous_squares, move.to()))
+                {
+                    reduction += 1024;
+                }
+
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
                 self.stackEntry(0).reduction =
@@ -1242,6 +1253,49 @@ fn search(
                 if (self.stop.load(.acquire)) {
                     break :blk 0;
                 }
+
+                // if (is_quiet) {
+                //     const correct_score = -self.search(
+                //         false,
+                //         false,
+                //         stm.flipped(),
+                //         -(beta + 10),
+                //         -(alpha - 10),
+                //         new_depth - 1,
+                //         true,
+                //     );
+                //     const failed_low = s <= alpha;
+                //     const should_fail_low = correct_score <= 0;
+                //     const dangerous = root.Bitboard.contains(dangerous_squares, move.to());
+                //     engine.dbgStats("quiet was dangerous", @intFromBool(dangerous));
+                //     engine.dbgStats("quiet failed low", @intFromBool(failed_low));
+                //     if (failed_low) {
+                //         engine.dbgStats("quiet correctly failed low", @intFromBool(should_fail_low));
+                //         engine.dbgStats("quiet faillow", alpha - s);
+                //     } else {
+                //         engine.dbgStats("quiet incorrectly failed high", @intFromBool(should_fail_low));
+                //     }
+                //     if (s <= alpha) {
+                //         engine.dbgStats("quiet faillow", alpha - s);
+                //     }
+                //     if (root.Bitboard.contains(dangerous_squares, move.to())) {
+                //         engine.dbgStats("dangerous quiet failed low", @intFromBool(failed_low));
+                //         if (failed_low) {
+                //             engine.dbgStats("dangerous quiet correctly failed low", @intFromBool(should_fail_low));
+                //             engine.dbgStats("dangerous quiet faillow", alpha - s);
+                //         } else {
+                //             engine.dbgStats("dangerous quiet incorrectly failed high", @intFromBool(should_fail_low));
+                //         }
+                //     } else {
+                //         engine.dbgStats("safe quiet failed low", @intFromBool(failed_low));
+                //         if (failed_low) {
+                //             engine.dbgStats("safe quiet correctly failed low", @intFromBool(should_fail_low));
+                //             engine.dbgStats("safe quiet faillow", alpha - s);
+                //         } else {
+                //             engine.dbgStats("safe quiet incorrectly failed high", @intFromBool(should_fail_low));
+                //         }
+                //     }
+                // }
 
                 if (s > alpha and reduced_depth < new_depth) {
                     const do_deeper_search = s > best_score + (tunables.lmr_dodeeper_margin + tunables.lmr_dodeeper_mult * new_depth >> 10);
