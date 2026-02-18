@@ -1194,7 +1194,7 @@ fn search(
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += getFactorisedLmr(9, .{
                     is_pv,
-                    cutnode and self.histories.readFailhigh(stm) > 1000,
+                    cutnode,
                     improving,
                     has_tt_move,
                     tt_pv,
@@ -1204,6 +1204,7 @@ fn search(
                     cur.failhighs > 2,
                 });
                 reduction += @as(i32, 1024) * alpha_raises;
+                reduction -= std.math.clamp(self.histories.readFailhigh(stm), -2000, 2000) >> 2;
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
@@ -1228,6 +1229,7 @@ fn search(
                 }
 
                 if (s > alpha and reduced_depth < new_depth) {
+                    // engine.dbgStats("didnt fail low", self.histories.readFailhigh(stm));
                     const do_deeper_search = s > best_score + (tunables.lmr_dodeeper_margin + tunables.lmr_dodeeper_mult * new_depth >> 10);
                     const do_shallower_search = s < best_score + (tunables.lmr_doshallower_margin + tunables.lmr_doshallower_margin * new_depth >> 10);
 
@@ -1249,6 +1251,8 @@ fn search(
                     if (is_quiet and (s <= alpha or s >= beta)) {
                         self.histories.updateCont(board, move, conthist_tables, new_depth, s >= beta, 0);
                     }
+                } else {
+                    // engine.dbgStats("did fail low", self.histories.readFailhigh(stm));
                 }
             } else if (!is_pv or num_searched > 1) {
                 s = -self.search(
