@@ -662,11 +662,12 @@ fn search(
     alpha_original: i32,
     beta_original: i32,
     depth_original: i32,
-    cutnode: bool,
+    cutnode_original: bool,
 ) i16 {
     var depth = depth_original;
     var alpha = alpha_original;
     var beta = beta_original;
+    var cutnode = cutnode_original;
 
     self.nodes += 1;
     if (!(is_root and self.is_main_thread and self.root_move.isNull()) and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
@@ -716,6 +717,9 @@ fn search(
             return self.drawScore(stm);
         }
     }
+
+    cutnode = cutnode and self.histories.readFailhigh(stm) > -8000;
+    cutnode = cutnode or self.histories.readFailhigh(stm) > 8000;
 
     const is_singular_search = !cur.excluded.isNull();
     const tt_hash = board.getHashWithHalfmove();
@@ -1204,7 +1208,6 @@ fn search(
                     cur.failhighs > 2,
                 });
                 reduction += @as(i32, 1024) * alpha_raises;
-                reduction -= std.math.clamp(self.histories.readFailhigh(stm), -2000, 2000) >> 2;
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));

@@ -310,11 +310,11 @@ pub const FailHighHistory = struct {
     vals: [2]i16,
 
     fn bonus(depth: i32) i16 {
-        return @intCast(@min(200 + depth * 200, 2000));
+        return @intCast(@min(400 + depth * 400, 4000));
     }
 
     fn penalty(depth: i32) i16 {
-        return @intCast(@min(200 + depth * 200, 2000));
+        return @intCast(@min(400 + depth * 400, 4000));
     }
 
     pub fn reset(self: *FailHighHistory) void {
