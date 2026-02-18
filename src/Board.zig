@@ -99,6 +99,17 @@ pub inline fn pieceFor(self: Board, col: Colour, piece: PieceType) u64 {
     return self.pieces[piece.toInt()] & self.occupancyFor(col);
 }
 
+pub inline fn threatenedFor(self: *const Board, col: Colour) u64 {
+    return self.occupancyFor(col) & (&self.threats)[col.flipped().toInt()];
+}
+
+pub inline fn seriouslyThreatenedFor(self: *const Board, col: Colour) u64 {
+    const lesser = (&self.lesser_threats)[col.flipped().toInt()];
+    const undefended = (&self.threats)[col.flipped().toInt()] & ~(&self.threats)[col.toInt()];
+
+    return self.occupancyFor(col) & (lesser | undefended);
+}
+
 pub inline fn pawns(self: Board) u64 {
     return self.pieces[0];
 }

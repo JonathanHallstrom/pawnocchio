@@ -676,6 +676,16 @@ fn search(
 
     const cur: *StackEntry = self.stackEntry(0);
     const board: *Board = &cur.board;
+    // const seriously_threatened = board.seriouslyThreatenedFor(stm);
+    // if (seriously_threatened != 0) {
+    //     std.debug.print("{s}", .{board.toFen().slice()});
+    //
+    //     var iter = root.Bitboard.iterator(seriously_threatened);
+    //     while (iter.next()) |sq| {
+    //         std.debug.print(" {s}", .{@tagName(sq)});
+    //     }
+    //     std.debug.print("\n", .{});
+    // }
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
@@ -842,7 +852,7 @@ fn search(
             // if we are re-searching this then its likely because its important, so otherwise we reduce more
             // basically we reduce more if this node is likely unimportant
             const no_tthit_cutnode = !tt_hit and cutnode;
-            const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesser_threats[stm.flipped().toInt()] != 0;
+            const opponent_has_easy_capture = board.seriouslyThreatenedFor(stm) != 0;
             const conditional_margin =
                 tunables.rfp_improving_margin * @intFromBool(improving) +
                 tunables.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) +
@@ -866,7 +876,7 @@ fn search(
         }
 
         // razoring
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
+        const we_have_easy_capture = board.seriouslyThreatenedFor(stm.flipped()) != 0;
         const depth_3 = @max(0, depth - 3);
         if (eval +
             tunables.razoring_offs +
