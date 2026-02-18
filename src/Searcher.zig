@@ -492,7 +492,8 @@ fn qsearch(
         {
             std.debug.assert(board.isNoisy(move));
         }
-        const skip_see_pruning = mp.stage == .good_noisies;
+        const dest_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], move.to());
+        const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, move);
@@ -997,7 +998,8 @@ fn search(
         {
             std.debug.assert(!is_quiet);
         }
-        const skip_see_pruning = mp.stage == .good_noisies;
+        const dest_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], move.to());
+        const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const history_score = if (is_quiet) self.histories.readQuietPruning(
             board,
             move,
