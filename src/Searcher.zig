@@ -830,6 +830,7 @@ fn search(
     }
     if (!tt_pv and
         eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
+        depth >= 2 and
         !is_singular_search and
         cur.reduction >= 2000 and
         @as(i32, eval) + prev_eval > 300)
