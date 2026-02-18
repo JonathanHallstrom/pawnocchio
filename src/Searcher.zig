@@ -729,6 +729,19 @@ fn search(
             tt_entry = .{};
         }
     }
+    // if (!is_pv and depth > 4) {
+    //     var buf: [32]u8 = undefined;
+    //     var writer = std.Io.Writer.fixed(&buf);
+    //     if (cutnode) {
+    //         // writer.print("cutnode {}", .{depth}) catch unreachable;
+    //         writer.print("cutnode", .{}) catch unreachable;
+    //     } else {
+    //         // writer.print("allnode {}", .{depth}) catch unreachable;
+    //         writer.print("allnode", .{}) catch unreachable;
+    //     }
+    //
+    //     engine.dbgStats(writer.buffered(), self.histories.readFailhigh(stm));
+    // }
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
@@ -1181,7 +1194,7 @@ fn search(
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += getFactorisedLmr(9, .{
                     is_pv,
-                    cutnode,
+                    cutnode and self.histories.readFailhigh(stm) > 1000,
                     improving,
                     has_tt_move,
                     tt_pv,
@@ -1348,6 +1361,10 @@ fn search(
             {
                 self.histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, depth);
             }
+        }
+
+        if (depth > 0) {
+            self.histories.updateFailhigh(stm, depth, best_score >= beta);
         }
     }
 
@@ -1578,6 +1595,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             inline else => |stm| while (true) {
                 defer quantized_window = quantized_window * tunables.aspiration_multiplier >> 10;
 
+                self.histories.failhigh.reset();
                 score = self.search(
                     true,
                     true,

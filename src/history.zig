@@ -306,6 +306,39 @@ pub const ContHistory = struct {
     }
 };
 
+pub const FailHighHistory = struct {
+    vals: [2]i16,
+
+    fn bonus(depth: i32) i16 {
+        return @intCast(@min(200 + depth * 200, 2000));
+    }
+
+    fn penalty(depth: i32) i16 {
+        return @intCast(@min(200 + depth * 200, 2000));
+    }
+
+    pub fn reset(self: *FailHighHistory) void {
+        @memset(std.mem.asBytes(&self.vals), 0);
+    }
+
+    inline fn entry(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = col.toInt();
+        return &(&self.vals)[col_offs];
+    }
+
+    pub inline fn updateRaw(self: *FailHighHistory, col: Colour, upd: i32) void {
+        gravityUpdate(self.entry(col), upd);
+    }
+
+    inline fn update(self: *FailHighHistory, col: Colour, depth: i32, is_bonus: bool) void {
+        self.updateRaw(col, if (is_bonus) bonus(depth) else -penalty(depth));
+    }
+
+    inline fn read(self: *const FailHighHistory, col: Colour) i16 {
+        return self.entry(col).*;
+    }
+};
+
 pub const HistoryTable = struct {
     quiet: QuietHistory,
     pawn: PawnHistory,
@@ -317,12 +350,15 @@ pub const HistoryTable = struct {
     nonpawn_corrhist: [16384][2][2]CorrhistEntry,
     countermove_corrhist: [64 * 64 * 2 * 2][2]CorrhistEntry,
     followupmove_corrhist: [64 * 64 * 2 * 2][2]CorrhistEntry,
+    failhigh: FailHighHistory,
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
         self.pawn.reset();
         self.noisy.reset();
         self.countermove.reset();
+        self.failhigh.reset();
+
         @memset(std.mem.asBytes(&self.pawn_corrhist), 0);
         @memset(std.mem.asBytes(&self.major_corrhist), 0);
         @memset(std.mem.asBytes(&self.minor_corrhist), 0);
@@ -440,9 +476,17 @@ pub const HistoryTable = struct {
         return res;
     }
 
+    pub fn readFailhigh(self: *HistoryTable, stm: Colour) i16 {
+        return self.failhigh.read(stm);
+    }
+
     pub fn updateNoisy(self: *HistoryTable, board: *const Board, move: Move, depth: i32, is_bonus: bool, extra: i32) void {
         const typed = TypedMove.fromBoard(board, move);
         self.noisy.update(board, typed, depth, is_bonus, extra);
+    }
+
+    pub fn updateFailhigh(self: *HistoryTable, stm: Colour, depth: i32, is_bonus: bool) void {
+        self.failhigh.update(stm, depth, is_bonus);
     }
 
     pub fn updateCorrection(self: *HistoryTable, board: *const Board, prev: TypedMove, followup: TypedMove, corrected_static_eval: i32, score: i32, depth: i32) void {

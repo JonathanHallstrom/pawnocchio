@@ -28,13 +28,14 @@ pub var debug_stats_lock: std.Thread.Mutex = .{};
 pub var debug_stats: std.StringHashMap(@import("DebugStats.zig")) = .init(std.heap.page_allocator);
 pub var debug_rng: std.Random.DefaultPrng = undefined;
 
-pub fn dbgStats(comptime name: []const u8, value: i64) void {
+pub fn dbgStats(name: []const u8, value: i64) void {
     debug_stats_lock.lock();
     defer debug_stats_lock.unlock();
 
     const gp = debug_stats.getOrPut(name) catch unreachable;
     if (!gp.found_existing) {
         gp.value_ptr.* = .{};
+        gp.key_ptr.* = std.heap.page_allocator.dupe(u8, name) catch @panic("OOM");
     }
     gp.value_ptr.add(value, debug_rng.random());
 }
@@ -80,6 +81,12 @@ pub fn init() !void {
 pub fn deinit() void {
     thread_pool.deinit();
     printDebugStats();
+    var keys = debug_stats.keyIterator();
+
+    while (keys.next()) |key| {
+        std.heap.page_allocator.free(key.*);
+    }
+
     debug_stats.deinit();
 }
 
