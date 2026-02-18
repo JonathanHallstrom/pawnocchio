@@ -1227,7 +1227,8 @@ fn search(
                 //     }
                 // }
                 if (is_quiet and
-                    root.Bitboard.contains(dangerous_squares, move.to()))
+                    root.Bitboard.contains(dangerous_squares, move.to()) and
+                    !SEE.scoreMove(board, move, 0, .pruning))
                 {
                     reduction += 1024;
                 }
