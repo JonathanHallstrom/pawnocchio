@@ -74,7 +74,7 @@ pub fn main() !void {
                     \\      generate FENs. note: must be enclosed in quotes due to argument parsing
                     \\      example: pawnocchio "genfens 100 12345 book.bin"
                     \\
-                    \\  pgntovf <INPUT.pgn> [--skip-broken-games] [OUTPUT.vf]
+                    \\  pgntovf <INPUT.pgn> [--skip-broken-games] [--allow-non-pgn-extension] [OUTPUT.vf]
                     \\      convert PGN to viriformat. output is input name + .vf
                     \\
                     \\  epdtovf <INPUT.epd> [--skip-broken-games] [--white-relative] [OUTPUT.vf]
@@ -169,15 +169,26 @@ pub fn main() !void {
             if (std.mem.count(u8, arg, "pgntovf") > 0) {
                 var input: []const u8 = "";
                 var skip_broken_games = false;
+                var allow_non_pgn_extension = false;
                 while (args.next()) |sub_arg| {
                     if (std.ascii.eqlIgnoreCase(sub_arg, "--skip-broken-games")) {
                         std.debug.print("skipping broken games\n", .{});
                         skip_broken_games = true;
+                    } else if (std.ascii.eqlIgnoreCase(sub_arg, "--allow-non-pgn-extension")) {
+                        std.debug.print("allowing non pgn extension\n", .{});
+                        allow_non_pgn_extension = true;
                     } else {
                         input = sub_arg;
                     }
                 }
-                const extension_len = std.mem.indexOf(u8, input, ".pgn") orelse std.mem.lastIndexOf(u8, input, ".") orelse input.len;
+                const extension_len = std.mem.lastIndexOf(u8, input, ".pgn") orelse blk: {
+                    const len = std.mem.lastIndexOf(u8, input, ".") orelse input.len;
+                    if (allow_non_pgn_extension) {
+                        break :blk len;
+                    }
+                    std.debug.print("extension '{s}' is not allowed without '--allow-non-pgn-extension'\n", .{input[len..]});
+                    return error.InvalidExtension;
+                };
                 const output_base = args.next() orelse input[0..extension_len];
 
                 const output = try std.fmt.allocPrint(allocator, "{s}.vf", .{output_base});
