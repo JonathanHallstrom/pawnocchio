@@ -475,6 +475,7 @@ fn qsearch(
     const previous_move_destination = cur.move.move.to();
 
     const conthist_tables = self.getConthistTables(stm);
+    const winning_targets = board.seriouslyThreatenedFor(stm.flipped());
 
     while (mp.next(
         stm,
@@ -494,7 +495,25 @@ fn qsearch(
         }
         const skip_see_pruning = mp.stage == .good_noisies;
         const is_recapture = move.to() == previous_move_destination;
-        if (best_score > evaluation.matedIn(MAX_PLY)) {
+        // var lo: i16 = -2000;
+        // var hi: i16 = 2000;
+        //
+        // for (0..20) |_| {
+        //     const mid = lo + (hi - lo >> 1);
+        //
+        //     if (SEE.scoreMove(board, move, mid, .pruning)) {
+        //         lo = mid;
+        //     } else {
+        //         hi = mid;
+        //     }
+        // }
+        // engine.dbgStats(" SEE value", lo);
+        // if (root.Bitboard.contains(winning_targets, move.to())) {
+        //     engine.dbgStats("winning threat SEE neutral", @intFromBool(SEE.scoreMove(board, move, 0, .pruning)));
+        //     engine.dbgStats("winning threat SEE success", @intFromBool(SEE.scoreMove(board, move, 1, .pruning)));
+        //     engine.dbgStats("winning threat SEE value", lo);
+        // }
+        if (best_score > evaluation.matedIn(MAX_PLY) and !root.Bitboard.contains(winning_targets, move.to())) {
             const history_score = self.histories.readNoisy(board, move);
             if (num_searched >= 2 and
                 history_score < tunables.qs_hp_margin)
@@ -676,6 +695,16 @@ fn search(
 
     const cur: *StackEntry = self.stackEntry(0);
     const board: *Board = &cur.board;
+    // const seriously_threatened = board.seriouslyThreatenedFor(stm);
+    // if (seriously_threatened != 0 and board.double_threats[stm.toInt()] != 0) {
+    //     std.debug.print("{s}", .{board.toFen().slice()});
+    //
+    //     var iter = root.Bitboard.iterator(seriously_threatened);
+    //     while (iter.next()) |sq| {
+    //         std.debug.print(" {s}", .{@tagName(sq)});
+    //     }
+    //     std.debug.print("\n", .{});
+    // }
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
