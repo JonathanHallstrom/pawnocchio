@@ -428,6 +428,11 @@ pub fn pawnAttacks(square: anytype, color: anytype) u64 {
     return (&(&pawn_attacks)[idx(square)])[idx(color)];
 }
 
+pub inline fn pawnDoubleAttackBitBoard(bb: u64, col: root.Colour) u64 {
+    const moved = if (col == .white) bb << 8 else bb >> 8;
+    return move(moved, 0, -1) & move(moved, 0, 1);
+}
+
 pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
     const moved = if (col == .white) bb << 8 else bb >> 8;
     return move(moved, 0, -1) | move(moved, 0, 1);

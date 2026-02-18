@@ -106,8 +106,13 @@ pub inline fn threatenedFor(self: *const Board, col: Colour) u64 {
 
 pub inline fn seriouslyThreatenedFor(self: *const Board, col: Colour) u64 {
     const lesser = (&self.lesser_threats)[col.flipped().toInt()];
+
+    // undefended pieces
     const undefended = (&self.threats)[col.flipped().toInt()] & ~(&self.threats)[col.toInt()];
-    const double_attacked = (&self.double_threats)[col.flipped().toInt()] & ~(&self.double_threats)[col.toInt()];
+
+    // valuable pieces that are poorly defended
+    const double_attacked = (&self.double_threats)[col.flipped().toInt()] &
+        ~((&self.lesser_threats)[col.toInt()] | (&self.double_threats)[col.toInt()]) & ~self.pawns();
 
     return self.occupancyFor(col) & (lesser | undefended | double_attacked);
 }
@@ -859,6 +864,7 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     var lesser_threatened: u64 = 0;
 
     threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
+    double_threatened |= Bitboard.pawnDoubleAttackBitBoard(self.pawnsFor(col), col);
 
     // threatened now has all pieces attacked by pawns
     // so knights and bishops would be worth more
