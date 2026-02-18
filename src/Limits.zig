@@ -69,7 +69,7 @@ pub fn initFixedDepth(max_depth_: i32) Limits {
     };
 }
 
-pub fn checkSearch(self: *Limits, nodes: u64) bool {
+pub inline fn checkSearch(self: *Limits, nodes: u64) bool {
     if (nodes >= self.hard_nodes) {
         return true;
     }
