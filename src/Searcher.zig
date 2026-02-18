@@ -202,7 +202,7 @@ pub const StackEntry = struct {
     static_eval: i16,
     corrected_eval: i16,
     failhighs: u8,
-    child_failhighs: u8,
+    child_failhighs: u16,
     usable_moves: u8,
     reduction: i32,
     history_score: i32,
@@ -1193,7 +1193,7 @@ fn search(
                     is_root,
                     cur.failhighs > 2,
                 });
-                reduction += @as(i32, 1024) * @as(i32, @intFromBool(child_failhighs > 2));
+                reduction += @as(i32, 1024) * @as(i32, @intFromBool(!cutnode and child_failhighs > 2));
                 reduction += @as(i32, 1024) * alpha_raises;
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
@@ -1304,7 +1304,7 @@ fn search(
                 const hist_depth = depth + @as(i32, if (score >= beta + tunables.high_eval_offs) 1 else 0);
                 score_type = .lower;
                 cur.failhighs += 1;
-                cur.child_failhighs +|= 1;
+                cur.child_failhighs += 1;
                 const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
