@@ -738,7 +738,7 @@ fn search(
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
-                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
+                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type) and board.halfmove < 98) {
                     var score = tt_score;
                     if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
                         score = @intCast(tt_score + @divTrunc((beta - tt_score) * tunables.tt_fail_medium, 1024));
@@ -752,6 +752,7 @@ fn search(
     // tb probing
     if (!is_root and cur.excluded.isNull() and depth >= self.syzygy_depth) {
         if (root.pyrrhic.probeWDL(board)) |result| {
+            @branchHint(.unlikely);
             self.tbhits += 1;
             const tp: ScoreType, const score = switch (result) {
                 .win => .{ .lower, evaluation.tbWin(self.ply) },
