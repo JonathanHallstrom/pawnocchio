@@ -476,11 +476,13 @@ fn qsearch(
 
     const conthist_tables = self.getConthistTables(stm);
 
+    const dangerous_squares = board.dangerousSquares(stm);
     while (mp.next(
         stm,
         &self.histories,
         conthist_tables,
         board,
+        dangerous_squares,
     )) |move| {
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
@@ -969,19 +971,15 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
-    const threatened_squares = board.threatenedBy(stm.flipped());
-    const double_attacked_squares = (&board.double_threats)[stm.flipped().toInt()];
 
-    // if we use normal threats destination will always appear defended
-    const defended_squares = (&board.double_threats)[stm.toInt()];
-
-    const dangerous_squares = (threatened_squares & ~defended_squares | double_attacked_squares) & ~board.occupancy();
+    const dangerous_squares = board.dangerousSquares(stm);
 
     while (mp.next(
         stm,
         &self.histories,
         conthist_tables,
         board,
+        dangerous_squares,
     )) |move| {
         if (move == cur.excluded) {
             continue;
@@ -1210,28 +1208,28 @@ fn search(
                 });
                 reduction += @as(i32, 1024) * alpha_raises;
 
-                // if (dangerous_squares != 0) {
+                // const safe_threatened_squares = board.threatenedBy(stm.flipped()) & ~dangerous_squares;
+                // if (safe_threatened_squares != 0) {
                 //     std.debug.print("{s}", .{board.toFen().slice()});
                 //
-                //     var iter = root.Bitboard.iterator(dangerous_squares);
+                //     var iter = root.Bitboard.iterator(safe_threatened_squares);
                 //     while (iter.next()) |sq| {
                 //         std.debug.print(" {s}", .{@tagName(sq)});
                 //     }
                 //     std.debug.print("\n", .{});
                 // }
-                // if (is_quiet) {
+                // if (!is_quiet) {
                 //     if (root.Bitboard.contains(dangerous_squares, move.to())) {
                 //         root.engine.dbgStats("dangerous move fails see", @intFromBool(!SEE.scoreMove(board, move, 0, .pruning)));
                 //     } else {
                 //         root.engine.dbgStats("safe move fails see", @intFromBool(!SEE.scoreMove(board, move, 0, .pruning)));
                 //     }
                 // }
-                if (is_quiet and
-                    root.Bitboard.contains(dangerous_squares, move.to()) and
-                    !SEE.scoreMove(board, move, 0, .pruning))
-                {
-                    reduction += 1024;
-                }
+                // if (root.Bitboard.contains(dangerous_squares, move.to()) and
+                //     !SEE.scoreMove(board, move, if (is_quiet) 0 else 1, .pruning))
+                // {
+                //     reduction += 512;
+                // }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));

@@ -121,6 +121,19 @@ pub inline fn seriouslyThreatenedFor(self: *const Board, col: Colour) u64 {
     return self.occupancyFor(col) & (lesser | undefended | double_attacked);
 }
 
+pub inline fn dangerousSquares(self: *const Board, stm: Colour) u64 {
+    const threatened_squares = self.threatenedBy(stm.flipped());
+    const double_attacked_squares = (&self.double_threats)[stm.flipped().toInt()];
+
+    // if we use normal threats destination will always appear defended
+    const defended_squares = (&self.double_threats)[stm.toInt()];
+
+    // being threatened by a pawn is almost always bad
+    const pawn_threats = root.Bitboard.pawnAttackBitBoard(self.pawnsFor(stm.flipped()), stm.flipped());
+
+    return (threatened_squares & ~defended_squares | double_attacked_squares) | pawn_threats;
+}
+
 pub inline fn pawns(self: Board) u64 {
     return self.pieces[0];
 }
@@ -905,8 +918,10 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
         double_threatened |= threatened & queen_attacks;
         threatened |= queen_attacks;
     }
-    const queen_attacks = Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
-    threatened |= queen_attacks;
+    const king_attacks = Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
+    double_threatened |= threatened & king_attacks;
+    threatened |= king_attacks;
+
     self.threats[col.toInt()] = threatened;
     self.double_threats[col.toInt()] = double_threatened;
     self.lesser_threats[col.toInt()] = lesser_threatened;
