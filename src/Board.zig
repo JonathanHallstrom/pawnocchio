@@ -121,7 +121,7 @@ pub inline fn seriouslyThreatenedFor(self: *const Board, col: Colour) u64 {
     return self.occupancyFor(col) & (lesser | undefended | double_attacked);
 }
 
-pub inline fn dangerousSquares(self: *const Board, stm: Colour) u64 {
+pub inline fn dangerousSquaresToMoveTo(self: *const Board, stm: Colour) u64 {
     const threatened_squares = self.threatenedBy(stm.flipped());
     const double_attacked_squares = (&self.double_threats)[stm.flipped().toInt()];
 

@@ -154,7 +154,6 @@ inline fn noisyValue(
     noalias histories: *const Historytable,
     noalias board: *const Board,
     move: Move,
-    dangerous_squares: u64,
 ) i32 {
     var res: i32 = 0;
 
@@ -162,7 +161,6 @@ inline fn noisyValue(
     res += SEE.value(board.pieceOn(move.to()) orelse .king, .ordering);
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += histories.readNoisy(board, move);
-    res += @as(i32, 1 << 20) * @intFromBool(!root.Bitboard.contains(dangerous_squares, move.to()));
 
     return res;
 }
@@ -172,8 +170,15 @@ inline fn quietValue(
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
     move: Move,
+    dangerous_squares: u64,
 ) i32 {
-    return histories.readQuietOrdering(board, move, conthist_tables);
+    const dangerous = root.Bitboard.contains(dangerous_squares, move.to());
+    var res = histories.readQuietOrdering(board, move, conthist_tables);
+
+    // root.engine.dbgStats(if (dangerous) "dangerous history" else "safe history", res);
+    // root.engine.dbgStats("dangerous quiet", @intFromBool(dangerous));
+    res += @as(i32, 1 << 20) * @intFromBool(!dangerous);
+    return res;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;
@@ -203,7 +208,7 @@ pub fn next(
             std.debug.assert(self.movelist.vals.len == 0);
             movegen.generateAllNoisies(stm, board, self.movelist);
             for (self.movelist.vals.slice(), 0..) |move, i| {
-                self.scores[i] = noisyValue(histories, board, move, dangerous_squares);
+                self.scores[i] = noisyValue(histories, board, move);
             }
             self.last = self.movelist.vals.len;
             self.stage = .good_noisies;
@@ -236,7 +241,7 @@ pub fn next(
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
             for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
-                self.scores[self.first + i] = quietValue(histories, conthist_tables, board, move);
+                self.scores[self.first + i] = quietValue(histories, conthist_tables, board, move, dangerous_squares);
             }
             self.last = self.movelist.vals.len;
             self.stage = .quiets;
