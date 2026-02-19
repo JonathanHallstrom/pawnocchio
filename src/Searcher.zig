@@ -544,6 +544,10 @@ fn qsearch(
         }
     }
 
+    if (!evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta) and best_score > beta) {
+        best_score = @intCast(@divTrunc(best_score + beta, 2));
+    }
+
     self.writeTT(
         tt_pv,
         tt_hash,
