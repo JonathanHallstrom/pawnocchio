@@ -834,11 +834,12 @@ fn search(
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
-        !is_in_check and
-        !is_singular_search)
+        !is_in_check)
     {
         // reverse futility pruning (rfp)
-        if (eval >= beta - tunables.rfp_min_margin) {
+        if (eval >= beta - tunables.rfp_min_margin and
+            !is_singular_search)
+        {
             const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             // cutnodes are expected to fail high
             // if we are re-searching this then its likely because its important, so otherwise we reduce more
@@ -894,7 +895,8 @@ fn search(
             eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
-            !cur.move.move.isNull())
+            !cur.move.move.isNull() and
+            !is_singular_search)
         {
             self.prefetch(Move.init());
             var nmp_reduction = tunables.nmp_base + depth * tunables.nmp_mult;
