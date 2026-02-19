@@ -734,6 +734,7 @@ fn search(
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    const tt_move_noisy = has_tt_move and board.isNoisy(tt_entry.move);
     // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getConthistTables(stm)) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
@@ -868,23 +869,25 @@ fn search(
         }
 
         // razoring
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
-        const depth_3 = @max(0, depth - 3);
-        if (eval +
-            tunables.razoring_offs +
-            tunables.razoring_mult * depth +
-            tunables.razoring_quad * depth_3 * depth_3 +
-            tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
-        {
-            const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
-                is_root,
-                is_pv,
-                stm,
-                alpha,
-                alpha + 1,
-            );
+        if (!tt_move_noisy) {
+            const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
+            const depth_3 = @max(0, depth - 3);
+            if (eval +
+                tunables.razoring_offs +
+                tunables.razoring_mult * depth +
+                tunables.razoring_quad * depth_3 * depth_3 +
+                tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
+            {
+                const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
+                    is_root,
+                    is_pv,
+                    stm,
+                    alpha,
+                    alpha + 1,
+                );
 
-            return evaluation.clampScore(razor_score);
+                return evaluation.clampScore(razor_score);
+            }
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
