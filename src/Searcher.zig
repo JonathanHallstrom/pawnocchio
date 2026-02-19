@@ -934,6 +934,24 @@ fn search(
                 }
             }
         }
+        const small_probcut_beta = beta + 350;
+
+        // Small Probcut
+        // if (cur.excluded.isNull() and !ispv && tt_flag == hashFlagAlpha && tt_depth >= depth - SPROBCUT_TT_DEPTH_SUBTRACTOR &&
+        //      tt_score >= small_probcut_beta && abs(tt_score) < mateValue && abs(beta) < mateValue) {
+        //          return small_probcut_beta;
+        //  }
+
+        if (!is_pv and
+            cur.excluded.isNull() and
+            tt_entry.flags.score_type.givesLowerBound() and
+            tt_entry.depth >= depth - 4 and
+            tt_entry.score >= small_probcut_beta and
+            !evaluation.isTBScore(tt_entry.score) and
+            !evaluation.isTBScore(beta))
+        {
+            return evaluation.clampScore(small_probcut_beta);
+        }
     }
 
     const conthist_tables = self.getConthistTables(stm);
