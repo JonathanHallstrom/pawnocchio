@@ -1051,7 +1051,8 @@ fn search(
                 }
             } else {
                 if (lmr_depth <= tunables.noisy_history_pruning_depth_limit and
-                    history_score < depth * tunables.noisy_history_pruning_mult + tunables.noisy_history_pruning_offs)
+                    history_score < depth * tunables.noisy_history_pruning_mult + tunables.noisy_history_pruning_offs and
+                    !SEE.scoreMove(board, move, 1, .pruning))
                 {
                     continue;
                 }
