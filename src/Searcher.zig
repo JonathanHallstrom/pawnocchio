@@ -1035,6 +1035,10 @@ fn search(
                     @divTrunc(lmr_depth * tunables.fp_mult +
                         @divTrunc(history_score * tunables.fp_hist_mult, 4), 1024);
 
+                if (best_move.isNull()) {
+                    futility_value += 100;
+                }
+
                 if (is_pv) {
                     futility_value += tunables.fp_pv_base + tunables.fp_pv_mult * depth;
                 }
