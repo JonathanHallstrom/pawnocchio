@@ -937,6 +937,73 @@ fn search(
     }
 
     const conthist_tables = self.getConthistTables(stm);
+    if (!is_root and
+        cutnode and
+        !is_pv and
+        !is_in_check and
+        !is_singular_search and
+        depth >= 7 and
+        !evaluation.isMateScore(beta))
+    {
+        const probcut_beta = @min(beta + tunables.probcut_margin, @as(i32, evaluation.inf_score) - 1);
+        if (probcut_beta > beta) {
+            const probcut_depth = @max(1, depth - 5);
+            var pmp = MovePicker.initProbcut(
+                &cur.movelist,
+                &cur.scores,
+                tt_entry.move,
+                tunables.probcut_margin,
+            );
+            defer pmp.deinit();
+
+            while (pmp.next(stm, &self.histories, conthist_tables, board)) |move| {
+                self.prefetch(move);
+                if (!board.isLegal(stm, move)) {
+                    continue;
+                }
+
+                self.makeMove(stm, move);
+                const pretest_score = -self.qsearch(
+                    false,
+                    false,
+                    stm.flipped(),
+                    -probcut_beta,
+                    -probcut_beta + 1,
+                );
+                var probcut_score: i16 = pretest_score;
+                if (pretest_score >= probcut_beta) {
+                    probcut_score = -self.search(
+                        false,
+                        false,
+                        stm.flipped(),
+                        -probcut_beta,
+                        -probcut_beta + 1,
+                        probcut_depth,
+                        true,
+                    );
+                }
+                self.unmakeMove(stm, move);
+
+                if (self.stop.load(.acquire)) {
+                    return 0;
+                }
+
+                if (probcut_score >= probcut_beta) {
+                    self.writeTT(
+                        tt_pv,
+                        tt_hash,
+                        move,
+                        probcut_score,
+                        .lower,
+                        @max(0, depth - 3),
+                        raw_static_eval,
+                    );
+                    return probcut_score;
+                }
+            }
+        }
+    }
+
     var mp = MovePicker.init(
         &cur.movelist,
         &cur.scores,

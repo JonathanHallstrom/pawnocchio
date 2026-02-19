@@ -38,13 +38,17 @@ first: usize,
 last: usize,
 stage: Stage,
 skip_quiets: bool,
+probcut_only: bool,
+probcut_see_margin: i32,
 ttmove: Move,
 last_bad_noisy: usize = 0,
 
 pub const Stage = enum {
     tt,
     generate_noisies,
+    generate_probcut_noisies,
     good_noisies,
+    probcut_noisies,
     generate_quiets,
     quiets,
     bad_noisy_prep,
@@ -73,6 +77,8 @@ pub fn init(
         .last = 0,
         .stage = stage,
         .skip_quiets = false,
+        .probcut_only = false,
+        .probcut_see_margin = 0,
         .ttmove = ttmove_,
     };
 }
@@ -99,6 +105,36 @@ pub fn initQs(
         .last = 0,
         .stage = stage,
         .skip_quiets = skip_quiets,
+        .probcut_only = false,
+        .probcut_see_margin = 0,
+        .ttmove = ttmove_,
+    };
+}
+
+pub fn initProbcut(
+    movelist_: *MoveReceiver,
+    scores_: [*]i32,
+    ttmove_: Move,
+    see_margin: i32,
+) MovePicker {
+    movelist_.vals.len = 0;
+    movelist_.filter = ttmove_;
+    var stage: Stage = undefined;
+    if (ttmove_.isNull()) {
+        @branchHint(.unpredictable);
+        stage = .generate_probcut_noisies;
+    } else {
+        stage = .tt;
+    }
+    return .{
+        .movelist = movelist_,
+        .scores = scores_,
+        .first = 0,
+        .last = 0,
+        .stage = stage,
+        .skip_quiets = true,
+        .probcut_only = true,
+        .probcut_see_margin = see_margin,
         .ttmove = ttmove_,
     };
 }
@@ -186,14 +222,18 @@ pub fn next(
     return sw: switch (self.stage) {
         .tt => {
             @branchHint(.unpredictable);
+            const noisy_stage: Stage = if (self.probcut_only) .generate_probcut_noisies else .generate_noisies;
             if (self.skip_quiets and board.isQuiet(self.ttmove)) {
-                continue :sw .generate_noisies;
+                continue :sw noisy_stage;
             }
-            self.stage = .generate_noisies;
+            self.stage = noisy_stage;
             if (board.isPseudoLegal(stm, self.ttmove)) {
+                if (self.probcut_only and !SEE.scoreMove(board, self.ttmove, self.probcut_see_margin, .pruning)) {
+                    continue :sw noisy_stage;
+                }
                 return self.ttmove;
             }
-            continue :sw .generate_noisies;
+            continue :sw noisy_stage;
         },
         .generate_noisies => {
             self.movelist.vals.len = 0;
@@ -206,6 +246,18 @@ pub fn next(
             self.stage = .good_noisies;
 
             continue :sw .good_noisies;
+        },
+        .generate_probcut_noisies => {
+            self.movelist.vals.len = 0;
+            std.debug.assert(self.movelist.vals.len == 0);
+            movegen.generateAllNoisies(stm, board, self.movelist);
+            for (self.movelist.vals.slice(), 0..) |move, i| {
+                self.scores[i] = noisyValue(histories, board, move);
+            }
+            self.last = self.movelist.vals.len;
+            self.stage = .probcut_noisies;
+
+            continue :sw .probcut_noisies;
         },
         .good_noisies => {
             if (self.first == self.last) {
@@ -225,6 +277,17 @@ pub fn next(
             self.last_bad_noisy += 1;
 
             continue :sw .good_noisies;
+        },
+        .probcut_noisies => {
+            if (self.first == self.last) {
+                return null;
+            }
+            const best_idx = self.findBest();
+            const res = self.movelist.vals.slice()[best_idx];
+            if (SEE.scoreMove(board, res, self.probcut_see_margin, .pruning)) {
+                return res;
+            }
+            continue :sw .probcut_noisies;
         },
         .generate_quiets => {
             if (self.skip_quiets) {
