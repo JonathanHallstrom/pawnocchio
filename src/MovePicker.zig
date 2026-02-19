@@ -216,7 +216,8 @@ pub fn next(
             const history_score = histories.readNoisy(board, res);
             const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                 root.tuning.tunable_constants.good_noisy_ordering_base;
-            if (SEE.scoreMove(board, res, margin, .ordering)) {
+            const dest_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], res.to());
+            if (!dest_threatened or SEE.scoreMove(board, res, margin, .ordering)) {
                 return res;
             }
             const score = self.scores[best_idx];
