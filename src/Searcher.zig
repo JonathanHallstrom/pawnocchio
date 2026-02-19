@@ -936,12 +936,6 @@ fn search(
         }
         const small_probcut_beta = beta + 350;
 
-        // Small Probcut
-        // if (cur.excluded.isNull() and !ispv && tt_flag == hashFlagAlpha && tt_depth >= depth - SPROBCUT_TT_DEPTH_SUBTRACTOR &&
-        //      tt_score >= small_probcut_beta && abs(tt_score) < mateValue && abs(beta) < mateValue) {
-        //          return small_probcut_beta;
-        //  }
-
         if (!is_pv and
             cur.excluded.isNull() and
             tt_entry.flags.score_type.givesLowerBound() and
