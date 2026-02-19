@@ -521,6 +521,17 @@ pub const Accumulator = struct {
                     return sum + dot_products;
                 }
             }
+            fn dpbusdx2_es(u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec) i32Vec {
+                const partial_sums_1 = maddubs(u_1, i_1);
+                const partial_sums_2 = maddubs(u_2, i_2);
+
+                const ones: i16Vec = @splat(1);
+                return maddwd(partial_sums_1 + partial_sums_2, ones);
+            }
+
+            fn dpbusdx4_2(sum: i32Vec, u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec, u_3: u8Vec, i_3: i8Vec, u_4: u8Vec, i_4: i8Vec) i32Vec {
+                return dpbusdx2(sum, u_1, i_1, u_2, i_2) + dpbusdx2_es(u_3, i_3, u_4, i_4);
+            }
 
             fn mulhi(a: i16Vec, b: i16Vec) i16Vec {
                 return asm ("vpmulhw %[b], %[a], %[ret]"
@@ -587,7 +598,7 @@ pub const Accumulator = struct {
             }
         }
 
-        const L2_UNROLL = 4;
+        const L2_UNROLL = 2;
         // in Q0² / 2⁹ * Q1
         var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
         {
@@ -598,19 +609,27 @@ pub const Accumulator = struct {
 
             var i_outer: usize = 0;
 
-            while (i_outer + 2 * L2_UNROLL <= num_nonzero_indices) : (i_outer += 2 * L2_UNROLL) {
+            while (i_outer + 4 * L2_UNROLL <= num_nonzero_indices) : (i_outer += 4 * L2_UNROLL) {
                 for (0..L2_SIZE / vecSize(i32)) |j| {
                     for (0..L2_UNROLL) |i_inner| {
-                        const i_1 = nonzero_indices[i_outer + 2 * i_inner];
-                        const i_2 = nonzero_indices[i_outer + 2 * i_inner + 1];
+                        const i_1 = nonzero_indices[i_outer + 4 * i_inner];
+                        const i_2 = nonzero_indices[i_outer + 4 * i_inner + 1];
+                        const i_3 = nonzero_indices[i_outer + 4 * i_inner + 2];
+                        const i_4 = nonzero_indices[i_outer + 4 * i_inner + 3];
                         const ft_vec_1: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i_1])));
                         const ft_vec_2: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i_2])));
-                        l1_intermediate[j][i_inner] = c.dpbusdx2(
+                        const ft_vec_3: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i_3])));
+                        const ft_vec_4: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i_4])));
+                        l1_intermediate[j][i_inner] = c.dpbusdx4_2(
                             l1_intermediate[j][i_inner],
                             ft_vec_1,
                             w[i_1 * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
                             ft_vec_2,
                             w[i_2 * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
+                            ft_vec_3,
+                            w[i_3 * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
+                            ft_vec_4,
+                            w[i_4 * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
                         );
                     }
                 }
