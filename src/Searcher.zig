@@ -1629,8 +1629,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         } else {
             self.move_stability = 0;
         }
-        previous_score = score;
-        previous_move = self.root_move;
 
         average_score = if (d == 1) score else @divTrunc(average_score + @as(i64, score) * score, 2);
 
@@ -1668,6 +1666,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 move_stability * 1024 / num_searchers,
                 best_move_count,
                 total_nodes,
+                score,
+                previous_score,
             )) {
                 break;
             }
@@ -1676,6 +1676,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             break;
         }
         self.seldepth = 0;
+        previous_score = score;
+        previous_move = self.root_move;
     }
 
     if (is_main_thread) {
