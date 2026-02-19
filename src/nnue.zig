@@ -579,15 +579,15 @@ pub const Accumulator = struct {
                 const np1 = c.mulhi(n1 << @splat(7), n2);
                 const np2 = c.mulhi(n3 << @splat(7), n4);
 
-                const p1: [vecSize(u8)]u8 = c.packus(sp1, sp2);
-                const p2: [vecSize(u8)]u8 = c.packus(np1, np2);
+                const p1: u8Vec = c.packus(sp1, sp2);
+                const p2: u8Vec = c.packus(np1, np2);
 
-                @memcpy(activated_ft[i..][0..vecSize(i8)], &p1);
-                @memcpy(activated_ft[i + L1_SIZE / 2 ..][0..vecSize(i8)], &p2);
+                @as(*u8Vec, @ptrCast(@alignCast(activated_ft[i..].ptr))).* = p1;
+                @as(*u8Vec, @ptrCast(@alignCast(activated_ft[i + L1_SIZE / 2 ..].ptr))).* = p2;
             }
         }
 
-        const L2_UNROLL = 2;
+        const L2_UNROLL = 4;
         // in Q0² / 2⁹ * Q1
         var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
         {
