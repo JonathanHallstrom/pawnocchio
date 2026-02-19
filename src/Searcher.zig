@@ -1595,7 +1595,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 }
                 const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
                 if (score >= aspiration_upper) {
-                    aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
+                    aspiration_lower = @intCast(@max(aspiration_upper - (quantized_window >> 10), aspiration_lower));
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction = @min(failhigh_reduction + tunables.failhigh_add, tunables.failhigh_max);
                     if (should_print) {
@@ -1604,8 +1604,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         }
                     }
                 } else if (score <= aspiration_lower) {
+                    aspiration_upper = aspiration_lower;
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
-                    aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction = failhigh_reduction * tunables.failhigh_mult >> 10;
                     if (should_print) {
                         if (!quiet and !self.minimal and !evaluation.isMateScore(score) and !self.root_move.isNull()) {
