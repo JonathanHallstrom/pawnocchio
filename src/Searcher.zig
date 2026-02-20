@@ -970,13 +970,10 @@ fn search(
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
     var alpha_raises: u8 = 0;
-    const lmp_adjust = std.math.clamp(improvement, -128, 256);
-    const lmp_base = lerp(i32, 8, lmp_adjust, tunables.lmp_standard_base, tunables.lmp_improving_base);
-    const lmp_linear_mult = lerp(i32, 8, lmp_adjust, tunables.lmp_standard_linear_mult, tunables.lmp_improving_linear_mult);
-    const lmp_quadratic_mult = lerp(i32, 8, lmp_adjust, tunables.lmp_standard_quadratic_mult, tunables.lmp_improving_quadratic_mult);
-    const lmp_margin = @divTrunc(lmp_base +
-        lmp_linear_mult * depth +
-        lmp_quadratic_mult * depth * depth, 1024);
+    const lmp_adjust = std.math.clamp(improvement, -100, 218);
+    const lmp_factor0 = 2515 + @divTrunc(130 * lmp_adjust, 16);
+    const lmp_factor1 = 946 + @divTrunc(79 * lmp_adjust, 16);
+    const lmp_margin = @divTrunc(lmp_factor0 + lmp_factor1 * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
     while (mp.next(
         stm,
