@@ -221,6 +221,7 @@ const tunable_defaults = struct {
     pub const tt_fail_medium: i32 = 11;
     pub const qs_tt_fail_medium: i32 = 181;
     pub const standpat_fail_medium: i32 = 290;
+    pub const qs_fail_medium: i32 = 512;
     pub const nodetm_base: i32 = 1418;
     pub const nodetm_mult: i32 = 1178;
     pub const eval_stab_margin: i32 = 22;
@@ -411,6 +412,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "tt_fail_medium", .default = tunable_defaults.tt_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
     .{ .name = "qs_tt_fail_medium", .default = tunable_defaults.qs_tt_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
     .{ .name = "standpat_fail_medium", .default = tunable_defaults.standpat_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
+    .{ .name = "qs_fail_medium", .default = tunable_defaults.qs_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
     .{ .name = "nodetm_base", .default = tunable_defaults.nodetm_base, .min = 1024, .c_end = 40 },
     .{ .name = "nodetm_mult", .default = tunable_defaults.nodetm_mult, .min = 10, .c_end = 25 },
     .{ .name = "eval_stab_margin", .default = tunable_defaults.eval_stab_margin, .min = 1, .c_end = 0.5 },
@@ -601,6 +603,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var tt_fail_medium = tunable_defaults.tt_fail_medium;
     pub var qs_tt_fail_medium = tunable_defaults.qs_tt_fail_medium;
     pub var standpat_fail_medium = tunable_defaults.standpat_fail_medium;
+    pub var qs_fail_medium = tunable_defaults.qs_fail_medium;
     pub var nodetm_base = tunable_defaults.nodetm_base;
     pub var nodetm_mult = tunable_defaults.nodetm_mult;
     pub var eval_stab_margin = tunable_defaults.eval_stab_margin;

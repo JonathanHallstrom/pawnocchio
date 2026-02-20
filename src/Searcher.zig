@@ -544,6 +544,15 @@ fn qsearch(
         }
     }
 
+    if (!evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta) and best_score > beta) {
+        // best_score = @intCast(@divTrunc(best_score + beta, 2));
+        best_score = @intCast(@divTrunc(
+            best_score * (1024 - tunables.qs_fail_medium) +
+                beta * tunables.qs_fail_medium,
+            1024,
+        ));
+    }
+
     self.writeTT(
         tt_pv,
         tt_hash,
