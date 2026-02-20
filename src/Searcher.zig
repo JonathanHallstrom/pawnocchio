@@ -1158,7 +1158,7 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
-                return @max(-(evaluation.win_score - 1), lerp(i16, 1024, tunables.multicut_fail_medium, s_beta, beta));
+                return evaluation.clampScore(s_beta);
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {

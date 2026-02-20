@@ -402,11 +402,11 @@ pub fn main() !void {
                     if (game_count % 16384 == 0) {
                         const unique_count = if (approximate) approximator.count() else zobrist_set.count();
                         write("\rprogress: {}% average exit so far: {d:.2} unique positions: {}/{} ({}%)", .{
-                            @as(u128, br.logicalPos() * 100) / stat.size,
-                            @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(game_count)),
+                            @as(u128, br.logicalPos() * 100) / @max(@as(u64, 1), stat.size),
+                            @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
                             unique_count,
                             position_count,
-                            @as(u64, unique_count) * 100 / position_count,
+                            @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
                         });
                     }
                     var board = try marlin_board.toBoard();
@@ -496,27 +496,27 @@ pub fn main() !void {
                     \\losses: {} ({}%)
                     \\
                 , .{
-                    @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(game_count)),
+                    @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
                     unique_count,
                     position_count,
-                    @as(u64, unique_count) * 100 / position_count,
+                    @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
                     piece_counts,
                     phase_counts,
                     king_pos,
                     tb_results,
-                    @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(1, total_tb))),
+                    @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb))),
                     wins,
-                    100 * wins / game_count,
+                    100 * wins / @max(@as(u64, 1), game_count),
                     draws,
-                    100 * draws / game_count,
+                    100 * draws / @max(@as(u64, 1), game_count),
                     losses,
-                    100 * losses / game_count,
+                    100 * losses / @max(@as(u64, 1), game_count),
                 });
                 write("king bucket distr:\n", .{});
                 for (0..8) |i| {
                     for (0..8) |j| {
                         const count = king_pos[i * 8 + j];
-                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(position_count))});
+                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(@max(@as(u64, 1), position_count)))});
                     }
                     write("\n", .{});
                 }
@@ -524,7 +524,7 @@ pub fn main() !void {
                 for (0..8) |i| {
                     for (0..4) |j| {
                         const count = king_pos[i * 8 + j] + king_pos[i * 8 + 7 - j];
-                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(position_count))});
+                        write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(@max(@as(u64, 1), position_count)))});
                     }
                     write("\n", .{});
                 }
