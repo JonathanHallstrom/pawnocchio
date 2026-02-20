@@ -1144,7 +1144,7 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
-                return @intCast(@max(-(evaluation.win_score - 1), s_beta + @divTrunc((beta - s_beta) * tunables.multicut_fail_medium, 1024)));
+                return evaluation.clampScore(s_beta);
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
