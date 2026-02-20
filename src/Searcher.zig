@@ -743,6 +743,7 @@ fn search(
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
+    const tt_move_noisy = has_tt_move and board.isNoisy(tt_entry.move);
     // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getConthistTables(stm)) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
@@ -838,6 +839,16 @@ fn search(
         @as(i32, eval) + prev_eval < 0)
     {
         depth += 1;
+    }
+    if (!tt_pv and
+        eval != evaluation.inf_score and prev_eval != evaluation.inf_score and
+        !is_singular_search and
+        depth >= 2 and
+        !tt_move_noisy and
+        cur.reduction > 0 and
+        @as(i32, eval) + prev_eval > 0)
+    {
+        depth -= 1;
     }
 
     if (!is_pv and
