@@ -378,12 +378,12 @@ fn hasUpcomingRepetition(self: *Searcher) bool {
 
 inline fn lerp(
     comptime T: type,
-    comptime granularity: comptime_int,
+    comptime granularity_log2: comptime_int,
     t: anytype,
     a: anytype,
     b: anytype,
 ) T {
-    return @intCast(a + @divFloor((b - a) * t, granularity));
+    return @intCast(a - (((a - b) * t) >> granularity_log2));
 }
 
 fn qsearch(
@@ -436,7 +436,7 @@ fn qsearch(
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
         if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
-            return lerp(i16, 1024, tunables.qs_tt_fail_medium, tt_score, beta);
+            return lerp(i16, 10, tunables.qs_tt_fail_medium, tt_score, beta);
         }
 
         return tt_score;
@@ -457,7 +457,7 @@ fn qsearch(
         }
 
         if (static_eval >= beta) {
-            return lerp(i16, 1024, tunables.standpat_fail_medium, static_eval, beta);
+            return lerp(i16, 10, tunables.standpat_fail_medium, static_eval, beta);
         }
         if (static_eval > alpha) {
             alpha = static_eval;
@@ -555,7 +555,7 @@ fn qsearch(
     }
 
     if (!evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta) and best_score > beta) {
-        best_score = lerp(i16, 1024, tunables.qs_fail_medium, best_score, beta);
+        best_score = lerp(i16, 10, tunables.qs_fail_medium, best_score, beta);
     }
 
     self.writeTT(
@@ -755,7 +755,7 @@ fn search(
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type) and board.halfmove < 98) {
                     var score = tt_score;
                     if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
-                        score = lerp(i16, 1024, tunables.tt_fail_medium, tt_score, beta);
+                        score = lerp(i16, 10, tunables.tt_fail_medium, tt_score, beta);
                     }
                     return score;
                 }
@@ -877,7 +877,7 @@ fn search(
                 ) - conditional_margin;
 
             if (eval >= beta + rfp_margin) {
-                return evaluation.clampScore(lerp(i16, 1024, tunables.rfp_fail_medium, eval, beta));
+                return evaluation.clampScore(lerp(i16, 10, tunables.rfp_fail_medium, eval, beta));
             }
         }
 
