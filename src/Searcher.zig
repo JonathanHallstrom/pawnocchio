@@ -970,73 +970,11 @@ fn search(
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
     var alpha_raises: u8 = 0;
-    const lmp_adjust = std.math.clamp(improvement, -128, 256);
-    const lmp_factor0 = 4537 + @divTrunc(1022 * lmp_adjust, 256);
-    const lmp_factor1 = 191 + @divTrunc(323 * lmp_adjust, 256);
-    const lmp_factor2 = 464 + @divTrunc(1196 * lmp_adjust, 256);
-    const lmp_margin = @divTrunc(lmp_factor0 + lmp_factor1 * depth + lmp_factor2 * depth * depth, 1024);
-
-    // const lmp_dev_base = if (improving) tunables.lmp_improving_base else tunables.lmp_standard_base;
-    // const lmp_dev_linear_mult = if (improving) tunables.lmp_improving_linear_mult else tunables.lmp_standard_linear_mult;
-    // const lmp_dev_quadratic_mult = if (improving) tunables.lmp_improving_quadratic_mult else tunables.lmp_standard_quadratic_mult;
-    // const lmp_dev_margin = @divTrunc(lmp_dev_base + lmp_dev_linear_mult * depth + lmp_dev_quadratic_mult * depth * depth, 1024);
-    // const lmp_depth_sq = depth * depth;
-    // const lmp_adjust_depth = lmp_adjust * depth;
-    // const lmp_adjust_depth_sq = lmp_adjust * lmp_depth_sq;
-    // const dbgDepth = struct {
-    //     fn impl(d: i32, name: []const u8, val: anytype) void {
-    //         const d_nonneg = @max(d, 0);
-    //         var buf: [128]u8 = undefined;
-    //         var writer = std.Io.Writer.fixed(&buf);
-    //         writer.print("{s}_{d}", .{ name, d_nonneg }) catch unreachable;
-    //         _ = engine.dbg(writer.buffered(), val);
-    //     }
-    // }.impl;
-    // if (improving) {
-    //     _ = engine.dbg("lmp_adjust_improving", lmp_adjust);
-    //     _ = engine.dbg("lmp_depth_improving", depth);
-    //     _ = engine.dbg("lmp_depth_sq_improving", lmp_depth_sq);
-    //     _ = engine.dbg("lmp_adjust_depth_improving", lmp_adjust_depth);
-    //     _ = engine.dbg("lmp_adjust_depth_sq_improving", lmp_adjust_depth_sq);
-    //     _ = engine.dbg("lmp_margin_current_improving", lmp_margin);
-    //     _ = engine.dbg("lmp_margin_dev_improving", lmp_dev_margin);
-    //     _ = engine.dbg("lmp_const_current_improving", lmp_factor0);
-    //     _ = engine.dbg("lmp_linear_current_improving", lmp_factor1);
-    //     _ = engine.dbg("lmp_quadratic_current_improving", lmp_factor2);
-    //     _ = engine.dbg("lmp_const_dev_improving", lmp_dev_base);
-    //     _ = engine.dbg("lmp_linear_dev_improving", lmp_dev_linear_mult);
-    //     _ = engine.dbg("lmp_quadratic_dev_improving", lmp_dev_quadratic_mult);
-    //     dbgDepth(depth, "lmp_margin_current_improving", lmp_margin);
-    //     dbgDepth(depth, "lmp_margin_dev_improving", lmp_dev_margin);
-    //     dbgDepth(depth, "lmp_const_current_improving", lmp_factor0);
-    //     dbgDepth(depth, "lmp_linear_current_improving", lmp_factor1);
-    //     dbgDepth(depth, "lmp_quadratic_current_improving", lmp_factor2);
-    //     dbgDepth(depth, "lmp_const_dev_improving", lmp_dev_base);
-    //     dbgDepth(depth, "lmp_linear_dev_improving", lmp_dev_linear_mult);
-    //     dbgDepth(depth, "lmp_quadratic_dev_improving", lmp_dev_quadratic_mult);
-    // } else {
-    //     _ = engine.dbg("lmp_adjust_non_improving", lmp_adjust);
-    //     _ = engine.dbg("lmp_depth_non_improving", depth);
-    //     _ = engine.dbg("lmp_depth_sq_non_improving", lmp_depth_sq);
-    //     _ = engine.dbg("lmp_adjust_depth_non_improving", lmp_adjust_depth);
-    //     _ = engine.dbg("lmp_adjust_depth_sq_non_improving", lmp_adjust_depth_sq);
-    //     _ = engine.dbg("lmp_margin_current_non_improving", lmp_margin);
-    //     _ = engine.dbg("lmp_margin_dev_non_improving", lmp_dev_margin);
-    //     _ = engine.dbg("lmp_const_current_non_improving", lmp_factor0);
-    //     _ = engine.dbg("lmp_linear_current_non_improving", lmp_factor1);
-    //     _ = engine.dbg("lmp_quadratic_current_non_improving", lmp_factor2);
-    //     _ = engine.dbg("lmp_const_dev_non_improving", lmp_dev_base);
-    //     _ = engine.dbg("lmp_linear_dev_non_improving", lmp_dev_linear_mult);
-    //     _ = engine.dbg("lmp_quadratic_dev_non_improving", lmp_dev_quadratic_mult);
-    //     dbgDepth(depth, "lmp_margin_current_non_improving", lmp_margin);
-    //     dbgDepth(depth, "lmp_margin_dev_non_improving", lmp_dev_margin);
-    //     dbgDepth(depth, "lmp_const_current_non_improving", lmp_factor0);
-    //     dbgDepth(depth, "lmp_linear_current_non_improving", lmp_factor1);
-    //     dbgDepth(depth, "lmp_quadratic_current_non_improving", lmp_factor2);
-    //     dbgDepth(depth, "lmp_const_dev_non_improving", lmp_dev_base);
-    //     dbgDepth(depth, "lmp_linear_dev_non_improving", lmp_dev_linear_mult);
-    //     dbgDepth(depth, "lmp_quadratic_dev_non_improving", lmp_dev_quadratic_mult);
-    // }
+    const lmp_adjust = std.math.clamp(improvement, tunables.lmp_adjust_min, tunables.lmp_adjust_max);
+    const lmp_offset = tunables.lmp_offset_base + @divTrunc(tunables.lmp_offset_mult * lmp_adjust, 256);
+    const lmp_linear = tunables.lmp_linear_base + @divTrunc(tunables.lmp_linear_mult * lmp_adjust, 256);
+    const lmp_quadratic = tunables.lmp_quadratic_base + @divTrunc(tunables.lmp_quadratic_mult * lmp_adjust, 256);
+    const lmp_margin = @divTrunc(lmp_offset + lmp_linear * depth + lmp_quadratic * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
     while (mp.next(
         stm,
