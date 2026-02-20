@@ -28,7 +28,21 @@ pub var debug_stats_lock: std.Thread.Mutex = .{};
 pub var debug_stats: std.StringHashMap(@import("DebugStats.zig")) = .init(std.heap.page_allocator);
 pub var debug_rng: std.Random.DefaultPrng = undefined;
 
-pub fn dbgStats(name: []const u8, value: i64) void {
+pub fn dbg(name: []const u8, x: anytype) @TypeOf(x) {
+    _ = switch (@typeInfo(@TypeOf(x))) {
+        .int => dbgInt(name, x),
+        .bool => dbgBool(name, x),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(x))})),
+    };
+    return x;
+}
+
+pub fn dbgBool(name: []const u8, value: bool) bool {
+    dbgInt(name, @intFromBool(value));
+    return value;
+}
+
+pub fn dbgInt(name: []const u8, value: i64) void {
     debug_stats_lock.lock();
     defer debug_stats_lock.unlock();
 
