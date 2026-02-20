@@ -376,6 +376,16 @@ fn hasUpcomingRepetition(self: *Searcher) bool {
     return cuckoo.hasUpcomingRepetition(board, self.hashes[0 .. self.ply + 1], self.previous_hashes.slice());
 }
 
+inline fn lerp(
+    comptime T: type,
+    comptime granularity: comptime_int,
+    t: anytype,
+    a: anytype,
+    b: anytype,
+) T {
+    return @intCast(a + @divFloor((b - a) * t, granularity));
+}
+
 fn qsearch(
     self: *Searcher,
     comptime is_root: bool,
@@ -426,7 +436,7 @@ fn qsearch(
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
         if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
-            return @intCast(tt_score + @divTrunc((beta - tt_score) * tunables.qs_tt_fail_medium, 1024));
+            return lerp(i16, 1024, tunables.qs_tt_fail_medium, tt_score, beta);
         }
 
         return tt_score;
@@ -447,7 +457,7 @@ fn qsearch(
         }
 
         if (static_eval >= beta) {
-            return @intCast(static_eval + @divTrunc((beta - static_eval) * tunables.standpat_fail_medium, 1024));
+            return lerp(i16, 1024, tunables.standpat_fail_medium, static_eval, beta);
         }
         if (static_eval > alpha) {
             alpha = static_eval;
@@ -545,12 +555,7 @@ fn qsearch(
     }
 
     if (!evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta) and best_score > beta) {
-        // best_score = @intCast(@divTrunc(best_score + beta, 2));
-        best_score = @intCast(@divTrunc(
-            best_score * (1024 - tunables.qs_fail_medium) +
-                beta * tunables.qs_fail_medium,
-            1024,
-        ));
+        best_score = lerp(i16, 1024, tunables.qs_fail_medium, best_score, beta);
     }
 
     self.writeTT(
@@ -750,7 +755,7 @@ fn search(
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type) and board.halfmove < 98) {
                     var score = tt_score;
                     if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
-                        score = @intCast(tt_score + @divTrunc((beta - tt_score) * tunables.tt_fail_medium, 1024));
+                        score = lerp(i16, 1024, tunables.tt_fail_medium, tt_score, beta);
                     }
                     return score;
                 }
@@ -872,7 +877,7 @@ fn search(
                 ) - conditional_margin;
 
             if (eval >= beta + rfp_margin) {
-                return evaluation.clampScore(eval + @divTrunc((beta - eval) * tunables.rfp_fail_medium, 1024));
+                return evaluation.clampScore(lerp(i16, 1024, tunables.rfp_fail_medium, eval, beta));
             }
         }
 
@@ -1153,7 +1158,7 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
-                return @intCast(@max(-(evaluation.win_score - 1), s_beta + @divTrunc((beta - s_beta) * tunables.multicut_fail_medium, 1024)));
+                return @max(-(evaluation.win_score - 1), lerp(i16, 1024, tunables.multicut_fail_medium, s_beta, beta));
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
