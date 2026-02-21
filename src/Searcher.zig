@@ -884,12 +884,11 @@ fn search(
         // razoring
         const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesser_threats[stm.toInt()] != 0;
         const depth_3 = @max(0, depth - 3);
-        if (eval +
-            tunables.razoring_offs +
+        const razoring_margin = tunables.razoring_offs +
             tunables.razoring_mult * depth +
             tunables.razoring_quad * depth_3 * depth_3 +
-            tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
-        {
+            tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture);
+        if (eval + razoring_margin <= alpha) {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
                 is_pv,
@@ -898,7 +897,20 @@ fn search(
                 alpha + 1,
             );
 
-            return evaluation.clampScore(razor_score);
+            if (depth == 1 or
+                (depth <= 2 and
+                    eval < alpha - razoring_margin - 50))
+            {
+                return evaluation.clampScore(razor_score);
+            }
+
+            if (razor_score < alpha) {
+                return evaluation.clampScore(razor_score);
+            }
+
+            if (depth > 1 and depth <= 3 and razor_score > beta + 200) {
+                depth -= 1;
+            }
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
