@@ -16,7 +16,7 @@
 
 const std = @import("std");
 
-pub const do_tuning = true;
+pub const do_tuning = false;
 pub const do_factorized_tuning = false;
 
 pub const Tunable = struct {
@@ -191,14 +191,14 @@ const tunable_defaults = struct {
     pub const corrhist_followupmove_update_weight: i32 = 2113;
     pub const corrhist_major_update_weight: i32 = 1758;
     pub const corrhist_minor_update_weight: i32 = 2060;
-    pub const lmp_adjust_min: i32 = -100;
-    pub const lmp_adjust_max: i32 = 218;
-    pub const lmp_offset_base: i32 = 2515;
-    pub const lmp_offset_mult: i32 = 2080;
-    pub const lmp_linear_base: i32 = 0;
-    pub const lmp_linear_mult: i32 = 0;
-    pub const lmp_quadratic_base: i32 = 946;
-    pub const lmp_quadratic_mult: i32 = 1264;
+    pub const lmp_adjust_min: i32 = -92;
+    pub const lmp_adjust_max: i32 = 228;
+    pub const lmp_offset_base: i32 = 2756;
+    pub const lmp_offset_mult: i32 = 2013;
+    pub const lmp_linear_base: i32 = 39;
+    pub const lmp_linear_mult: i32 = -120;
+    pub const lmp_quadratic_base: i32 = 994;
+    pub const lmp_quadratic_mult: i32 = 1211;
     pub const good_noisy_ordering_base: i32 = -40;
     pub const good_noisy_ordering_mult: i32 = 948;
     pub const see_pawn_pruning: i32 = 77;

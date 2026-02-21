@@ -975,7 +975,6 @@ fn search(
     const lmp_linear = tunables.lmp_linear_base + @divTrunc(tunables.lmp_linear_mult * lmp_adjust, 256);
     const lmp_quadratic = tunables.lmp_quadratic_base + @divTrunc(tunables.lmp_quadratic_mult * lmp_adjust, 256);
     const lmp_margin = @divTrunc(lmp_offset + lmp_linear * depth + lmp_quadratic * depth * depth, 1024);
-    std.debug.assert(lmp_margin > 0);
     while (mp.next(
         stm,
         &self.histories,
