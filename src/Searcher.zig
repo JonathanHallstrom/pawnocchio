@@ -951,7 +951,7 @@ fn search(
     }
 
     const conthist_tables = self.getConthistTables(stm);
-    var mp = MovePicker.init(
+    var mp = MovePicker.initMain(
         &cur.movelist,
         &cur.scores,
         if (is_singular_search) cur.excluded else tt_entry.move,
