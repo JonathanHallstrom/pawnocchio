@@ -84,10 +84,10 @@ const EvalPair = struct {
         return if (col == .white) self.prev_white else self.prev_black;
     }
 
-    pub fn improving(self: EvalPair, col: Colour) bool {
-        const prev = self.prevFor(col) orelse return false;
-        const cur = self.curFor(col) orelse return false;
-        return cur > prev;
+    pub fn improvement(self: EvalPair, col: Colour) i32 {
+        const prev = self.prevFor(col) orelse return 0;
+        const cur = self.curFor(col) orelse return 0;
+        return @as(i32, cur) - prev;
     }
 
     pub fn worsening(self: EvalPair, col: Colour) bool {
@@ -788,6 +788,7 @@ fn search(
         depth -= 1;
     }
     var improving = false;
+    var improvement: i32 = 0;
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.inf_score;
     var corrected_static_eval = raw_static_eval;
@@ -797,7 +798,8 @@ fn search(
         corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
-        improving = cur.evals.improving(stm);
+        improvement = cur.evals.improvement(stm);
+        improving = improvement > 0;
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
         const prev_eval = self.stackEntry(-1).corrected_eval;
@@ -1208,6 +1210,31 @@ fn search(
                     cur.failhighs > 2,
                 });
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
+                reduction -= std.math.clamp(improvement, -512, 512);
+                // engine.dbgInt("improvement", improvement);
+                // if (improving) {
+                //     engine.dbgInt("improving", getFactorisedLmr(9, .{
+                //         is_pv,
+                //         cutnode,
+                //         true,
+                //         has_tt_move,
+                //         tt_pv,
+                //         is_quiet,
+                //         gives_check,
+                //         is_root,
+                //         cur.failhighs > 2,
+                //     }) - getFactorisedLmr(9, .{
+                //         is_pv,
+                //         cutnode,
+                //         false,
+                //         has_tt_move,
+                //         tt_pv,
+                //         is_quiet,
+                //         gives_check,
+                //         is_root,
+                //         cur.failhighs > 2,
+                //     }));
+                // }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
                 const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
