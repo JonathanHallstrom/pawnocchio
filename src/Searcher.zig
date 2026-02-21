@@ -843,6 +843,7 @@ fn search(
         @as(i32, eval) + prev_eval < 0)
     {
         depth += 1;
+        cur.reduction -= 1024;
     }
 
     if (!is_pv and
@@ -1210,7 +1211,7 @@ fn search(
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
-                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
+                var reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
                 self.stackEntry(0).reduction =
                     if (raw_reduced_depth == reduced_depth)
                         reduction
@@ -1226,6 +1227,7 @@ fn search(
                     reduced_depth,
                     true,
                 );
+                reduced_depth = depth + extension - (self.stackEntry(0).reduction >> 10);
                 self.stackEntry(0).reduction = 0;
                 if (self.stop.load(.acquire)) {
                     break :blk 0;
