@@ -154,13 +154,19 @@ inline fn noisyValue(
     noalias histories: *const Historytable,
     noalias board: *const Board,
     move: Move,
+    dangerous_squares: u64,
 ) i32 {
+    const from_dangerous = root.Bitboard.contains(dangerous_squares, move.from());
+    const to_dangerous = root.Bitboard.contains(dangerous_squares, move.to());
     var res: i32 = 0;
+    const our_value = SEE.value(board.pieceOn(move.from()).?, .ordering);
 
     res += @intFromBool(move.tp() == .ep) * SEE.value(.pawn, .ordering);
     res += SEE.value(board.pieceOn(move.to()) orelse .king, .ordering);
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += histories.readNoisy(board, move);
+    res += @intFromBool(from_dangerous) * @divFloor(our_value, 2);
+    res -= @intFromBool(to_dangerous) * @divFloor(our_value, 2);
 
     return res;
 }
@@ -182,6 +188,7 @@ pub fn next(
     noalias histories: *const Historytable,
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
+    dangerous_squares: u64,
 ) ?Move {
     return sw: switch (self.stage) {
         .tt => {
@@ -200,7 +207,7 @@ pub fn next(
             std.debug.assert(self.movelist.vals.len == 0);
             movegen.generateAllNoisies(stm, board, self.movelist);
             for (self.movelist.vals.slice(), 0..) |move, i| {
-                self.scores[i] = noisyValue(histories, board, move);
+                self.scores[i] = noisyValue(histories, board, move, dangerous_squares);
             }
             self.last = self.movelist.vals.len;
             self.stage = .good_noisies;

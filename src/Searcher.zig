@@ -486,11 +486,13 @@ fn qsearch(
 
     const conthist_tables = self.getConthistTables(stm);
 
+    const dangerous_squares = board.dangerousSquaresToMoveTo(stm);
     while (mp.next(
         stm,
         &self.histories,
         conthist_tables,
         board,
+        dangerous_squares,
     )) |move| {
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
@@ -975,11 +977,15 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+
+    const dangerous_squares = board.dangerousSquaresToMoveTo(stm);
+
     while (mp.next(
         stm,
         &self.histories,
         conthist_tables,
         board,
+        dangerous_squares,
     )) |move| {
         if (move == cur.excluded) {
             continue;
