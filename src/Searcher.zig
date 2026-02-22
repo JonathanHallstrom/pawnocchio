@@ -39,6 +39,8 @@ const evaluate = evaluation.evaluate;
 const TTEntry = root.TTEntry;
 const TTCluster = root.TTCluster;
 const cuckoo = root.cuckoo;
+const Bitboard = root.Bitboard;
+
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -486,6 +488,14 @@ fn qsearch(
 
     const conthist_tables = self.getConthistTables(stm);
 
+    const threatened_squares = board.threatenedBy(stm.flipped());
+    const double_attacked_squares = (&board.double_threats)[stm.flipped().toInt()];
+
+    // if we use normal threats destination will always appear defended
+    const defended_squares = (&board.double_threats)[stm.toInt()];
+
+    const dangerous_squares = (threatened_squares & ~defended_squares | double_attacked_squares) & ~board.occupancy();
+
     while (mp.next(
         stm,
         &self.histories,
@@ -502,6 +512,8 @@ fn qsearch(
         {
             std.debug.assert(board.isNoisy(move));
         }
+        const from_dangerous = Bitboard.contains(dangerous_squares, move.from());
+        const to_dangerous = Bitboard.contains(dangerous_squares, move.to());
         const dest_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], move.to());
         const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const is_recapture = move.to() == previous_move_destination;
@@ -524,7 +536,9 @@ fn qsearch(
                 continue;
             }
 
-            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold, .pruning)) {
+            if (!skip_see_pruning and ((!from_dangerous and to_dangerous) or
+                !SEE.scoreMove(board, move, tunables.qs_see_threshold, .pruning)))
+            {
                 continue;
             }
         }
