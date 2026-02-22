@@ -1061,6 +1061,9 @@ fn search(
                 if (src_threatened) {
                     futility_value += 128;
                 }
+                if (dest_threatened) {
+                    futility_value -= 128;
+                }
 
                 if (!is_in_check and
                     lmr_depth <= tunables.fp_depth_limit and
