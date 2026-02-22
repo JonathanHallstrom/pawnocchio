@@ -1052,6 +1052,11 @@ fn search(
                 if (is_pv) {
                     futility_value += tunables.fp_pv_base + tunables.fp_pv_mult * depth;
                 }
+
+                if (improving) {
+                    futility_value += 64;
+                }
+
                 if (!is_in_check and
                     lmr_depth <= tunables.fp_depth_limit and
                     @abs(alpha) < 2000 and
