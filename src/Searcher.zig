@@ -39,6 +39,8 @@ const evaluate = evaluation.evaluate;
 const TTEntry = root.TTEntry;
 const TTCluster = root.TTCluster;
 const cuckoo = root.cuckoo;
+const Bitboard = root.Bitboard;
+
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -975,6 +977,14 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+    const threatened_squares = board.threatenedBy(stm.flipped());
+    const double_attacked_squares = (&board.double_threats)[stm.flipped().toInt()];
+
+    // if we use normal threats destination will always appear defended
+    const defended_squares = (&board.double_threats)[stm.toInt()];
+
+    const dangerous_squares = (threatened_squares & ~defended_squares | double_attacked_squares) & ~board.occupancy();
+
     while (mp.next(
         stm,
         &self.histories,
@@ -1049,12 +1059,33 @@ fn search(
                     @divTrunc(lmr_depth * tunables.fp_mult +
                         @divTrunc(history_score * tunables.fp_hist_mult, 4), 1024);
 
+                // if (dangerous_squares != 0 and (Bitboard.contains(dangerous_squares, move.to()) or Bitboard.contains(dangerous_squares, move.from()))) {
+                //     std.debug.print("{s}", .{board.toFen().slice()});
+                //     if (Bitboard.contains(dangerous_squares, move.to())) {
+                //         std.debug.print(" {s} |", .{@tagName(move.to())});
+                //     } else {
+                //         std.debug.print(" {s} |", .{@tagName(move.from())});
+                //     }
+                //
+                //     var iter = root.Bitboard.iterator(dangerous_squares);
+                //     while (iter.next()) |sq| {
+                //         std.debug.print(" {s}", .{@tagName(sq)});
+                //     }
+                //     std.debug.print("\n", .{});
+                // }
+
                 if (is_pv) {
                     futility_value += tunables.fp_pv_base + tunables.fp_pv_mult * depth;
                 }
 
                 if (improving) {
                     futility_value += tunables.fp_improving;
+                }
+                if (Bitboard.contains(dangerous_squares, move.to())) {
+                    futility_value -= 64;
+                }
+                if (Bitboard.contains(dangerous_squares, move.from())) {
+                    futility_value += 32;
                 }
 
                 if (!is_in_check and
