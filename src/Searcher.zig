@@ -1054,7 +1054,7 @@ fn search(
                 }
 
                 if (improving) {
-                    futility_value += 64;
+                    futility_value += tunables.fp_improving;
                 }
 
                 if (!is_in_check and
