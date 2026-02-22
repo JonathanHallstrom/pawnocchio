@@ -1013,6 +1013,7 @@ fn search(
         {
             std.debug.assert(!is_quiet);
         }
+        const src_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], move.from());
         const dest_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], move.to());
         const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const history_score = if (is_quiet) self.histories.readQuietPruning(
@@ -1055,6 +1056,10 @@ fn search(
 
                 if (improving) {
                     futility_value += tunables.fp_improving;
+                }
+
+                if (src_threatened) {
+                    futility_value += 128;
                 }
 
                 if (!is_in_check and
