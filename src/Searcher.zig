@@ -947,6 +947,25 @@ fn search(
                     return verif_score;
                 }
             }
+            if (nmp_score <= alpha - 200) {
+                const razor_score = self.qsearch(false, false, stm, alpha, alpha + 1);
+
+                if (razor_score <= alpha) {
+                    const reduced = self.search(
+                        false,
+                        false,
+                        stm,
+                        alpha,
+                        alpha + 1,
+                        depth - nmp_reduction,
+                        cutnode,
+                    );
+
+                    if (reduced <= alpha) {
+                        return reduced;
+                    }
+                }
+            }
         }
     }
 
