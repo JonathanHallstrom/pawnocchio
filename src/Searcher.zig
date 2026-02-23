@@ -1215,7 +1215,7 @@ fn search(
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
-                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
+                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth) + @intFromBool(is_pv);
                 self.stackEntry(0).reduction =
                     if (raw_reduced_depth == reduced_depth)
                         reduction
