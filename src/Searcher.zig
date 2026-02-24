@@ -1212,7 +1212,7 @@ fn search(
                     is_root,
                     cur.failhighs > 2,
                 });
-                reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
+                reduction += @as(i32, tunables.lmr_alpha_raise_mult) * @min(alpha_raises, 2);
 
                 if (tt_pv) {
                     reduction -= @as(i32, tunables.lmr_ttpv_score) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.score > alpha);
