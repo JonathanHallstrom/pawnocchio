@@ -101,7 +101,8 @@ const Thread = struct {
                 .reset => {
                     // pinCurrentThread(self.idx) catch {};
                     @memset(std.mem.asBytes(self.searcher), 0);
-                    self.searcher.refresh_cache.initInPlace();
+                    if (!root.evaluation.use_hce)
+                        self.searcher.refresh_cache.initInPlace();
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
                     if (self.reset_tt_slice.len > 0) {
