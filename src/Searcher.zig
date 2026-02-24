@@ -1215,8 +1215,8 @@ fn search(
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
 
                 if (tt_pv) {
-                    reduction -= @as(i32, 512) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.score > alpha);
-                    reduction -= @as(i32, 512) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.depth >= depth);
+                    reduction -= @as(i32, tunables.lmr_ttpv_score) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.score > alpha);
+                    reduction -= @as(i32, tunables.lmr_ttpv_depth) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.depth >= depth);
                 }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
