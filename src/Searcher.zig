@@ -1262,6 +1262,7 @@ fn search(
                     }
                     if (is_quiet and (s <= alpha or s >= beta)) {
                         self.histories.updateCont(board, move, conthist_tables, new_depth, s >= beta, 0);
+                        self.histories.updateQuiet(board, move, new_depth, s >= beta, 0);
                     }
                 }
             } else if (!is_pv or num_searched > 1) {
