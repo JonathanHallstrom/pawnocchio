@@ -128,6 +128,7 @@ normalize: bool = false,
 minimal: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
+is_on_prev_pv: bool = false,
 winning_root_moves: BoundedArray(Move, 256),
 refresh_cache: if (evaluation.use_hce) void else root.refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT),
 histories: history.HistoryTable,
@@ -744,7 +745,16 @@ fn search(
             tt_entry = .{};
         }
     }
-    const has_tt_move = tt_hit and !tt_entry.move.isNull();
+
+    const has_pv_tt_move = is_pv and (self.is_on_prev_pv and self.ply < self.pvs[0].len);
+    var tt_move = tt_entry.move;
+    if (has_pv_tt_move) {
+        const pv_tt_move = self.pvs[0].slice()[self.ply];
+        if (board.isPseudoLegal(stm, pv_tt_move) and board.isLegal(stm, pv_tt_move)) {
+            tt_move = pv_tt_move;
+        }
+    }
+    const has_tt_move = (tt_hit or has_pv_tt_move) and !tt_move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
@@ -954,7 +964,7 @@ fn search(
     var mp = MovePicker.init(
         &cur.movelist,
         &cur.scores,
-        if (is_singular_search) cur.excluded else tt_entry.move,
+        if (is_singular_search) cur.excluded else tt_move,
         is_singular_search,
     );
     defer mp.deinit();
@@ -1002,6 +1012,9 @@ fn search(
             self.root_move = move;
         }
         num_legal += 1;
+        if (is_pv and num_legal > 1) {
+            self.is_on_prev_pv = false;
+        }
 
         if (is_root and !board.isPseudoLegal(stm, move)) {
             write("info string ERROR: Illegal move in root {s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
@@ -1111,7 +1124,7 @@ fn search(
         var extension: i32 = 0;
         if (!is_root and
             depth >= 6 and
-            move == tt_entry.move and
+            move == tt_move and
             !is_singular_search and
             tt_entry.depth + @as(i32, 3) >= depth and
             tt_entry.flags.score_type != .upper)
@@ -1279,7 +1292,7 @@ fn search(
                 }
             }
             if (is_pv and (num_searched == 1 or s > alpha)) {
-                if (move == tt_entry.move and self.limits.root_depth > 8 and tt_entry.depth > 1)
+                if (move == tt_move and self.limits.root_depth > 8 and tt_entry.depth > 1)
                     new_depth = @max(new_depth, 1);
                 s = -self.search(
                     false,
@@ -1357,7 +1370,7 @@ fn search(
 
     if (!is_singular_search) {
         if (score_type == .upper and tt_hit) {
-            best_move = tt_entry.move;
+            best_move = tt_move;
         }
         self.writeTT(
             tt_pv,
@@ -1605,6 +1618,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             inline else => |stm| while (true) {
                 defer quantized_window = quantized_window * tunables.aspiration_multiplier >> 10;
 
+                self.is_on_prev_pv = true;
                 score = self.search(
                     true,
                     true,
