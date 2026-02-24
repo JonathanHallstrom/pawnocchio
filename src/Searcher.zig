@@ -975,6 +975,7 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+    const previous_move_destination = cur.move.move.to();
     while (mp.next(
         stm,
         &self.histories,
@@ -1213,6 +1214,9 @@ fn search(
                     cur.failhighs > 2,
                 });
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
+                if (!is_quiet and move.to() == previous_move_destination) {
+                    reduction -= 768;
+                }
 
                 if (tt_pv) {
                     reduction -= @as(i32, tunables.lmr_ttpv_score) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.score > alpha);
