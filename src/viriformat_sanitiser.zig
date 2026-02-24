@@ -197,7 +197,7 @@ pub fn sanitiseBufferToFile(
         const bytes_used = parseSingleGame(input[i..], &game, &error_ctx) catch |e| {
             if (isRecoverableParseError(e)) {
                 if (print_errors) {
-                    std.debug.print("failed to parse game at byte offset {} (+{}): {}\n", .{ i, error_ctx.in_game_byte_offset, e });
+                    std.debug.print("failed to parse game at byte offset {} (offset {}): {}\n", .{ i, error_ctx.in_game_byte_offset, e });
                     if (error_ctx.fen()) |fen| {
                         std.debug.print("  final_fen: {s}\n", .{fen});
                         printParsedGameLine(&game, &error_ctx);
@@ -208,7 +208,7 @@ pub fn sanitiseBufferToFile(
                 continue;
             }
             if (print_errors) {
-                std.debug.print("fatal sanitiser error at byte offset {} (+{}): {}\n", .{ i, error_ctx.in_game_byte_offset, e });
+                std.debug.print("fatal sanitiser error at byte offset {} (offset {}): {}\n", .{ i, error_ctx.in_game_byte_offset, e });
                 if (error_ctx.fen()) |fen| {
                     std.debug.print("  final_fen: {s}\n", .{fen});
                     printParsedGameLine(&game, &error_ctx);
