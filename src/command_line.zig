@@ -156,6 +156,10 @@ pub fn handle(allocator: std.mem.Allocator, version_string: []const u8) !bool {
     return false;
 }
 
+pub fn writeHelpText(version_string: []const u8) void {
+    handleHelp(version_string, std.Thread.getCpuCount() catch 1);
+}
+
 fn handleHelp(version_string: []const u8, datagen_threads_default: usize) void {
     std.debug.print(
         \\pawnocchio {s} - UCI chess engine
