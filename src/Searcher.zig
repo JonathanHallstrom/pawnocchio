@@ -524,7 +524,13 @@ fn qsearch(
                 continue;
             }
 
-            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold, .pruning)) {
+            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold - @divTrunc(
+                // engine.dbg(
+                //     "history value",
+                history_score - 5000
+                    // )
+                , 128), .pruning))
+            {
                 continue;
             }
         }
@@ -1163,6 +1169,16 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
+                if (!is_in_check and s_score > corrected_static_eval) {
+                    self.histories.updateCorrection(
+                        board,
+                        cur.move,
+                        cur.prev,
+                        corrected_static_eval,
+                        s_score,
+                        s_depth,
+                    );
+                }
                 return evaluation.clampScore(s_beta);
             } else if (cutnode) {
                 extension -= 3;
@@ -1373,7 +1389,14 @@ fn search(
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
-                self.histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, depth);
+                self.histories.updateCorrection(
+                    board,
+                    cur.move,
+                    cur.prev,
+                    corrected_static_eval,
+                    best_score,
+                    depth,
+                );
             }
         }
     }
