@@ -31,6 +31,7 @@ const TypedMove = history.TypedMove;
 const Historytable = history.HistoryTable;
 
 const MovePicker = @This();
+const tuning = root.tuning;
 
 movelist: *MoveReceiver,
 scores: [*]i32,
@@ -171,7 +172,8 @@ inline fn quietValue(
     noalias board: *const Board,
     move: Move,
 ) i32 {
-    return histories.readQuietOrdering(board, move, conthist_tables);
+    const terms = histories.readMoveTerms(board, move, conthist_tables, true);
+    return tuning.ordHistQ(terms);
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;

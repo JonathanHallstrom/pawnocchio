@@ -92,6 +92,25 @@ pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
 pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
 pub const ConthistTables = [NUM_CONTHISTS]*ContHistory.ContHistTable;
 
+pub const MoveHistoryTerms = struct {
+    quiet: i32 = 0,
+    pawn: i32 = 0,
+    cont1: i32 = 0,
+    cont2: i32 = 0,
+    cont4: i32 = 0,
+    noisy: i32 = 0,
+
+    pub inline fn weighted(self: MoveHistoryTerms, weights: MoveHistoryTerms) i32 {
+        const sum: i32 = self.quiet * weights.quiet +
+            self.pawn * weights.pawn +
+            self.cont1 * weights.cont1 +
+            self.cont2 * weights.cont2 +
+            self.cont4 * weights.cont4 +
+            self.noisy * weights.noisy;
+        return @divTrunc(sum, 1024);
+    }
+};
+
 pub const QuietHistory = struct {
     vals: [2 * 64 * 64 * 2 * 2]i16,
 
@@ -349,52 +368,34 @@ pub const HistoryTable = struct {
         return res;
     }
 
-    pub inline fn readQuietPruning(
+    pub inline fn readMoveTerms(
         self: *const HistoryTable,
         board: *const Board,
         move: Move,
         tables: ConthistTables,
-    ) i32 {
+        is_quiet: bool,
+    ) MoveHistoryTerms {
         const typed = TypedMove.fromBoard(board, move);
-        var res: i32 = 0;
-        res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
-        res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
-
-        const weights = [NUM_CONTHISTS]i32{
-            tunable_constants.cont1_pruning_weight,
-            tunable_constants.cont2_pruning_weight,
-            tunable_constants.cont4_pruning_weight,
-        };
-
-        inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
-            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            res += weights[i] * table.read(stm, typed);
+        var terms: MoveHistoryTerms = .{};
+        if (!is_quiet) {
+            terms.noisy = self.noisy.read(board, typed);
+            return terms;
         }
 
-        return @divTrunc(res, 1024);
-    }
+        terms.quiet = self.quiet.read(board, typed);
+        terms.pawn = self.pawn.read(board, typed);
 
-    pub inline fn readQuietOrdering(
-        self: *const HistoryTable,
-        board: *const Board,
-        move: Move,
-        tables: ConthistTables,
-    ) i32 {
-        const typed = TypedMove.fromBoard(board, move);
-        var res: i32 = 0;
-        res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
-        res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
-        const weights = [NUM_CONTHISTS]i32{
-            tunable_constants.cont1_ordering_weight,
-            tunable_constants.cont2_ordering_weight,
-            tunable_constants.cont4_ordering_weight,
+        const cont_values = [NUM_CONTHISTS]*i32{
+            &terms.cont1,
+            &terms.cont2,
+            &terms.cont4,
         };
         inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            res += weights[i] * table.read(stm, typed);
+            cont_values[i].* = table.read(stm, typed);
         }
 
-        return @divTrunc(res, 1024);
+        return terms;
     }
 
     pub fn updateCont(
