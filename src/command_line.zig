@@ -17,12 +17,14 @@
 const std = @import("std");
 const root = @import("root.zig");
 const arg_parser = @import("arg_parser.zig");
+const edit_distance = @import("edit_distance.zig");
 const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 
-const bench_depth_default: i32 = 11;
-const datagen_nodes_default: u64 = 7000;
+const BENCH_DEPTH_DEFAULT: i32 = 11;
+const DATAGEN_NODES_DEFAULT: u64 = 7000;
+const CMD_SUGGEST_PERCENT: usize = 25;
 
 const Command = enum {
     help,
@@ -37,22 +39,54 @@ const Command = enum {
     bench,
 };
 
+fn printUsageLines(usage: []const []const u8) void {
+    for (usage) |part| {
+        writeLog("  {s}\n", .{part});
+    }
+}
+
+fn suggestCommand(input: []const u8) ?[]const u8 {
+    const lookup = edit_distance.matchEnum(Command, input, CMD_SUGGEST_PERCENT) orelse return null;
+    return switch (lookup) {
+        .closest => |tag| @tagName(tag),
+        .match => null,
+    };
+}
+
+fn parseOptionName(arg: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, arg, "--")) return null;
+    const option = arg[2..];
+    return option[0 .. std.mem.indexOfScalar(u8, option, '=') orelse option.len];
+}
+
 fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime options: arg_parser.Options, comptime command_name: []const u8) !arg_parser.ParsedType(spec_or_type, options) {
     const parse_options: arg_parser.Options = .{
         .allow_implied = options.allow_implied,
         .default_int_type = options.default_int_type,
         .default_float_type = options.default_float_type,
+        .option_suggest_percent = options.option_suggest_percent,
         .usage_descriptions = options.usage_descriptions,
     };
-    return arg_parser.parse(args, spec_or_type, parse_options) catch |e| {
+    const ArgTracker = struct {
+        inner: @TypeOf(args),
+        last: ?[]const u8 = null,
+
+        pub fn next(self: *@This()) ?[]const u8 {
+            const value = self.inner.next();
+            if (value) |arg| {
+                self.last = arg;
+            }
+            return value;
+        }
+    };
+
+    var tracked_args = ArgTracker{ .inner = args };
+    return arg_parser.parse(&tracked_args, spec_or_type, parse_options) catch |e| {
         if (e == error.HelpRequested) {
             const usage = arg_parser.fullUsage(spec_or_type, parse_options);
             if (usage.len > 0) {
                 writeLog("{s} arguments:\n", .{command_name});
-                var parts = std.mem.splitSequence(u8, usage, "\n");
-                while (parts.next()) |part| {
-                    writeLog("  {s}\n", .{part});
-                }
+                printUsageLines(usage);
             } else {
                 writeLog("{s}: no command arguments\n", .{command_name});
             }
@@ -62,14 +96,26 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
             const usage = arg_parser.requiredUsage(spec_or_type, parse_options);
             if (usage.len > 0) {
                 writeLog("invalid {s} arguments: missing required arguments:\n", .{command_name});
-                var parts = std.mem.splitSequence(u8, usage, "\n");
-                while (parts.next()) |part| {
-                    writeLog("  {s}\n", .{part});
-                }
+                printUsageLines(usage);
             } else {
                 writeLog("invalid {s} arguments: {}\n", .{ command_name, e });
             }
             return e;
+        }
+        if (e == error.UnknownOption) {
+            const option_name = if (tracked_args.last) |arg| parseOptionName(arg) else null;
+            if (option_name) |name| {
+                if (arg_parser.suggestOption(spec_or_type, parse_options, name)) |suggestion| {
+                    writeLog("invalid {s} arguments: unknown option '--{s}' (did you mean '--{s}'?)\n", .{
+                        command_name,
+                        name,
+                        suggestion,
+                    });
+                    return e;
+                }
+                writeLog("invalid {s} arguments: unknown option '--{s}'\n", .{ command_name, name });
+                return e;
+            }
         }
         writeLog("invalid {s} arguments: {}\n", .{ command_name, e });
         return e;
@@ -149,7 +195,11 @@ pub fn handle(allocator: std.mem.Allocator, version_string: []const u8) !bool {
             return true;
         }
 
-        handleHelp(version_string, datagen_threads_default);
+        if (suggestCommand(command_token)) |suggestion| {
+            writeLog("unknown command '{s}'. did you mean '{s}'? pass --help for usage\n", .{ command_token, suggestion });
+        } else {
+            writeLog("unknown command '{s}'. pass --help for usage\n", .{command_token});
+        }
         return true;
     }
 
@@ -224,13 +274,13 @@ fn handleHelp(version_string: []const u8, datagen_threads_default: usize) void {
         \\  ProbeWDL                - query Syzygy tablebase
         \\  quit                    - exit
         \\
-    , .{ version_string, bench_depth_default, datagen_threads_default, datagen_nodes_default });
+    , .{ version_string, BENCH_DEPTH_DEFAULT, datagen_threads_default, DATAGEN_NODES_DEFAULT });
 }
 
 fn handleBench(args: anytype) !void {
     const bench_args = try parseCommandArgs(
         args,
-        .{ .depth = bench_depth_default },
+        .{ .depth = BENCH_DEPTH_DEFAULT },
         .{ .allow_implied = true },
         "bench",
     );
@@ -242,7 +292,7 @@ fn handleDatagen(args: anytype, datagen_threads_default: usize) !void {
         args,
         struct {
             threads: ?usize = null,
-            nodes: u64 = datagen_nodes_default,
+            nodes: u64 = DATAGEN_NODES_DEFAULT,
             positions: u64,
         },
         .{},
@@ -293,7 +343,7 @@ fn handlePgnToVf(args: anytype, allocator: std.mem.Allocator) !void {
         .{
             .allow_implied = true,
             .usage_descriptions = &.{
-                .{ .field = "output", .text = "--output <OUTPUT> (optional, default: <INPUT>.vf)" },
+                .{ .field = "output", .default_text = "<INPUT>.vf" },
             },
         },
         "pgntovf",
@@ -352,7 +402,7 @@ fn handleEpdToVf(args: anytype, allocator: std.mem.Allocator) !void {
         .{
             .allow_implied = true,
             .usage_descriptions = &.{
-                .{ .field = "output", .text = "--output <OUTPUT> (optional, default: <INPUT>.vf)" },
+                .{ .field = "output", .default_text = "<INPUT>.vf" },
             },
         },
         "epdtovf",
@@ -397,7 +447,10 @@ fn handleEpdToVf(args: anytype, allocator: std.mem.Allocator) !void {
 fn handleVfToTxt(args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
-        struct { input: []const u8 },
+        struct {
+            input: []const u8,
+            @"sigmoid-scores": bool = false,
+        },
         .{ .allow_implied = true },
         "vftotxt",
     );
@@ -456,7 +509,11 @@ fn handleVfToTxt(args: anytype) !void {
                 },
             }
 
-            write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(move_eval_pair.eval.toNative()), wdl });
+            if (parsed.@"sigmoid-scores") {
+                write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(move_eval_pair.eval.toNative()), wdl });
+            } else {
+                write("{s} | {d:.10} | {d}\n", .{ board.toFen().slice(), move_eval_pair.eval.toNative(), wdl });
+            }
             // if (rng.random().int(u32) % (i + 1) == 0) {
             //     chosen_board = board;
             //     chosen_eval = move_eval_pair.eval.toNative();
@@ -479,6 +536,18 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         "analyse",
     );
     const input = parsed.input;
+    if (!parsed.@"allow-overwrite") {
+        if (std.fs.cwd().access("score_distribution.txt", .{})) {
+            writeLog("refusing to overwrite existing file 'score_distribution.txt' (pass --allow-overwrite)\n", .{});
+            return error.PathAlreadyExists;
+        } else |e| switch (e) {
+            error.FileNotFound => {},
+            else => {
+                writeLog("checking output file 'score_distribution.txt' gave: '{}'\n", .{e});
+                return e;
+            },
+        }
+    }
 
     var use_tbs = false;
     if (parsed.@"tb-path") |tb_path| {
@@ -699,8 +768,7 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
         .{
             .allow_implied = false,
             .usage_descriptions = &.{
-                .{ .field = "input", .text = "--input <INPUT>" },
-                .{ .field = "output", .text = "--output <OUTPUT> (optional, default: <INPUT>_relabeled)" },
+                .{ .field = "output", .default_text = "<INPUT>_relabeled" },
             },
         },
         "relabel-tb",
@@ -831,7 +899,7 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
         .{
             .allow_implied = true,
             .usage_descriptions = &.{
-                .{ .field = "output", .text = "--output <OUTPUT> (optional, default: <INPUT>_sanitised)" },
+                .{ .field = "output", .default_text = "<INPUT>_sanitised" },
             },
         },
         "sanitise",
