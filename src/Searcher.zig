@@ -975,6 +975,7 @@ fn search(
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth, 1024);
     std.debug.assert(lmp_margin > 0);
+    const previous_move_destination = cur.move.move.to();
     while (mp.next(
         stm,
         &self.histories,
@@ -1023,9 +1024,14 @@ fn search(
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
-            var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
-            base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
-            var lmr_depth: i32 = (depth << 10) - base_lmr;
+            var reduction = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
+            reduction -= @intCast(lmr_history_mult * history_score >> 13);
+
+            if (!is_quiet and move.to() == previous_move_destination) {
+                reduction -= 512;
+            }
+
+            var lmr_depth: i32 = (depth << 10) - reduction;
 
             if (!is_pv and
                 num_searched >= lmp_margin)
