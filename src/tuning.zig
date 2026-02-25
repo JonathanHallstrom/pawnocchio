@@ -185,12 +185,24 @@ const tunable_defaults = struct {
     pub const pawn_history_penalty_mult: i32 = 347;
     pub const pawn_history_penalty_offs: i32 = 504;
     pub const pawn_history_penalty_max: i32 = 1792;
-    pub const cont_history_bonus_mult: i32 = 214;
-    pub const cont_history_bonus_offs: i32 = 163;
-    pub const cont_history_bonus_max: i32 = 3421;
-    pub const cont_history_penalty_mult: i32 = 183;
-    pub const cont_history_penalty_offs: i32 = 365;
-    pub const cont_history_penalty_max: i32 = 1525;
+    pub const cont1_history_bonus_mult: i32 = 214;
+    pub const cont1_history_bonus_offs: i32 = 163;
+    pub const cont1_history_bonus_max: i32 = 3421;
+    pub const cont1_history_penalty_mult: i32 = 183;
+    pub const cont1_history_penalty_offs: i32 = 365;
+    pub const cont1_history_penalty_max: i32 = 1525;
+    pub const cont2_history_bonus_mult: i32 = 214;
+    pub const cont2_history_bonus_offs: i32 = 163;
+    pub const cont2_history_bonus_max: i32 = 3421;
+    pub const cont2_history_penalty_mult: i32 = 183;
+    pub const cont2_history_penalty_offs: i32 = 365;
+    pub const cont2_history_penalty_max: i32 = 1525;
+    pub const cont4_history_bonus_mult: i32 = 214;
+    pub const cont4_history_bonus_offs: i32 = 163;
+    pub const cont4_history_bonus_max: i32 = 3421;
+    pub const cont4_history_penalty_mult: i32 = 183;
+    pub const cont4_history_penalty_offs: i32 = 365;
+    pub const cont4_history_penalty_max: i32 = 1525;
     pub const noisy_history_bonus_mult: i32 = 237;
     pub const noisy_history_bonus_offs: i32 = 279;
     pub const noisy_history_bonus_max: i32 = 3084;
@@ -408,12 +420,24 @@ pub const tunables = [_]Tunable{
     .{ .name = "pawn_history_penalty_mult", .default = tunable_defaults.pawn_history_penalty_mult },
     .{ .name = "pawn_history_penalty_offs", .default = tunable_defaults.pawn_history_penalty_offs },
     .{ .name = "pawn_history_penalty_max", .default = tunable_defaults.pawn_history_penalty_max },
-    .{ .name = "cont_history_bonus_mult", .default = tunable_defaults.cont_history_bonus_mult },
-    .{ .name = "cont_history_bonus_offs", .default = tunable_defaults.cont_history_bonus_offs },
-    .{ .name = "cont_history_bonus_max", .default = tunable_defaults.cont_history_bonus_max },
-    .{ .name = "cont_history_penalty_mult", .default = tunable_defaults.cont_history_penalty_mult },
-    .{ .name = "cont_history_penalty_offs", .default = tunable_defaults.cont_history_penalty_offs },
-    .{ .name = "cont_history_penalty_max", .default = tunable_defaults.cont_history_penalty_max },
+    .{ .name = "cont1_history_bonus_mult", .default = tunable_defaults.cont1_history_bonus_mult },
+    .{ .name = "cont1_history_bonus_offs", .default = tunable_defaults.cont1_history_bonus_offs },
+    .{ .name = "cont1_history_bonus_max", .default = tunable_defaults.cont1_history_bonus_max },
+    .{ .name = "cont1_history_penalty_mult", .default = tunable_defaults.cont1_history_penalty_mult },
+    .{ .name = "cont1_history_penalty_offs", .default = tunable_defaults.cont1_history_penalty_offs },
+    .{ .name = "cont1_history_penalty_max", .default = tunable_defaults.cont1_history_penalty_max },
+    .{ .name = "cont2_history_bonus_mult", .default = tunable_defaults.cont2_history_bonus_mult },
+    .{ .name = "cont2_history_bonus_offs", .default = tunable_defaults.cont2_history_bonus_offs },
+    .{ .name = "cont2_history_bonus_max", .default = tunable_defaults.cont2_history_bonus_max },
+    .{ .name = "cont2_history_penalty_mult", .default = tunable_defaults.cont2_history_penalty_mult },
+    .{ .name = "cont2_history_penalty_offs", .default = tunable_defaults.cont2_history_penalty_offs },
+    .{ .name = "cont2_history_penalty_max", .default = tunable_defaults.cont2_history_penalty_max },
+    .{ .name = "cont4_history_bonus_mult", .default = tunable_defaults.cont4_history_bonus_mult },
+    .{ .name = "cont4_history_bonus_offs", .default = tunable_defaults.cont4_history_bonus_offs },
+    .{ .name = "cont4_history_bonus_max", .default = tunable_defaults.cont4_history_bonus_max },
+    .{ .name = "cont4_history_penalty_mult", .default = tunable_defaults.cont4_history_penalty_mult },
+    .{ .name = "cont4_history_penalty_offs", .default = tunable_defaults.cont4_history_penalty_offs },
+    .{ .name = "cont4_history_penalty_max", .default = tunable_defaults.cont4_history_penalty_max },
     .{ .name = "noisy_history_bonus_mult", .default = tunable_defaults.noisy_history_bonus_mult },
     .{ .name = "noisy_history_bonus_offs", .default = tunable_defaults.noisy_history_bonus_offs },
     .{ .name = "noisy_history_bonus_max", .default = tunable_defaults.noisy_history_bonus_max },
@@ -631,12 +655,24 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var pawn_history_penalty_mult = tunable_defaults.pawn_history_penalty_mult;
     pub var pawn_history_penalty_offs = tunable_defaults.pawn_history_penalty_offs;
     pub var pawn_history_penalty_max = tunable_defaults.pawn_history_penalty_max;
-    pub var cont_history_bonus_mult = tunable_defaults.cont_history_bonus_mult;
-    pub var cont_history_bonus_offs = tunable_defaults.cont_history_bonus_offs;
-    pub var cont_history_bonus_max = tunable_defaults.cont_history_bonus_max;
-    pub var cont_history_penalty_mult = tunable_defaults.cont_history_penalty_mult;
-    pub var cont_history_penalty_offs = tunable_defaults.cont_history_penalty_offs;
-    pub var cont_history_penalty_max = tunable_defaults.cont_history_penalty_max;
+    pub var cont1_history_bonus_mult = tunable_defaults.cont1_history_bonus_mult;
+    pub var cont1_history_bonus_offs = tunable_defaults.cont1_history_bonus_offs;
+    pub var cont1_history_bonus_max = tunable_defaults.cont1_history_bonus_max;
+    pub var cont1_history_penalty_mult = tunable_defaults.cont1_history_penalty_mult;
+    pub var cont1_history_penalty_offs = tunable_defaults.cont1_history_penalty_offs;
+    pub var cont1_history_penalty_max = tunable_defaults.cont1_history_penalty_max;
+    pub var cont2_history_bonus_mult = tunable_defaults.cont2_history_bonus_mult;
+    pub var cont2_history_bonus_offs = tunable_defaults.cont2_history_bonus_offs;
+    pub var cont2_history_bonus_max = tunable_defaults.cont2_history_bonus_max;
+    pub var cont2_history_penalty_mult = tunable_defaults.cont2_history_penalty_mult;
+    pub var cont2_history_penalty_offs = tunable_defaults.cont2_history_penalty_offs;
+    pub var cont2_history_penalty_max = tunable_defaults.cont2_history_penalty_max;
+    pub var cont4_history_bonus_mult = tunable_defaults.cont4_history_bonus_mult;
+    pub var cont4_history_bonus_offs = tunable_defaults.cont4_history_bonus_offs;
+    pub var cont4_history_bonus_max = tunable_defaults.cont4_history_bonus_max;
+    pub var cont4_history_penalty_mult = tunable_defaults.cont4_history_penalty_mult;
+    pub var cont4_history_penalty_offs = tunable_defaults.cont4_history_penalty_offs;
+    pub var cont4_history_penalty_max = tunable_defaults.cont4_history_penalty_max;
     pub var noisy_history_bonus_mult = tunable_defaults.noisy_history_bonus_mult;
     pub var noisy_history_bonus_offs = tunable_defaults.noisy_history_bonus_offs;
     pub var noisy_history_bonus_max = tunable_defaults.noisy_history_bonus_max;

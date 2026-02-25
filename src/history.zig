@@ -99,16 +99,6 @@ pub const MoveHistoryTerms = struct {
     cont2: i32 = 0,
     cont4: i32 = 0,
     noisy: i32 = 0,
-
-    pub inline fn weighted(self: MoveHistoryTerms, weights: MoveHistoryTerms) i32 {
-        const sum: i32 = self.quiet * weights.quiet +
-            self.pawn * weights.pawn +
-            self.cont1 * weights.cont1 +
-            self.cont2 * weights.cont2 +
-            self.cont4 * weights.cont4 +
-            self.noisy * weights.noisy;
-        return @divTrunc(sum, 1024);
-    }
 };
 
 pub const QuietHistory = struct {
@@ -272,23 +262,6 @@ pub const ContHistory = struct {
             gravityUpdateCont(self.entry(col, move), total_cont, upd);
         }
 
-        pub inline fn update(
-            self: *ContHistTable,
-            total_cont: i64,
-            col: Colour,
-            move: TypedMove,
-            depth: i32,
-            is_bonus: bool,
-            extra: i32,
-        ) void {
-            self.updateRaw(
-                total_cont,
-                col,
-                move,
-                extra + if (is_bonus) bonus(depth) else -penalty(depth),
-            );
-        }
-
         pub inline fn read(
             self: *const ContHistTable,
             col: Colour,
@@ -300,17 +273,53 @@ pub const ContHistory = struct {
 
     vals: [2 * 6 * 64]ContHistTable,
 
-    fn bonus(depth: i32) i16 {
+    fn bonus(comptime idx: usize, depth: i32) i16 {
+        const mult, const offs, const max = switch (idx) {
+            0 => .{
+                tunable_constants.cont1_history_bonus_mult,
+                tunable_constants.cont1_history_bonus_offs,
+                tunable_constants.cont1_history_bonus_max,
+            },
+            1 => .{
+                tunable_constants.cont2_history_bonus_mult,
+                tunable_constants.cont2_history_bonus_offs,
+                tunable_constants.cont2_history_bonus_max,
+            },
+            2 => .{
+                tunable_constants.cont4_history_bonus_mult,
+                tunable_constants.cont4_history_bonus_offs,
+                tunable_constants.cont4_history_bonus_max,
+            },
+            else => unreachable,
+        };
         return @intCast(@min(
-            depth * tunable_constants.cont_history_bonus_mult + tunable_constants.cont_history_bonus_offs,
-            tunable_constants.cont_history_bonus_max,
+            depth * mult + offs,
+            max,
         ));
     }
 
-    fn penalty(depth: i32) i16 {
+    fn penalty(comptime idx: usize, depth: i32) i16 {
+        const mult, const offs, const max = switch (idx) {
+            0 => .{
+                tunable_constants.cont1_history_penalty_mult,
+                tunable_constants.cont1_history_penalty_offs,
+                tunable_constants.cont1_history_penalty_max,
+            },
+            1 => .{
+                tunable_constants.cont2_history_penalty_mult,
+                tunable_constants.cont2_history_penalty_offs,
+                tunable_constants.cont2_history_penalty_max,
+            },
+            2 => .{
+                tunable_constants.cont4_history_penalty_mult,
+                tunable_constants.cont4_history_penalty_offs,
+                tunable_constants.cont4_history_penalty_max,
+            },
+            else => unreachable,
+        };
         return @intCast(@min(
-            depth * tunable_constants.cont_history_penalty_mult + tunable_constants.cont_history_penalty_offs,
-            tunable_constants.cont_history_penalty_max,
+            depth * mult + offs,
+            max,
         ));
     }
 
@@ -414,9 +423,10 @@ pub const HistoryTable = struct {
             const cstm = if (offs % 2 == 0) stm.flipped() else stm;
             cont += table.read(cstm, typed);
         }
-        inline for (CONTHIST_OFFSETS, tables) |offs, table| {
+        inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
             const cstm = if (offs % 2 == 0) stm.flipped() else stm;
-            table.update(cont, cstm, typed, depth, is_bonus, extra);
+            const upd = extra + if (is_bonus) ContHistory.bonus(i, depth) else -ContHistory.penalty(i, depth);
+            table.updateRaw(cont, cstm, typed, upd);
         }
     }
 
