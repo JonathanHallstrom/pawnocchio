@@ -1053,7 +1053,8 @@ fn search(
                 }
 
                 var futility_value = eval +
-                    tunables.fp_base +
+                    tunables.fp_base -
+                    @as(i32, 4) * num_searched +
                     @divTrunc(lmr_depth * tunables.fp_mult +
                         @divTrunc(tuning.fpHistQ(history_terms) * tunables.fp_hist_mult, 4), 1024);
 
