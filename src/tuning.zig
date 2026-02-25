@@ -216,15 +216,10 @@ const tunable_defaults = struct {
     pub const high_eval_offs: i32 = 42;
     pub const faillow_mult: i32 = 2446;
     pub const quiet_ordering_weight: i32 = 1024;
-    pub const quiet_pruning_weight: i32 = 403;
     pub const pawn_ordering_weight: i32 = 1010;
-    pub const pawn_pruning_weight: i32 = 1027;
     pub const cont1_ordering_weight: i32 = 840;
-    pub const cont1_pruning_weight: i32 = 749;
     pub const cont2_ordering_weight: i32 = 1046;
-    pub const cont2_pruning_weight: i32 = 974;
     pub const cont4_ordering_weight: i32 = 557;
-    pub const cont4_pruning_weight: i32 = 231;
     pub const rfp_min_margin: i32 = 21;
     pub const rfp_base: i32 = 47248;
     pub const rfp_mult: i32 = 34063;
@@ -298,7 +293,6 @@ const tunable_defaults = struct {
     pub const fp_hist_cont1_weight: i32 = 749;
     pub const fp_hist_cont2_weight: i32 = 974;
     pub const fp_hist_cont4_weight: i32 = 231;
-    pub const fp_hist_noisy_weight: i32 = 1024;
     pub const bnfp_depth_limit: i32 = 8648;
     pub const bnfp_base: i32 = 158;
     pub const bnfp_mult: i32 = 75;
@@ -451,15 +445,10 @@ pub const tunables = [_]Tunable{
     .{ .name = "high_eval_offs", .default = tunable_defaults.high_eval_offs },
     .{ .name = "faillow_mult", .default = tunable_defaults.faillow_mult },
     .{ .name = "quiet_ordering_weight", .default = tunable_defaults.quiet_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "quiet_pruning_weight", .default = tunable_defaults.quiet_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "pawn_ordering_weight", .default = tunable_defaults.pawn_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "pawn_pruning_weight", .default = tunable_defaults.pawn_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont1_ordering_weight", .default = tunable_defaults.cont1_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "cont1_pruning_weight", .default = tunable_defaults.cont1_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont2_ordering_weight", .default = tunable_defaults.cont2_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "cont2_pruning_weight", .default = tunable_defaults.cont2_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont4_ordering_weight", .default = tunable_defaults.cont4_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
-    .{ .name = "cont4_pruning_weight", .default = tunable_defaults.cont4_pruning_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_min_margin", .default = tunable_defaults.rfp_min_margin },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult },
@@ -533,7 +522,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "fp_hist_cont1_weight", .default = tunable_defaults.fp_hist_cont1_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "fp_hist_cont2_weight", .default = tunable_defaults.fp_hist_cont2_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "fp_hist_cont4_weight", .default = tunable_defaults.fp_hist_cont4_weight, .min = -2048, .max = 2048, .c_end = 128 },
-    .{ .name = "fp_hist_noisy_weight", .default = tunable_defaults.fp_hist_noisy_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "bnfp_depth_limit", .default = tunable_defaults.bnfp_depth_limit },
     .{ .name = "bnfp_base", .default = tunable_defaults.bnfp_base },
     .{ .name = "bnfp_mult", .default = tunable_defaults.bnfp_mult },
@@ -686,15 +674,10 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var high_eval_offs = tunable_defaults.high_eval_offs;
     pub var faillow_mult = tunable_defaults.faillow_mult;
     pub var quiet_ordering_weight = tunable_defaults.quiet_ordering_weight;
-    pub var quiet_pruning_weight = tunable_defaults.quiet_pruning_weight;
     pub var pawn_ordering_weight = tunable_defaults.pawn_ordering_weight;
-    pub var pawn_pruning_weight = tunable_defaults.pawn_pruning_weight;
     pub var cont1_ordering_weight = tunable_defaults.cont1_ordering_weight;
-    pub var cont1_pruning_weight = tunable_defaults.cont1_pruning_weight;
     pub var cont2_ordering_weight = tunable_defaults.cont2_ordering_weight;
-    pub var cont2_pruning_weight = tunable_defaults.cont2_pruning_weight;
     pub var cont4_ordering_weight = tunable_defaults.cont4_ordering_weight;
-    pub var cont4_pruning_weight = tunable_defaults.cont4_pruning_weight;
     pub var rfp_min_margin = tunable_defaults.rfp_min_margin;
     pub var rfp_base = tunable_defaults.rfp_base;
     pub var rfp_mult = tunable_defaults.rfp_mult;
@@ -768,7 +751,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var fp_hist_cont1_weight = tunable_defaults.fp_hist_cont1_weight;
     pub var fp_hist_cont2_weight = tunable_defaults.fp_hist_cont2_weight;
     pub var fp_hist_cont4_weight = tunable_defaults.fp_hist_cont4_weight;
-    pub var fp_hist_noisy_weight = tunable_defaults.fp_hist_noisy_weight;
     pub var bnfp_depth_limit = tunable_defaults.bnfp_depth_limit;
     pub var bnfp_base = tunable_defaults.bnfp_base;
     pub var bnfp_mult = tunable_defaults.bnfp_mult;
