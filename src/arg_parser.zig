@@ -34,6 +34,11 @@ pub const UsageDescription = struct {
     default_text: ?[]const u8 = null,
 };
 
+pub const Suggestion = struct {
+    name: []const u8,
+    cost: usize,
+};
+
 pub const Options = struct {
     allow_implied: bool = false,
     default_int_type: type = i32,
@@ -253,11 +258,21 @@ pub fn suggestOption(
     comptime options: Options,
     option_name: []const u8,
 ) ?[]const u8 {
+    const suggestion = suggestOptionWithCost(spec_or_type, options, option_name) orelse return null;
+    return suggestion.name;
+}
+
+pub fn suggestOptionWithCost(
+    comptime spec_or_type: anytype,
+    comptime options: Options,
+    option_name: []const u8,
+) ?Suggestion {
     const Spec = ParsedType(spec_or_type, options);
     const Field = std.meta.FieldEnum(Spec);
     const lookup = edit_distance.matchEnum(Field, option_name, options.option_suggest_percent) orelse return null;
     return switch (lookup) {
-        .match, .closest => |field| @tagName(field),
+        .match => |field| .{ .name = @tagName(field), .cost = 0 },
+        .closest => |closest| .{ .name = @tagName(closest.tag), .cost = closest.cost },
     };
 }
 

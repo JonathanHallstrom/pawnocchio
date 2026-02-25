@@ -25,6 +25,7 @@ const Board = root.Board;
 const BENCH_DEPTH_DEFAULT: i32 = 11;
 const DATAGEN_NODES_DEFAULT: u64 = 7000;
 const CMD_SUGGEST_PERCENT: usize = 25;
+const SHOW_SUGGESTION_COST: bool = false;
 
 const Command = enum {
     help,
@@ -45,10 +46,15 @@ fn printUsageLines(usage: []const []const u8) void {
     }
 }
 
-fn suggestCommand(input: []const u8) ?[]const u8 {
+const CommandSuggestion = struct {
+    name: []const u8,
+    cost: usize,
+};
+
+fn suggestCommand(input: []const u8) ?CommandSuggestion {
     const lookup = edit_distance.matchEnum(Command, input, CMD_SUGGEST_PERCENT) orelse return null;
     return switch (lookup) {
-        .closest => |tag| @tagName(tag),
+        .closest => |closest| .{ .name = @tagName(closest.tag), .cost = closest.cost },
         .match => null,
     };
 }
@@ -57,6 +63,46 @@ fn parseOptionName(arg: []const u8) ?[]const u8 {
     if (!std.mem.startsWith(u8, arg, "--")) return null;
     const option = arg[2..];
     return option[0 .. std.mem.indexOfScalar(u8, option, '=') orelse option.len];
+}
+
+fn logUnknownOption(command_name: []const u8, option_name: []const u8, suggestion: ?arg_parser.Suggestion) void {
+    if (suggestion) |s| {
+        if (SHOW_SUGGESTION_COST) {
+            writeLog("invalid {s} arguments: unknown option '--{s}' (did you mean '--{s}'? cost={d})\n", .{
+                command_name,
+                option_name,
+                s.name,
+                s.cost,
+            });
+        } else {
+            writeLog("invalid {s} arguments: unknown option '--{s}' (did you mean '--{s}'?)\n", .{
+                command_name,
+                option_name,
+                s.name,
+            });
+        }
+        return;
+    }
+    writeLog("invalid {s} arguments: unknown option '--{s}'\n", .{ command_name, option_name });
+}
+
+fn logUnknownCommand(command_token: []const u8, suggestion: ?CommandSuggestion) void {
+    if (suggestion) |s| {
+        if (SHOW_SUGGESTION_COST) {
+            writeLog("unknown command '{s}'. did you mean '{s}'? cost={d}. pass --help for usage\n", .{
+                command_token,
+                s.name,
+                s.cost,
+            });
+        } else {
+            writeLog("unknown command '{s}'. did you mean '{s}'? pass --help for usage\n", .{
+                command_token,
+                s.name,
+            });
+        }
+        return;
+    }
+    writeLog("unknown command '{s}'. pass --help for usage\n", .{command_token});
 }
 
 fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime options: arg_parser.Options, comptime command_name: []const u8) !arg_parser.ParsedType(spec_or_type, options) {
@@ -105,15 +151,7 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
         if (e == error.UnknownOption) {
             const option_name = if (tracked_args.last) |arg| parseOptionName(arg) else null;
             if (option_name) |name| {
-                if (arg_parser.suggestOption(spec_or_type, parse_options, name)) |suggestion| {
-                    writeLog("invalid {s} arguments: unknown option '--{s}' (did you mean '--{s}'?)\n", .{
-                        command_name,
-                        name,
-                        suggestion,
-                    });
-                    return e;
-                }
-                writeLog("invalid {s} arguments: unknown option '--{s}'\n", .{ command_name, name });
+                logUnknownOption(command_name, name, arg_parser.suggestOptionWithCost(spec_or_type, parse_options, name));
                 return e;
             }
         }
@@ -195,11 +233,7 @@ pub fn handle(allocator: std.mem.Allocator, version_string: []const u8) !bool {
             return true;
         }
 
-        if (suggestCommand(command_token)) |suggestion| {
-            writeLog("unknown command '{s}'. did you mean '{s}'? pass --help for usage\n", .{ command_token, suggestion });
-        } else {
-            writeLog("unknown command '{s}'. pass --help for usage\n", .{command_token});
-        }
+        logUnknownCommand(command_token, suggestCommand(command_token));
         return true;
     }
 
