@@ -527,7 +527,13 @@ fn qsearch(
                 continue;
             }
 
-            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold, .pruning)) {
+            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold - @divTrunc(
+                // engine.dbg(
+                //     "history value",
+                history_score - 5000
+                    // )
+                , 128), .pruning))
+            {
                 continue;
             }
         }
@@ -1172,12 +1178,12 @@ fn search(
                         extension += 1;
                     }
                 }
-            } else if (s_beta >= beta) {
-                return evaluation.clampScore(s_beta);
+            } else if (s_score >= beta) {
+                return evaluation.clampScore(s_score);
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
-                extension -= 2;
+                extension -= 3;
             }
         }
         num_searched += 1;
@@ -1230,7 +1236,7 @@ fn search(
                 }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
-                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth) + @intFromBool(is_pv);
+                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth) + @as(i32, 2) * @intFromBool(is_pv);
                 self.stackEntry(0).reduction =
                     if (raw_reduced_depth == reduced_depth)
                         reduction
