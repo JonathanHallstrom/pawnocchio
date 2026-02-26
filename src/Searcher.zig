@@ -1056,7 +1056,7 @@ fn search(
 
                 var futility_value = eval +
                     tunables.fp_base +
-                    @divTrunc(lmr_depth * tunables.fp_mult +
+                    @divTrunc(lmr_depth * (tunables.fp_mult + @divTrunc(lmr_depth * tunables.fp_quad, 1024)) +
                         @divTrunc(tuning.fpHistQ(history_terms) * tunables.fp_hist_mult, 4), 1024);
 
                 if (is_pv) {

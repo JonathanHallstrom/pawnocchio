@@ -283,7 +283,8 @@ const tunable_defaults = struct {
     pub const nmp_mult: i32 = 1185;
     pub const fp_depth_limit: i32 = 8249;
     pub const fp_base: i32 = 244;
-    pub const fp_mult: i32 = 76;
+    pub const fp_mult: i32 = 68;
+    pub const fp_quad: i32 = 8;
     pub const fp_pv_base: i32 = 110;
     pub const fp_pv_mult: i32 = 26;
     pub const fp_improving: i32 = 64;
@@ -513,6 +514,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "fp_depth_limit", .default = tunable_defaults.fp_depth_limit },
     .{ .name = "fp_base", .default = tunable_defaults.fp_base },
     .{ .name = "fp_mult", .default = tunable_defaults.fp_mult },
+    .{ .name = "fp_quad", .default = tunable_defaults.fp_quad },
     .{ .name = "fp_pv_base", .default = tunable_defaults.fp_pv_base },
     .{ .name = "fp_pv_mult", .default = tunable_defaults.fp_pv_mult },
     .{ .name = "fp_improving", .default = tunable_defaults.fp_improving },
@@ -742,6 +744,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var fp_depth_limit = tunable_defaults.fp_depth_limit;
     pub var fp_base = tunable_defaults.fp_base;
     pub var fp_mult = tunable_defaults.fp_mult;
+    pub var fp_quad = tunable_defaults.fp_quad;
     pub var fp_pv_base = tunable_defaults.fp_pv_base;
     pub var fp_pv_mult = tunable_defaults.fp_pv_mult;
     pub var fp_improving = tunable_defaults.fp_improving;
