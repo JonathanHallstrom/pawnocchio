@@ -32,6 +32,14 @@ const File = root.File;
 const WDL = root.WDL;
 const CastlingRights = root.CastlingRights;
 
+pub const Error = error{
+    TooManyPieces,
+    MissingKing,
+    PawnsOnFirstLastRank,
+    KingOnWrongRankAndCanCastle,
+    InvalidEpSquare,
+};
+
 fn LittleEndian(comptime T: type) type {
     return packed struct {
         val: T,
@@ -60,7 +68,7 @@ pub const MarlinPackedBoard = extern struct {
 
     const unmoved_rook = 6;
 
-    pub fn toBoard(self: MarlinPackedBoard) !Board {
+    pub fn toBoard(self: MarlinPackedBoard) Error!Board {
         var res: Board = .{};
 
         const occ = self.occupancy.toNative();

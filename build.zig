@@ -109,6 +109,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
         }),
+        .use_llvm = true,
     });
     exe_unit_tests.root_module.addImport("net", net_module);
     exe_unit_tests.root_module.addOptions("build_options", test_options);
@@ -121,6 +122,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
         }),
+        .use_llvm = true,
     });
     lib_unit_tests.root_module.addImport("net", net_module);
     lib_unit_tests.root_module.addOptions("build_options", test_options);
