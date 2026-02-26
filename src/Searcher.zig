@@ -447,11 +447,12 @@ fn qsearch(
     const tt_pv = is_pv or tt_entry.flags.is_pv;
 
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
-    var corrected_static_eval: i16 = raw_static_eval;
-    var static_eval: i16 = corrected_static_eval;
+    var corrected_static_eval = raw_static_eval;
+    var correction: i16 = 0;
+    var static_eval = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        correction, corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
@@ -792,10 +793,11 @@ fn search(
     var opponent_worsening = false;
     var raw_static_eval: i16 = evaluation.inf_score;
     var corrected_static_eval = raw_static_eval;
+    var correction: i16 = 0;
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
+        correction, corrected_static_eval = self.histories.correct(board, cur.move, cur.prev, self.applyContempt(raw_static_eval));
         cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         improving = cur.evals.improving(stm);
