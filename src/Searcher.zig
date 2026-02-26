@@ -33,6 +33,7 @@ const ScoreType = root.ScoreType;
 const engine = root.engine;
 const TypedMove = history.TypedMove;
 const SEE = root.SEE;
+const tuning = root.tuning;
 const tunables = root.tunable_constants;
 const write = root.write;
 const evaluate = evaluation.evaluate;
@@ -605,7 +606,7 @@ fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
 }
 
 fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
-    if (root.tuning.do_tuning) {
+    if (tuning.do_tuning) {
         return preCalculateBaseLMR(@min(depth, 32), @min(legal, 32), is_quiet);
     } else {
         const table = comptime blk: {
@@ -642,10 +643,10 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
     return @intCast(res);
 }
 
-const precomp_lmr_factorised = if (!root.tuning.do_factorized_tuning)
+const precomp_lmr_factorised = if (!tuning.do_factorized_tuning)
 blk: {
     @setEvalBranchQuota(1 << 30);
-    const N = root.tuning.factorized_lmr.N;
+    const N = tuning.factorized_lmr.N;
     var res: [1 << N]i16 = undefined;
 
     for (&res, 0..) |*val, i| {
@@ -653,15 +654,15 @@ blk: {
         for (0..N) |j| {
             params[j] = i >> j & 1 != 0;
         }
-        val.* = convolve(N, params, root.tuning.factorized_lmr);
+        val.* = convolve(N, params, tuning.factorized_lmr);
     }
 
     break :blk res;
 } else void{};
 
 inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
-    if (root.tuning.do_factorized_tuning) {
-        return convolve(N, params, root.tuning.factorized_lmr);
+    if (tuning.do_factorized_tuning) {
+        return convolve(N, params, tuning.factorized_lmr);
     } else {
         var i: usize = 0;
         inline for (0..N) |j| {
@@ -749,8 +750,6 @@ fn search(
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    // const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
-    // const tt_move_hist = if (has_tt_move) if (tt_move_quiet) self.histories.readQuietPruning(board, tt_entry.move, self.getConthistTables(stm)) else self.histories.readNoisy(board, tt_entry.move) else 0;
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
@@ -1017,16 +1016,25 @@ fn search(
         }
         const dest_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], move.to());
         const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
-        const history_score = if (is_quiet) self.histories.readQuietPruning(
+        const history_terms = self.histories.readMoveTerms(
             board,
             move,
             conthist_tables,
-        ) else self.histories.readNoisy(board, move);
+            is_quiet,
+        );
+        const lmr_depth_hist_score =
+            if (is_quiet) tuning.lmrDepthHistQ(history_terms) else tuning.lmrDepthHistN(history_terms);
+        const hp_hist_score =
+            if (is_quiet) tuning.hpHistQ(history_terms) else tuning.hpHistN(history_terms);
+        const lmr_hist_score =
+            if (is_quiet) tuning.lmrHistQ(history_terms) else tuning.lmrHistN(history_terms);
+        const rfp_hist_score =
+            if (is_quiet) tuning.rfpHistQ(history_terms) else tuning.rfpHistN(history_terms);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
-            base_lmr -= @intCast(lmr_history_mult * history_score >> 13);
+            base_lmr -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
             var lmr_depth: i32 = (depth << 10) - base_lmr;
 
             if (!is_pv and
@@ -1040,7 +1048,7 @@ fn search(
 
             if (is_quiet) {
                 if (lmr_depth <= tunables.history_pruning_depth_limit and
-                    history_score < depth * tunables.history_pruning_mult + tunables.history_pruning_offs)
+                    hp_hist_score < depth * tunables.history_pruning_mult + tunables.history_pruning_offs)
                 {
                     mp.skip_quiets = true;
                     continue;
@@ -1049,7 +1057,7 @@ fn search(
                 var futility_value = eval +
                     tunables.fp_base +
                     @divTrunc(lmr_depth * tunables.fp_mult +
-                        @divTrunc(history_score * tunables.fp_hist_mult, 4), 1024);
+                        @divTrunc(tuning.fpHistQ(history_terms) * tunables.fp_hist_mult, 4), 1024);
 
                 if (is_pv) {
                     futility_value += tunables.fp_pv_base + tunables.fp_pv_mult * depth;
@@ -1072,7 +1080,7 @@ fn search(
                 }
             } else {
                 if (lmr_depth <= tunables.noisy_history_pruning_depth_limit and
-                    history_score < depth * tunables.noisy_history_pruning_mult + tunables.noisy_history_pruning_offs)
+                    hp_hist_score < depth * tunables.noisy_history_pruning_mult + tunables.noisy_history_pruning_offs)
                 {
                     continue;
                 }
@@ -1185,7 +1193,7 @@ fn search(
 
         const score = blk: {
             self.makeMove(stm, move);
-            self.stackEntry(0).history_score = history_score;
+            self.stackEntry(0).history_score = rfp_hist_score;
             defer self.unmakeMove(stm, move);
 
             const gives_check = self.stackEntry(0).board.checkers != 0;
@@ -1201,7 +1209,7 @@ fn search(
             if (depth >= 3 and num_searched > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
-                reduction -= @intCast(history_lmr_mult * history_score >> 13);
+                reduction -= @intCast(history_lmr_mult * lmr_hist_score >> 13);
                 reduction -= @intCast(tunables.lmr_corrhist_mult * corrhists_squared >> 32);
                 reduction += getFactorisedLmr(9, .{
                     is_pv,
@@ -1216,8 +1224,13 @@ fn search(
                 });
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
 
+                if (tt_pv) {
+                    reduction -= @as(i32, tunables.lmr_ttpv_score) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.score > alpha);
+                    reduction -= @as(i32, tunables.lmr_ttpv_depth) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.depth >= depth);
+                }
+
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
-                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + @intFromBool(is_pv));
+                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth) + @intFromBool(is_pv);
                 self.stackEntry(0).reduction =
                     if (raw_reduced_depth == reduced_depth)
                         reduction

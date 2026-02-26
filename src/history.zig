@@ -92,6 +92,15 @@ pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
 pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
 pub const ConthistTables = [NUM_CONTHISTS]*ContHistory.ContHistTable;
 
+pub const MoveHistoryTerms = struct {
+    quiet: i32 = 0,
+    pawn: i32 = 0,
+    cont1: i32 = 0,
+    cont2: i32 = 0,
+    cont4: i32 = 0,
+    noisy: i32 = 0,
+};
+
 pub const QuietHistory = struct {
     vals: [2 * 64 * 64 * 2 * 2]i16,
 
@@ -253,23 +262,6 @@ pub const ContHistory = struct {
             gravityUpdateCont(self.entry(col, move), total_cont, upd);
         }
 
-        pub inline fn update(
-            self: *ContHistTable,
-            total_cont: i64,
-            col: Colour,
-            move: TypedMove,
-            depth: i32,
-            is_bonus: bool,
-            extra: i32,
-        ) void {
-            self.updateRaw(
-                total_cont,
-                col,
-                move,
-                extra + if (is_bonus) bonus(depth) else -penalty(depth),
-            );
-        }
-
         pub inline fn read(
             self: *const ContHistTable,
             col: Colour,
@@ -281,17 +273,53 @@ pub const ContHistory = struct {
 
     vals: [2 * 6 * 64]ContHistTable,
 
-    fn bonus(depth: i32) i16 {
+    fn bonus(comptime idx: usize, depth: i32) i16 {
+        const mult, const offs, const max = switch (idx) {
+            0 => .{
+                tunable_constants.cont1_history_bonus_mult,
+                tunable_constants.cont1_history_bonus_offs,
+                tunable_constants.cont1_history_bonus_max,
+            },
+            1 => .{
+                tunable_constants.cont2_history_bonus_mult,
+                tunable_constants.cont2_history_bonus_offs,
+                tunable_constants.cont2_history_bonus_max,
+            },
+            2 => .{
+                tunable_constants.cont4_history_bonus_mult,
+                tunable_constants.cont4_history_bonus_offs,
+                tunable_constants.cont4_history_bonus_max,
+            },
+            else => unreachable,
+        };
         return @intCast(@min(
-            depth * tunable_constants.cont_history_bonus_mult + tunable_constants.cont_history_bonus_offs,
-            tunable_constants.cont_history_bonus_max,
+            depth * mult + offs,
+            max,
         ));
     }
 
-    fn penalty(depth: i32) i16 {
+    fn penalty(comptime idx: usize, depth: i32) i16 {
+        const mult, const offs, const max = switch (idx) {
+            0 => .{
+                tunable_constants.cont1_history_penalty_mult,
+                tunable_constants.cont1_history_penalty_offs,
+                tunable_constants.cont1_history_penalty_max,
+            },
+            1 => .{
+                tunable_constants.cont2_history_penalty_mult,
+                tunable_constants.cont2_history_penalty_offs,
+                tunable_constants.cont2_history_penalty_max,
+            },
+            2 => .{
+                tunable_constants.cont4_history_penalty_mult,
+                tunable_constants.cont4_history_penalty_offs,
+                tunable_constants.cont4_history_penalty_max,
+            },
+            else => unreachable,
+        };
         return @intCast(@min(
-            depth * tunable_constants.cont_history_penalty_mult + tunable_constants.cont_history_penalty_offs,
-            tunable_constants.cont_history_penalty_max,
+            depth * mult + offs,
+            max,
         ));
     }
 
@@ -349,52 +377,34 @@ pub const HistoryTable = struct {
         return res;
     }
 
-    pub inline fn readQuietPruning(
+    pub inline fn readMoveTerms(
         self: *const HistoryTable,
         board: *const Board,
         move: Move,
         tables: ConthistTables,
-    ) i32 {
+        is_quiet: bool,
+    ) MoveHistoryTerms {
         const typed = TypedMove.fromBoard(board, move);
-        var res: i32 = 0;
-        res += tunable_constants.quiet_pruning_weight * self.quiet.read(board, typed);
-        res += tunable_constants.pawn_pruning_weight * self.pawn.read(board, typed);
-
-        const weights = [NUM_CONTHISTS]i32{
-            tunable_constants.cont1_pruning_weight,
-            tunable_constants.cont2_pruning_weight,
-            tunable_constants.cont4_pruning_weight,
-        };
-
-        inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
-            const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            res += weights[i] * table.read(stm, typed);
+        var terms: MoveHistoryTerms = .{};
+        if (!is_quiet) {
+            terms.noisy = self.noisy.read(board, typed);
+            return terms;
         }
 
-        return @divTrunc(res, 1024);
-    }
+        terms.quiet = self.quiet.read(board, typed);
+        terms.pawn = self.pawn.read(board, typed);
 
-    pub inline fn readQuietOrdering(
-        self: *const HistoryTable,
-        board: *const Board,
-        move: Move,
-        tables: ConthistTables,
-    ) i32 {
-        const typed = TypedMove.fromBoard(board, move);
-        var res: i32 = 0;
-        res += tunable_constants.quiet_ordering_weight * self.quiet.read(board, typed);
-        res += tunable_constants.pawn_ordering_weight * self.pawn.read(board, typed);
-        const weights = [NUM_CONTHISTS]i32{
-            tunable_constants.cont1_ordering_weight,
-            tunable_constants.cont2_ordering_weight,
-            tunable_constants.cont4_ordering_weight,
+        const cont_values = [NUM_CONTHISTS]*i32{
+            &terms.cont1,
+            &terms.cont2,
+            &terms.cont4,
         };
         inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;
-            res += weights[i] * table.read(stm, typed);
+            cont_values[i].* = table.read(stm, typed);
         }
 
-        return @divTrunc(res, 1024);
+        return terms;
     }
 
     pub fn updateCont(
@@ -413,9 +423,10 @@ pub const HistoryTable = struct {
             const cstm = if (offs % 2 == 0) stm.flipped() else stm;
             cont += table.read(cstm, typed);
         }
-        inline for (CONTHIST_OFFSETS, tables) |offs, table| {
+        inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
             const cstm = if (offs % 2 == 0) stm.flipped() else stm;
-            table.update(cont, cstm, typed, depth, is_bonus, extra);
+            const upd = extra + if (is_bonus) ContHistory.bonus(i, depth) else -ContHistory.penalty(i, depth);
+            table.updateRaw(cont, cstm, typed, upd);
         }
     }
 
