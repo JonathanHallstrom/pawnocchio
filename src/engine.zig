@@ -216,7 +216,7 @@ fn datagenWorker(
                 false,
                 true,
             );
-            const search_move = searcher.root_move;
+            const search_move = searcher.root_move orelse break :game_loop;
             const search_score = searcher.full_width_score;
             const adjusted = if (board.stm == .white) search_score else -search_score;
             const adjusted_normalized = if (board.stm == .white) searcher.full_width_score_normalized else -searcher.full_width_score_normalized;
@@ -243,9 +243,6 @@ fn datagenWorker(
             }
             switch (board.stm) {
                 inline else => |stm| {
-                    if (search_move.isNull()) {
-                        break :game_loop;
-                    }
                     board.makeMove(stm, search_move, root.Board.NullEvalState{});
                 },
             }

@@ -21,6 +21,8 @@ const edit_distance = @import("edit_distance.zig");
 const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
+const Colour = root.Colour;
+const PieceType = root.PieceType;
 
 const BENCH_DEPTH_DEFAULT: i32 = 11;
 const DATAGEN_NODES_DEFAULT: u64 = 7000;
@@ -636,9 +638,11 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
     defer zobrist_set.deinit();
     var score_counts: []u64 = try allocator.alloc(u64, 1 + std.math.maxInt(u16));
     defer allocator.free(score_counts);
-    var piece_counts: [33]u64 = .{0} ** 33;
-    var phase_counts: [25]u64 = .{0} ** 25;
+    var total_piece_counts: [33]u64 = @splat(0);
+    var phase_counts: [25]u64 = @splat(0);
 
+    const PieceCountTable = std.EnumArray(PieceType, [11]u64);
+    var piece_counts: [2]std.EnumArray(PieceType, [11]u64) = @splat(PieceCountTable.initFill(@splat(0)));
     if (!approximate) {
         try zobrist_set.ensureTotalCapacity(@intCast((stat.size + 3) / 4));
     }
@@ -723,8 +727,17 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
                     }
                 }
             }
-            piece_counts[@popCount(board.occupancy())] += 1;
+            total_piece_counts[@popCount(board.occupancy())] += 1;
             phase_counts[@min(24, board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 }))] += 1;
+            inline for (.{
+                Colour.white,
+                Colour.black,
+            }) |col| {
+                for (PieceType.all) |pt| {
+                    const count = @popCount(board.pieceFor(col, pt));
+                    piece_counts[col.toInt()].getPtr(pt)[count] += 1;
+                }
+            }
             score_counts[@intCast(@as(isize, move_eval_pair.eval.toNative()) - std.math.minInt(i16))] += 1;
             if (approximate) {
                 approximator.add(board.hash);
@@ -750,26 +763,37 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
     const incorrect_tb = total_tb - (tb_results[0][0] + tb_results[1][1] + tb_results[2][2]);
     write(
         \\
+        \\games: {}
+        \\positions: {}
         \\average exit: {d:.2}
         \\unique positions: {}/{} ({}%)
-        \\piece count distribution: {any}
-        \\phase distribution: {any}
-        \\king position distribution: {any}
-        \\tb results: {any}
+        \\piece count distribution: {f}
+        \\phase distribution: {f}
+        \\white piece distribution: {f}
+        \\black piece distribution: {f}
+        \\king pos distribution: {f}
+        \\tb results: {f}
         \\games whose outcome do not match TBs: {d:.2}%
         \\wins: {} ({}%)
         \\draws: {} ({}%)
         \\losses: {} ({}%)
-        \\
+        \\king bucket distr:
+        \\{f}
+        \\king bucket distr (mirrored):
+        \\{f}
     , .{
+        game_count,
+        position_count,
         @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
         unique_count,
         position_count,
         @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
-        piece_counts,
-        phase_counts,
-        king_pos,
-        tb_results,
+        formatValue(total_piece_counts),
+        formatValue(phase_counts),
+        formatEnumArray(PieceType, piece_counts[Colour.white.toInt()]),
+        formatEnumArray(PieceType, piece_counts[Colour.black.toInt()]),
+        formatArrayNewline(@as([8][8]u64, @bitCast(king_pos))),
+        formatArrayNewline(tb_results),
         @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb))),
         wins,
         100 * wins / @max(@as(u64, 1), game_count),
@@ -777,23 +801,9 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         100 * draws / @max(@as(u64, 1), game_count),
         losses,
         100 * losses / @max(@as(u64, 1), game_count),
+        formatPositionCounts(false, king_pos),
+        formatPositionCounts(true, king_pos),
     });
-    write("king bucket distr:\n", .{});
-    for (0..8) |i| {
-        for (0..8) |j| {
-            const count = king_pos[i * 8 + j];
-            write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(@max(@as(u64, 1), position_count)))});
-        }
-        write("\n", .{});
-    }
-    write("king bucket distr (with mirroring):\n", .{});
-    for (0..8) |i| {
-        for (0..4) |j| {
-            const count = king_pos[i * 8 + j] + king_pos[i * 8 + 7 - j];
-            write("{d:>5.2} ", .{@as(f64, @floatFromInt(count * 100)) / @as(f64, @floatFromInt(@max(@as(u64, 1), position_count)))});
-        }
-        write("\n", .{});
-    }
 
     write("writing score distribution to 'score_distribution.txt'\n", .{});
     var score_distr_file = try createOutputFile("score_distribution.txt", parsed.@"allow-overwrite");
@@ -1107,4 +1117,137 @@ fn runBench(bench_depth: i32) !void {
     // more realistically this would indicate that the timer is broken
     const elapsed = @max(1, timer.read());
     write("{} nodes {} nps\n", .{ total_nodes, @as(u256, total_nodes) * std.time.ns_per_s / elapsed });
+}
+
+fn EnumArrayFormatter(comptime Enum: type, comptime Table: type) type {
+    return struct {
+        table: Table,
+
+        pub fn format(
+            self: @This(),
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            try writer.writeAll("{\n");
+            inline for (std.meta.fields(Enum)) |field| {
+                const tag: Enum = @field(Enum, field.name);
+                try writer.print("\t{s}: {f},\n", .{ field.name, formatValue(self.table.get(tag)) });
+            }
+            try writer.writeAll("}");
+        }
+    };
+}
+
+fn formatEnumArray(
+    comptime Enum: type,
+    table: anytype,
+) EnumArrayFormatter(Enum, @TypeOf(table)) {
+    return .{ .table = table };
+}
+
+fn PositionCountsFormatter(comptime mirrored: bool) type {
+    return struct {
+        table: [64]u64,
+
+        const column_len = if (mirrored) 4 else 8;
+
+        fn percentage(self: @This(), i: usize, j: usize) f64 {
+            const row = self.table[8 * i ..][0..8];
+
+            const count = if (mirrored) row[j] + row[7 - j] else row[j];
+            const countf: f64 = @floatFromInt(count);
+
+            const total: usize = @max(1, @reduce(.Add, @as(@Vector(64, u64), self.table)));
+            const totalf: f64 = @floatFromInt(total);
+
+            return countf * 100 / totalf;
+        }
+
+        pub fn format(
+            self: @This(),
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            for (0..8) |i| {
+                for (0..column_len) |j| {
+                    try writer.print("{d:>5.2} ", .{self.percentage(i, j)});
+                }
+                try writer.writeAll("\n");
+            }
+        }
+    };
+}
+
+fn formatPositionCounts(
+    comptime mirrored: bool,
+    table: [64]u64,
+) PositionCountsFormatter(mirrored) {
+    return .{ .table = table };
+}
+
+fn ArrayFormatter(comptime Array: type) type {
+    return struct {
+        table: Array,
+
+        pub fn format(
+            self: @This(),
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            try writer.writeAll("[");
+            for (self.table, 0..) |elem, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try writer.print("{f}", .{formatValue(elem)});
+            }
+            try writer.writeAll("]");
+        }
+    };
+}
+
+fn formatArray(
+    table: anytype,
+) ArrayFormatter(@TypeOf(table)) {
+    return .{ .table = table };
+}
+
+fn ValueFormatter(comptime T: type) type {
+    return struct {
+        value: T,
+
+        pub fn format(
+            self: @This(),
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            switch (@typeInfo(T)) {
+                .array => try writer.print("{f}", .{formatArray(self.value)}),
+                else => try writer.print("{any}", .{self.value}),
+            }
+        }
+    };
+}
+
+fn formatValue(
+    value: anytype,
+) ValueFormatter(@TypeOf(value)) {
+    return .{ .value = value };
+}
+
+fn ArrayNewlineFormatter(comptime Array: type) type {
+    return struct {
+        table: Array,
+
+        pub fn format(
+            self: @This(),
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            try writer.writeAll("[\n");
+            for (0..self.table.len) |i| {
+                try writer.print("\t{f},\n", .{formatValue(self.table[i])});
+            }
+            try writer.writeAll("]");
+        }
+    };
+}
+
+fn formatArrayNewline(
+    table: anytype,
+) ArrayNewlineFormatter(@TypeOf(table)) {
+    return .{ .table = table };
 }

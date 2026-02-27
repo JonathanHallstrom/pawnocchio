@@ -313,9 +313,6 @@ pub fn main() !void {
             root.engine.waitUntilDoneSearching();
             write("readyok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "d")) {
-            // for (board.toString()) |row| {
-            //     write("{s}\n", .{row});
-            // }
             write("zobrist: {}\n", .{board.hash});
             write("{s}\n", .{board.toFen().slice()});
         } else if (std.ascii.eqlIgnoreCase(command, "go")) {

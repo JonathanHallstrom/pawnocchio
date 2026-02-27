@@ -106,8 +106,8 @@ nodes: u64 align(std.atomic.cache_line),
 hashes: [MAX_PLY]u64,
 eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
-root_move: Move,
-root_score: i16,
+root_move: ?Move,
+root_score: ?i16,
 full_width_score: i16,
 full_width_score_normalized: i16,
 nodes_prev_check: u64,
@@ -389,6 +389,112 @@ inline fn lerp(
     return @intCast(a - (((a - b) * t) >> granularity_log2));
 }
 
+fn float(x: anytype) f64 {
+    return switch (@typeInfo(@TypeOf(x))) {
+        .int, .comptime_int => @floatFromInt(x),
+        .float, .comptime_float => @floatCast(x),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
+    };
+}
+
+fn int(comptime T: type, x: anytype) T {
+    return switch (@typeInfo(@TypeOf(x))) {
+        .int, .comptime_int => @intCast(x),
+        .float, .comptime_float => @intFromFloat(x),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
+    };
+}
+
+fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
+    const base = if (is_quiet) tunables.lmr_quiet_base else tunables.lmr_noisy_base;
+    const depth_mult = if (is_quiet) tunables.lmr_quiet_depth_mult else tunables.lmr_noisy_depth_mult;
+    const legal_mult = if (is_quiet) tunables.lmr_quiet_legal_mult else tunables.lmr_noisy_legal_mult;
+    const depth_offs = if (is_quiet) tunables.lmr_quiet_depth_offs else tunables.lmr_noisy_depth_offs;
+    const legal_offs = if (is_quiet) tunables.lmr_quiet_legal_offs else tunables.lmr_noisy_legal_offs;
+
+    var reduction: i32 = base;
+
+    const depth_factor = int(i64, @log2(float(depth)) * float(depth_mult) + float(depth_offs));
+    const legal_factor = int(i64, @log2(float(legal)) * float(legal_mult) + float(legal_offs));
+    reduction += @intCast(depth_factor * legal_factor >> 10);
+
+    return reduction;
+}
+
+fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
+    if (tuning.do_tuning) {
+        return preCalculateBaseLMR(@min(depth, 32), @min(legal, 32), is_quiet);
+    } else {
+        const table = comptime blk: {
+            @setEvalBranchQuota(1 << 30);
+            var res: [32][32][2]u16 = undefined;
+            for (1..33) |d| {
+                for (1..33) |l| {
+                    for (0..2) |q| {
+                        res[d - 1][l - 1][q] = preCalculateBaseLMR(d, l, q == 1);
+                    }
+                }
+            }
+            break :blk res;
+        };
+        return (&(&(&table)[@intCast(@min(depth - 1, 31))])[@min(legal - 1, 31)])[@intFromBool(is_quiet)];
+    }
+}
+
+inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
+    var res: i32 = 0;
+    comptime var two = 0;
+    comptime var three = 0;
+    inline for (0..N) |i| {
+        res += weights.one[i] * @intFromBool(params[i]);
+        inline for (i + 1..N) |j| {
+            res += weights.two[two] * @intFromBool(params[i] and params[j]);
+            inline for (j + 1..N) |k| {
+                res += weights.three[three] * @intFromBool(params[i] and params[j] and params[k]);
+                three += 1;
+            }
+            two += 1;
+        }
+    }
+    return @intCast(res);
+}
+
+const precomp_lmr_factorised = if (!tuning.do_factorized_tuning)
+blk: {
+    @setEvalBranchQuota(1 << 30);
+    const N = tuning.factorized_lmr.N;
+    var res: [1 << N]i16 = undefined;
+
+    for (&res, 0..) |*val, i| {
+        var params: [N]bool = undefined;
+        for (0..N) |j| {
+            params[j] = i >> j & 1 != 0;
+        }
+        val.* = convolve(N, params, tuning.factorized_lmr);
+    }
+
+    break :blk res;
+} else void{};
+
+inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
+    if (tuning.do_factorized_tuning) {
+        return convolve(N, params, tuning.factorized_lmr);
+    } else {
+        var i: usize = 0;
+        inline for (0..N) |j| {
+            i |= @as(usize, @intFromBool(params[j])) << j;
+        }
+        return precomp_lmr_factorised[i];
+    }
+}
+
+fn checkSearch(
+    self: *Searcher,
+    comptime is_root: bool,
+) bool {
+    return !(is_root and self.is_main_thread and self.root_move == null) and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes));
+}
+
 fn qsearch(
     self: *Searcher,
     comptime is_root: bool,
@@ -403,7 +509,7 @@ fn qsearch(
     var alpha = alpha_original;
     var beta = beta_original;
     self.nodes += 1;
-    if (self.stop.load(.acquire) or (!is_root and self.is_main_thread and self.limits.checkSearch(self.nodes))) {
+    if (self.checkSearch(is_root)) {
         self.stop.store(true, .release);
         return 0;
     }
@@ -574,105 +680,6 @@ fn qsearch(
     return best_score;
 }
 
-fn float(x: anytype) f64 {
-    return switch (@typeInfo(@TypeOf(x))) {
-        .int, .comptime_int => @floatFromInt(x),
-        .float, .comptime_float => @floatCast(x),
-        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
-    };
-}
-
-fn int(comptime T: type, x: anytype) T {
-    return switch (@typeInfo(@TypeOf(x))) {
-        .int, .comptime_int => @intCast(x),
-        .float, .comptime_float => @intFromFloat(x),
-        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
-    };
-}
-
-fn preCalculateBaseLMR(depth: i32, legal: i32, is_quiet: bool) i32 {
-    const base = if (is_quiet) tunables.lmr_quiet_base else tunables.lmr_noisy_base;
-    const depth_mult = if (is_quiet) tunables.lmr_quiet_depth_mult else tunables.lmr_noisy_depth_mult;
-    const legal_mult = if (is_quiet) tunables.lmr_quiet_legal_mult else tunables.lmr_noisy_legal_mult;
-    const depth_offs = if (is_quiet) tunables.lmr_quiet_depth_offs else tunables.lmr_noisy_depth_offs;
-    const legal_offs = if (is_quiet) tunables.lmr_quiet_legal_offs else tunables.lmr_noisy_legal_offs;
-
-    var reduction: i32 = base;
-
-    const depth_factor = int(i64, @log2(float(depth)) * float(depth_mult) + float(depth_offs));
-    const legal_factor = int(i64, @log2(float(legal)) * float(legal_mult) + float(legal_offs));
-    reduction += @intCast(depth_factor * legal_factor >> 10);
-
-    return reduction;
-}
-
-fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
-    if (tuning.do_tuning) {
-        return preCalculateBaseLMR(@min(depth, 32), @min(legal, 32), is_quiet);
-    } else {
-        const table = comptime blk: {
-            @setEvalBranchQuota(1 << 30);
-            var res: [32][32][2]u16 = undefined;
-            for (1..33) |d| {
-                for (1..33) |l| {
-                    for (0..2) |q| {
-                        res[d - 1][l - 1][q] = preCalculateBaseLMR(d, l, q == 1);
-                    }
-                }
-            }
-            break :blk res;
-        };
-        return (&(&(&table)[@intCast(@min(depth - 1, 31))])[@min(legal - 1, 31)])[@intFromBool(is_quiet)];
-    }
-}
-
-inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
-    var res: i32 = 0;
-    comptime var two = 0;
-    comptime var three = 0;
-    inline for (0..N) |i| {
-        res += weights.one[i] * @intFromBool(params[i]);
-        inline for (i + 1..N) |j| {
-            res += weights.two[two] * @intFromBool(params[i] and params[j]);
-            inline for (j + 1..N) |k| {
-                res += weights.three[three] * @intFromBool(params[i] and params[j] and params[k]);
-                three += 1;
-            }
-            two += 1;
-        }
-    }
-    return @intCast(res);
-}
-
-const precomp_lmr_factorised = if (!tuning.do_factorized_tuning)
-blk: {
-    @setEvalBranchQuota(1 << 30);
-    const N = tuning.factorized_lmr.N;
-    var res: [1 << N]i16 = undefined;
-
-    for (&res, 0..) |*val, i| {
-        var params: [N]bool = undefined;
-        for (0..N) |j| {
-            params[j] = i >> j & 1 != 0;
-        }
-        val.* = convolve(N, params, tuning.factorized_lmr);
-    }
-
-    break :blk res;
-} else void{};
-
-inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
-    if (tuning.do_factorized_tuning) {
-        return convolve(N, params, tuning.factorized_lmr);
-    } else {
-        var i: usize = 0;
-        inline for (0..N) |j| {
-            i |= @as(usize, @intFromBool(params[j])) << j;
-        }
-        return precomp_lmr_factorised[i];
-    }
-}
-
 fn search(
     self: *Searcher,
     comptime is_root: bool,
@@ -688,7 +695,7 @@ fn search(
     var beta = beta_original;
 
     self.nodes += 1;
-    if (!(is_root and self.is_main_thread and self.root_move.isNull()) and (self.stop.load(.acquire) or self.limits.checkSearch(self.nodes))) {
+    if (self.checkSearch(is_root)) {
         self.stop.store(true, .release);
         return 0;
     }
@@ -714,7 +721,7 @@ fn search(
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
     if (self.ply >= MAX_PLY - 1) {
-        return self.rawEval(stm);
+        return if (is_in_check) 0 else self.rawEval(stm);
     }
 
     if (!is_root) {
@@ -1001,8 +1008,8 @@ fn search(
         if (!board.isLegal(stm, move)) {
             continue;
         }
-        if (is_root and self.root_move.isNull()) {
-            self.root_move = move;
+        if (is_root) {
+            self.root_move = self.root_move orelse move;
         }
         num_legal += 1;
 
@@ -1501,8 +1508,8 @@ pub fn ensureInvariants(self: *Searcher) void {
     self.ply = 0;
     self.nodes = 0;
     self.tbhits = 0;
-    self.root_move = Move.init();
-    self.root_score = 0;
+    self.root_move = null;
+    self.root_score = null;
     self.pvs[0].len = 0;
     for (&self.search_stack) |*stack_entry| {
         stack_entry.reset();
@@ -1561,10 +1568,11 @@ fn pickBestMove(b: *const Board) struct { i16, Move } {
         if (searcher.search_id.load(.seq_cst) != cur_id) {
             continue;
         }
-        const move = searcher.root_move;
+        const move = searcher.root_move orelse continue;
         switch (b.stm) {
             inline else => |stm| {
                 if (!b.isPseudoLegal(stm, move) or !b.isLegal(stm, move)) {
+                    write("info string Illegal move {s} encountered in root\n", .{move.toString(b).slice()});
                     continue;
                 }
             },
@@ -1597,7 +1605,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     _ = self.search_id.fetchAdd(1, .seq_cst);
 
     var previous_score: i32 = 0;
-    var previous_move: Move = Move.init();
+    var previous_move: ?Move = null;
     var completed_depth: i32 = 0;
     self.eval_stability = 0;
     self.move_stability = 0;
@@ -1630,14 +1638,20 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 if (self.stop.load(.acquire)) {
                     break;
                 }
-                const should_print = is_main_thread and self.limits.shouldPrintInfoInAspiration();
+                const should_print = is_main_thread and
+                    !quiet and
+                    !self.minimal and
+                    !evaluation.isMateScore(score) and
+                    self.root_move != null;
                 if (score >= aspiration_upper) {
                     aspiration_lower = @intCast(@max(aspiration_upper - (quantized_window >> 10), aspiration_lower));
                     aspiration_upper = @intCast(@min(score + (quantized_window >> 10), evaluation.inf_score));
                     failhigh_reduction = @min(failhigh_reduction + tunables.failhigh_add, tunables.failhigh_max);
                     if (should_print) {
-                        if (!quiet and !self.minimal and !evaluation.isMateScore(score) and !self.root_move.isNull()) {
-                            self.writeInfo(score, depth, .lower, self.root_move);
+                        if (self.root_move) |root_move| {
+                            if (self.limits.shouldPrintInfoInAspiration()) {
+                                self.writeInfo(score, depth, .lower, root_move);
+                            }
                         }
                     }
                 } else if (score <= aspiration_lower) {
@@ -1645,8 +1659,10 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     aspiration_lower = @intCast(@max(score - (quantized_window >> 10), -evaluation.inf_score));
                     failhigh_reduction = failhigh_reduction * tunables.failhigh_mult >> 10;
                     if (should_print) {
-                        if (!quiet and !self.minimal and !evaluation.isMateScore(score) and !self.root_move.isNull()) {
-                            self.writeInfo(score, depth, .upper, self.root_move);
+                        if (self.root_move) |root_move| {
+                            if (self.limits.shouldPrintInfoInAspiration()) {
+                                self.writeInfo(score, depth, .upper, root_move);
+                            }
                         }
                     }
                 } else {
@@ -1674,8 +1690,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         completed_depth = depth;
         if (is_main_thread) {
             if (!quiet and !self.minimal) {
-                std.debug.assert(!self.root_move.isNull());
-                self.writeInfo(self.full_width_score, depth, .completed, self.root_move);
+                std.debug.assert(self.root_move != null);
+                self.writeInfo(self.full_width_score, depth, .completed, self.root_move.?);
             }
         }
 
@@ -1696,8 +1712,9 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 if (searcher.root_move == self.root_move) {
                     move_stability += searcher.move_stability;
                 }
+
                 total_nodes += searcher.nodes;
-                best_move_count += searcher.node_counts[self.root_move.from().toInt()][self.root_move.to().toInt()];
+                best_move_count += searcher.node_counts[self.root_move.?.from().toInt()][self.root_move.?.to().toInt()];
             }
             const num_searchers: u32 = @intCast(engine.thread_pool.searchers.items.len);
             if (self.limits.checkRootTime(
