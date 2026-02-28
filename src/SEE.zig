@@ -111,13 +111,15 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
 
     var stm = board.stm.flipped();
 
-    const all_pinned = board.pinned[0] | board.pinned[1];
+    const white_pinned = board.pinned(.white);
+    const black_pinned = board.pinned(.black);
+    const all_pinned = white_pinned | black_pinned;
 
     const white_king_to_ray = Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(.white)), to);
     const black_king_to_ray = Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(.black)), to);
 
-    const white_allowed_pinned = board.pinned[0] & white_king_to_ray;
-    const black_allowed_pinned = board.pinned[1] & black_king_to_ray;
+    const white_allowed_pinned = white_pinned & white_king_to_ray;
+    const black_allowed_pinned = black_pinned & black_king_to_ray;
 
     const allowed_pinned = all_pinned & (white_allowed_pinned | black_allowed_pinned);
 

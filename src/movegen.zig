@@ -270,7 +270,7 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
 }
 
 pub inline fn generateKnightQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
-    const knights = board.knightsFor(stm) & ~(&board.pinned)[stm.toInt()];
+    const knights = board.knightsFor(stm) & ~board.pinned(stm);
     const occ = board.occupancy();
 
     var from_iter = Bitboard.iterator(knights);
@@ -286,7 +286,7 @@ pub inline fn generateKnightNoisies(comptime stm: Colour, noalias board: *const 
     const knights = board.knightsFor(stm);
     const them = board.occupancyFor(stm.flipped());
 
-    var from_iter = Bitboard.iterator(knights & ~(&board.pinned)[stm.toInt()]);
+    var from_iter = Bitboard.iterator(knights & ~board.pinned(stm));
     while (from_iter.next()) |from| {
         var to_iter = Bitboard.iterator(Bitboard.knightMoves(from) & them & check_mask);
         while (to_iter.next()) |to| {
@@ -354,7 +354,7 @@ pub inline fn generateSliderQuiets(comptime stm: Colour, noalias board: *const B
         var from_iter = Bitboard.iterator(rook_sliders);
         while (from_iter.next()) |from| {
             var reachable = attacks.getRookAttacks(from, occ) & ~occ & check_mask;
-            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
+            if (from.toBitboard() & board.pinned(stm) != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
             while (to_iter.next()) |to| {
@@ -366,7 +366,7 @@ pub inline fn generateSliderQuiets(comptime stm: Colour, noalias board: *const B
         var from_iter = Bitboard.iterator(bishop_sliders);
         while (from_iter.next()) |from| {
             var reachable = attacks.getBishopAttacks(from, occ) & ~occ & check_mask;
-            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
+            if (from.toBitboard() & board.pinned(stm) != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
             while (to_iter.next()) |to| {
@@ -391,7 +391,7 @@ pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const 
         var from_iter = Bitboard.iterator(rook_sliders);
         while (from_iter.next()) |from| {
             var reachable = attacks.getRookAttacks(from, occ) & them & check_mask;
-            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
+            if (from.toBitboard() & board.pinned(stm) != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
             while (to_iter.next()) |to| {
@@ -403,7 +403,7 @@ pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const 
         var from_iter = Bitboard.iterator(bishop_slides);
         while (from_iter.next()) |from| {
             var reachable = attacks.getBishopAttacks(from, occ) & them & check_mask;
-            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
+            if (from.toBitboard() & board.pinned(stm) != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
 
             var to_iter = Bitboard.iterator(reachable);

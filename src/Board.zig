@@ -53,8 +53,9 @@ nonpawn_hash: [2]u64 = .{0} ** 2,
 
 castling_rights: CastlingRights = CastlingRights.init(),
 
-pinned: [2]u64 = .{0} ** 2,
-// pinner: [2]u64 = .{0} ** 2,
+orthogonal_pins: [2]u64 = .{0} ** 2,
+diagonal_pins: [2]u64 = .{0} ** 2,
+pinners: [2]u64 = .{0} ** 2,
 checkers: u64 = 0,
 threats: [2]u64 = .{0} ** 2,
 lost_squares: [2]u64 = .{0} ** 2,
@@ -97,6 +98,22 @@ pub inline fn kingFor(self: Board, col: Colour) u64 {
 
 pub inline fn pieceFor(self: Board, col: Colour, piece: PieceType) u64 {
     return self.pieces[piece.toInt()] & self.occupancyFor(col);
+}
+
+pub inline fn pinned(self: *const Board, col: Colour) u64 {
+    return (&self.orthogonal_pins)[col.toInt()] | (&self.diagonal_pins)[col.toInt()];
+}
+
+inline fn pinRayMask(comptime diagonal: bool, king_sq: Square, sq: Square, pinners: u64) u64 {
+    const line_pinners = pinners & Bitboard.extendingRayBb(king_sq, sq);
+    const pinner_is_higher = sq.toInt() > king_sq.toInt();
+    var iter = Bitboard.iterator(line_pinners);
+    while (iter.next()) |pinner| {
+        if ((pinner.toInt() > sq.toInt()) == pinner_is_higher) {
+            return if (diagonal) Bitboard.bishopRayBetweenInclusive(king_sq, pinner) else Bitboard.rookRayBetweenInclusive(king_sq, pinner);
+        }
+    }
+    unreachable;
 }
 
 pub inline fn pawns(self: Board) u64 {
@@ -822,194 +839,152 @@ pub inline fn updatePins(noalias self: *Board, comptime col: Colour) void {
     const king_as_bishop_attacks = Bitboard.bishopAttacks(king_sq.toInt());
     const rook_sliders = (self.rooks() | self.queens()) & self.occupancyFor(col.flipped());
     const bishop_sliders = (self.bishops() | self.queens()) & self.occupancyFor(col.flipped());
-    var pinned: u64 = 0;
-    // var pinner: u64 = 0;
+    var orthogonal_pins: u64 = 0;
+    var diagonal_pins: u64 = 0;
+    var pinners: u64 = 0;
     var iter = Bitboard.iterator((king_as_rook_attacks & rook_sliders) | (king_as_bishop_attacks & bishop_sliders));
     while (iter.next()) |potential_pinner| {
         const ray_between = Bitboard.queenRayBetweenExclusive(king_sq, potential_pinner);
         const pieces_between = occ & ray_between;
         if (@popCount(pieces_between) == 1) {
             if (pieces_between & us_occ != 0) {
-                pinned |= pieces_between;
-                // pinner |= potential_pinner.toBitboard();
+                if (potential_pinner.toBitboard() & rook_sliders != 0) {
+                    orthogonal_pins |= pieces_between;
+                } else {
+                    diagonal_pins |= pieces_between;
+                }
+                pinners |= potential_pinner.toBitboard();
             }
         }
     }
-    self.pinned[col.toInt()] = pinned;
-    // self.pinner[col.flipped().toInt()] = pinner;
+    (&self.orthogonal_pins)[col.toInt()] = orthogonal_pins;
+    (&self.diagonal_pins)[col.toInt()] = diagonal_pins;
+    (&self.pinners)[col.toInt()] = pinners;
 }
 
-const ENABLE_XRAY_TRIPLE_THREATS = false;
-
-const ThreatInfo = struct {
-    pawn_attacks: u64,
-    king_attacks: u64,
-    threatened: u64,
-    lesser_threatened: u64,
-    overload_knight_attacks: u64,
-    overload_bishop_attacks: u64,
-    overload_rook_attacks: u64,
-    overload_queen_attacks: u64,
-    overload_threatened_without_king: u64,
-    overload_threatened: u64,
-    overload_double_threatened_without_king: u64,
-    overload_double_threatened: u64,
-    overload_triple_threatened: u64,
+const LowerAttackMasks = struct {
+    pawn: u64,
+    knight: u64,
+    bishop: u64,
+    rook: u64,
 };
 
-inline fn threatInfoFor(noalias self: *const Board, comptime col: Colour, occ: u64) ThreatInfo {
+const AttackInfo = struct {
+    threats: u64,
+    legal_threats: u64,
+    lower: LowerAttackMasks,
+};
+
+inline fn attackInfoFor(noalias self: *const Board, comptime col: Colour, occ: u64) AttackInfo {
+    const king_sq = Square.fromBitboard(self.kingFor(col));
+    const orthogonal_pins = (&self.orthogonal_pins)[col.toInt()];
+    const diagonal_pins = (&self.diagonal_pins)[col.toInt()];
+    const pinners = (&self.pinners)[col.toInt()];
+    const all_pins = orthogonal_pins | diagonal_pins;
+    const unpinned = ~all_pins;
+
+    const pawns_bb = self.pawnsFor(col);
+    const knights_bb = self.knightsFor(col);
+    const bishops_bb = self.bishopsFor(col);
+    const rooks_bb = self.rooksFor(col);
+    const queens_bb = self.queensFor(col);
+
     var threatened: u64 = 0;
-    var double_threatened: u64 = 0;
-    var triple_threatened_without_king: u64 = 0;
-    var lesser_threatened: u64 = 0;
+    var legal_threats: u64 = 0;
+    var lower = LowerAttackMasks{
+        .pawn = 0,
+        .knight = 0,
+        .bishop = 0,
+        .rook = 0,
+    };
 
-    const pawn_bb = self.pawnsFor(col);
-    const pawn_attacks = Bitboard.pawnAttackBitBoard(pawn_bb, col);
-    threatened |= pawn_attacks;
-    double_threatened |= Bitboard.pawnDoubleAttackBitBoard(pawn_bb, col);
+    const pawn_attacks = Bitboard.pawnAttackBitBoard(pawns_bb, col);
+    const knight_attacks = Bitboard.knightMoveBitBoard(knights_bb);
+    threatened |= pawn_attacks | knight_attacks;
+    legal_threats |= Bitboard.pawnAttackBitBoard(pawns_bb & unpinned, col);
+    legal_threats |= Bitboard.knightMoveBitBoard(knights_bb & unpinned);
+    lower.pawn |= Bitboard.pawnAttackBitBoard(pawns_bb & unpinned, col);
+    lower.knight |= Bitboard.knightMoveBitBoard(knights_bb & unpinned);
 
-    // bishops are treated as more valuable than knights
-    lesser_threatened |= self.knights() & threatened;
+    var iter = Bitboard.iterator(pawns_bb & diagonal_pins);
+    while (iter.next()) |sq| {
+        const attacks_bb = Bitboard.pawnAttacks(sq, col) & pinRayMask(true, king_sq, sq, pinners);
+        legal_threats |= attacks_bb;
+        lower.pawn |= attacks_bb;
+    }
 
-    const knight_attacks = Bitboard.knightMoveBitBoard(self.knightsFor(col));
-    triple_threatened_without_king |= double_threatened & knight_attacks;
-    double_threatened |= threatened & knight_attacks;
-    threatened |= knight_attacks;
-    lesser_threatened |= self.bishops() & threatened;
-
-    var bishop_attacks_all: u64 = 0;
-    var iter = Bitboard.iterator(self.bishopsFor(col));
+    iter = Bitboard.iterator(bishops_bb);
     while (iter.next()) |sq| {
         const bishop_attacks = attacks.getBishopAttacks(sq, occ);
-        bishop_attacks_all |= bishop_attacks;
-        triple_threatened_without_king |= double_threatened & bishop_attacks;
-        double_threatened |= threatened & bishop_attacks;
         threatened |= bishop_attacks;
+        const pin_bb = sq.toBitboard();
+        const legal_bishop_attacks = if (pin_bb & diagonal_pins != 0)
+            bishop_attacks & pinRayMask(true, king_sq, sq, pinners)
+        else if (pin_bb & orthogonal_pins != 0)
+            0
+        else
+            bishop_attacks;
+        legal_threats |= legal_bishop_attacks;
+        lower.bishop |= legal_bishop_attacks;
     }
 
-    lesser_threatened |= self.rooks() & threatened;
-
-    var rook_attacks_all: u64 = 0;
-    iter = Bitboard.iterator(self.rooksFor(col));
+    iter = Bitboard.iterator(rooks_bb);
     while (iter.next()) |sq| {
         const rook_attacks = attacks.getRookAttacks(sq, occ);
-        rook_attacks_all |= rook_attacks;
-        triple_threatened_without_king |= double_threatened & rook_attacks;
-        double_threatened |= threatened & rook_attacks;
         threatened |= rook_attacks;
+        const pin_bb = sq.toBitboard();
+        const legal_rook_attacks = if (pin_bb & orthogonal_pins != 0)
+            rook_attacks & pinRayMask(false, king_sq, sq, pinners)
+        else if (pin_bb & diagonal_pins != 0)
+            0
+        else
+            rook_attacks;
+        legal_threats |= legal_rook_attacks;
+        lower.rook |= legal_rook_attacks;
     }
 
-    lesser_threatened |= self.queens() & threatened;
-
-    var queen_attacks_all: u64 = 0;
-    iter = Bitboard.iterator(self.queensFor(col));
+    iter = Bitboard.iterator(queens_bb);
     while (iter.next()) |sq| {
-        const queen_attacks = attacks.getBishopAttacks(sq, occ) | attacks.getRookAttacks(sq, occ);
-        queen_attacks_all |= queen_attacks;
-        triple_threatened_without_king |= double_threatened & queen_attacks;
-        double_threatened |= threatened & queen_attacks;
-        threatened |= queen_attacks;
+        const bishop_attacks = attacks.getBishopAttacks(sq, occ);
+        const rook_attacks = attacks.getRookAttacks(sq, occ);
+        threatened |= bishop_attacks | rook_attacks;
+        const pin_bb = sq.toBitboard();
+        var legal_queen_attacks: u64 = undefined;
+        if (pin_bb & diagonal_pins != 0) {
+            legal_queen_attacks = bishop_attacks & pinRayMask(true, king_sq, sq, pinners);
+        } else if (pin_bb & orthogonal_pins != 0) {
+            legal_queen_attacks = rook_attacks & pinRayMask(false, king_sq, sq, pinners);
+        } else {
+            legal_queen_attacks = bishop_attacks | rook_attacks;
+        }
+        legal_threats |= legal_queen_attacks;
     }
 
-    const threatened_without_king = threatened;
-    const double_threatened_without_king = double_threatened;
-    const king_attacks = Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
-    double_threatened |= threatened_without_king & king_attacks;
-    threatened = threatened_without_king | king_attacks;
-
-    var overload_bishop_attacks = bishop_attacks_all;
-    var overload_rook_attacks = rook_attacks_all;
-    var overload_queen_attacks = queen_attacks_all;
-    var overload_threatened_without_king = threatened_without_king;
-    var overload_threatened = threatened;
-    var overload_double_threatened_without_king = double_threatened_without_king;
-    var overload_double_threatened = double_threatened;
-    var overload_triple_threatened: u64 = 0;
-
-    if (ENABLE_XRAY_TRIPLE_THREATS) {
-        const direct_threatened = threatened;
-        var x_threatened = threatened_without_king;
-        var x_double_threatened = double_threatened_without_king;
-        var x_triple_threatened = triple_threatened_without_king;
-
-        overload_bishop_attacks = bishop_attacks_all;
-        iter = Bitboard.iterator(self.bishopsFor(col));
-        while (iter.next()) |sq| {
-            const direct = attacks.getBishopAttacks(sq, occ);
-            const xray = attacks.getBishopAttacks(sq, occ ^ direct) ^ direct;
-            const xray_attacks = xray & direct_threatened;
-            overload_bishop_attacks |= xray_attacks;
-            x_triple_threatened |= x_double_threatened & xray_attacks;
-            x_double_threatened |= x_threatened & xray_attacks;
-            x_threatened |= xray_attacks;
-        }
-
-        overload_rook_attacks = rook_attacks_all;
-        iter = Bitboard.iterator(self.rooksFor(col));
-        while (iter.next()) |sq| {
-            const direct = attacks.getRookAttacks(sq, occ);
-            const xray = attacks.getRookAttacks(sq, occ ^ direct) ^ direct;
-            const xray_attacks = xray & direct_threatened;
-            overload_rook_attacks |= xray_attacks;
-            x_triple_threatened |= x_double_threatened & xray_attacks;
-            x_double_threatened |= x_threatened & xray_attacks;
-            x_threatened |= xray_attacks;
-        }
-
-        overload_queen_attacks = queen_attacks_all;
-        iter = Bitboard.iterator(self.queensFor(col));
-        while (iter.next()) |sq| {
-            const direct_b = attacks.getBishopAttacks(sq, occ);
-            const xray_b = attacks.getBishopAttacks(sq, occ ^ direct_b) ^ direct_b;
-            const direct_r = attacks.getRookAttacks(sq, occ);
-            const xray_r = attacks.getRookAttacks(sq, occ ^ direct_r) ^ direct_r;
-            const xray_attacks = (xray_b | xray_r) & direct_threatened;
-            overload_queen_attacks |= xray_attacks;
-            x_triple_threatened |= x_double_threatened & xray_attacks;
-            x_double_threatened |= x_threatened & xray_attacks;
-            x_threatened |= xray_attacks;
-        }
-
-        overload_threatened_without_king = x_threatened;
-        overload_double_threatened_without_king = x_double_threatened;
-        x_triple_threatened |= x_double_threatened & king_attacks;
-        x_double_threatened |= x_threatened & king_attacks;
-        x_threatened |= king_attacks;
-
-        overload_threatened = x_threatened;
-        overload_double_threatened = x_double_threatened;
-        overload_triple_threatened = x_triple_threatened;
-    }
+    const king_attacks = Bitboard.kingMoves(king_sq);
+    threatened |= king_attacks;
+    legal_threats |= king_attacks;
 
     return .{
-        .pawn_attacks = pawn_attacks,
-        .king_attacks = king_attacks,
-        .threatened = threatened,
-        .lesser_threatened = lesser_threatened,
-        .overload_knight_attacks = knight_attacks,
-        .overload_bishop_attacks = overload_bishop_attacks,
-        .overload_rook_attacks = overload_rook_attacks,
-        .overload_queen_attacks = overload_queen_attacks,
-        .overload_threatened_without_king = overload_threatened_without_king,
-        .overload_threatened = overload_threatened,
-        .overload_double_threatened_without_king = overload_double_threatened_without_king,
-        .overload_double_threatened = overload_double_threatened,
-        .overload_triple_threatened = overload_triple_threatened,
+        .threats = threatened,
+        .legal_threats = legal_threats,
+        .lower = lower,
     };
 }
 
 pub inline fn updateThreats(noalias self: *Board) void {
     const occ = self.occupancy();
-    const white = self.threatInfoFor(.white, occ);
-    const black = self.threatInfoFor(.black, occ);
+    const white = attackInfoFor(self, .white, occ);
+    const black = attackInfoFor(self, .black, occ);
 
-    self.threats[Colour.white.toInt()] = white.threatened;
-    self.threats[Colour.black.toInt()] = black.threatened;
+    self.threats[Colour.white.toInt()] = white.threats;
+    self.threats[Colour.black.toInt()] = black.threats;
 
-    const white_occ = self.occupancyFor(.white);
-    const black_occ = self.occupancyFor(.black);
-    const white_pawns = self.pawnsFor(.white);
-    const black_pawns = self.pawnsFor(.black);
+    // "Lost" means either hanging, or attacked by an unpinned lower-valued piece.
+    const white_targets = self.occupancyFor(.white) & ~self.kingFor(.white);
+    const black_targets = self.occupancyFor(.black) & ~self.kingFor(.black);
+    const white_hanging = white_targets & black.legal_threats & ~white.legal_threats;
+    const black_hanging = black_targets & white.legal_threats & ~black.legal_threats;
+
     const white_knights = self.knightsFor(.white);
     const black_knights = self.knightsFor(.black);
     const white_bishops = self.bishopsFor(.white);
@@ -1018,80 +993,16 @@ pub inline fn updateThreats(noalias self: *Board) void {
     const black_rooks = self.rooksFor(.black);
     const white_queens = self.queensFor(.white);
     const black_queens = self.queensFor(.black);
-    const white_targets = white_occ & ~self.kingFor(.white);
-    const black_targets = black_occ & ~self.kingFor(.black);
 
-    // any non-king attacker can win material on an undefended square
-    const white_undefended = white_targets & black.overload_threatened_without_king & ~white.overload_threatened;
-    const black_undefended = black_targets & white.overload_threatened_without_king & ~black.overload_threatened;
+    const white_lost_by_lower = ((white_knights | white_bishops) & black.lower.pawn) |
+        (white_rooks & (black.lower.pawn | black.lower.knight | black.lower.bishop)) |
+        (white_queens & (black.lower.pawn | black.lower.knight | black.lower.bishop | black.lower.rook));
+    const black_lost_by_lower = ((black_knights | black_bishops) & white.lower.pawn) |
+        (black_rooks & (white.lower.pawn | white.lower.knight | white.lower.bishop)) |
+        (black_queens & (white.lower.pawn | white.lower.knight | white.lower.bishop | white.lower.rook));
 
-    // attacked by lower-valued material
-    const white_easy = white_targets & black.lesser_threatened;
-    const black_easy = black_targets & white.lesser_threatened;
-
-    const white_equal_attacked = (white_pawns & black.pawn_attacks) |
-        ((white_knights | white_bishops) & (black.overload_knight_attacks | black.overload_bishop_attacks)) |
-        (white_rooks & black.overload_rook_attacks) |
-        (white_queens & black.overload_queen_attacks);
-    const black_equal_attacked = (black_pawns & white.pawn_attacks) |
-        ((black_knights | black_bishops) & (white.overload_knight_attacks | white.overload_bishop_attacks)) |
-        (black_rooks & white.overload_rook_attacks) |
-        (black_queens & white.overload_queen_attacks);
-
-    // all queens under a double attack are tactically fragile
-    // (disregarding promos)
-    const white_queen_double = white_queens & black.overload_double_threatened;
-    const black_queen_double = black_queens & white.overload_double_threatened;
-
-    // overloaded  = attackers >= 2 && defenders <= 1
-    const white_overloaded = white_targets & black.overload_double_threatened & white.overload_threatened & ~white.overload_double_threatened;
-    const black_overloaded = black_targets & white.overload_double_threatened & black.overload_threatened & ~black.overload_double_threatened;
-    const white_triple_overloaded = white_targets & black.overload_triple_threatened & white.overload_double_threatened & ~white.overload_triple_threatened;
-    const black_triple_overloaded = black_targets & white.overload_triple_threatened & black.overload_double_threatened & ~black.overload_triple_threatened;
-    const white_any_overloaded = white_overloaded | white_triple_overloaded;
-    const black_any_overloaded = black_overloaded | black_triple_overloaded;
-
-    // target > cheapest attacker
-    const white_lower_overloaded = white_any_overloaded & black.lesser_threatened;
-    const black_lower_overloaded = black_any_overloaded & white.lesser_threatened;
-
-    // target == cheapest attacker
-    const white_equal_attacked_overloaded = white_any_overloaded & white_equal_attacked;
-    const black_equal_attacked_overloaded = black_any_overloaded & black_equal_attacked;
-
-    // target < cheapest attacker, but defender is valuable
-    const white_minors_defended = white.overload_knight_attacks | white.overload_bishop_attacks;
-    const black_minors_defended = black.overload_knight_attacks | black.overload_bishop_attacks;
-
-    const white_greater_overloaded_pawn = white_pawns & white_any_overloaded & (((black.overload_knight_attacks | black.overload_bishop_attacks) & ~white.pawn_attacks) |
-        (black.overload_rook_attacks & ~(white.pawn_attacks | white_minors_defended)) |
-        (black.overload_queen_attacks & ~(white.pawn_attacks | white_minors_defended | white.overload_rook_attacks)));
-    const black_greater_overloaded_pawn = black_pawns & black_any_overloaded & (((white.overload_knight_attacks | white.overload_bishop_attacks) & ~black.pawn_attacks) |
-        (white.overload_rook_attacks & ~(black.pawn_attacks | black_minors_defended)) |
-        (white.overload_queen_attacks & ~(black.pawn_attacks | black_minors_defended | black.overload_rook_attacks)));
-
-    const white_greater_overloaded_minor = (white_knights | white_bishops) & white_any_overloaded & ((black.overload_rook_attacks & ~white.pawn_attacks) |
-        (black.overload_queen_attacks & ~(white.pawn_attacks | white_minors_defended | white.overload_rook_attacks)));
-    const black_greater_overloaded_minor = (black_knights | black_bishops) & black_any_overloaded & ((white.overload_rook_attacks & ~black.pawn_attacks) |
-        (white.overload_queen_attacks & ~(black.pawn_attacks | black_minors_defended | black.overload_rook_attacks)));
-
-    const white_greater_overloaded_rook = white_rooks & white_any_overloaded & (black.overload_queen_attacks & ~(white.pawn_attacks | white_minors_defended));
-    const black_greater_overloaded_rook = black_rooks & black_any_overloaded & (white.overload_queen_attacks & ~(black.pawn_attacks | black_minors_defended));
-
-    const white_greater_overloaded = white_greater_overloaded_pawn | white_greater_overloaded_minor | white_greater_overloaded_rook;
-    const black_greater_overloaded = black_greater_overloaded_pawn | black_greater_overloaded_minor | black_greater_overloaded_rook;
-
-    // king defense is weak
-    const white_king_only_cracked = white_targets & black.overload_threatened_without_king &
-        black.overload_double_threatened_without_king & white.king_attacks & ~white.overload_threatened_without_king;
-    const black_king_only_cracked = black_targets & white.overload_threatened_without_king &
-        white.overload_double_threatened_without_king & black.king_attacks & ~black.overload_threatened_without_king;
-    self.lost_squares[Colour.white.toInt()] =
-        white_undefended | white_easy | white_queen_double | white_lower_overloaded |
-        white_equal_attacked_overloaded | white_greater_overloaded | white_king_only_cracked;
-    self.lost_squares[Colour.black.toInt()] =
-        black_undefended | black_easy | black_queen_double | black_lower_overloaded |
-        black_equal_attacked_overloaded | black_greater_overloaded | black_king_only_cracked;
+    self.lost_squares[Colour.white.toInt()] = white_hanging | white_lost_by_lower;
+    self.lost_squares[Colour.black.toInt()] = black_hanging | black_lost_by_lower;
 }
 
 pub fn updateMasks(self: *Board, col: Colour) void {
@@ -1483,7 +1394,7 @@ pub fn hasLegalMove(self: *const Board) bool {
 
 fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const rook_from = move.to();
-    if (self.pinned[stm.toInt()] & rook_from.toBitboard() != 0) {
+    if (self.pinned(stm) & rook_from.toBitboard() != 0) {
         return false;
     }
     const rook_to = self.castlingRookDestFor(move, stm);
@@ -1532,7 +1443,7 @@ pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool
         return attackers == 0;
     }
 
-    if (self.pinned[stm.toInt()] & from.toBitboard() != 0) {
+    if (self.pinned(stm) & from.toBitboard() != 0) {
         return Bitboard.extendingRayBb(from, to) & self.kingFor(stm) != 0;
     }
 
@@ -1631,7 +1542,7 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         return false;
     }
 
-    if (self.pinned[stm.toInt()] & from_bb != 0) {
+    if (self.pinned(stm) & from_bb != 0) {
         if (Bitboard.extendingRayBb(from, to) & self.kingFor(stm) == 0) {
             return false;
         }

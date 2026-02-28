@@ -433,11 +433,6 @@ pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
     return move(moved, 0, -1) | move(moved, 0, 1);
 }
 
-pub inline fn pawnDoubleAttackBitBoard(bb: u64, col: root.Colour) u64 {
-    const moved = if (col == .white) bb << 8 else bb >> 8;
-    return move(moved, 0, -1) & move(moved, 0, 1);
-}
-
 pub fn bishopAttacks(square: anytype) u64 {
     return (&bishop_attacks)[idx(square)];
 }
