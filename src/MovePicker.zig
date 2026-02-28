@@ -20,14 +20,13 @@ const root = @import("root.zig");
 
 const Move = root.Move;
 const Board = root.Board;
+const Bitboard = root.Bitboard;
 const ScoredMove = root.ScoredMove;
 const MoveReceiver = root.FilteringMoveReceiver;
 const movegen = root.movegen;
 const SEE = root.SEE;
-const PieceType = root.PieceType;
 const Colour = root.Colour;
 const history = root.history;
-const TypedMove = history.TypedMove;
 const Historytable = history.HistoryTable;
 
 const MovePicker = @This();
@@ -173,7 +172,11 @@ inline fn quietValue(
     move: Move,
 ) i32 {
     const terms = histories.readMoveTerms(board, move, conthist_tables, true);
-    return tuning.ordHistQ(terms);
+    var res = tuning.ordHistQ(terms);
+    if (Bitboard.contains(board.checkingSquares(board.pieceOn(move.from()).?), move.to())) {
+        res += 10000;
+    }
+    return res;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;

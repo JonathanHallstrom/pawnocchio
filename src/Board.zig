@@ -56,6 +56,7 @@ castling_rights: CastlingRights = CastlingRights.init(),
 pinned: [2]u64 = .{0} ** 2,
 // pinner: [2]u64 = .{0} ** 2,
 checkers: u64 = 0,
+checking_squares: [PieceType.all.len]u64 = .{0} ** PieceType.all.len,
 threats: [2]u64 = .{0} ** 2,
 lesser_threats: [2]u64 = .{0} ** 2,
 
@@ -121,6 +122,11 @@ pub inline fn queens(self: Board) u64 {
 
 pub inline fn kings(self: Board) u64 {
     return self.pieces[5];
+}
+
+pub inline fn checkingSquares(self: *const Board, pt: PieceType) u64 {
+    assert(self.checking_squares[PieceType.king.toInt()] == 0);
+    return (&self.checking_squares)[pt.toInt()];
 }
 
 pub inline fn pieceOn(self: *const Board, sq: Square) ?PieceType {
@@ -879,18 +885,33 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     self.lesser_threats[col.toInt()] = lesser_threatened;
 }
 
+pub inline fn updateCheckingSquares(noalias self: *Board, comptime stm: Colour) void {
+    const them_king_sq = Square.fromBitboard(self.kingFor(stm.flipped()));
+    const occ = self.occupancy();
+    const bishop_checks = attacks.getBishopAttacks(them_king_sq, occ);
+    const rook_checks = attacks.getRookAttacks(them_king_sq, occ);
+    self.checking_squares[PieceType.pawn.toInt()] = Bitboard.pawnAttacks(them_king_sq, stm.flipped());
+    self.checking_squares[PieceType.knight.toInt()] = Bitboard.knightMoves(them_king_sq);
+    self.checking_squares[PieceType.bishop.toInt()] = bishop_checks;
+    self.checking_squares[PieceType.rook.toInt()] = rook_checks;
+    self.checking_squares[PieceType.queen.toInt()] = bishop_checks | rook_checks;
+}
+
 pub fn updateMasks(self: *Board, col: Colour) void {
     self.updatePins(.white);
     self.updatePins(.black);
     self.updateThreats(.white);
     self.updateThreats(.black);
     self.checkers = switch (col) {
-        inline else => |col_comptime| movegen.attackersFor(
-            col_comptime.flipped(),
-            self,
-            Square.fromBitboard(self.kingFor(col)),
-            self.occupancy(),
-        ),
+        inline else => |col_comptime| blk: {
+            self.updateCheckingSquares(col_comptime);
+            break :blk movegen.attackersFor(
+                col_comptime.flipped(),
+                self,
+                Square.fromBitboard(self.kingFor(col)),
+                self.occupancy(),
+            );
+        },
     };
 }
 
@@ -943,33 +964,28 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     self.halfmove += 1;
     self.stm = stm.flipped();
 
+    self.updateCheckingSquares(stm.flipped());
+
     // dont call updateMasks since there has been no change in the position, especially not checkers
 }
 
 pub inline fn givesCheckApproximate(noalias self: *const Board, comptime stm: Colour, move: Move) bool {
     const from = move.from();
     const to = move.to();
-    const them_king = self.kingFor(stm.flipped());
-    if (them_king & switch (self.pieceOn(from).?) { // direct check
-        .pawn => Bitboard.pawnAttacks(to, stm),
-        .knight => Bitboard.knightMoves(to),
-        .bishop => attacks.getBishopAttacks(to, self.occupancy()),
-        .rook => attacks.getRookAttacks(to, self.occupancy()),
-        .queen => attacks.getBishopAttacks(to, self.occupancy()) | attacks.getRookAttacks(to, self.occupancy()),
-        .king => 0,
-    } != 0) {
+    if (Bitboard.contains(self.checkingSquares(self.pieceOn(from).?), to)) {
         @branchHint(.unlikely);
         return true;
     }
 
+    const them_king = self.kingFor(stm.flipped());
     const them_king_sq = Square.fromBitboard(them_king);
-    const occ_discovered = self.occupancy() ^ from.toBitboard() ^ to.toBitboard();
     const potential_discovered = Bitboard.extendingRayBb(them_king_sq, from) &
         (self.bishopsFor(stm) | self.rooksFor(stm) | self.queensFor(stm));
     if (potential_discovered == 0) {
         @branchHint(.likely);
         return false;
     }
+    const occ_discovered = self.occupancy() ^ from.toBitboard() ^ to.toBitboard();
     var has_blocker_free_discovery = false;
     var iter = Bitboard.iterator(potential_discovered & ~self.bishops());
     while (iter.next()) |sq| {
