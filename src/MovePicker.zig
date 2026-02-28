@@ -170,10 +170,18 @@ inline fn quietValue(
     noalias histories: *const Historytable,
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
+    threatened: u64,
     move: Move,
 ) i32 {
     const terms = histories.readMoveTerms(board, move, conthist_tables, true);
-    return tuning.ordHistQ(terms);
+    const pt = board.pieceOn(move.from()).?;
+    var score = tuning.ordHistQ(terms);
+
+    if (threatened & move.from().toBitboard() != 0) {
+        score += pt.toInt() * @as(i32, 2048);
+    }
+
+    return score;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;
@@ -234,8 +242,9 @@ pub fn next(
             }
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
+            const threatened = (&board.lesser_threats)[stm.flipped().toInt()] & board.occupancyFor(stm);
             for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
-                self.scores[self.first + i] = quietValue(histories, conthist_tables, board, move);
+                self.scores[self.first + i] = quietValue(histories, conthist_tables, board, threatened, move);
             }
             self.last = self.movelist.vals.len;
             self.stage = .quiets;
