@@ -178,12 +178,7 @@ inline fn quietValue(
     var score = tuning.ordHistQ(terms);
 
     if (threatened & move.from().toBitboard() != 0) {
-        score += switch (pt) {
-            .queen => 20_000,
-            .rook => 10_000,
-            .knight, .bishop => 4_000,
-            else => 0,
-        };
+        score += pt.toInt() * @as(i32, 1024);
     }
 
     return score;
