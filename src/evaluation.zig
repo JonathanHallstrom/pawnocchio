@@ -15,12 +15,20 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const build_options = @import("build_options");
 
 const root = @import("root.zig");
 
 const Board = root.Board;
-pub const use_hce = false;
-const impl = if (use_hce) @import("hce.zig") else @import("nnue.zig");
+pub const Eval = enum {
+    hce,
+    nnue,
+};
+pub const eval_mode: Eval = std.meta.stringToEnum(Eval, build_options.eval).?;
+const impl = switch (eval_mode) {
+    .hce => @import("hce.zig"),
+    .nnue => root.nnue,
+};
 
 pub fn init() !void {
     if (@hasDecl(impl, "init")) {

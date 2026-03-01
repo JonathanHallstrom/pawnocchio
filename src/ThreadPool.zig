@@ -101,7 +101,7 @@ const Thread = struct {
                 .reset => {
                     // pinCurrentThread(self.idx) catch {};
                     @memset(std.mem.asBytes(self.searcher), 0);
-                    if (!root.evaluation.use_hce)
+                    if (root.evaluation.eval_mode == .nnue)
                         self.searcher.refresh_cache.initInPlace();
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
@@ -188,7 +188,7 @@ pub const ThreadPool = struct {
             try adviseHugePages(ptr);
         }
         @memset(std.mem.asBytes(searcher), 0);
-        if (!evaluation.use_hce) {
+        if (evaluation.eval_mode == .nnue) {
             searcher.refresh_cache.initInPlace();
         }
         searcher.histories.reset();

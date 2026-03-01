@@ -354,7 +354,7 @@ pub fn main() !void {
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;
                 }
-                if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and !root.evaluation.use_hce) {
+                if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and root.evaluation.eval_mode == .nnue) {
                     const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
                     var cache: RC = undefined;
                     cache.initInPlace();
@@ -387,7 +387,7 @@ pub fn main() !void {
                     write("evals: {} in {D} ({} eps) res: {}\n", .{ iterations, elapsed_ns, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
                     continue :loop;
                 }
-                if (std.ascii.eqlIgnoreCase(command_part, "refreshbench") and !root.evaluation.use_hce) {
+                if (std.ascii.eqlIgnoreCase(command_part, "refreshbench") and root.evaluation.eval_mode == .nnue) {
                     const refresh_fens = @import("refresh_fens.zig").fens;
                     const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
                     var cache: RC = undefined;
@@ -654,8 +654,8 @@ pub fn main() !void {
             const abs_average = @as(f64, @floatFromInt(abs_sum)) / @as(f64, @floatFromInt(count));
             std.debug.print("sum: {} sum abs: {}\n", .{ sum, abs_sum });
             std.debug.print("average: {d:.4} average abs: {d:.4}\n", .{ average, abs_average });
-        } else if (!root.evaluation.use_hce and std.ascii.eqlIgnoreCase(command, "nneval") and !root.evaluation.use_hce) {
-            const raw_eval = @import("nnue.zig").evalPosition(&board);
+        } else if (root.evaluation.eval_mode == .nnue and std.ascii.eqlIgnoreCase(command, "nneval")) {
+            const raw_eval = root.nnue.evalPosition(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
             const normalized = root.wdl.normalize(scaled, board.classicalMaterial());
             write("raw eval: {}\n", .{raw_eval});

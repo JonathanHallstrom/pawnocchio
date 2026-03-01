@@ -20,7 +20,7 @@ const root = @import("root.zig");
 const Square = root.Square;
 const Bitboard = root.Bitboard;
 
-const nnue = @import("nnue.zig");
+const nnue = root.nnue;
 
 const L1_SIZE = nnue.L1_SIZE;
 

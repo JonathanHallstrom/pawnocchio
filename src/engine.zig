@@ -310,15 +310,13 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
     var random_buf: [32]u8 align(32) = undefined;
     try std.posix.getrandom(&random_buf);
 
-    var net_name = @import("build_options").net_path;
-    if (std.mem.lastIndexOfAny(u8, net_name, "/\\")) |separator| {
-        net_name = net_name[separator + 1 ..];
-    }
-    if (std.mem.lastIndexOfAny(u8, net_name, ".")) |separator| {
-        net_name = net_name[0..separator];
+    const build_options = @import("build_options");
+    var eval_identifier = build_options.eval_identifier;
+    if (std.mem.lastIndexOfAny(u8, eval_identifier, ".")) |separator| {
+        eval_identifier = eval_identifier[0..separator];
     }
 
-    try fbs.print("outfile_{s}_{}nodes_{x}.vf", .{ net_name, nodes, @as(u256, @bitCast(random_buf)) });
+    try fbs.print("outfile_{s}_{}nodes_{x}.vf", .{ eval_identifier, nodes, @as(u256, @bitCast(random_buf)) });
     return fbs.buffered();
 }
 

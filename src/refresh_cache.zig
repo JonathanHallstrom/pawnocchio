@@ -21,7 +21,7 @@ const Square = root.Square;
 const PieceType = root.PieceType;
 const Bitboard = root.Bitboard;
 const Colour = root.Colour;
-const nnue = @import("nnue.zig");
+const nnue = root.nnue;
 
 inline fn copyAccumulator(noalias dst: [*]i16, noalias src: *const [nnue.L1_SIZE]i16) void {
     const Vec = @Vector(nnue.vecSize(i16), i16);

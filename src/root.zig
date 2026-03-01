@@ -29,7 +29,13 @@ comptime {
 pub const use_tbs = @import("build_options").use_tbs;
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 pub const pyrrhic = @import("pyrrhic.zig");
-pub const nnue = @import("nnue.zig");
+pub const evaluation = @import("evaluation.zig");
+pub const Eval = evaluation.Eval;
+pub const eval_mode: Eval = std.meta.stringToEnum(Eval, @import("build_options").eval) orelse unreachable;
+pub const nnue = if (eval_mode == .hce)
+    @compileError("cannot use NNUE in HCE build mode")
+else
+    @import("nnue.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const cuckoo = @import("cuckoo.zig");
 pub const Board = @import("Board.zig");
@@ -39,7 +45,6 @@ pub const movegen = @import("movegen.zig");
 pub const attacks = @import("attacks.zig");
 pub const zobrist = @import("zobrist.zig");
 pub const PerftEPDParser = @import("PerftEPDParser.zig");
-pub const evaluation = @import("evaluation.zig");
 pub const Searcher = @import("Searcher.zig");
 pub const ThreadPool = @import("ThreadPool.zig").ThreadPool;
 pub const engine = @import("engine.zig");

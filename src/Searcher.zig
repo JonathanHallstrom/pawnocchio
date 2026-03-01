@@ -17,7 +17,7 @@
 const std = @import("std");
 
 const root = @import("root.zig");
-const nnue = @import("nnue.zig");
+const nnue = root.nnue;
 
 const BoundedArray = root.BoundedArray;
 const evaluation = root.evaluation;
@@ -130,7 +130,7 @@ minimal: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
-refresh_cache: if (evaluation.use_hce) void else root.refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT),
+refresh_cache: if (evaluation.eval_mode == .hce) void else root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT),
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -316,7 +316,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
     self.ply += 1;
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
-    if (!root.evaluation.use_hce)
+    if (root.evaluation.eval_mode == .nnue)
         new_eval_state.bindBoard(&new_stack_entry.board);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
@@ -345,7 +345,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     self.ply += 1;
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
-    if (!root.evaluation.use_hce)
+    if (root.evaluation.eval_mode == .nnue)
         new_eval_state.bindBoard(&new_stack_entry.board);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
@@ -1545,7 +1545,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.fixupPreviousHashes();
 
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
-    if (!root.evaluation.use_hce)
+    if (root.evaluation.eval_mode == .nnue)
         self.evalStateRoot()[0].initInPlace(&board);
     self.histories.age();
     self.ttage +%= 1;
