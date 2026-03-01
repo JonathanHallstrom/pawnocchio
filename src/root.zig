@@ -98,7 +98,6 @@ pub fn init() void {
             stdout_writer = stdout.writerStreaming(&stdout_buf);
             attacks.init();
             cuckoo.init();
-            evaluation.init() catch |e| std.debug.panic("Fatal: couldn't initialize the network, error: {}\n", .{e});
             engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
         }
         var init_once = std.once(initImpl);
@@ -110,7 +109,6 @@ pub fn deinit() void {
     const globals = struct {
         fn deinitImpl() void {
             pyrrhic.deinit();
-            evaluation.deinit();
             stdout_writer.interface.flush() catch std.debug.panic("failed to flush stdout", .{});
         }
         var deinit_once = std.once(deinitImpl);
