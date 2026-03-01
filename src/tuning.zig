@@ -286,7 +286,8 @@ const tunable_defaults = struct {
     pub const fp_mult: i32 = 76;
     pub const fp_pv_base: i32 = 110;
     pub const fp_pv_mult: i32 = 26;
-    pub const fp_improving: i32 = 64;
+    pub const fp_improving: i32 = 68;
+    pub const fp_improvement_weight: i32 = 8;
     pub const fp_hist_mult: i32 = 141;
     pub const fp_hist_quiet_weight: i32 = 403;
     pub const fp_hist_pawn_weight: i32 = 1027;
@@ -520,6 +521,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "fp_pv_base", .default = tunable_defaults.fp_pv_base },
     .{ .name = "fp_pv_mult", .default = tunable_defaults.fp_pv_mult },
     .{ .name = "fp_improving", .default = tunable_defaults.fp_improving },
+    .{ .name = "fp_improvement_weight", .default = tunable_defaults.fp_improvement_weight },
     .{ .name = "fp_hist_mult", .default = tunable_defaults.fp_hist_mult },
     .{ .name = "fp_hist_quiet_weight", .default = tunable_defaults.fp_hist_quiet_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "fp_hist_pawn_weight", .default = tunable_defaults.fp_hist_pawn_weight, .min = -2048, .max = 2048, .c_end = 128 },
@@ -753,6 +755,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var fp_pv_base = tunable_defaults.fp_pv_base;
     pub var fp_pv_mult = tunable_defaults.fp_pv_mult;
     pub var fp_improving = tunable_defaults.fp_improving;
+    pub var fp_improvement_weight = tunable_defaults.fp_improvement_weight;
     pub var fp_hist_mult = tunable_defaults.fp_hist_mult;
     pub var fp_hist_quiet_weight = tunable_defaults.fp_hist_quiet_weight;
     pub var fp_hist_pawn_weight = tunable_defaults.fp_hist_pawn_weight;
