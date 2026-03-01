@@ -168,6 +168,28 @@ pub fn classicalMaterial(self: Board) u8 {
     return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
 
+pub fn materialScale(self: Board) i32 {
+    const tunables = root.tunable_constants;
+    @setEvalBranchQuota(1 << 30);
+    const vals: [6]i16 = if (root.tuning.do_tuning) .{
+        @intCast(tunables.material_scaling_pawn),
+        @intCast(tunables.material_scaling_knight),
+        @intCast(tunables.material_scaling_bishop),
+        @intCast(tunables.material_scaling_rook),
+        @intCast(tunables.material_scaling_queen),
+        0,
+    } else comptime .{
+        tunables.material_scaling_pawn,
+        tunables.material_scaling_knight,
+        tunables.material_scaling_bishop,
+        tunables.material_scaling_rook,
+        tunables.material_scaling_queen,
+        0,
+    };
+
+    return self.sumPieces(vals);
+}
+
 pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
     const fen = std.mem.trim(u8, ifen, &std.ascii.whitespace);
     if (std.ascii.eqlIgnoreCase(fen, "startpos")) return startpos();
