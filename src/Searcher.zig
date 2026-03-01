@@ -289,22 +289,15 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
     return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
 }
 
-fn makeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
+fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
     const prev_stack_entry: *StackEntry = self.stackEntry(0);
     const prev_eval_state: *evaluation.State = self.evalState(0);
     const new_stack_entry: *StackEntry = self.stackEntry(1);
     const new_eval_state: *evaluation.State = self.evalState(1);
     const board = &prev_stack_entry.board;
+    const move = typed.move;
 
     new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
-    const prev_move = prev_stack_entry.move.move;
-    var typed = TypedMove.fromBoard(board, move);
-
-    typed.setRecapture(move.to() == prev_move.to() and !prev_move.isNull());
-
-    const opponent_threats = (&board.threats)[board.stm.flipped().toInt()];
-    typed.setFromThreatened(move.from().toBitboard() & opponent_threats != 0);
-    typed.setToThreatened(move.to().toBitboard() & opponent_threats != 0);
 
     new_stack_entry.init(
         board,
@@ -585,6 +578,7 @@ fn qsearch(
         &cur.movelist,
         &cur.scores,
         tt_entry.move,
+        cur.move.move,
         board.checkers == 0,
     );
     defer mp.deinit();
@@ -601,7 +595,8 @@ fn qsearch(
         &self.histories,
         conthist_tables,
         board,
-    )) |move| {
+    )) |typed| {
+        const move = typed.move;
         self.prefetch(move);
         if (!board.isLegal(stm, move)) {
             continue;
@@ -616,7 +611,7 @@ fn qsearch(
         const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
-            const history_score = self.histories.readNoisy(board, move);
+            const history_score = self.histories.readNoisy(board, typed);
             if (num_searched >= 2 and
                 history_score < tunables.qs_hp_margin)
             {
@@ -640,7 +635,7 @@ fn qsearch(
         }
 
         num_searched += 1;
-        self.makeMove(stm, move);
+        self.makeMove(stm, typed);
         const score = -self.qsearch(false, is_pv, stm.flipped(), -beta, -alpha);
         self.unmakeMove(stm, move);
         if (self.stop.load(.acquire)) {
@@ -965,13 +960,14 @@ fn search(
         &cur.movelist,
         &cur.scores,
         if (is_singular_search) cur.excluded else tt_entry.move,
+        cur.move.move,
         is_singular_search,
     );
     defer mp.deinit();
     var best_move = Move.init();
     var best_score = -evaluation.inf_score;
-    var searched_quiets: BoundedArray(Move, 16) = .{};
-    var searched_noisies: BoundedArray(Move, 8) = .{};
+    var searched_quiets: BoundedArray(TypedMove, 16) = .{};
+    var searched_noisies: BoundedArray(TypedMove, 8) = .{};
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
     var num_searched: u8 = 0;
@@ -990,7 +986,8 @@ fn search(
         &self.histories,
         conthist_tables,
         board,
-    )) |move| {
+    )) |typed| {
+        const move = typed.move;
         if (move == cur.excluded) {
             continue;
         }
@@ -1027,7 +1024,7 @@ fn search(
         const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const history_terms = self.histories.readMoveTerms(
             board,
-            move,
+            typed,
             conthist_tables,
             is_quiet,
         );
@@ -1192,16 +1189,20 @@ fn search(
         num_searched += 1;
 
         if (std.debug.runtime_safety) {
-            if (std.mem.count(Move, searched_noisies.slice(), &.{move}) != 0) {
+            if (for (searched_noisies.slice()) |searched_move| {
+                if (searched_move.move == move) break true;
+            } else false) {
                 unreachable;
             }
-            if (std.mem.count(Move, searched_quiets.slice(), &.{move}) != 0) {
+            if (for (searched_quiets.slice()) |searched_move| {
+                if (searched_move.move == move) break true;
+            } else false) {
                 unreachable;
             }
         }
 
         const score = blk: {
-            self.makeMove(stm, move);
+            self.makeMove(stm, typed);
             self.stackEntry(0).history_score = rfp_hist_score;
             defer self.unmakeMove(stm, move);
 
@@ -1280,7 +1281,7 @@ fn search(
                         break :blk 0;
                     }
                     if (is_quiet and (s <= alpha or s >= beta)) {
-                        self.histories.updateCont(board, move, conthist_tables, new_depth, s >= beta, 0);
+                        self.histories.updateCont(board, typed, conthist_tables, new_depth, s >= beta, 0);
                     }
                 }
             } else if (!is_pv or num_searched > 1) {
@@ -1321,9 +1322,9 @@ fn search(
 
         if (score <= alpha) {
             if (is_quiet) {
-                searched_quiets.append(move) catch {};
+                searched_quiets.append(typed) catch {};
             } else {
-                searched_noisies.append(move) catch {};
+                searched_noisies.append(typed) catch {};
             }
         }
 
@@ -1349,8 +1350,8 @@ fn search(
                 const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, move, hist_depth, true, faillow_bonus);
-                        self.histories.updateCont(board, move, conthist_tables, hist_depth, true, faillow_bonus);
+                        self.histories.updateQuiet(board, typed, hist_depth, true, faillow_bonus);
+                        self.histories.updateCont(board, typed, conthist_tables, hist_depth, true, faillow_bonus);
 
                         for (searched_quiets.slice()) |searched_move| {
                             self.histories.updateQuiet(board, searched_move, hist_depth, false, 0);
@@ -1358,7 +1359,7 @@ fn search(
                         }
                     }
                 } else {
-                    self.histories.updateNoisy(board, move, hist_depth, true, faillow_bonus);
+                    self.histories.updateNoisy(board, typed, hist_depth, true, faillow_bonus);
                 }
                 for (searched_noisies.slice()) |searched_move| {
                     self.histories.updateNoisy(board, searched_move, hist_depth, false, 0);

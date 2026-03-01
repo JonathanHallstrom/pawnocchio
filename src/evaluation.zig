@@ -30,24 +30,6 @@ const impl = switch (eval_mode) {
     .nnue => root.nnue,
 };
 
-pub fn init() !void {
-    if (@hasDecl(impl, "init")) {
-        try impl.init();
-    }
-}
-
-pub fn deinit() void {
-    if (@hasDecl(impl, "deinit")) {
-        impl.deinit();
-    }
-}
-
-pub fn initThreadLocals() void {
-    if (@hasDecl(impl, "initThreadLocals")) {
-        impl.initThreadLocals();
-    }
-}
-
 pub const State = impl.State;
 pub const evaluate = impl.evaluate;
 

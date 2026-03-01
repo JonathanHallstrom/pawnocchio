@@ -40,6 +40,7 @@ last: usize,
 stage: Stage,
 skip_quiets: bool,
 ttmove: Move,
+prev_move: Move,
 last_bad_noisy: usize = 0,
 
 pub const Stage = enum {
@@ -56,6 +57,7 @@ pub fn init(
     movelist_: *MoveReceiver,
     scores_: [*]i32,
     ttmove_: Move,
+    prev_move_: Move,
     is_singular_search: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
@@ -75,6 +77,7 @@ pub fn init(
         .stage = stage,
         .skip_quiets = false,
         .ttmove = ttmove_,
+        .prev_move = prev_move_,
     };
 }
 
@@ -82,6 +85,7 @@ pub fn initQs(
     movelist_: *MoveReceiver,
     scores_: [*]i32,
     ttmove_: Move,
+    prev_move_: Move,
     skip_quiets: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
@@ -101,6 +105,7 @@ pub fn initQs(
         .stage = stage,
         .skip_quiets = skip_quiets,
         .ttmove = ttmove_,
+        .prev_move = prev_move_,
     };
 }
 
@@ -154,14 +159,14 @@ noinline fn findBest(noalias self: *MovePicker) usize {
 inline fn noisyValue(
     noalias histories: *const Historytable,
     noalias board: *const Board,
-    move: Move,
+    typed: TypedMove,
 ) i32 {
     var res: i32 = 0;
 
-    res += @intFromBool(move.tp() == .ep) * SEE.value(.pawn, .ordering);
-    res += SEE.value(board.pieceOn(move.to()) orelse .king, .ordering);
+    res += @intFromBool(typed.move.tp() == .ep) * SEE.value(.pawn, .ordering);
+    res += SEE.value(board.pieceOn(typed.move.to()) orelse .king, .ordering);
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
-    res += histories.readNoisy(board, move);
+    res += histories.readNoisy(board, typed);
 
     return res;
 }
@@ -170,9 +175,9 @@ inline fn quietValue(
     noalias histories: *const Historytable,
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
-    move: Move,
+    typed: TypedMove,
 ) i32 {
-    const terms = histories.readMoveTerms(board, move, conthist_tables, true);
+    const terms = histories.readMoveTerms(board, typed, conthist_tables, true);
     return tuning.ordHistQ(terms);
 }
 
@@ -184,7 +189,7 @@ pub fn next(
     noalias histories: *const Historytable,
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
-) ?Move {
+) ?TypedMove {
     return sw: switch (self.stage) {
         .tt => {
             @branchHint(.unpredictable);
@@ -193,7 +198,7 @@ pub fn next(
             }
             self.stage = .generate_noisies;
             if (board.isPseudoLegal(stm, self.ttmove)) {
-                return self.ttmove;
+                return TypedMove.fromBoard(board, self.prev_move, self.ttmove);
             }
             continue :sw .generate_noisies;
         },
@@ -202,7 +207,7 @@ pub fn next(
             std.debug.assert(self.movelist.vals.len == 0);
             movegen.generateAllNoisies(stm, board, self.movelist);
             for (self.movelist.vals.slice(), 0..) |move, i| {
-                self.scores[i] = noisyValue(histories, board, move);
+                self.scores[i] = noisyValue(histories, board, TypedMove.fromBoard(board, self.prev_move, move));
             }
             self.last = self.movelist.vals.len;
             self.stage = .good_noisies;
@@ -214,15 +219,15 @@ pub fn next(
                 continue :sw .generate_quiets;
             }
             const best_idx = self.findBest();
-            const res = self.movelist.vals.slice()[best_idx];
+            const res = TypedMove.fromBoard(board, self.prev_move, self.movelist.vals.slice()[best_idx]);
             const history_score = histories.readNoisy(board, res);
             const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                 root.tuning.tunable_constants.good_noisy_ordering_base;
-            if (SEE.scoreMove(board, res, margin, .ordering)) {
+            if (SEE.scoreMove(board, res.move, margin, .ordering)) {
                 return res;
             }
             const score = self.scores[best_idx];
-            self.movelist.vals.slice()[self.last_bad_noisy] = res;
+            self.movelist.vals.slice()[self.last_bad_noisy] = res.move;
             self.scores[self.last_bad_noisy] = score;
             self.last_bad_noisy += 1;
 
@@ -235,7 +240,7 @@ pub fn next(
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
             for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
-                self.scores[self.first + i] = quietValue(histories, conthist_tables, board, move);
+                self.scores[self.first + i] = quietValue(histories, conthist_tables, board, TypedMove.fromBoard(board, self.prev_move, move));
             }
             self.last = self.movelist.vals.len;
             self.stage = .quiets;
@@ -245,7 +250,7 @@ pub fn next(
             if (self.first == self.last or self.skip_quiets) {
                 continue :sw .bad_noisy_prep;
             }
-            return self.movelist.vals.slice()[self.findBest()];
+            return TypedMove.fromBoard(board, self.prev_move, self.movelist.vals.slice()[self.findBest()]);
         },
         .bad_noisy_prep => {
             self.first = 0;
@@ -257,7 +262,7 @@ pub fn next(
             if (self.first == self.last) {
                 return null;
             }
-            return self.movelist.vals.slice()[self.findBest()];
+            return TypedMove.fromBoard(board, self.prev_move, self.movelist.vals.slice()[self.findBest()]);
         },
     };
 }
