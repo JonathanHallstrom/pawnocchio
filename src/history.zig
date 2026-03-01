@@ -38,12 +38,22 @@ pub const TypedMove = struct {
         };
     }
 
-    pub fn fromBoard(board: *const Board, move_: Move) TypedMove {
+    pub inline fn fromBoard(
+        board: *const Board,
+        prev_move: Move,
+        move_: Move,
+    ) TypedMove {
         std.debug.assert(!move_.isNull());
-        return .{
+        var res: TypedMove = .{
             .move = move_,
             .tp = board.pieceOn(move_.from()).?,
         };
+        const opponent_threats = (&board.threats)[board.stm.flipped().toInt()];
+        res.setFromThreatened(move_.from().toBitboard() & opponent_threats != 0);
+        res.setToThreatened(move_.to().toBitboard() & opponent_threats != 0);
+        _ = prev_move;
+        // res.setRecapture(move_.to() == prev_move.to() and !prev_move.isNull());
+        return res;
     }
 
     const FROM_THREATENED = 1;
@@ -138,12 +148,7 @@ pub const QuietHistory = struct {
         move: TypedMove,
     ) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = board.stm.toInt();
-        const from_to_offs: usize = move.move.fromTo();
-        const threats = (&board.threats)[board.stm.flipped().toInt()];
-        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
-        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
-
-        return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + from_to_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
+        return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + move.fromToThreatIndex()];
     }
 
     pub inline fn updateRaw(self: *QuietHistory, board: *const Board, move: TypedMove, upd: i32) void {
@@ -246,13 +251,9 @@ pub const NoisyHistory = struct {
         board: *const Board,
         move: TypedMove,
     ) root.inheritConstness(@TypeOf(self), *i16) {
-        const from_to_offs: usize = move.move.fromTo();
         const captured = board.colouredPieceOn(move.move.to());
         const captured_offs = if (captured) |capt| capt.toInt() else 12;
-        const threats = (&board.threats)[board.stm.flipped().toInt()];
-        const from_threatened_offs: usize = @intFromBool(threats & move.move.from().toBitboard() != 0);
-        const to_threatened_offs: usize = @intFromBool(threats & move.move.to().toBitboard() != 0);
-        return &(&self.vals)[from_to_offs * 13 * 2 * 2 + captured_offs * 2 * 2 + from_threatened_offs * 2 + to_threatened_offs];
+        return &(&self.vals)[move.move.fromTo() * 13 * 2 * 2 + captured_offs * 2 * 2 + (move.flags & (TypedMove.FROM_THREATENED | TypedMove.TO_THREATENED))];
     }
 
     pub inline fn updateRaw(self: *NoisyHistory, board: *const Board, move: TypedMove, upd: i32) void {
@@ -484,11 +485,10 @@ pub const HistoryTable = struct {
     pub inline fn readMoveTerms(
         self: *const HistoryTable,
         board: *const Board,
-        move: Move,
+        typed: TypedMove,
         tables: ConthistTables,
         is_quiet: bool,
     ) MoveHistoryTerms {
-        const typed = TypedMove.fromBoard(board, move);
         var terms: MoveHistoryTerms = .{};
         if (!is_quiet) {
             terms.noisy = self.noisy.read(board, typed);
@@ -514,13 +514,12 @@ pub const HistoryTable = struct {
     pub fn updateCont(
         _: *HistoryTable,
         board: *const Board,
-        move: Move,
+        typed: TypedMove,
         tables: ConthistTables,
         depth: i32,
         is_bonus: bool,
         extra: i32,
     ) void {
-        const typed = TypedMove.fromBoard(board, move);
         var cont: i64 = 0;
         const stm = board.stm;
         inline for (CONTHIST_OFFSETS, tables) |offs, table| {
@@ -537,18 +536,16 @@ pub const HistoryTable = struct {
     pub fn updateQuiet(
         self: *HistoryTable,
         board: *const Board,
-        move: Move,
+        typed: TypedMove,
         depth: i32,
         is_bonus: bool,
         extra: i32,
     ) void {
-        const typed = TypedMove.fromBoard(board, move);
         self.quiet.update(board, typed, depth, is_bonus, extra);
         self.pawn.update(board, typed, depth, is_bonus, extra);
     }
 
-    pub fn readNoisy(self: *const HistoryTable, board: *const Board, move: Move) i32 {
-        const typed = TypedMove.fromBoard(board, move);
+    pub fn readNoisy(self: *const HistoryTable, board: *const Board, typed: TypedMove) i32 {
         var res: i32 = 0;
         res += self.noisy.read(board, typed);
 
@@ -558,12 +555,11 @@ pub const HistoryTable = struct {
     pub fn updateNoisy(
         self: *HistoryTable,
         board: *const Board,
-        move: Move,
+        typed: TypedMove,
         depth: i32,
         is_bonus: bool,
         extra: i32,
     ) void {
-        const typed = TypedMove.fromBoard(board, move);
         self.noisy.update(board, typed, depth, is_bonus, extra);
     }
 
