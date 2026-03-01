@@ -359,6 +359,10 @@ const tunable_defaults = struct {
     pub const material_scaling_bishop: i32 = 511;
     pub const material_scaling_rook: i32 = 281;
     pub const material_scaling_queen: i32 = 974;
+    pub const optimism_root_mult: i32 = 169;
+    pub const optimism_root_offs: i32 = 187;
+    pub const optimism_eval_base: i32 = 66560;
+    pub const optimism_eval_material_mult: i32 = 51;
     pub const rfp_fail_medium: i32 = 62;
     pub const tt_fail_medium: i32 = 11;
     pub const qs_tt_fail_medium: i32 = 181;
@@ -588,6 +592,10 @@ pub const tunables = [_]Tunable{
     .{ .name = "material_scaling_bishop", .default = tunable_defaults.material_scaling_bishop, .min = 10, .max = 1007, .c_end = 39 },
     .{ .name = "material_scaling_rook", .default = tunable_defaults.material_scaling_rook, .min = 10, .max = 1360, .c_end = 54 },
     .{ .name = "material_scaling_queen", .default = tunable_defaults.material_scaling_queen, .min = 10, .max = 2495, .c_end = 99 },
+    .{ .name = "optimism_root_mult", .default = tunable_defaults.optimism_root_mult },
+    .{ .name = "optimism_root_offs", .default = tunable_defaults.optimism_root_offs },
+    .{ .name = "optimism_eval_base", .default = tunable_defaults.optimism_eval_base },
+    .{ .name = "optimism_eval_material_mult", .default = tunable_defaults.optimism_eval_material_mult },
     .{ .name = "rfp_fail_medium", .default = tunable_defaults.rfp_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
     .{ .name = "tt_fail_medium", .default = tunable_defaults.tt_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
     .{ .name = "qs_tt_fail_medium", .default = tunable_defaults.qs_tt_fail_medium, .min = 0, .max = 1024, .c_end = 128 },
@@ -817,6 +825,10 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var material_scaling_bishop = tunable_defaults.material_scaling_bishop;
     pub var material_scaling_rook = tunable_defaults.material_scaling_rook;
     pub var material_scaling_queen = tunable_defaults.material_scaling_queen;
+    pub var optimism_root_mult = tunable_defaults.optimism_root_mult;
+    pub var optimism_root_offs = tunable_defaults.optimism_root_offs;
+    pub var optimism_eval_base = tunable_defaults.optimism_eval_base;
+    pub var optimism_eval_material_mult = tunable_defaults.optimism_eval_material_mult;
     pub var rfp_fail_medium = tunable_defaults.rfp_fail_medium;
     pub var tt_fail_medium = tunable_defaults.tt_fail_medium;
     pub var qs_tt_fail_medium = tunable_defaults.qs_tt_fail_medium;

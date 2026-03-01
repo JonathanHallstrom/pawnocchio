@@ -1629,7 +1629,10 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
         const best_avg: i32 = @intCast(@divTrunc(average_score + previous_score, 2));
-        const optimism = @divTrunc(169 * best_avg, @as(i32, @intCast(@abs(best_avg))) + 187);
+        const optimism = @divTrunc(
+            tunables.optimism_root_mult * best_avg,
+            @as(i32, @intCast(@abs(best_avg))) + tunables.optimism_root_offs,
+        );
         self.optimism[params.board.stm.toInt()] = optimism;
         self.optimism[params.board.stm.flipped().toInt()] = -optimism;
         var quantized_window: i64 = tunables.aspiration_initial + (average_score * tunables.aspiration_score_mult >> 14);

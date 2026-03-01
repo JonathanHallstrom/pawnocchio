@@ -667,7 +667,8 @@ pub const HistoryTable = struct {
         const material = board.materialScale();
         const material_scaled = @as(i64, eval) * (tunables.material_scaling_base + material);
         divisor *= 16384;
-        const optimism_scaled = material_scaled * 64 + optimism * (66560 + 51 * material);
+        const optimism_scaled = material_scaled * 64 +
+            optimism * (tunables.optimism_eval_base + tunables.optimism_eval_material_mult * material);
         divisor *= 64;
         const fifty_move_rule_scaled = optimism_scaled * (200 - board.halfmove);
         divisor *= 200;
