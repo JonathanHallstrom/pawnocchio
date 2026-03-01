@@ -436,6 +436,46 @@ const MoveCorrhist = struct {
     }
 };
 
+const CountermoveCorrhist = struct {
+    vals: [2 * 6 * 64][2 * 6 * 64]CorrhistEntry = std.mem.zeroes([2 * 6 * 64][2 * 6 * 64]CorrhistEntry),
+
+    noinline fn entry(
+        self: anytype,
+        board: *const Board,
+        prev: TypedMove,
+        followup: TypedMove,
+    ) root.inheritConstness(@TypeOf(self), *CorrhistEntry) {
+        const stm: usize = @intFromEnum(board.stm);
+        const prev_offs = prev.typeToIndex(stm ^ 1);
+        const followup_offs = followup.typeToIndex(stm);
+        return &(&self.vals)[prev_offs][followup_offs];
+    }
+
+    inline fn reset(self: *CountermoveCorrhist) void {
+        @memset(std.mem.asBytes(&self.vals), 0);
+    }
+
+    inline fn update(
+        self: *CountermoveCorrhist,
+        board: *const Board,
+        prev: TypedMove,
+        followup: TypedMove,
+        err: i32,
+        weight: i32,
+    ) void {
+        self.entry(board, prev, followup).update(err, weight);
+    }
+
+    inline fn read(
+        self: *const CountermoveCorrhist,
+        board: *const Board,
+        prev: TypedMove,
+        followup: TypedMove,
+    ) i64 {
+        return self.entry(board, prev, followup).val;
+    }
+};
+
 pub const HistoryTable = struct {
     quiet: QuietHistory,
     pawn: PawnHistory,
@@ -448,6 +488,7 @@ pub const HistoryTable = struct {
     black_nonpawn_corrhist: HashCorrhist("nonpawn_hash", CORRHIST_SIZE, .{ .side = .black }),
     prev_corrhist: MoveCorrhist,
     followup_corrhist: MoveCorrhist,
+    countermove_corrhist: CountermoveCorrhist,
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
@@ -461,6 +502,7 @@ pub const HistoryTable = struct {
         self.black_nonpawn_corrhist.reset();
         self.prev_corrhist.reset();
         self.followup_corrhist.reset();
+        self.countermove_corrhist.reset();
     }
 
     pub fn age(self: *HistoryTable) void {
@@ -586,6 +628,7 @@ pub const HistoryTable = struct {
         self.black_nonpawn_corrhist.update(board, err, weight * tunables.corrhist_nonpawn_update_weight);
         self.prev_corrhist.update(board, prev, err, weight * tunables.corrhist_prev_update_weight);
         self.followup_corrhist.update(board, followup, err, weight * tunables.corrhist_followup_update_weight);
+        self.countermove_corrhist.update(board, prev, followup, err, weight * tunables.corrhist_countermove_update_weight);
     }
 
     pub fn summedCorrectionTerms(
@@ -601,12 +644,14 @@ pub const HistoryTable = struct {
         const black_nonpawn_correction = self.black_nonpawn_corrhist.read(board);
         const prev_correction = self.prev_corrhist.read(board, prev);
         const followup_correction = self.followup_corrhist.read(board, followup);
+        const countermove_correction = self.countermove_corrhist.read(board, prev, followup);
 
         return @intCast(@abs(pawn_correction) +
             @abs(white_nonpawn_correction) +
             @abs(black_nonpawn_correction) +
             @abs(prev_correction) +
             @abs(followup_correction) +
+            @abs(countermove_correction) +
             @abs(major_correction) +
             @abs(minor_correction));
     }
@@ -623,12 +668,14 @@ pub const HistoryTable = struct {
         const black_nonpawn_correction = self.black_nonpawn_corrhist.read(board);
         const prev_correction = self.prev_corrhist.read(board, prev);
         const followup_correction = self.followup_corrhist.read(board, followup);
+        const countermove_correction = self.countermove_corrhist.read(board, prev, followup);
 
         return pawn_correction * pawn_correction +
             white_nonpawn_correction * white_nonpawn_correction +
             black_nonpawn_correction * black_nonpawn_correction +
             prev_correction * prev_correction +
             followup_correction * followup_correction +
+            countermove_correction * countermove_correction +
             major_correction * major_correction +
             minor_correction * minor_correction;
     }
@@ -648,11 +695,13 @@ pub const HistoryTable = struct {
         const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction;
         const prev_correction = self.prev_corrhist.read(board, prev);
         const followup_correction = self.followup_corrhist.read(board, followup);
+        const countermove_correction = self.countermove_corrhist.read(board, prev, followup);
 
         const correction = (tunables.corrhist_pawn_weight * pawn_correction +
             tunables.corrhist_nonpawn_weight * nonpawn_correction +
             tunables.corrhist_prev_weight * prev_correction +
             tunables.corrhist_followup_weight * followup_correction +
+            tunables.corrhist_countermove_weight * countermove_correction +
             tunables.corrhist_major_weight * major_correction +
             tunables.corrhist_minor_weight * minor_correction) >> 18;
 
