@@ -59,7 +59,7 @@ pub const Move = enum(u16) {
     }
 
     pub fn fromTo(self: Move) usize {
-        return @as(usize, self.from().toInt()) * 64 + self.to().toInt();
+        return self.toInt() & (1 << 12) - 1;
     }
 
     pub fn flag(self: Move) u8 {

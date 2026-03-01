@@ -66,10 +66,10 @@ pub const WDL = enum(u2) {
     draw = 1,
     loss = 0,
 
-    pub fn toInt(self: WDL) u8 {
+    pub inline fn toInt(self: WDL) u8 {
         return @intFromEnum(self);
     }
-    pub fn flipped(self: WDL) WDL {
+    pub inline fn flipped(self: WDL) WDL {
         return @enumFromInt(2 - self.toInt());
     }
 };
@@ -78,11 +78,11 @@ pub const Colour = enum(u1) {
     white = 0,
     black = 1,
 
-    pub fn fromInt(i: u8) Colour {
+    pub inline fn fromInt(i: u8) Colour {
         return @enumFromInt(@as(u1, @intCast(i)));
     }
 
-    pub fn toInt(self: Colour) u8 {
+    pub inline fn toInt(self: Colour) u8 {
         return @intFromBool(self == .black);
     }
 
@@ -130,11 +130,11 @@ pub const Square = enum(u8) {
     a8, b8, c8, d8, e8, f8, g8, h8,
     // zig fmt: on
 
-    pub fn fromInt(int: u8) Square {
+    pub inline fn fromInt(int: u8) Square {
         return @enumFromInt(int);
     }
 
-    pub fn toInt(self: Square) u6 {
+    pub inline fn toInt(self: Square) u6 {
         return @intCast(@intFromEnum(self));
     }
 
@@ -225,7 +225,7 @@ pub const Rank = enum {
     seventh,
     eighth,
 
-    pub fn fromInt(int: u3) Rank {
+    pub fn fromInt(int: u8) Rank {
         return @enumFromInt(int);
     }
 
@@ -244,7 +244,7 @@ pub const Rank = enum {
     }
 };
 
-pub const PieceType = enum(u3) {
+pub const PieceType = enum(u8) {
     pawn = 0,
     knight = 1,
     bishop = 2,
@@ -261,11 +261,11 @@ pub const PieceType = enum(u3) {
         .king,
     };
 
-    pub fn fromInt(i: u8) PieceType {
+    pub inline fn fromInt(i: u8) PieceType {
         return @enumFromInt(i);
     }
 
-    pub fn toInt(self: PieceType) u8 {
+    pub inline fn toInt(self: PieceType) u8 {
         return @intFromEnum(self);
     }
 
