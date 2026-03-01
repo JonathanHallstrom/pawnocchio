@@ -635,6 +635,7 @@ pub const HistoryTable = struct {
         prev: TypedMove,
         followup: TypedMove,
         static_eval: i16,
+        optimism: i32,
     ) struct { i16, i16 } {
         const pawn_correction = self.pawn_corrhist.read(board);
         const major_correction = self.major_corrhist.read(board);
@@ -652,36 +653,23 @@ pub const HistoryTable = struct {
             tunables.corrhist_major_weight * major_correction +
             tunables.corrhist_minor_weight * minor_correction) >> 18;
 
-        const scaled = scaleEval(board, static_eval);
+        const scaled = scaleEval(board, static_eval, optimism);
 
         return .{ @intCast(correction), evaluation.clampScore(scaled + correction) };
     }
 
-    pub fn scaleEval(board: *const Board, eval: i16) i16 {
+    pub fn scaleEval(board: *const Board, eval: i16, optimism: i64) i16 {
         comptime var divisor = 1;
-        const fifty_move_rule_scaled = @as(i64, eval) * (200 - board.halfmove);
-        divisor *= 200;
-        @setEvalBranchQuota(1 << 30);
-        const vals: [6]i16 = if (root.tuning.do_tuning) .{
-            @intCast(tunables.material_scaling_pawn),
-            @intCast(tunables.material_scaling_knight),
-            @intCast(tunables.material_scaling_bishop),
-            @intCast(tunables.material_scaling_rook),
-            @intCast(tunables.material_scaling_queen),
-            0,
-        } else comptime .{
-            tunables.material_scaling_pawn,
-            tunables.material_scaling_knight,
-            tunables.material_scaling_bishop,
-            tunables.material_scaling_rook,
-            tunables.material_scaling_queen,
-            0,
-        };
-
-        const material_scaled = fifty_move_rule_scaled * (tunables.material_scaling_base + board.sumPieces(vals));
+        const material = board.materialScale();
+        const material_scaled = @as(i64, eval) * (tunables.material_scaling_base + material);
         divisor *= 16384;
+        const optimism_scaled = material_scaled * 64 +
+            optimism * (tunables.optimism_eval_base + tunables.optimism_eval_material_mult * material);
+        divisor *= 64;
+        const fifty_move_rule_scaled = optimism_scaled * (200 - board.halfmove);
+        divisor *= 200;
 
-        return @intCast(@divTrunc(material_scaled, divisor));
+        return @intCast(@divTrunc(fifty_move_rule_scaled, divisor));
     }
 };
 
