@@ -523,10 +523,8 @@ pub const TTEntry = extern struct {
 
 // short lived object for writing to tt
 pub const TTProxy = struct {
-    cluster: *TTCluster,
-    idx: usize,
-    entry: TTEntry,
-    hash: u16,
+    entry: *TTEntry,
+    hash: *u16,
 
     pub inline fn depth(self: TTProxy) u8 {
         return self.entry.depth;
@@ -537,12 +535,12 @@ pub const TTProxy = struct {
     }
 
     pub inline fn hashEql(self: TTProxy, other: u64) bool {
-        return self.hash == TTCluster.compress(other);
+        return self.hash.* == TTCluster.compress(other);
     }
 
     pub inline fn write(self: TTProxy, entry: TTEntry, hash: u16) void {
-        self.cluster.entries[self.idx] = entry;
-        self.cluster.hashes[self.idx] = hash;
+        self.entry.* = entry;
+        self.hash.* = hash;
     }
 };
 
@@ -568,10 +566,8 @@ pub const TTCluster = extern struct {
 
     inline fn proxy(self: *TTCluster, idx: usize) TTProxy {
         return .{
-            .cluster = self,
-            .idx = idx,
-            .entry = (&self.entries)[idx],
-            .hash = (&self.hashes)[idx],
+            .entry = &(&self.entries)[idx],
+            .hash = &(&self.hashes)[idx],
         };
     }
 
@@ -585,7 +581,7 @@ pub const TTCluster = extern struct {
 
     pub const TTData = struct { TTEntry, bool };
 
-    pub noinline fn read(self: *const TTCluster, hash: u16) TTData {
+    pub inline fn read(self: *const TTCluster, hash: u16) TTData {
         const idx = self.idxEqualHashEntry(hash);
         const entry_ptr: [*]const TTEntry = &self.entries;
         var data: TTEntry = undefined;
