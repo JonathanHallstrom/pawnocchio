@@ -132,7 +132,7 @@ pub const Square = enum(u8) {
         return @enumFromInt(int);
     }
 
-    pub inline fn toInt(self: Square) u6 {
+    pub inline fn toInt(self: Square) u8 {
         return @intCast(@intFromEnum(self));
     }
 
@@ -150,7 +150,7 @@ pub const Square = enum(u8) {
     }
 
     pub fn toBitboard(self: Square) u64 {
-        return @as(u64, 1) << self.toInt();
+        return @as(u64, 1) << @intCast(self.toInt());
     }
 
     pub fn fromRankFile(rank: anytype, file: anytype) Square {
@@ -160,7 +160,7 @@ pub const Square = enum(u8) {
     pub fn move(self: Square, d_rank: anytype, d_file: anytype) Square {
         const actual_d_rank = if (std.meta.hasFn(@TypeOf(d_rank), "toInt")) d_rank.toInt() else d_rank;
         const actual_d_file = if (std.meta.hasFn(@TypeOf(d_file), "toInt")) d_file.toInt() else d_file;
-        return fromInt(@intCast(self.toInt() + @as(i8, @intCast(actual_d_rank)) * 8 + @as(i8, @intCast(actual_d_file))));
+        return fromInt(@intCast(@as(i16, self.toInt()) + @as(i8, @intCast(actual_d_rank)) * 8 + @as(i8, @intCast(actual_d_file))));
     }
 
     pub fn parse(square: []const u8) !Square {
@@ -428,7 +428,7 @@ pub const FilteringMoveReceiver = struct {
     }
 };
 
-pub const ScoreType = enum(u2) {
+pub const ScoreType = enum(u8) {
     none = 0,
     lower = 1,
     upper = 2,
@@ -442,11 +442,55 @@ pub const ScoreType = enum(u2) {
     }
 };
 
-pub const TTFlags = packed struct {
-    score_type: ScoreType = .none,
-    is_pv: bool = false,
-    age: u5 = 0,
+pub const TTFlags = struct {
+    raw: u8 = 0,
+
+    const SCORE_MASK: u8 = 0b00000011;
+    const PV_MASK: u8 = 0b00000100;
+    const AGE_SHIFT: u3 = 3;
+
+    pub fn init(
+        score_type: ScoreType,
+        is_pv: bool,
+        age: u8,
+    ) TTFlags {
+        const score: u8 = @intFromEnum(score_type);
+        const pv: u8 = if (is_pv) PV_MASK else 0;
+        return .{
+            .raw = score | pv | age << 3,
+        };
+    }
+
+    fn toInt(self: TTFlags) u8 {
+        return self.raw;
+    }
+
+    pub fn getPV(self: TTFlags) bool {
+        return self.raw & PV_MASK != 0;
+    }
+
+    pub fn getScoreType(self: TTFlags) ScoreType {
+        return @enumFromInt(self.raw & SCORE_MASK);
+    }
+
+    pub fn getAge(self: TTFlags) u8 {
+        return self.raw >> AGE_SHIFT;
+    }
 };
+
+test TTFlags {
+    inline for (.{
+        .{ .score_type = .none, .is_pv = false, .age = 0 },
+        .{ .score_type = .lower, .is_pv = true, .age = 1 },
+        .{ .score_type = .upper, .is_pv = false, .age = 17 },
+        .{ .score_type = .exact, .is_pv = true, .age = 31 },
+    }) |case| {
+        const flags = TTFlags.init(case.score_type, case.is_pv, case.age);
+        try std.testing.expectEqual(case.score_type, flags.getScoreType());
+        try std.testing.expectEqual(case.is_pv, flags.getPV());
+        try std.testing.expectEqual(case.age, flags.getAge());
+    }
+}
 
 comptime {
     assert(@sizeOf(TTFlags) == 1);
@@ -469,13 +513,13 @@ pub const TTEntry = struct {
     }
     inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
         const depth_val = tunable_constants.ttpick_depth_weight * self.depth;
-        const age_val = tunable_constants.ttpick_age_weight * (32 + cur_age - self.flags.age & 31);
-        const pv_val = tunable_constants.ttpick_pv_weight * @intFromBool(self.flags.is_pv);
-        const type_val = switch (self.flags.score_type) {
+        const age_val = tunable_constants.ttpick_age_weight * (32 + cur_age - self.flags.getAge() & 31);
+        const pv_val = tunable_constants.ttpick_pv_weight * @intFromBool(self.flags.getPV());
+        const type_val = switch (self.flags.getScoreType()) {
             .exact => tunable_constants.ttpick_exact_weight,
             .lower => tunable_constants.ttpick_lower_weight,
             .upper => tunable_constants.ttpick_upper_weight,
-            .none => 0,
+            .none => -1000_000_000,
         };
         const move_val = tunable_constants.ttpick_move_weight * @intFromBool(!self.move.isNull());
         return depth_val - age_val + pv_val + type_val + move_val;
@@ -496,10 +540,11 @@ pub const TTCluster = struct {
     }
 
     pub inline fn write(self: *TTCluster, hash: u16, cur_age: u8) *TTEntry {
-        var best_value: i32 = 100000;
         var best_entry: *TTEntry = &self.entries[0];
-        for (&self.entries) |*entry| {
-            if (entry.hash == hash or entry.flags.score_type == .none) {
+        var best_value: i32 = best_entry.getValue(cur_age);
+        inline for (&self.entries) |*entry| {
+            if (entry.hash == hash or entry.flags.getScoreType() == .none) {
+                @branchHint(.likely);
                 return entry;
             }
             const value = entry.getValue(cur_age);

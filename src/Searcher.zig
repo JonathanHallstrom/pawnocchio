@@ -152,15 +152,16 @@ pub fn writeTT(
 
     if (!(score_type == .exact or
         !entry.hashEql(hash) or
-        self.ttage != entry.flags.age or
+        self.ttage != entry.flags.getAge() or
         depth + 4 > entry.depth))
     {
+        @branchHint(.unpredictable);
         return;
     }
 
     entry.* = TTEntry{
         .score = evaluation.scoreToTt(score, self.ply),
-        .flags = .{ .score_type = score_type, .is_pv = tt_pv, .age = self.ttage },
+        .flags = .init(score_type, tt_pv, self.ttage),
         .move = move,
         .hash = TTEntry.compress(hash),
         .depth = @intCast(@max(0, depth)),
@@ -537,14 +538,14 @@ fn qsearch(
         tt_entry = .{};
     }
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
-    if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type)) {
+    if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType())) {
         if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
             return lerp(i16, 10, tunables.qs_tt_fail_medium, tt_score, beta);
         }
 
         return tt_score;
     }
-    const tt_pv = is_pv or tt_entry.flags.is_pv;
+    const tt_pv = is_pv or tt_entry.flags.getPV();
 
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
@@ -562,7 +563,7 @@ fn qsearch(
         cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
-        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.score_type)) {
+        if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.getScoreType())) {
             static_eval = tt_score;
         }
 
@@ -758,12 +759,12 @@ fn search(
         }
     }
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
-    const tt_pv = is_pv or (tt_hit and tt_entry.flags.is_pv);
+    const tt_pv = is_pv or (tt_hit and tt_entry.flags.getPV());
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
-                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.score_type) and board.halfmove < 98) {
+                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType()) and board.halfmove < 98) {
                     var score = tt_score;
                     if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
                         score = lerp(i16, 10, tunables.tt_fail_medium, tt_score, beta);
@@ -842,7 +843,7 @@ fn search(
             tt_score,
             corrected_static_eval,
             corrected_static_eval,
-            tt_entry.flags.score_type,
+            tt_entry.flags.getScoreType(),
         )) {
             is_tt_corrected_eval = true;
             cur.static_eval = tt_score;
@@ -1143,7 +1144,7 @@ fn search(
             move == tt_entry.move and
             !is_singular_search and
             tt_entry.depth + @as(i32, 3) >= depth and
-            tt_entry.flags.score_type != .upper)
+            tt_entry.flags.getScoreType() != .upper)
         {
             var beta_mult: i32 = tunables.singular_beta_mult;
             beta_mult -= @intFromBool(is_pv) * tunables.singular_beta_pv_mult;
@@ -1248,8 +1249,8 @@ fn search(
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
 
                 if (tt_pv) {
-                    reduction -= @as(i32, tunables.lmr_ttpv_score) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.score > alpha);
-                    reduction -= @as(i32, tunables.lmr_ttpv_depth) * @intFromBool(tt_entry.flags.score_type != .none and tt_entry.depth >= depth);
+                    reduction -= @as(i32, tunables.lmr_ttpv_score) * @intFromBool(tt_entry.flags.getScoreType() != .none and tt_entry.score > alpha);
+                    reduction -= @as(i32, tunables.lmr_ttpv_depth) * @intFromBool(tt_entry.flags.getScoreType() != .none and tt_entry.depth >= depth);
                 }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
@@ -1455,7 +1456,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
         var num_read: usize = 0;
         outer: for (0..1000) |i| {
             for (self.tt[i].entries) |entry| {
-                hashfull += @intFromBool(entry.flags.age == self.ttage);
+                hashfull += @intFromBool(entry.flags.getAge() == self.ttage);
                 num_read += 1;
                 if (num_read == 1000) {
                     break :outer;

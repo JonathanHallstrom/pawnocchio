@@ -624,8 +624,11 @@ pub fn main() !void {
                 },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
+            root.engine.printDebugStats();
+            root.engine.resetDebugStats();
             root.engine.stopSearch();
         } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
+            root.engine.printDebugStats();
             return;
         } else if (std.ascii.eqlIgnoreCase(command, "wait")) {
             root.engine.waitUntilDoneSearching();

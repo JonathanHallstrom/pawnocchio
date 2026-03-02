@@ -213,15 +213,15 @@ pub const Accumulator = struct {
             {
                 var iter = Bitboard.iterator(board.pieceFor(.white, tp));
                 while (iter.next()) |sq| {
-                    self.doAdd(.white, .white, white_king_sq, tp, sq);
-                    self.doAdd(.black, .white, black_king_sq, tp, sq);
+                    self.doAddCopy(self, .white, .white, white_king_sq, tp, sq);
+                    self.doAddCopy(self, .black, .white, black_king_sq, tp, sq);
                 }
             }
             {
                 var iter = Bitboard.iterator(board.pieceFor(.black, tp));
                 while (iter.next()) |sq| {
-                    self.doAdd(.white, .black, white_king_sq, tp, sq);
-                    self.doAdd(.black, .black, black_king_sq, tp, sq);
+                    self.doAddCopy(self, .white, .black, white_king_sq, tp, sq);
+                    self.doAddCopy(self, .black, .black, black_king_sq, tp, sq);
                 }
             }
         }
@@ -261,50 +261,12 @@ pub const Accumulator = struct {
         return acc;
     }
 
-    fn doAdd(self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
-        const add_idx = vecIdx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
-
+    inline fn doCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour) void {
         for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx + i];
+            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i];
         }
     }
 
-    fn doAddSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
-        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
-        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
-
-        for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] += hiddenLayerWeightsVector()[add_idx + i] -
-                hiddenLayerWeightsVector()[sub_idx + i];
-        }
-    }
-
-    fn doAddSubSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
-        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
-        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
-        const opp_sub_idx = vecIdx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
-        for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] +=
-                hiddenLayerWeightsVector()[add_idx + i] -
-                hiddenLayerWeightsVector()[sub_idx + i] -
-                hiddenLayerWeightsVector()[opp_sub_idx + i];
-        }
-    }
-
-    fn doAddAddSubSub(noalias self: *Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
-        const add1_idx = vecIdx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
-        const sub1_idx = vecIdx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
-        const add2_idx = vecIdx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
-        const sub2_idx = vecIdx(acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc));
-
-        for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] +=
-                hiddenLayerWeightsVector()[add1_idx + i] -
-                hiddenLayerWeightsVector()[sub1_idx + i] +
-                hiddenLayerWeightsVector()[add2_idx + i] -
-                hiddenLayerWeightsVector()[sub2_idx + i];
-        }
-    }
     inline fn doAddCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
         const add_idx = vecIdx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
 
@@ -373,8 +335,8 @@ pub const Accumulator = struct {
         }
         if (self.dirty_piece.isClean()) {
             if (mode == .copy) {
-                @memcpy(self.accFor(stm), other.accFor(stm));
-                @memcpy(self.accFor(stm.flipped()), other.accFor(stm.flipped()));
+                self.doCopy(other, .white);
+                self.doCopy(other, .black);
             }
             return;
         }

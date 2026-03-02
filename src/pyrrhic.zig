@@ -21,6 +21,7 @@ const WDL = root.WDL;
 const Board = root.Board;
 const Square = root.Square;
 const ScoredMove = root.ScoredMove;
+const Bitboard = root.Bitboard;
 
 const use_tbs = root.use_tbs;
 
@@ -144,7 +145,7 @@ pub fn probeRootDTZ(
         if (c.PYRRHIC_MOVE_IS_BPROMO(tb_move.move)) promo_type_opt = .bishop;
         if (c.PYRRHIC_MOVE_IS_RPROMO(tb_move.move)) promo_type_opt = .rook;
         if (c.PYRRHIC_MOVE_IS_QPROMO(tb_move.move)) promo_type_opt = .queen;
-        const capture = board.occupancyFor(board.stm.flipped()) & @as(u64, 1) << to.toInt() != 0;
+        const capture = Bitboard.contains(board.occupancyFor(board.stm.flipped()), to);
         var move = root.Move.quiet(from, to);
         if (is_ep) {
             move = root.Move.enPassant(from, to);

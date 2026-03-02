@@ -84,6 +84,13 @@ pub fn printDebugStats() void {
     }
 }
 
+pub fn resetDebugStats() void {
+    var iter = debug_stats.valueIterator();
+    while (iter.next()) |e| {
+        e.reset();
+    }
+}
+
 pub fn init() !void {
     thread_pool = ThreadPool.init(std.heap.page_allocator);
     try thread_pool.setTTSize(16);

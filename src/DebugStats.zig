@@ -36,6 +36,10 @@ percentiles: [PERCENTILES.len]f64 = .{0} ** PERCENTILES.len,
 
 const Self = @This();
 
+pub fn reset(self: *Self) void {
+    self.* = .{};
+}
+
 pub fn add(self: *Self, data_point: i64, rng: std.Random) void {
     self.sum += data_point;
     self.sum_sqr += @as(u128, @abs(data_point)) * @abs(data_point);
