@@ -515,45 +515,68 @@ pub const TTEntry = struct {
         const depth_val = tunable_constants.ttpick_depth_weight * self.depth;
         const age_val = tunable_constants.ttpick_age_weight * (32 + cur_age - self.flags.getAge() & 31);
         const pv_val = tunable_constants.ttpick_pv_weight * @intFromBool(self.flags.getPV());
-        const type_val = switch (self.flags.getScoreType()) {
-            .exact => tunable_constants.ttpick_exact_weight,
-            .lower => tunable_constants.ttpick_lower_weight,
-            .upper => tunable_constants.ttpick_upper_weight,
-            .none => -1000_000_000,
+        const TYPE_VALS = [_]i32{
+            -1000_000_000,
+            tunable_constants.ttpick_lower_weight,
+            tunable_constants.ttpick_upper_weight,
+            tunable_constants.ttpick_exact_weight,
         };
+        const type_val = (&TYPE_VALS)[@intFromEnum(self.flags.getScoreType())];
         const move_val = tunable_constants.ttpick_move_weight * @intFromBool(!self.move.isNull());
+        // _ = engine.dbg("tt value", depth_val - age_val + pv_val + move_val);
+        // _ = engine.dbg("age", (32 + cur_age - self.flags.getAge() & 31));
         return depth_val - age_val + pv_val + type_val + move_val;
     }
 };
 
 pub const TTCluster = struct {
-    entries: [3]TTEntry = .{TTEntry{}} ** 3,
+    pub const ENTRIES_PER_CLUSTER = 3;
+    entries: [ENTRIES_PER_CLUSTER]TTEntry = @splat(.{}),
     _pad: u16 = 0,
 
-    pub inline fn read(self: TTCluster, hash: u16) TTEntry {
-        for (self.entries) |entry| {
-            if (entry.hash == hash) {
-                return entry;
-            }
+    fn idxEqualHashEntry(noalias self: anytype, hash: u16) ?usize {
+        var haystack: u64 = 0;
+        inline for (&self.entries, 0..) |*entry, i| {
+            haystack |= @as(u64, entry.hash) << (16 * i);
         }
-        return self.entries[0];
+        haystack |= @as(u64, hash) << 48;
+
+        const low_bits: u64 = 0x0001000100010001;
+        const high_bits: u64 = 0x8000800080008000;
+        const needle = hash * low_bits;
+        const zeroes = haystack ^ needle;
+        const matches = zeroes -% low_bits & ~zeroes & high_bits;
+        const result = @ctz(matches) / 16;
+
+        // we put the needle last as a sentinel, therefore if there is no match we will get a hit on the last index
+        if (result == 3) {
+            return null;
+        }
+        return result;
     }
 
-    pub inline fn write(self: *TTCluster, hash: u16, cur_age: u8) *TTEntry {
-        var best_entry: *TTEntry = &self.entries[0];
-        var best_value: i32 = best_entry.getValue(cur_age);
-        inline for (&self.entries) |*entry| {
-            if (entry.hash == hash or entry.flags.getScoreType() == .none) {
-                @branchHint(.likely);
-                return entry;
-            }
+    pub inline fn read(self: TTCluster, hash: u16) TTEntry {
+        return (&self.entries)[self.idxEqualHashEntry(hash) orelse 0];
+    }
+
+    pub noinline fn write(noalias self: *TTCluster, hash: u16, cur_age: u8) *TTEntry {
+        if (self.idxEqualHashEntry(hash)) |idx| {
+            @branchHint(.unpredictable);
+            return &(&self.entries)[idx];
+        }
+
+        var best_entry: u32 = 0;
+        var best_value: i32 = (&self.entries)[best_entry].getValue(cur_age);
+
+        inline for (&self.entries, 0..) |*entry, i| {
             const value = entry.getValue(cur_age);
             if (value < best_value) {
+                @branchHint(.unpredictable);
                 best_value = value;
-                best_entry = entry;
+                best_entry = i;
             }
         }
-        return best_entry;
+        return &(&self.entries)[best_entry];
     }
 };
 
