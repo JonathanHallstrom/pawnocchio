@@ -148,25 +148,27 @@ pub fn writeTT(
     depth: i32,
     raw_static_eval: i16,
 ) void {
-    const entry = self.tt[self.ttIndex(hash)].write(TTEntry.compress(hash), self.ttage);
+    const entry = self.tt[self.ttIndex(hash)].write(TTCluster.compress(hash), self.ttage);
 
     if (!(score_type == .exact or
         !entry.hashEql(hash) or
-        self.ttage != entry.flags.getAge() or
-        depth + 4 > entry.depth))
+        self.ttage != entry.flags().getAge() or
+        depth + 4 > entry.depth()))
     {
         @branchHint(.unpredictable);
         return;
     }
 
-    entry.* = TTEntry{
-        .score = evaluation.scoreToTt(score, self.ply),
-        .flags = .init(score_type, tt_pv, self.ttage),
-        .move = move,
-        .hash = TTEntry.compress(hash),
-        .depth = @intCast(@max(0, depth)),
-        .raw_static_eval = raw_static_eval,
-    };
+    entry.write(
+        .{
+            .score = evaluation.scoreToTt(score, self.ply),
+            .flags = .init(score_type, tt_pv, self.ttage),
+            .move = move,
+            .depth = @intCast(@max(0, depth)),
+            .raw_static_eval = raw_static_eval,
+        },
+        TTCluster.compress(hash),
+    );
 }
 
 fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
@@ -188,8 +190,8 @@ inline fn prefetch(self: *const Searcher, board: *const Board, move: Move) void 
     @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
 }
 
-pub inline fn readTT(self: *const Searcher, hash: u64) TTEntry {
-    return self.tt[self.ttIndex(hash)].read(TTEntry.compress(hash));
+pub inline fn readTT(self: *const Searcher, hash: u64) TTCluster.TTData {
+    return self.tt[self.ttIndex(hash)].read(TTCluster.compress(hash));
 }
 
 pub const StackEntry = struct {
@@ -531,11 +533,7 @@ fn qsearch(
     const is_in_check = board.checkers != 0;
 
     const tt_hash = board.getHashWithHalfmove();
-    var tt_entry = self.readTT(tt_hash);
-    const tt_hit = tt_entry.hashEql(tt_hash);
-    if (!tt_hit) {
-        tt_entry = .{};
-    }
+    const tt_entry, const tt_hit = self.readTT(tt_hash);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType())) {
         if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
@@ -751,15 +749,8 @@ fn search(
     var tt_entry: TTEntry = .{};
     var tt_hit = false;
     if (!is_singular_search) {
-        tt_entry = self.readTT(tt_hash);
-
-        tt_hit = tt_entry.hashEql(tt_hash);
-        if (!tt_hit) {
-            tt_entry = .{};
-        }
+        tt_entry, tt_hit = self.readTT(tt_hash);
     }
-    const has_tt_move = tt_hit and !tt_entry.move.isNull();
-    const tt_pv = is_pv or (tt_hit and tt_entry.flags.getPV());
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
@@ -786,11 +777,14 @@ fn search(
                 .draw => .{ .exact, self.drawScore(stm) },
             };
             if (evaluation.checkTTBound(score, alpha, beta, tp)) {
-                self.writeTT(tt_pv, tt_hash, Move.init(), score, tp, depth, evaluation.matedIn(self.ply));
+                self.writeTT(is_pv or (tt_hit and tt_entry.flags.getPV()), tt_hash, Move.init(), score, tp, depth, evaluation.matedIn(self.ply));
                 return score;
             }
         }
     }
+
+    const has_tt_move = tt_hit and !tt_entry.move.isNull();
+    const tt_pv = is_pv or (tt_hit and tt_entry.flags.getPV());
 
     // internal iterative reduction (iir)
     if (depth >= 4 + (if (is_pv) 4 else 0) and
@@ -1762,10 +1756,10 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             const score, var move = pickBestMove(board);
             _ = score;
             if (move.isNull()) {
-                const tt_entry = self.readTT(board.hash);
+                const tt_entry, const tt_hit = self.readTT(board.hash);
                 switch (board.stm) {
                     inline else => |stm| {
-                        if (tt_entry.hashEql(board.hash) and
+                        if (tt_hit and
                             board.isPseudoLegal(stm, tt_entry.move) and
                             board.isLegal(stm, tt_entry.move))
                         {

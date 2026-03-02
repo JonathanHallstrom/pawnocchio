@@ -442,7 +442,7 @@ pub const ScoreType = enum(u8) {
     }
 };
 
-pub const TTFlags = struct {
+pub const TTFlags = packed struct(u8) {
     raw: u8 = 0,
 
     const SCORE_MASK: u8 = 0b00000011;
@@ -496,21 +496,13 @@ comptime {
     assert(@sizeOf(TTFlags) == 1);
 }
 
-pub const TTEntry = struct {
-    hash: u16 = 0,
+pub const TTEntry = extern struct {
     score: i16 = 0,
     flags: TTFlags = .{},
-    move: Move = Move.init(),
     depth: u8 = 0,
+    move: Move = Move.init(),
     raw_static_eval: i16 = 0,
 
-    pub fn compress(h: u64) u16 {
-        return @intCast(h & 0xffff);
-    }
-
-    pub fn hashEql(self: TTEntry, other_hash: u64) bool {
-        return self.hash == compress(other_hash);
-    }
     inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
         const depth_val = tunable_constants.ttpick_depth_weight * self.depth;
         const age_val = tunable_constants.ttpick_age_weight * (32 + cur_age - self.flags.getAge() & 31);
@@ -529,16 +521,41 @@ pub const TTEntry = struct {
     }
 };
 
-pub const TTCluster = struct {
-    pub const ENTRIES_PER_CLUSTER = 3;
-    entries: [ENTRIES_PER_CLUSTER]TTEntry = @splat(.{}),
-    _pad: u16 = 0,
+// short lived object for writing to tt
+pub const TTProxy = struct {
+    cluster: *TTCluster,
+    idx: usize,
+    entry: TTEntry,
+    hash: u16,
 
-    fn idxEqualHashEntry(noalias self: anytype, hash: u16) ?usize {
-        var haystack: u64 = 0;
-        inline for (&self.entries, 0..) |*entry, i| {
-            haystack |= @as(u64, entry.hash) << (16 * i);
-        }
+    pub inline fn depth(self: TTProxy) u8 {
+        return self.entry.depth;
+    }
+
+    pub inline fn flags(self: TTProxy) TTFlags {
+        return self.entry.flags;
+    }
+
+    pub inline fn hashEql(self: TTProxy, other: u64) bool {
+        return self.hash == TTCluster.compress(other);
+    }
+
+    pub inline fn write(self: TTProxy, entry: TTEntry, hash: u16) void {
+        self.cluster.entries[self.idx] = entry;
+        self.cluster.hashes[self.idx] = hash;
+    }
+};
+
+pub const TTCluster = extern struct {
+    entries: [3]TTEntry align(8) = @splat(.{}),
+    hashes: [4]u16 align(8) = @splat(0),
+
+    pub fn compress(h: u64) u16 {
+        return @intCast(h & 0xffff);
+    }
+
+    inline fn idxEqualHashEntry(noalias self: *const TTCluster, hash: u16) usize {
+        var haystack: u64 = @bitCast(self.hashes);
         haystack |= @as(u64, hash) << 48;
 
         const low_bits: u64 = 0x0001000100010001;
@@ -546,23 +563,48 @@ pub const TTCluster = struct {
         const needle = hash * low_bits;
         const zeroes = haystack ^ needle;
         const matches = zeroes -% low_bits & ~zeroes & high_bits;
-        const result = @ctz(matches) / 16;
+        return @ctz(matches) / 16;
+    }
 
-        // we put the needle last as a sentinel, therefore if there is no match we will get a hit on the last index
-        if (result == 3) {
+    inline fn proxy(self: *TTCluster, idx: usize) TTProxy {
+        return .{
+            .cluster = self,
+            .idx = idx,
+            .entry = (&self.entries)[idx],
+            .hash = (&self.hashes)[idx],
+        };
+    }
+
+    inline fn eqlHashEntry(noalias self: *TTCluster, hash: u16) ?TTProxy {
+        const idx = self.idxEqualHashEntry(hash);
+        if (idx == 3) {
             return null;
         }
-        return result;
+        return self.proxy(idx);
     }
 
-    pub inline fn read(self: TTCluster, hash: u16) TTEntry {
-        return (&self.entries)[self.idxEqualHashEntry(hash) orelse 0];
-    }
+    pub const TTData = struct { TTEntry, bool };
 
-    pub noinline fn write(noalias self: *TTCluster, hash: u16, cur_age: u8) *TTEntry {
-        if (self.idxEqualHashEntry(hash)) |idx| {
+    pub noinline fn read(self: *const TTCluster, hash: u16) TTData {
+        const idx = self.idxEqualHashEntry(hash);
+        const entry_ptr: [*]const TTEntry = &self.entries;
+        var data: TTEntry = undefined;
+        // might read the hashes array if index is 3
+        // this is safe but reads garbage data
+        // which is also fine because it's only in non-matches
+        // meaning that the data wont be read
+        @memcpy(std.mem.asBytes(&data), std.mem.asBytes(&entry_ptr[idx]));
+        if (idx == 3) {
             @branchHint(.unpredictable);
-            return &(&self.entries)[idx];
+            data = .{};
+        }
+        return .{ data, idx != 3 };
+    }
+
+    pub inline fn write(noalias self: *TTCluster, hash: u16, cur_age: u8) TTProxy {
+        if (self.eqlHashEntry(hash)) |entry| {
+            @branchHint(.unpredictable);
+            return entry;
         }
 
         var best_entry: u32 = 0;
@@ -576,12 +618,12 @@ pub const TTCluster = struct {
                 best_entry = i;
             }
         }
-        return &(&self.entries)[best_entry];
+        return self.proxy(best_entry);
     }
 };
 
 comptime {
-    assert(@sizeOf(TTEntry) == 10);
+    assert(@sizeOf(TTEntry) == 8);
     assert(@sizeOf(TTCluster) == 32);
 }
 
