@@ -184,12 +184,11 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
     return eval;
 }
 
-pub fn prefetch(self: *const Searcher, move: Move) void {
-    const board = &self.stackEntry(0).board;
+inline fn prefetch(self: *const Searcher, board: *const Board, move: Move) void {
     @prefetch(&self.tt[self.ttIndex(board.roughHashAfter(move, true))], .{});
 }
 
-pub fn readTT(self: *const Searcher, hash: u64) TTEntry {
+pub inline fn readTT(self: *const Searcher, hash: u64) TTEntry {
     return self.tt[self.ttIndex(hash)].read(TTEntry.compress(hash));
 }
 
@@ -605,7 +604,8 @@ fn qsearch(
         board,
     )) |typed| {
         const move = typed.move;
-        self.prefetch(move);
+        std.debug.assert(!move.isNull());
+        self.prefetch(board, move);
         if (!board.isLegal(stm, move)) {
             continue;
         }
@@ -929,7 +929,7 @@ fn search(
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull())
         {
-            self.prefetch(Move.init());
+            self.prefetch(board, Move.init());
             var nmp_reduction = tunables.nmp_base + depth * tunables.nmp_mult;
             nmp_reduction >>= 13;
 
@@ -1015,7 +1015,8 @@ fn search(
                 continue;
             }
         }
-        self.prefetch(move);
+        std.debug.assert(!move.isNull());
+        self.prefetch(board, move);
         if (!board.isLegal(stm, move)) {
             continue;
         }

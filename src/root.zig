@@ -79,7 +79,7 @@ pub const Colour = enum(u1) {
     black = 1,
 
     pub inline fn fromInt(i: u8) Colour {
-        return @enumFromInt(@as(u1, @intCast(i)));
+        return @enumFromInt(i);
     }
 
     pub inline fn toInt(self: Colour) u8 {
@@ -133,7 +133,7 @@ pub const Square = enum(u8) {
     }
 
     pub inline fn toInt(self: Square) u8 {
-        return @intCast(@intFromEnum(self));
+        return @intFromEnum(self);
     }
 
     pub fn getFile(self: Square) File {
@@ -313,7 +313,7 @@ pub const NullableColouredPieceType = enum(u8) {
     }
 
     pub inline fn fromColouredPieceType(cpt: ColouredPieceType) NullableColouredPieceType {
-        return @enumFromInt(cpt.toInt());
+        return @enumFromInt(@intFromEnum(cpt));
     }
 
     pub inline fn toColouredPieceType(self: NullableColouredPieceType) ColouredPieceType {
@@ -321,7 +321,7 @@ pub const NullableColouredPieceType = enum(u8) {
     }
 };
 
-pub const ColouredPieceType = enum(u4) {
+pub const ColouredPieceType = enum(u8) {
     white_pawn = 0,
     black_pawn = 1,
 

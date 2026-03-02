@@ -133,11 +133,11 @@ pub inline fn colourOn(self: Board, sq: Square) ?Colour {
     if (self.isSquareEmpty(sq)) {
         return null;
     }
-    return if (self.white & sq.toBitboard() != 0) .white else .black;
+    return if (Bitboard.contains(self.white, sq)) .white else .black;
 }
 
 pub inline fn isSquareEmpty(self: Board, sq: Square) bool {
-    return self.occupancy() & sq.toBitboard() == 0;
+    return !Bitboard.contains(self.occupancy(), sq);
 }
 
 pub inline fn nullableColouredPieceOn(self: *const Board, sq: Square) NullableColouredPieceType {
@@ -155,7 +155,7 @@ pub inline fn startingRankFor(self: Board, col: Colour) Rank {
 pub fn sumPieces(self: Board, values: anytype) std.meta.Child(@TypeOf(values)) {
     var res: std.meta.Child(@TypeOf(values)) = 0;
     for (PieceType.all) |pt| {
-        res += values[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
+        res += (&values)[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
     }
     return res;
 }
@@ -1439,7 +1439,7 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         return false;
     }
 
-    if (self.pinned[stm.toInt()] & from_bb != 0) {
+    if ((&self.pinned)[stm.toInt()] & from_bb != 0) {
         if (Bitboard.extendingRayBb(from, to) & self.kingFor(stm) == 0) {
             return false;
         }
@@ -1455,25 +1455,33 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
     } != 0;
 }
 
-pub fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove: bool) u64 {
+pub inline fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove: bool) u64 {
     var res: u64 = self.hash;
 
-    var hmc = self.halfmove + 1;
+    var hmc = if (include_halfmove) self.halfmove + 1 else void{};
     if (!move.isNull()) {
         if (self.colouredPieceOn(move.to())) |cpt| {
+            @branchHint(.unpredictable);
             res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
-            hmc = 0;
+            if (include_halfmove) {
+                hmc = 0;
+            }
         }
 
         const cpt = self.colouredPieceOn(move.from()).?;
+        const pt = cpt.toPieceType();
+        const col = cpt.toColour();
 
-        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.from());
-        res ^= root.zobrist.piece(cpt.toColour(), cpt.toPieceType(), move.to());
-        if (cpt.toPieceType() == .pawn) {
-            hmc = 0;
+        res ^= root.zobrist.piece(col, pt, move.from());
+        res ^= root.zobrist.piece(col, pt, move.to());
+
+        if (include_halfmove) {
+            hmc *= @intFromBool(pt != .pawn);
         }
     } else {
-        hmc = 0;
+        if (include_halfmove) {
+            hmc = 0;
+        }
     }
     res ^= root.zobrist.turn();
     if (include_halfmove) {
