@@ -670,7 +670,7 @@ fn qsearch(
     }
     if (!is_in_check and
         best_score > corrected_static_eval and
-        !SEE.scoreMove(board, best_move, 0, .pruning))
+        !SEE.scoreMove(board, best_move, -100, .pruning))
     {
         if (evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type)) {
             self.histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, 0);
