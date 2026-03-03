@@ -79,7 +79,7 @@ pub const Colour = enum(u1) {
     black = 1,
 
     pub inline fn fromInt(i: u8) Colour {
-        return @enumFromInt(@as(u1, @intCast(i)));
+        return @enumFromInt(i);
     }
 
     pub inline fn toInt(self: Colour) u8 {
@@ -133,7 +133,7 @@ pub const Square = enum(u8) {
     }
 
     pub inline fn toInt(self: Square) u8 {
-        return @intCast(@intFromEnum(self));
+        return @intFromEnum(self);
     }
 
     pub fn getFile(self: Square) File {
@@ -313,7 +313,7 @@ pub const NullableColouredPieceType = enum(u8) {
     }
 
     pub inline fn fromColouredPieceType(cpt: ColouredPieceType) NullableColouredPieceType {
-        return @enumFromInt(cpt.toInt());
+        return @enumFromInt(@intFromEnum(cpt));
     }
 
     pub inline fn toColouredPieceType(self: NullableColouredPieceType) ColouredPieceType {
@@ -321,7 +321,7 @@ pub const NullableColouredPieceType = enum(u8) {
     }
 };
 
-pub const ColouredPieceType = enum(u4) {
+pub const ColouredPieceType = enum(u8) {
     white_pawn = 0,
     black_pawn = 1,
 
@@ -442,7 +442,7 @@ pub const ScoreType = enum(u8) {
     }
 };
 
-pub const TTFlags = struct {
+pub const TTFlags = packed struct(u8) {
     raw: u8 = 0,
 
     const SCORE_MASK: u8 = 0b00000011;
@@ -496,69 +496,123 @@ comptime {
     assert(@sizeOf(TTFlags) == 1);
 }
 
-pub const TTEntry = struct {
-    hash: u16 = 0,
+pub const TTEntry = extern struct {
     score: i16 = 0,
     flags: TTFlags = .{},
-    move: Move = Move.init(),
     depth: u8 = 0,
+    move: Move = Move.init(),
     raw_static_eval: i16 = 0,
+
+    inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
+        const depth_val = tunable_constants.ttpick_depth_weight * self.depth;
+        const age_val = tunable_constants.ttpick_age_weight * (32 + cur_age - self.flags.getAge() & 31);
+        const pv_val = tunable_constants.ttpick_pv_weight * @intFromBool(self.flags.getPV());
+        const TYPE_VALS = [_]i32{
+            -1000_000_000,
+            tunable_constants.ttpick_lower_weight,
+            tunable_constants.ttpick_upper_weight,
+            tunable_constants.ttpick_exact_weight,
+        };
+        const type_val = (&TYPE_VALS)[@intFromEnum(self.flags.getScoreType())];
+        const move_val = tunable_constants.ttpick_move_weight * @intFromBool(!self.move.isNull());
+        // _ = engine.dbg("tt value", depth_val - age_val + pv_val + move_val);
+        // _ = engine.dbg("age", (32 + cur_age - self.flags.getAge() & 31));
+        return depth_val - age_val + pv_val + type_val + move_val;
+    }
+};
+
+// short lived object for writing to tt
+pub const TTProxy = struct {
+    entry: *TTEntry,
+    hash: *u16,
+
+    pub inline fn depth(self: TTProxy) u8 {
+        return self.entry.depth;
+    }
+
+    pub inline fn flags(self: TTProxy) TTFlags {
+        return self.entry.flags;
+    }
+
+    pub inline fn hashEql(self: TTProxy, other: u64) bool {
+        return self.hash.* == TTCluster.compress(other);
+    }
+
+    pub inline fn write(self: TTProxy, entry: TTEntry, hash: u16) void {
+        self.entry.* = entry;
+        self.hash.* = hash;
+    }
+};
+
+pub const TTCluster = extern struct {
+    entries: [3]TTEntry align(8) = @splat(.{}),
+    hashes: [4]u16 align(8) = @splat(0),
 
     pub fn compress(h: u64) u16 {
         return @intCast(h & 0xffff);
     }
 
-    pub fn hashEql(self: TTEntry, other_hash: u64) bool {
-        return self.hash == compress(other_hash);
+    inline fn idxEqualHashEntry(noalias self: *const TTCluster, hash: u16) usize {
+        var haystack: u64 = @bitCast(self.hashes);
+        haystack |= @as(u64, hash) << 48;
+
+        const low_bits: u64 = 0x0001000100010001;
+        const high_bits: u64 = 0x8000800080008000;
+        const needle = hash * low_bits;
+        const zeroes = haystack ^ needle;
+        const matches = zeroes -% low_bits & ~zeroes & high_bits;
+        return @ctz(matches) / 16;
     }
-    inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
-        const depth_val = tunable_constants.ttpick_depth_weight * self.depth;
-        const age_val = tunable_constants.ttpick_age_weight * (32 + cur_age - self.flags.getAge() & 31);
-        const pv_val = tunable_constants.ttpick_pv_weight * @intFromBool(self.flags.getPV());
-        const type_val = switch (self.flags.getScoreType()) {
-            .exact => tunable_constants.ttpick_exact_weight,
-            .lower => tunable_constants.ttpick_lower_weight,
-            .upper => tunable_constants.ttpick_upper_weight,
-            .none => -1000_000_000,
+
+    inline fn proxy(self: *TTCluster, idx: usize) TTProxy {
+        return .{
+            .entry = &(&self.entries)[idx],
+            .hash = &(&self.hashes)[idx],
         };
-        const move_val = tunable_constants.ttpick_move_weight * @intFromBool(!self.move.isNull());
-        return depth_val - age_val + pv_val + type_val + move_val;
     }
-};
 
-pub const TTCluster = struct {
-    entries: [3]TTEntry = .{TTEntry{}} ** 3,
-    _pad: u16 = 0,
-
-    pub inline fn read(self: TTCluster, hash: u16) TTEntry {
-        for (self.entries) |entry| {
-            if (entry.hash == hash) {
-                return entry;
-            }
+    inline fn eqlHashEntry(noalias self: *TTCluster, hash: u16) ?TTProxy {
+        const idx = self.idxEqualHashEntry(hash);
+        if (idx == 3) {
+            return null;
         }
-        return self.entries[0];
+        return self.proxy(idx);
     }
 
-    pub inline fn write(self: *TTCluster, hash: u16, cur_age: u8) *TTEntry {
-        var best_entry: *TTEntry = &self.entries[0];
-        var best_value: i32 = best_entry.getValue(cur_age);
-        inline for (&self.entries) |*entry| {
-            if (entry.hash == hash or entry.flags.getScoreType() == .none) {
-                @branchHint(.likely);
-                return entry;
-            }
+    pub const TTData = struct { TTEntry, bool };
+
+    pub inline fn read(self: *const TTCluster, hash: u16) TTData {
+        const idx = self.idxEqualHashEntry(hash);
+        const data: TTEntry = if (idx == 3)
+            .{}
+        else
+            (&self.entries)[idx];
+        return .{ data, idx != 3 };
+    }
+
+    pub inline fn write(noalias self: *TTCluster, hash: u16, cur_age: u8) TTProxy {
+        if (self.eqlHashEntry(hash)) |entry| {
+            @branchHint(.unpredictable);
+            return entry;
+        }
+
+        var best_entry: u32 = 0;
+        var best_value: i32 = (&self.entries)[best_entry].getValue(cur_age);
+
+        inline for (&self.entries, 0..) |*entry, i| {
             const value = entry.getValue(cur_age);
             if (value < best_value) {
+                @branchHint(.unpredictable);
                 best_value = value;
-                best_entry = entry;
+                best_entry = i;
             }
         }
-        return best_entry;
+        return self.proxy(best_entry);
     }
 };
 
 comptime {
-    assert(@sizeOf(TTEntry) == 10);
+    assert(@sizeOf(TTEntry) == 8);
     assert(@sizeOf(TTCluster) == 32);
 }
 
