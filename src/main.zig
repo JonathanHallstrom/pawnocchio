@@ -659,7 +659,7 @@ pub fn main() !void {
             std.debug.print("average: {d:.4} average abs: {d:.4}\n", .{ average, abs_average });
         } else if (root.evaluation.eval_mode == .nnue and std.ascii.eqlIgnoreCase(command, "nneval")) {
             const raw_eval = root.nnue.evalPosition(&board);
-            const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval, 0);
+            const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
             const normalized = root.wdl.normalize(scaled, board.classicalMaterial());
             write("raw eval: {}\n", .{raw_eval});
             write("scaled eval: {}\n", .{scaled});
