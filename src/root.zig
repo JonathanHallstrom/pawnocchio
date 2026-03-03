@@ -583,17 +583,10 @@ pub const TTCluster = extern struct {
 
     pub inline fn read(self: *const TTCluster, hash: u16) TTData {
         const idx = self.idxEqualHashEntry(hash);
-        const entry_ptr: [*]const TTEntry = &self.entries;
-        var data: TTEntry = undefined;
-        // might read the hashes array if index is 3
-        // this is safe but reads garbage data
-        // which is also fine because it's only in non-matches
-        // meaning that the data wont be read
-        @memcpy(std.mem.asBytes(&data), std.mem.asBytes(&entry_ptr[idx]));
-        if (idx == 3) {
-            @branchHint(.unpredictable);
-            data = .{};
-        }
+        const data: TTEntry = if (idx == 3)
+            .{}
+        else
+            (&self.entries)[idx];
         return .{ data, idx != 3 };
     }
 
