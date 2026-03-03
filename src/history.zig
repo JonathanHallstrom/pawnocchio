@@ -59,6 +59,7 @@ pub const TypedMove = struct {
     const FROM_THREATENED = 1;
     const TO_THREATENED = 2;
     const RECAPTURE = 4;
+    const THREAT_MASK = FROM_THREATENED | TO_THREATENED;
 
     pub fn setFromThreatened(self: *TypedMove, val: bool) void {
         self.flags |= if (val) FROM_THREATENED else 0;
@@ -85,7 +86,11 @@ pub const TypedMove = struct {
     }
 
     pub fn fromToThreatIndex(self: *const TypedMove) usize {
-        return 4 * self.move.fromTo() + (self.flags & (FROM_THREATENED | TO_THREATENED));
+        return 4 * self.move.fromTo() + (self.flags & THREAT_MASK);
+    }
+
+    pub fn typeToThreatIndex(self: *const TypedMove) usize {
+        return 4 * (@as(usize, self.tp.toInt()) * 64 + self.move.to().toInt()) + (self.flags & THREAT_MASK);
     }
 
     pub fn typeToIndex(self: *const TypedMove, side: usize) usize {
@@ -116,7 +121,8 @@ pub const MoveHistoryTerms = struct {
 };
 
 pub const QuietHistory = struct {
-    vals: [2 * 64 * 64 * 2 * 2]i16,
+    from_to_vals: [2 * 64 * 64 * 2 * 2]i16,
+    piece_to_vals: [2 * 6 * 64 * 2 * 2]i16,
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -133,26 +139,40 @@ pub const QuietHistory = struct {
     }
 
     fn age(self: *QuietHistory) void {
-        for (&self.vals) |*e| {
+        for (&self.from_to_vals) |*e| {
+            e.* = @intCast(@divTrunc(@as(i32, e.*) * 3, 4));
+        }
+        for (&self.piece_to_vals) |*e| {
             e.* = @intCast(@divTrunc(@as(i32, e.*) * 3, 4));
         }
     }
 
     inline fn reset(self: *QuietHistory) void {
-        @memset(std.mem.asBytes(&self.vals), 0);
+        @memset(std.mem.asBytes(&self.from_to_vals), 0);
+        @memset(std.mem.asBytes(&self.piece_to_vals), 0);
     }
 
-    inline fn entry(
+    inline fn fromToEntry(
         self: anytype,
         board: *const Board,
         move: TypedMove,
     ) root.inheritConstness(@TypeOf(self), *i16) {
         const col_offs: usize = board.stm.toInt();
-        return &(&self.vals)[col_offs * 64 * 64 * 2 * 2 + move.fromToThreatIndex()];
+        return &(&self.from_to_vals)[col_offs * 64 * 64 * 2 * 2 + move.fromToThreatIndex()];
+    }
+
+    inline fn pieceToEntry(
+        self: anytype,
+        board: *const Board,
+        move: TypedMove,
+    ) root.inheritConstness(@TypeOf(self), *i16) {
+        const col_offs: usize = board.stm.toInt();
+        return &(&self.piece_to_vals)[col_offs * 6 * 64 * 2 * 2 + move.typeToThreatIndex()];
     }
 
     pub inline fn updateRaw(self: *QuietHistory, board: *const Board, move: TypedMove, upd: i32) void {
-        gravityUpdate(self.entry(board, move), upd);
+        gravityUpdate(self.fromToEntry(board, move), upd);
+        gravityUpdate(self.pieceToEntry(board, move), upd);
     }
 
     inline fn update(
@@ -167,7 +187,9 @@ pub const QuietHistory = struct {
     }
 
     inline fn read(self: *const QuietHistory, board: *const Board, move: TypedMove) i16 {
-        return self.entry(board, move).*;
+        const from_to = self.fromToEntry(board, move).*;
+        const piece_to = self.pieceToEntry(board, move).*;
+        return @intCast(@divTrunc(@as(i32, from_to) + piece_to, 2));
     }
 };
 
@@ -253,7 +275,7 @@ pub const NoisyHistory = struct {
     ) root.inheritConstness(@TypeOf(self), *i16) {
         const captured = board.colouredPieceOn(move.move.to());
         const captured_offs = if (captured) |capt| capt.toInt() else 12;
-        return &(&self.vals)[move.move.fromTo() * 13 * 2 * 2 + captured_offs * 2 * 2 + (move.flags & (TypedMove.FROM_THREATENED | TypedMove.TO_THREATENED))];
+        return &(&self.vals)[move.move.fromTo() * 13 * 2 * 2 + captured_offs * 2 * 2 + (move.flags & TypedMove.THREAT_MASK)];
     }
 
     pub inline fn updateRaw(self: *NoisyHistory, board: *const Board, move: TypedMove, upd: i32) void {
