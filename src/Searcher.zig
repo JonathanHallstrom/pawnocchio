@@ -668,6 +668,14 @@ fn qsearch(
     if (!evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta) and best_score > beta) {
         best_score = lerp(i16, 10, tunables.qs_fail_medium, best_score, beta);
     }
+    if (!is_in_check and
+        best_score > corrected_static_eval and
+        !SEE.scoreMove(board, best_move, 0, .pruning))
+    {
+        if (evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type)) {
+            self.histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, 0);
+        }
+    }
 
     self.writeTT(
         tt_pv,
