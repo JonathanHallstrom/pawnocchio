@@ -119,6 +119,7 @@ fn parseSingleGame(
     input: []const u8,
     game: *Game,
     error_ctx: *ErrorContext,
+    config: Config,
 ) ParseGameError!usize {
     error_ctx.reset();
     if (input.len < 32) {
@@ -139,6 +140,7 @@ fn parseSingleGame(
     game.reset(board);
     game.setOutCome(@enumFromInt(initial.wdl));
 
+    var prev_move: Move = undefined;
     while (i < input.len) {
         if (input.len - i < 4) {
             error_ctx.capturePos(i, &board, null, null);
@@ -152,6 +154,14 @@ fn parseSingleGame(
             break;
         }
         const move = move_eval.move.toMove(&board);
+
+        if (move == prev_move and
+            config.sp_stalemate_fix)
+        {
+            game.setOutCome(.draw);
+            break;
+        }
+        prev_move = move;
 
         switch (board.stm) {
             inline else => |stm| {
@@ -175,11 +185,16 @@ fn parseSingleGame(
     return i;
 }
 
+pub const Config = struct {
+    print_errors: bool,
+    sp_stalemate_fix: bool,
+};
+
 pub fn sanitiseBufferToFile(
     input: []const u8,
     output: *std.Io.Writer,
     allocator: std.mem.Allocator,
-    print_errors: bool,
+    config: Config,
 ) !void {
     var game: Game = .from(.startpos(), allocator);
     defer game.moves.deinit();
@@ -194,9 +209,9 @@ pub fn sanitiseBufferToFile(
         if (iters % (1 << 10) == 0) {
             std.debug.print("progress: {}/{}\r", .{ i, input.len });
         }
-        const bytes_used = parseSingleGame(input[i..], &game, &error_ctx) catch |e| {
+        const bytes_used = parseSingleGame(input[i..], &game, &error_ctx, config) catch |e| {
             if (isRecoverableParseError(e)) {
-                if (print_errors) {
+                if (config.print_errors) {
                     std.debug.print("failed to parse game at byte offset {} (offset {}): {}\n", .{ i, error_ctx.in_game_byte_offset, e });
                     if (error_ctx.fen()) |fen| {
                         std.debug.print("  final_fen: {s}\n", .{fen});
@@ -207,7 +222,7 @@ pub fn sanitiseBufferToFile(
                 i += 1;
                 continue;
             }
-            if (print_errors) {
+            if (config.print_errors) {
                 std.debug.print("fatal sanitiser error at byte offset {} (offset {}): {}\n", .{ i, error_ctx.in_game_byte_offset, e });
                 if (error_ctx.fen()) |fen| {
                     std.debug.print("  final_fen: {s}\n", .{fen});
