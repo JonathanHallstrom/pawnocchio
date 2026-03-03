@@ -1400,7 +1400,7 @@ fn search(
 
         if (!is_in_check and (best_score <= alpha_original or
             board.isQuiet(best_move) or
-            !SEE.scoreMove(board, best_move, 0, .pruning)))
+            !SEE.scoreMove(board, best_move, -50, .pruning)))
         {
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
