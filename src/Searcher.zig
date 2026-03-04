@@ -1881,7 +1881,6 @@ fn buildHistory(
 }
 
 fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
-    searcher.* = undefined;
     searcher.is_ready = false;
     searcher.ensureInvariants();
     searcher.histories = std.mem.zeroes(history.HistoryTable);

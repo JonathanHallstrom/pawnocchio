@@ -101,6 +101,7 @@ pub const CONTHIST_OFFSETS = [_]comptime_int{
     0,
     1,
     3,
+    5,
 };
 pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
 pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
@@ -112,6 +113,7 @@ pub const MoveHistoryTerms = struct {
     cont1: i32 = 0,
     cont2: i32 = 0,
     cont4: i32 = 0,
+    cont6: i32 = 0,
     noisy: i32 = 0,
 };
 
@@ -328,6 +330,11 @@ pub const ContHistory = struct {
                 tunables.cont4_bonus_offs,
                 tunables.cont4_bonus_max,
             },
+            3 => .{
+                tunables.cont6_bonus_mult,
+                tunables.cont6_bonus_offs,
+                tunables.cont6_bonus_max,
+            },
             else => unreachable,
         };
         return @intCast(@min(
@@ -352,6 +359,11 @@ pub const ContHistory = struct {
                 tunables.cont4_penalty_mult,
                 tunables.cont4_penalty_offs,
                 tunables.cont4_penalty_max,
+            },
+            3 => .{
+                tunables.cont6_penalty_mult,
+                tunables.cont6_penalty_offs,
+                tunables.cont6_penalty_max,
             },
             else => unreachable,
         };
@@ -502,6 +514,7 @@ pub const HistoryTable = struct {
             &terms.cont1,
             &terms.cont2,
             &terms.cont4,
+            &terms.cont6,
         };
         inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
             const stm = if (offs % 2 == 0) board.stm.flipped() else board.stm;

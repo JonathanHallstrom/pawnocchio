@@ -75,13 +75,15 @@ inline fn histQ(
     cont1: i32,
     cont2: i32,
     cont4: i32,
+    cont6: i32,
 ) i32 {
     return @divTrunc(
         terms.quiet * quiet +
             terms.pawn * pawn +
             terms.cont1 * cont1 +
             terms.cont2 * cont2 +
-            terms.cont4 * cont4,
+            terms.cont4 * cont4 +
+            terms.cont6 * cont6,
         1024,
     );
 }
@@ -98,6 +100,7 @@ pub inline fn rfpHistQ(terms: anytype) i32 {
         tunable_constants.rfp_hist_cont1_weight,
         tunable_constants.rfp_hist_cont2_weight,
         tunable_constants.rfp_hist_cont4_weight,
+        tunable_constants.rfp_hist_cont6_weight,
     );
 }
 
@@ -113,6 +116,7 @@ pub inline fn lmrDepthHistQ(terms: anytype) i32 {
         tunable_constants.lmr_depth_hist_cont1_weight,
         tunable_constants.lmr_depth_hist_cont2_weight,
         tunable_constants.lmr_depth_hist_cont4_weight,
+        tunable_constants.lmr_depth_hist_cont6_weight,
     );
 }
 
@@ -128,6 +132,7 @@ pub inline fn lmrHistQ(terms: anytype) i32 {
         tunable_constants.lmr_hist_cont1_weight,
         tunable_constants.lmr_hist_cont2_weight,
         tunable_constants.lmr_hist_cont4_weight,
+        tunable_constants.lmr_hist_cont6_weight,
     );
 }
 
@@ -143,6 +148,7 @@ pub inline fn hpHistQ(terms: anytype) i32 {
         tunable_constants.hp_hist_cont1_weight,
         tunable_constants.hp_hist_cont2_weight,
         tunable_constants.hp_hist_cont4_weight,
+        tunable_constants.hp_hist_cont6_weight,
     );
 }
 
@@ -158,6 +164,7 @@ pub inline fn fpHistQ(terms: anytype) i32 {
         tunable_constants.fp_hist_cont1_weight,
         tunable_constants.fp_hist_cont2_weight,
         tunable_constants.fp_hist_cont4_weight,
+        tunable_constants.fp_hist_cont6_weight,
     );
 }
 
@@ -169,6 +176,7 @@ pub inline fn ordHistQ(terms: anytype) i32 {
         tunable_constants.cont1_ordering_weight,
         tunable_constants.cont2_ordering_weight,
         tunable_constants.cont4_ordering_weight,
+        tunable_constants.cont6_ordering_weight,
     );
 }
 
@@ -203,6 +211,12 @@ const tunable_defaults = struct {
     pub const cont4_penalty_mult: i32 = 183;
     pub const cont4_penalty_offs: i32 = 365;
     pub const cont4_penalty_max: i32 = 1525;
+    pub const cont6_bonus_mult: i32 = 214;
+    pub const cont6_bonus_offs: i32 = 163;
+    pub const cont6_bonus_max: i32 = 3421;
+    pub const cont6_penalty_mult: i32 = 183;
+    pub const cont6_penalty_offs: i32 = 365;
+    pub const cont6_penalty_max: i32 = 1525;
     pub const noisy_bonus_mult: i32 = 237;
     pub const noisy_bonus_offs: i32 = 279;
     pub const noisy_bonus_max: i32 = 3084;
@@ -220,6 +234,7 @@ const tunable_defaults = struct {
     pub const cont1_ordering_weight: i32 = 840;
     pub const cont2_ordering_weight: i32 = 1046;
     pub const cont4_ordering_weight: i32 = 557;
+    pub const cont6_ordering_weight: i32 = 557;
     pub const rfp_min_margin: i32 = 21;
     pub const rfp_base: i32 = 47248;
     pub const rfp_mult: i32 = 34063;
@@ -237,6 +252,7 @@ const tunable_defaults = struct {
     pub const rfp_hist_cont1_weight: i32 = 749;
     pub const rfp_hist_cont2_weight: i32 = 974;
     pub const rfp_hist_cont4_weight: i32 = 231;
+    pub const rfp_hist_cont6_weight: i32 = 231;
     pub const rfp_hist_noisy_weight: i32 = 1024;
     pub const aspiration_score_mult: i32 = 1148;
     pub const aspiration_initial: i32 = 11314;
@@ -261,12 +277,14 @@ const tunable_defaults = struct {
     pub const lmr_depth_hist_cont1_weight: i32 = 749;
     pub const lmr_depth_hist_cont2_weight: i32 = 974;
     pub const lmr_depth_hist_cont4_weight: i32 = 231;
+    pub const lmr_depth_hist_cont6_weight: i32 = 231;
     pub const lmr_depth_hist_noisy_weight: i32 = 1024;
     pub const lmr_hist_quiet_weight: i32 = 403;
     pub const lmr_hist_pawn_weight: i32 = 1027;
     pub const lmr_hist_cont1_weight: i32 = 749;
     pub const lmr_hist_cont2_weight: i32 = 974;
     pub const lmr_hist_cont4_weight: i32 = 231;
+    pub const lmr_hist_cont6_weight: i32 = 231;
     pub const lmr_hist_noisy_weight: i32 = 1024;
     pub const lmr_corrhist_mult: i32 = 8219;
     pub const lmr_alpha_raise_mult: i32 = 1024;
@@ -293,6 +311,7 @@ const tunable_defaults = struct {
     pub const fp_hist_cont1_weight: i32 = 749;
     pub const fp_hist_cont2_weight: i32 = 974;
     pub const fp_hist_cont4_weight: i32 = 231;
+    pub const fp_hist_cont6_weight: i32 = 231;
     pub const bnfp_depth_limit: i32 = 8648;
     pub const bnfp_base: i32 = 158;
     pub const bnfp_mult: i32 = 75;
@@ -316,6 +335,7 @@ const tunable_defaults = struct {
     pub const hp_hist_cont1_weight: i32 = 749;
     pub const hp_hist_cont2_weight: i32 = 974;
     pub const hp_hist_cont4_weight: i32 = 231;
+    pub const hp_hist_cont6_weight: i32 = 231;
     pub const hp_hist_noisy_weight: i32 = 1024;
     pub const noisy_history_pruning_depth_limit: i32 = 3578;
     pub const noisy_history_pruning_offs: i32 = 897;
@@ -436,6 +456,12 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont4_penalty_mult", .default = tunable_defaults.cont4_penalty_mult },
     .{ .name = "cont4_penalty_offs", .default = tunable_defaults.cont4_penalty_offs },
     .{ .name = "cont4_penalty_max", .default = tunable_defaults.cont4_penalty_max },
+    .{ .name = "cont6_bonus_mult", .default = tunable_defaults.cont6_bonus_mult },
+    .{ .name = "cont6_bonus_offs", .default = tunable_defaults.cont6_bonus_offs },
+    .{ .name = "cont6_bonus_max", .default = tunable_defaults.cont6_bonus_max },
+    .{ .name = "cont6_penalty_mult", .default = tunable_defaults.cont6_penalty_mult },
+    .{ .name = "cont6_penalty_offs", .default = tunable_defaults.cont6_penalty_offs },
+    .{ .name = "cont6_penalty_max", .default = tunable_defaults.cont6_penalty_max },
     .{ .name = "noisy_bonus_mult", .default = tunable_defaults.noisy_bonus_mult },
     .{ .name = "noisy_bonus_offs", .default = tunable_defaults.noisy_bonus_offs },
     .{ .name = "noisy_bonus_max", .default = tunable_defaults.noisy_bonus_max },
@@ -453,6 +479,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "cont1_ordering_weight", .default = tunable_defaults.cont1_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont2_ordering_weight", .default = tunable_defaults.cont2_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "cont4_ordering_weight", .default = tunable_defaults.cont4_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
+    .{ .name = "cont6_ordering_weight", .default = tunable_defaults.cont6_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_min_margin", .default = tunable_defaults.rfp_min_margin },
     .{ .name = "rfp_base", .default = tunable_defaults.rfp_base },
     .{ .name = "rfp_mult", .default = tunable_defaults.rfp_mult },
@@ -470,6 +497,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "rfp_hist_cont1_weight", .default = tunable_defaults.rfp_hist_cont1_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_hist_cont2_weight", .default = tunable_defaults.rfp_hist_cont2_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_hist_cont4_weight", .default = tunable_defaults.rfp_hist_cont4_weight, .min = -2048, .max = 2048, .c_end = 128 },
+    .{ .name = "rfp_hist_cont6_weight", .default = tunable_defaults.rfp_hist_cont6_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "rfp_hist_noisy_weight", .default = tunable_defaults.rfp_hist_noisy_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "aspiration_score_mult", .default = tunable_defaults.aspiration_score_mult, .min = 10, .max = 4096, .c_end = 32 },
     .{ .name = "aspiration_initial", .default = tunable_defaults.aspiration_initial, .min = 10, .max = 39450, .c_end = 1577 },
@@ -494,12 +522,14 @@ pub const tunables = [_]Tunable{
     .{ .name = "lmr_depth_hist_cont1_weight", .default = tunable_defaults.lmr_depth_hist_cont1_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_depth_hist_cont2_weight", .default = tunable_defaults.lmr_depth_hist_cont2_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_depth_hist_cont4_weight", .default = tunable_defaults.lmr_depth_hist_cont4_weight, .min = -2048, .max = 2048, .c_end = 128 },
+    .{ .name = "lmr_depth_hist_cont6_weight", .default = tunable_defaults.lmr_depth_hist_cont6_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_depth_hist_noisy_weight", .default = tunable_defaults.lmr_depth_hist_noisy_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_hist_quiet_weight", .default = tunable_defaults.lmr_hist_quiet_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_hist_pawn_weight", .default = tunable_defaults.lmr_hist_pawn_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_hist_cont1_weight", .default = tunable_defaults.lmr_hist_cont1_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_hist_cont2_weight", .default = tunable_defaults.lmr_hist_cont2_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_hist_cont4_weight", .default = tunable_defaults.lmr_hist_cont4_weight, .min = -2048, .max = 2048, .c_end = 128 },
+    .{ .name = "lmr_hist_cont6_weight", .default = tunable_defaults.lmr_hist_cont6_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_hist_noisy_weight", .default = tunable_defaults.lmr_hist_noisy_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "lmr_corrhist_mult", .default = tunable_defaults.lmr_corrhist_mult, .min = -10, .max = 23695, .c_end = 947 },
     .{ .name = "lmr_alpha_raise_mult", .default = tunable_defaults.lmr_alpha_raise_mult },
@@ -526,6 +556,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "fp_hist_cont1_weight", .default = tunable_defaults.fp_hist_cont1_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "fp_hist_cont2_weight", .default = tunable_defaults.fp_hist_cont2_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "fp_hist_cont4_weight", .default = tunable_defaults.fp_hist_cont4_weight, .min = -2048, .max = 2048, .c_end = 128 },
+    .{ .name = "fp_hist_cont6_weight", .default = tunable_defaults.fp_hist_cont6_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "bnfp_depth_limit", .default = tunable_defaults.bnfp_depth_limit },
     .{ .name = "bnfp_base", .default = tunable_defaults.bnfp_base },
     .{ .name = "bnfp_mult", .default = tunable_defaults.bnfp_mult },
@@ -549,6 +580,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "hp_hist_cont1_weight", .default = tunable_defaults.hp_hist_cont1_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "hp_hist_cont2_weight", .default = tunable_defaults.hp_hist_cont2_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "hp_hist_cont4_weight", .default = tunable_defaults.hp_hist_cont4_weight, .min = -2048, .max = 2048, .c_end = 128 },
+    .{ .name = "hp_hist_cont6_weight", .default = tunable_defaults.hp_hist_cont6_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "hp_hist_noisy_weight", .default = tunable_defaults.hp_hist_noisy_weight, .min = -2048, .max = 2048, .c_end = 128 },
     .{ .name = "noisy_history_pruning_depth_limit", .default = tunable_defaults.noisy_history_pruning_depth_limit },
     .{ .name = "noisy_history_pruning_offs", .default = tunable_defaults.noisy_history_pruning_offs, .min = -2048, .max = 1024, .c_end = 128 },
@@ -669,6 +701,12 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var cont4_penalty_mult = tunable_defaults.cont4_penalty_mult;
     pub var cont4_penalty_offs = tunable_defaults.cont4_penalty_offs;
     pub var cont4_penalty_max = tunable_defaults.cont4_penalty_max;
+    pub var cont6_bonus_mult = tunable_defaults.cont6_bonus_mult;
+    pub var cont6_bonus_offs = tunable_defaults.cont6_bonus_offs;
+    pub var cont6_bonus_max = tunable_defaults.cont6_bonus_max;
+    pub var cont6_penalty_mult = tunable_defaults.cont6_penalty_mult;
+    pub var cont6_penalty_offs = tunable_defaults.cont6_penalty_offs;
+    pub var cont6_penalty_max = tunable_defaults.cont6_penalty_max;
     pub var noisy_bonus_mult = tunable_defaults.noisy_bonus_mult;
     pub var noisy_bonus_offs = tunable_defaults.noisy_bonus_offs;
     pub var noisy_bonus_max = tunable_defaults.noisy_bonus_max;
@@ -686,6 +724,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var cont1_ordering_weight = tunable_defaults.cont1_ordering_weight;
     pub var cont2_ordering_weight = tunable_defaults.cont2_ordering_weight;
     pub var cont4_ordering_weight = tunable_defaults.cont4_ordering_weight;
+    pub var cont6_ordering_weight = tunable_defaults.cont6_ordering_weight;
     pub var rfp_min_margin = tunable_defaults.rfp_min_margin;
     pub var rfp_base = tunable_defaults.rfp_base;
     pub var rfp_mult = tunable_defaults.rfp_mult;
@@ -703,6 +742,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var rfp_hist_cont1_weight = tunable_defaults.rfp_hist_cont1_weight;
     pub var rfp_hist_cont2_weight = tunable_defaults.rfp_hist_cont2_weight;
     pub var rfp_hist_cont4_weight = tunable_defaults.rfp_hist_cont4_weight;
+    pub var rfp_hist_cont6_weight = tunable_defaults.rfp_hist_cont6_weight;
     pub var rfp_hist_noisy_weight = tunable_defaults.rfp_hist_noisy_weight;
     pub var aspiration_score_mult = tunable_defaults.aspiration_score_mult;
     pub var aspiration_initial = tunable_defaults.aspiration_initial;
@@ -727,12 +767,14 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var lmr_depth_hist_cont1_weight = tunable_defaults.lmr_depth_hist_cont1_weight;
     pub var lmr_depth_hist_cont2_weight = tunable_defaults.lmr_depth_hist_cont2_weight;
     pub var lmr_depth_hist_cont4_weight = tunable_defaults.lmr_depth_hist_cont4_weight;
+    pub var lmr_depth_hist_cont6_weight = tunable_defaults.lmr_depth_hist_cont6_weight;
     pub var lmr_depth_hist_noisy_weight = tunable_defaults.lmr_depth_hist_noisy_weight;
     pub var lmr_hist_quiet_weight = tunable_defaults.lmr_hist_quiet_weight;
     pub var lmr_hist_pawn_weight = tunable_defaults.lmr_hist_pawn_weight;
     pub var lmr_hist_cont1_weight = tunable_defaults.lmr_hist_cont1_weight;
     pub var lmr_hist_cont2_weight = tunable_defaults.lmr_hist_cont2_weight;
     pub var lmr_hist_cont4_weight = tunable_defaults.lmr_hist_cont4_weight;
+    pub var lmr_hist_cont6_weight = tunable_defaults.lmr_hist_cont6_weight;
     pub var lmr_hist_noisy_weight = tunable_defaults.lmr_hist_noisy_weight;
     pub var lmr_corrhist_mult = tunable_defaults.lmr_corrhist_mult;
     pub var lmr_alpha_raise_mult = tunable_defaults.lmr_alpha_raise_mult;
@@ -759,6 +801,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var fp_hist_cont1_weight = tunable_defaults.fp_hist_cont1_weight;
     pub var fp_hist_cont2_weight = tunable_defaults.fp_hist_cont2_weight;
     pub var fp_hist_cont4_weight = tunable_defaults.fp_hist_cont4_weight;
+    pub var fp_hist_cont6_weight = tunable_defaults.fp_hist_cont6_weight;
     pub var bnfp_depth_limit = tunable_defaults.bnfp_depth_limit;
     pub var bnfp_base = tunable_defaults.bnfp_base;
     pub var bnfp_mult = tunable_defaults.bnfp_mult;
@@ -782,6 +825,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var hp_hist_cont1_weight = tunable_defaults.hp_hist_cont1_weight;
     pub var hp_hist_cont2_weight = tunable_defaults.hp_hist_cont2_weight;
     pub var hp_hist_cont4_weight = tunable_defaults.hp_hist_cont4_weight;
+    pub var hp_hist_cont6_weight = tunable_defaults.hp_hist_cont6_weight;
     pub var hp_hist_noisy_weight = tunable_defaults.hp_hist_noisy_weight;
     pub var noisy_history_pruning_depth_limit = tunable_defaults.noisy_history_pruning_depth_limit;
     pub var noisy_history_pruning_offs = tunable_defaults.noisy_history_pruning_offs;
