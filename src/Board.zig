@@ -1095,7 +1095,7 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
     self.updateTurnHash();
 }
 
-pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
+pub inline fn parseMoveStr(self: *const Board, str: []const u8) !Move {
     switch (self.stm) {
         inline else => |stm| {
             var rec: movegen.MoveListReceiver = .{};
@@ -1106,17 +1106,19 @@ pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
                 if (!self.isLegal(stm, move)) continue;
 
                 if (std.mem.eql(u8, move.toString(self).slice(), str)) {
-                    self.makeMove(
-                        stm,
-                        move,
-                        NullEvalState{},
-                    );
-                    return;
+                    return move;
                 }
             }
         },
     }
     return error.NoSuchMove;
+}
+
+pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
+    const move = try self.parseMoveStr(str);
+    switch (self.stm) {
+        inline else => |stm| self.makeMove(stm, move, NullEvalState{}),
+    }
 }
 
 pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
@@ -1219,7 +1221,7 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
     return null;
 }
 
-pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
+pub fn pickMoveDatagen(self: *Board, rng: std.Random) ?Move {
     const hce = @import("hce.zig");
     switch (self.stm) {
         inline else => |stm| {
@@ -1254,15 +1256,12 @@ pub fn makeMoveDatagen(self: *Board, rng: std.Random) bool {
                 } + rng.uintLessThanBiased(u16, 30000);
             }
             std.sort.pdq(root.ScoredMove, ml.vals.slice(), void{}, root.ScoredMove.desc);
-            var found_legal = false;
             for (ml.vals.slice()) |m| {
                 if (self.isLegal(stm, m.move) and root.SEE.scoreMove(self, m.move, -200, .pruning)) {
-                    self.makeMove(stm, m.move, &root.Board.NullEvalState{});
-                    found_legal = true;
-                    break;
+                    return m.move;
                 }
             }
-            return found_legal;
+            return null;
         },
     }
 }

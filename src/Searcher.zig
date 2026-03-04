@@ -46,7 +46,8 @@ pub const MAX_HALFMOVE = 100;
 pub const Params = struct {
     board: Board,
     limits: Limits,
-    previous_hashes: BoundedArray(u64, 200),
+    previous_positions: BoundedArray(Board, 200),
+    previous_moves: BoundedArray(Move, 200),
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
     normalize: bool,
@@ -98,7 +99,7 @@ const EvalPair = struct {
     }
 };
 
-const STACK_PADDING = 1;
+const STACK_PADDING = history.CONTHIST_OFFSETS[history.NUM_CONTHISTS - 1];
 
 search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
 is_ready: bool align(std.atomic.cache_line) = false,
@@ -118,7 +119,7 @@ limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
 should_stop: std.atomic.Value(bool),
-previous_hashes: BoundedArray(u64, MAX_HALFMOVE * 2),
+previous_position_hashes: BoundedArray(u64, MAX_HALFMOVE * 2),
 tt: []TTCluster,
 pvs: [MAX_PLY]BoundedArray(Move, 256),
 is_main_thread: bool = true,
@@ -239,7 +240,7 @@ inline fn getConthistTables(self: *Searcher, stm: Colour) history.ConthistTables
     var res: history.ConthistTables = undefined;
     const usable = self.stackEntry(0).usable_moves;
     const null_move = TypedMove.init();
-    std.debug.assert(usable <= self.ply);
+    std.debug.assert(usable <= self.ply + STACK_PADDING + 1);
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
         const move = if (i < usable) self.stackEntry(-i).move else null_move;
         res[j] = self.histories.countermove.table(stm, move);
@@ -360,7 +361,7 @@ fn isRepetition(self: *Searcher) bool {
             return true; // found repetition in the search tree
         }
     }
-    for (self.previous_hashes.slice()) |previous_hash| {
+    for (self.previous_position_hashes.slice()) |previous_hash| {
         if (previous_hash == hash) {
             return true;
         }
@@ -371,7 +372,7 @@ fn isRepetition(self: *Searcher) bool {
 fn hasUpcomingRepetition(self: *Searcher) bool {
     const board: *const Board = &self.stackEntry(0).board;
 
-    return cuckoo.hasUpcomingRepetition(board, self.hashes[0 .. self.ply + 1], self.previous_hashes.slice());
+    return cuckoo.hasUpcomingRepetition(board, self.hashes[0 .. self.ply + 1], self.previous_position_hashes.slice());
 }
 
 inline fn lerp(
@@ -1495,14 +1496,82 @@ fn retainOnlyDuplicates(slice: []u64) usize {
     return write_idx;
 }
 
-test retainOnlyDuplicates {
-    var vals = [_]u64{ 0, 1, 1, 2, 2, 2, 8, 2, 2, 2, 3, 8, 4, 4 };
-    const count = retainOnlyDuplicates(&vals);
-    try std.testing.expectEqualSlices(u64, &.{ 1, 2, 4, 8 }, vals[0..count]);
+/// we make the previous position hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
+fn fixupPreviousPositionHashes(self: *Searcher) void {
+    self.previous_position_hashes.len = @intCast(retainOnlyDuplicates(self.previous_position_hashes.slice()));
 }
-/// we make the previous hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
-fn fixupPreviousHashes(self: *Searcher) void {
-    self.previous_hashes.len = @intCast(retainOnlyDuplicates(self.previous_hashes.slice()));
+
+fn initSearchStack(self: *Searcher, params: Params) void {
+    const board = &params.board;
+    const previous_positions = params.previous_positions.slice();
+    const previous_moves = params.previous_moves.slice();
+
+    std.debug.assert(
+        (previous_positions.len == 0 and previous_moves.len == 0) or
+            previous_positions.len == previous_moves.len + 1,
+    );
+
+    if (previous_positions.len == 0) {
+        self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init(), .{}, 0);
+        self.hashes[0] = board.hash;
+        return;
+    }
+
+    std.debug.assert(previous_positions[previous_positions.len - 1].getHashWithHalfmove() == board.getHashWithHalfmove());
+
+    const usable_moves: u8 = @intCast(@min(previous_moves.len, STACK_PADDING + 1));
+    if (usable_moves == 0) {
+        self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init(), .{}, 0);
+        self.hashes[0] = board.hash;
+        return;
+    }
+
+    var evals: EvalPair = .{};
+    var remaining = usable_moves;
+    while (remaining > 0) {
+        remaining -= 1;
+        const offset = remaining;
+        const move_idx = previous_moves.len - 1 - offset;
+        const entry = self.stackEntry(-@as(i64, @intCast(offset)));
+        const move = previous_moves[move_idx];
+        const board_before = &previous_positions[move_idx];
+        const board_after = &previous_positions[move_idx + 1];
+        const move_typed = TypedMove.fromBoard(
+            board_before,
+            if (move_idx > 0) previous_moves[move_idx - 1] else Move.init(),
+            move,
+        );
+        const prev_typed = if (move_idx == 0)
+            TypedMove.init()
+        else
+            TypedMove.fromBoard(
+                &previous_positions[move_idx - 1],
+                if (move_idx > 1) previous_moves[move_idx - 2] else Move.init(),
+                previous_moves[move_idx - 1],
+            );
+        entry.init(
+            board_after,
+            move_typed,
+            prev_typed,
+            evals,
+            usable_moves - @as(u8, @intCast(offset)),
+        );
+        entry.move_is_noisy = board_before.isNoisy(move);
+
+        const raw_static_eval = evaluation.evalPosition(board_after);
+        _, const corrected_static_eval = self.histories.correct(
+            board_after,
+            move_typed,
+            prev_typed,
+            raw_static_eval,
+        );
+        entry.static_eval = corrected_static_eval;
+        entry.corrected_eval = corrected_static_eval;
+        switch (board_after.stm) {
+            inline else => |stm| evals = evals.updateWith(stm, corrected_static_eval),
+        }
+    }
+    self.hashes[0] = board.hash;
 }
 
 fn dbgHit(self: *Searcher, comptime name: []const u8, a: bool, b: bool) void {
@@ -1535,27 +1604,27 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.should_stop.store(false, .release);
     self.stop.store(false, .release);
     const board = params.board;
-    self.previous_hashes.len = 0;
+    self.previous_position_hashes.len = 0;
     self.normalize = params.normalize;
     self.minimal = params.minimal;
-    var num_repeitions: u8 = 0;
-    for (params.previous_hashes.slice()) |previous_hash| {
+    var num_repetitions: u8 = 0;
+    for (params.previous_positions.slice()) |previous_position| {
+        const previous_hash = previous_position.hash;
         if (params.board.hash == previous_hash) {
-            num_repeitions += 1;
+            num_repetitions += 1;
         }
-        self.previous_hashes.append(previous_hash) catch @panic("too many hashes!");
+        self.previous_position_hashes.append(previous_hash) catch @panic("too many hashes!");
     }
     self.winning_root_moves = .{};
-    if (root.pyrrhic.probeRootDTZ(&params.board, num_repeitions > 0)) |root_probe| {
+    if (root.pyrrhic.probeRootDTZ(&params.board, num_repetitions > 0)) |root_probe| {
         _, const moves = root_probe;
         for (moves.slice()) |scored| {
             self.winning_root_moves.append(scored.move) catch unreachable;
         }
     }
-    self.fixupPreviousHashes();
+    self.fixupPreviousPositionHashes();
 
-    self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
-    self.hashes[0] = board.hash;
+    self.initSearchStack(params);
     if (root.evaluation.eval_mode == .nnue)
         self.evalStateRoot()[0].initInPlace(&board);
     self.histories.age();
@@ -1785,4 +1854,130 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         }
         engine.stopSearch();
     }
+}
+
+fn buildHistory(
+    moves: []const []const u8,
+) !struct {
+    positions: BoundedArray(Board, 200),
+    played_moves: BoundedArray(Move, 200),
+} {
+    var positions = BoundedArray(Board, 200){};
+    var played_moves = BoundedArray(Move, 200){};
+    var board = Board.startpos();
+    try positions.append(board);
+
+    for (moves) |move_str| {
+        const move = try board.parseMoveStr(move_str);
+        board.makeMoveSimple(move);
+        try played_moves.append(move);
+        try positions.append(board);
+    }
+
+    return .{
+        .positions = positions,
+        .played_moves = played_moves,
+    };
+}
+
+fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
+    searcher.* = undefined;
+    searcher.is_ready = false;
+    searcher.ensureInvariants();
+    searcher.histories = std.mem.zeroes(history.HistoryTable);
+    const positions = hist.positions.slice();
+    searcher.initSearchStack(.{
+        .board = positions[positions.len - 1],
+        .limits = Limits.initFixedDepth(1),
+        .previous_positions = hist.positions,
+        .previous_moves = hist.played_moves,
+        .normalize = false,
+        .minimal = false,
+    });
+}
+
+test retainOnlyDuplicates {
+    var vals = [_]u64{ 0, 1, 1, 2, 2, 2, 8, 2, 2, 2, 3, 8, 4, 4 };
+    const count = retainOnlyDuplicates(&vals);
+    try std.testing.expectEqualSlices(u64, &.{ 1, 2, 4, 8 }, vals[0..count]);
+}
+
+test "conthist uses previous positions" {
+    const hist = try buildHistory(&.{ "e2e4", "e7e5", "g1f3", "b8c6" });
+    const positions = hist.positions.slice();
+    const moves = hist.played_moves.slice();
+
+    var searcher: Searcher = undefined;
+    initTestSearcher(&searcher, hist);
+
+    try std.testing.expectEqual(@as(u8, 4), searcher.stackEntry(0).usable_moves);
+
+    const stm = searcher.stackEntry(0).board.stm;
+    const tables = searcher.getConthistTables(stm);
+
+    try std.testing.expectEqual(
+        searcher.histories.countermove.table(stm, TypedMove.fromBoard(&positions[3], moves[2], moves[3])),
+        tables[0],
+    );
+    try std.testing.expectEqual(
+        searcher.histories.countermove.table(stm, TypedMove.fromBoard(&positions[2], moves[1], moves[2])),
+        tables[1],
+    );
+    try std.testing.expectEqual(
+        searcher.histories.countermove.table(stm, TypedMove.fromBoard(&positions[0], Move.init(), moves[0])),
+        tables[2],
+    );
+
+    var board = searcher.stackEntry(0).board;
+    const move = try board.parseMoveStr("f1c4");
+    const typed = TypedMove.fromBoard(&board, moves[moves.len - 1], move);
+    const child = searcher.stackEntry(1);
+    child.init(
+        &board,
+        typed,
+        searcher.stackEntry(0).move,
+        searcher.stackEntry(0).evals,
+        searcher.stackEntry(0).usable_moves + 1,
+    );
+    child.board.makeMoveSimple(move);
+    searcher.ply = 1;
+
+    try std.testing.expectEqual(@as(u8, 5), searcher.stackEntry(0).usable_moves);
+
+    const child_stm = searcher.stackEntry(0).board.stm;
+    const child_tables = searcher.getConthistTables(child_stm);
+
+    try std.testing.expectEqual(
+        searcher.histories.countermove.table(child_stm, typed),
+        child_tables[0],
+    );
+    try std.testing.expectEqual(
+        searcher.histories.countermove.table(child_stm, TypedMove.fromBoard(&positions[3], moves[2], moves[3])),
+        child_tables[1],
+    );
+    try std.testing.expectEqual(
+        searcher.histories.countermove.table(child_stm, TypedMove.fromBoard(&positions[1], moves[0], moves[1])),
+        child_tables[2],
+    );
+}
+
+test "historical stack seeding sets evals" {
+    const hist = try buildHistory(&.{ "e2e4", "e7e5", "g1f3", "b8c6" });
+    const positions = hist.positions.slice();
+
+    var searcher: Searcher = undefined;
+    initTestSearcher(&searcher, hist);
+
+    for (0..4) |i| {
+        const eval = history.HistoryTable.scaleEval(&positions[i + 1], evaluation.evalPosition(&positions[i + 1]));
+        try std.testing.expectEqual(eval, searcher.stackEntry(@as(i64, @intCast(i)) - 3).static_eval);
+        try std.testing.expectEqual(eval, searcher.stackEntry(@as(i64, @intCast(i)) - 3).corrected_eval);
+    }
+
+    try std.testing.expectEqualDeep(EvalPair{
+        .white = history.HistoryTable.scaleEval(&positions[2], evaluation.evalPosition(&positions[2])),
+        .black = history.HistoryTable.scaleEval(&positions[3], evaluation.evalPosition(&positions[3])),
+        .prev_white = null,
+        .prev_black = history.HistoryTable.scaleEval(&positions[1], evaluation.evalPosition(&positions[1])),
+    }, searcher.stackEntry(0).evals);
 }

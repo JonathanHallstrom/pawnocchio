@@ -20,6 +20,7 @@ const command_line = @import("command_line.zig");
 const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
+const Move = root.Move;
 
 const VERSION_STRING = "1.9.2";
 
@@ -52,10 +53,11 @@ pub fn main() !void {
     var stdin = std.fs.File.stdin();
     var reader = stdin.readerStreaming(&stdin_buf);
 
-    var previous_hashes = root.BoundedArray(u64, 200){};
+    var previous_positions = root.BoundedArray(Board, 200){};
+    var previous_moves = root.BoundedArray(Move, 200){};
 
     var board = Board.startpos();
-    try previous_hashes.append(board.hash);
+    try previous_positions.append(board);
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
@@ -154,8 +156,10 @@ pub fn main() !void {
             }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
-            previous_hashes = .{};
+            previous_positions = .{};
+            previous_moves = .{};
             board = Board.startpos();
+            previous_positions.append(board) catch unreachable;
         } else if (std.ascii.eqlIgnoreCase(command, "setoption") or std.ascii.eqlIgnoreCase(command, "so")) {
             var option_name = parts.next() orelse "";
             if (std.ascii.eqlIgnoreCase("name", option_name)) {
@@ -617,7 +621,8 @@ pub fn main() !void {
                 .search_params = .{
                     .board = board,
                     .limits = limits,
-                    .previous_hashes = previous_hashes,
+                    .previous_positions = previous_positions,
+                    .previous_moves = previous_moves,
                     .syzygy_depth = syzygy_depth,
                     .normalize = normalize,
                     .minimal = minimal,
@@ -757,19 +762,21 @@ pub fn main() !void {
                 board = Board.startpos();
             }
 
-            previous_hashes.clear();
-            try previous_hashes.append(board.hash);
+            previous_positions.clear();
+            previous_moves.clear();
+            try previous_positions.append(board);
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
             while (move_iter.next()) |played_move| {
                 if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
-                _ = board.makeMoveFromStr(played_move) catch {
+                const move = board.parseMoveStr(played_move) catch {
                     writeLog("invalid move: '{s}'\n", .{played_move});
                     continue;
                 };
-                if (board.halfmove == 0) {
-                    previous_hashes.clear();
+                switch (board.stm) {
+                    inline else => |stm| board.makeMove(stm, move, Board.NullEvalState{}),
                 }
-                try previous_hashes.append(board.hash);
+                try previous_moves.append(move);
+                try previous_positions.append(board);
             }
         }
     }

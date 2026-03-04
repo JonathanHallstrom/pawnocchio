@@ -1108,7 +1108,8 @@ fn runBench(bench_depth: i32) !void {
             .search_params = .{
                 .board = try Board.parseFen(fen, false),
                 .limits = root.Limits.initFixedDepth(bench_depth),
-                .previous_hashes = .{},
+                .previous_positions = .{},
+                .previous_moves = .{},
                 .normalize = false,
                 .minimal = false,
             },
