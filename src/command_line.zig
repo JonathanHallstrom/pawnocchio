@@ -954,6 +954,7 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
             @"print-errors": bool = false,
             @"allow-overwrite": bool = false,
             output: ?[]const u8 = null,
+            @"sp-stalemate-fix": bool = false,
         },
         .{
             .allow_implied = true,
@@ -987,7 +988,10 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
         mapped.data,
         &bw.interface,
         allocator,
-        parsed.@"print-errors",
+        .{
+            .print_errors = parsed.@"print-errors",
+            .sp_stalemate_fix = parsed.@"sp-stalemate-fix",
+        },
     );
 
     try bw.interface.flush();

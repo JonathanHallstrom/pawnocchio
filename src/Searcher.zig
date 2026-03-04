@@ -110,7 +110,6 @@ root_move: ?Move,
 root_score: ?i16,
 full_width_score: i16,
 full_width_score_normalized: i16,
-optimism: [2]i32,
 nodes_prev_check: u64,
 eval_stability: u8,
 move_stability: u8,
@@ -555,7 +554,6 @@ fn qsearch(
             cur.move,
             cur.prev,
             self.applyContempt(raw_static_eval),
-            self.optimism[board.stm.toInt()],
         );
         cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
@@ -806,7 +804,6 @@ fn search(
             cur.move,
             cur.prev,
             self.applyContempt(raw_static_eval),
-            self.optimism[board.stm.toInt()],
         );
         cur.corrected_eval = corrected_static_eval;
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
@@ -1623,18 +1620,10 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     self.eval_stability = 0;
     self.move_stability = 0;
     self.full_width_score = 0;
-    self.optimism = .{ 0, 0 };
     var average_score: i64 = 0;
     for (1..MAX_PLY) |d| {
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
-        const best_avg: i32 = @intCast(@divTrunc(average_score + previous_score, 2));
-        const optimism = @divTrunc(
-            tunables.optimism_root_mult * best_avg,
-            @as(i32, @intCast(@abs(best_avg))) + tunables.optimism_root_offs,
-        );
-        self.optimism[params.board.stm.toInt()] = optimism;
-        self.optimism[params.board.stm.flipped().toInt()] = -optimism;
         var quantized_window: i64 = tunables.aspiration_initial + (average_score * tunables.aspiration_score_mult >> 14);
         if (d == 1) {
             quantized_window = @as(i32, evaluation.inf_score) << 10;
