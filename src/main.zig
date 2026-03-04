@@ -53,8 +53,10 @@ pub fn main() !void {
     var stdin = std.fs.File.stdin();
     var reader = stdin.readerStreaming(&stdin_buf);
 
-    var previous_positions = root.BoundedArray(Board, 200){};
-    var previous_moves = root.BoundedArray(Move, 200){};
+    var previous_positions = std.array_list.Managed(Board).init(allocator);
+    defer previous_positions.deinit();
+    var previous_moves = std.array_list.Managed(Move).init(allocator);
+    defer previous_moves.deinit();
 
     var board = Board.startpos();
     try previous_positions.append(board);
@@ -156,8 +158,8 @@ pub fn main() !void {
             }
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
-            previous_positions = .{};
-            previous_moves = .{};
+            previous_positions.clearRetainingCapacity();
+            previous_moves.clearRetainingCapacity();
             board = Board.startpos();
             previous_positions.append(board) catch unreachable;
         } else if (std.ascii.eqlIgnoreCase(command, "setoption") or std.ascii.eqlIgnoreCase(command, "so")) {
@@ -617,12 +619,26 @@ pub fn main() !void {
                 }
             }
 
+            const keep_moves = @min(
+                previous_moves.items.len,
+                @max(
+                    @as(usize, @min(board.halfmove, root.Searcher.MAX_HALFMOVE)),
+                    root.history.CONTHIST_OFFSETS.len,
+                ),
+            );
+            const recent_positions = try root.BoundedArray(Board, 200).fromSlice(
+                previous_positions.items[previous_positions.items.len - keep_moves - 1 ..],
+            );
+            const recent_moves = try root.BoundedArray(Move, 200).fromSlice(
+                previous_moves.items[previous_moves.items.len - keep_moves ..],
+            );
+
             root.engine.startSearch(.{
                 .search_params = .{
                     .board = board,
                     .limits = limits,
-                    .previous_positions = previous_positions,
-                    .previous_moves = previous_moves,
+                    .previous_positions = recent_positions,
+                    .previous_moves = recent_moves,
                     .syzygy_depth = syzygy_depth,
                     .normalize = normalize,
                     .minimal = minimal,
@@ -762,8 +778,8 @@ pub fn main() !void {
                 board = Board.startpos();
             }
 
-            previous_positions.clear();
-            previous_moves.clear();
+            previous_positions.clearRetainingCapacity();
+            previous_moves.clearRetainingCapacity();
             try previous_positions.append(board);
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
             while (move_iter.next()) |played_move| {
