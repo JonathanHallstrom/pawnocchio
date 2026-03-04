@@ -193,13 +193,17 @@ fn datagenWorker(
         const write_buffer = fba.allocator().alloc(u8, 1 << 16) catch @panic("failed to allocate write buffer");
         defer fba.allocator().free(write_buffer);
 
-        var hashes = root.BoundedArray(u64, 200){};
+        var previous_positions = root.BoundedArray(root.Board, 200){};
+        var previous_moves = root.BoundedArray(root.Move, 200){};
+        previous_positions.append(board) catch @panic("failed to append position");
         const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
         for (0..random_move_count) |_| {
-            if (!board.makeMoveDatagen(rng.random())) {
+            const move = board.pickMoveDatagen(rng.random()) orelse {
                 continue :datagen_loop;
-            }
-            hashes.append(board.hash) catch @panic("failed to append hash");
+            };
+            board.makeMoveSimple(move);
+            previous_moves.append(move) catch @panic("failed to append move");
+            previous_positions.append(board) catch @panic("failed to append position");
         }
         var game: viriformat.Game = viriformat.Game.from(board, fba.allocator());
         var num_adj_win: u8 = 0;
@@ -216,7 +220,8 @@ fn datagenWorker(
                     .board = board,
                     .limits = limits,
                     .needs_full_reset = false,
-                    .previous_hashes = hashes,
+                    .previous_positions = previous_positions,
+                    .previous_moves = previous_moves,
                     .normalize = false,
                     .minimal = false,
                 },
@@ -254,8 +259,8 @@ fn datagenWorker(
                 },
             }
             var repetitions: u8 = 0;
-            for (hashes.slice()) |prev_hash| {
-                repetitions += @intFromBool(prev_hash == board.hash);
+            for (previous_positions.slice()) |prev_position| {
+                repetitions += @intFromBool(prev_position.hash == board.hash);
             }
             if (repetitions >= 3) {
                 break :game_loop;
@@ -263,11 +268,9 @@ fn datagenWorker(
             if (board.halfmove >= 100) {
                 break :game_loop;
             }
-            if (board.halfmove == 0) {
-                hashes.clear();
-            }
             game.addMove(search_move, adjusted) catch unreachable;
-            hashes.append(board.hash) catch unreachable;
+            previous_moves.append(search_move) catch unreachable;
+            previous_positions.append(board) catch unreachable;
             if (root.evaluation.isMateScore(search_score) or root.evaluation.isTBScore(search_score)) {
                 if (adjusted > 0) {
                     game.setOutCome(.win);
@@ -430,9 +433,10 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allo
         moves += (@popCount(board.occupancy() & 0xff000000000000ff) + 2) / 6;
         moves += @popCount(board.occupancy() & 0x00ff00000000ff00) / 8;
         for (0..moves) |_| {
-            if (!board.makeMoveDatagen(rng.random())) {
+            const move = board.pickMoveDatagen(rng.random()) orelse {
                 continue :fen_loop;
-            }
+            };
+            board.makeMoveSimple(move);
         }
 
         if (!board.hasLegalMove()) {
