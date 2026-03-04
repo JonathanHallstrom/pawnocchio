@@ -778,21 +778,46 @@ pub fn main() !void {
                 board = Board.startpos();
             }
 
-            previous_positions.clearRetainingCapacity();
-            previous_moves.clearRetainingCapacity();
-            try previous_positions.append(board);
             var move_iter = std.mem.tokenizeAny(u8, pos_iter.rest(), &std.ascii.whitespace);
+            var can_reuse = previous_positions.items.len > 0 and board.equal(&previous_positions.items[0]);
+            var reused_moves: usize = 0;
+
+            if (!can_reuse) {
+                previous_positions.clearRetainingCapacity();
+                previous_moves.clearRetainingCapacity();
+                try previous_positions.append(board);
+            }
+
             while (move_iter.next()) |played_move| {
                 if (std.ascii.eqlIgnoreCase(played_move, "moves")) continue;
+
+                if (can_reuse) {
+                    if (reused_moves < previous_moves.items.len) {
+                        const existing_move = previous_moves.items[reused_moves];
+                        if (std.mem.eql(u8, existing_move.toString(&board).slice(), played_move)) {
+                            reused_moves += 1;
+                            board.makeMoveSimple(existing_move);
+                            continue;
+                        }
+                    }
+
+                    previous_positions.shrinkRetainingCapacity(reused_moves + 1);
+                    previous_moves.shrinkRetainingCapacity(reused_moves);
+                    can_reuse = false;
+                }
+
                 const move = board.parseMoveStr(played_move) catch {
                     writeLog("invalid move: '{s}'\n", .{played_move});
                     continue;
                 };
-                switch (board.stm) {
-                    inline else => |stm| board.makeMove(stm, move, Board.NullEvalState{}),
-                }
+                board.makeMoveSimple(move);
                 try previous_moves.append(move);
                 try previous_positions.append(board);
+            }
+
+            if (can_reuse) {
+                previous_positions.shrinkRetainingCapacity(reused_moves + 1);
+                previous_moves.shrinkRetainingCapacity(reused_moves);
             }
         }
     }

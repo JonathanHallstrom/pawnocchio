@@ -168,6 +168,15 @@ pub fn classicalMaterial(self: Board) u8 {
     return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
 
+pub fn equal(self: *const Board, other: *const Board) bool {
+    if (self.hash != other.hash) {
+        @branchHint(.likely);
+        return false;
+    }
+
+    return std.meta.eql(self.*, other.*);
+}
+
 pub fn materialScale(self: Board) i32 {
     const tunables = root.tunable_constants;
     @setEvalBranchQuota(1 << 30);
