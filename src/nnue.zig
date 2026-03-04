@@ -199,10 +199,14 @@ pub const Accumulator = struct {
         return if (col == .white) &self.white_mirrored else &self.black_mirrored;
     }
 
-    pub fn initInPlace(self: *Accumulator, board: *const Board) void {
-        self.* = default();
+    pub fn setMirrored(self: *Accumulator, board: *const Board) void {
         self.white_mirrored.write(Square.fromBitboard(board.kingFor(.white)).getFile().toInt() >= 4);
         self.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
+    }
+
+    pub fn initInPlace(self: *Accumulator, board: *const Board) void {
+        self.* = default();
+        self.setMirrored(board);
         self.dirty_piece = .clean;
         self.pending_parent = false;
         self.board_ref = board;

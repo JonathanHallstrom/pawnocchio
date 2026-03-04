@@ -39,6 +39,7 @@ const Command = enum {
     vftotxt,
     analyse,
     @"relabel-tb",
+    @"relabel-chonker",
     sanitise,
     bench,
 };
@@ -240,6 +241,7 @@ pub fn handle(allocator: std.mem.Allocator, version_string: []const u8) !bool {
                 .vftotxt => handleVfToTxt(&args),
                 .analyse => handleAnalyse(&args, allocator),
                 .@"relabel-tb" => handleRelabelTb(&args, allocator),
+                .@"relabel-chonker" => handleRelabelChonker(&args, allocator),
                 .sanitise => handleSanitise(&args, allocator),
                 .bench => handleBench(&args),
             }) catch |e| {
@@ -944,6 +946,124 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
         incorrect_wdl_count,
         game_count,
     });
+}
+
+fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
+    if (root.eval_mode != .nnue) {
+        return error.NNUENotEnabled;
+    }
+
+    const parsed = try parseCommandArgs(
+        args,
+        struct {
+            input: []const u8,
+            @"allow-overwrite": bool = false,
+            output: ?[]const u8 = null,
+        },
+        .{
+            .allow_implied = false,
+            .usage_descriptions = &.{
+                .{ .field = "output", .default_text = "<INPUT>_evals_relabeled" },
+            },
+        },
+        "relabel-chonker",
+    );
+    const input = parsed.input;
+
+    var input_file = try openInputFile(input);
+    defer input_file.close();
+    const stat = try input_file.stat();
+
+    var name_writer = std.Io.Writer.Allocating.init(allocator);
+    defer name_writer.deinit();
+    try name_writer.writer.print("{s}_evals_relabeled", .{input});
+    const output = parsed.output orelse name_writer.written();
+    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
+    defer output_file.close();
+
+    var input_buf: [4096]u8 = undefined;
+    var br = input_file.reader(&input_buf);
+    var output_buf: [4096]u8 = undefined;
+    var bw = output_file.writer(&output_buf);
+
+    var game_count: u64 = 0;
+    var position_count: u64 = 0;
+
+    const viriformat = root.viriformat;
+    const nnue = root.nnue;
+    const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT);
+    var rc: RefreshCache = undefined;
+    rc.initInPlace();
+
+    var acc: nnue.Accumulator = undefined;
+    acc.initInPlace(&Board.startpos());
+
+    var timer = try std.time.Timer.start();
+    while (!br.atEnd()) {
+        var marlin_board: viriformat.MarlinPackedBoard = undefined;
+        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
+            if (e == error.EndOfStream) {
+                break;
+            } else {
+                return e;
+            }
+        };
+
+        game_count += 1;
+
+        if (position_count % 16384 == 0) {
+            write("\rprogress: {}% (evals/s: {})", .{
+                @as(u128, br.logicalPos() * 100) / stat.size,
+                position_count * 1000_000_000 / timer.read(),
+            });
+        }
+        var board = try marlin_board.toBoard();
+        var game = viriformat.Game.from(board, allocator);
+        game.initial_position = marlin_board;
+        defer game.moves.deinit();
+
+        for (0..std.math.maxInt(usize)) |_| {
+            var move_eval_pair: viriformat.MoveEvalPair = undefined;
+            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
+                if (e == error.EndOfStream) {
+                    break;
+                } else {
+                    return e;
+                }
+            };
+            const viri_move = move_eval_pair.move;
+
+            if (viri_move.data == 0) {
+                break;
+            }
+
+            const move = viri_move.toMove(&board);
+            board.makeMoveSimple(move);
+
+            rc.refresh(.white, &board, &acc.white);
+            rc.refresh(.black, &board, &acc.black);
+            acc.pending_parent = false;
+            acc.dirty_piece = .clean;
+            acc.board_ref = &board;
+
+            const eval = switch (board.stm) {
+                .white => acc.forward(.white, &board, &rc),
+                .black => -acc.forward(.black, &board, &rc),
+            };
+
+            try game.addMove(move, eval);
+
+            position_count += 1;
+        }
+        try game.serializeInto(&bw.interface);
+    }
+    try bw.interface.flush();
+
+    write(
+        \\
+        \\done
+        \\
+    , .{});
 }
 
 fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
