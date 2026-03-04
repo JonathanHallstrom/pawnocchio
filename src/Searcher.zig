@@ -1555,6 +1555,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.fixupPreviousHashes();
 
     self.searchStackRoot()[0].init(&board, TypedMove.init(), TypedMove.init(), .{}, 0);
+    self.hashes[0] = board.hash;
     if (root.evaluation.eval_mode == .nnue)
         self.evalStateRoot()[0].initInPlace(&board);
     self.histories.age();
