@@ -236,13 +236,13 @@ pub const StackEntry = struct {
     }
 };
 
-inline fn getConthistTables(self: *Searcher, stm: Colour) history.ConthistTables {
+inline fn getConthistTables(self: *Searcher, ply: u8, stm: Colour) history.ConthistTables {
     var res: history.ConthistTables = undefined;
-    const usable = self.stackEntry(0).usable_moves;
+    const usable = self.stackEntryRaw(ply, 0).usable_moves;
     const null_move = TypedMove.init();
     std.debug.assert(usable <= self.ply + STACK_PADDING + 1);
     inline for (history.CONTHIST_OFFSETS, 0..) |i, j| {
-        const move = if (i < usable) self.stackEntry(-i).move else null_move;
+        const move = if (i < usable) self.stackEntryRaw(ply, -i).move else null_move;
         res[j] = self.histories.countermove.table(stm, move);
     }
     return res;
@@ -264,8 +264,12 @@ fn updatePv(self: *Searcher, move: Move) void {
     }
 }
 
+fn stackEntryRaw(self: anytype, ply: i64, offset: anytype) root.inheritConstness(@TypeOf(self), *StackEntry) {
+    return &(&self.search_stack)[@intCast(STACK_PADDING + ply + offset)];
+}
+
 fn stackEntry(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self), *StackEntry) {
-    return &(&self.search_stack)[@intCast(STACK_PADDING + @as(i64, self.ply) + offset)];
+    return self.stackEntryRaw(self.ply, offset);
 }
 
 fn evalState(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self), *evaluation.State) {
@@ -592,7 +596,7 @@ fn qsearch(
 
     const previous_move_destination = cur.move.move.to();
 
-    const conthist_tables = self.getConthistTables(stm);
+    const conthist_tables = self.getConthistTables(self.ply, stm);
 
     while (mp.next(
         stm,
@@ -701,6 +705,7 @@ fn search(
     }
 
     const cur: *StackEntry = self.stackEntry(0);
+    const prev: *StackEntry = self.stackEntry(-1);
     const board: *Board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
@@ -811,7 +816,7 @@ fn search(
         improving = cur.evals.improving(stm);
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
-        const prev_eval = self.stackEntry(-1).corrected_eval;
+        const prev_eval = prev.corrected_eval;
 
         if (prev_eval != evaluation.inf_score and
             !cur.move.move.isNull() and
@@ -826,7 +831,7 @@ fn search(
                 1024,
             );
             self.histories.quiet.updateRaw(
-                &self.stackEntry(-1).board,
+                &prev.board,
                 cur.move,
                 update,
             );
@@ -844,7 +849,7 @@ fn search(
         }
     }
     const eval = cur.static_eval;
-    const prev_eval = self.stackEntry(-1).static_eval;
+    const prev_eval = prev.static_eval;
 
     // hindsight extension
     if (!is_pv and
@@ -961,7 +966,7 @@ fn search(
         }
     }
 
-    const conthist_tables = self.getConthistTables(stm);
+    const conthist_tables = self.getConthistTables(self.ply, stm);
     var mp = MovePicker.init(
         &cur.movelist,
         &cur.scores,
@@ -1375,6 +1380,9 @@ fn search(
             }
             alpha_raises += 1;
         }
+    }
+    if (score_type == .upper and !cur.move.move.isNull() and !cur.move_is_noisy) {
+        self.histories.updateCont(&prev.board, cur.move, self.getConthistTables(self.ply - 1, stm.flipped()), depth, true, 0);
     }
 
     if (num_legal == 0) {
@@ -1913,7 +1921,7 @@ test "conthist uses previous positions" {
     try std.testing.expectEqual(@as(u8, 4), searcher.stackEntry(0).usable_moves);
 
     const stm = searcher.stackEntry(0).board.stm;
-    const tables = searcher.getConthistTables(stm);
+    const tables = searcher.getConthistTables(searcher.ply, stm);
 
     try std.testing.expectEqual(
         searcher.histories.countermove.table(stm, TypedMove.fromBoard(&positions[3], moves[2], moves[3])),
@@ -1945,7 +1953,7 @@ test "conthist uses previous positions" {
     try std.testing.expectEqual(@as(u8, 5), searcher.stackEntry(0).usable_moves);
 
     const child_stm = searcher.stackEntry(0).board.stm;
-    const child_tables = searcher.getConthistTables(child_stm);
+    const child_tables = searcher.getConthistTables(searcher.ply, child_stm);
 
     try std.testing.expectEqual(
         searcher.histories.countermove.table(child_stm, typed),
