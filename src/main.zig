@@ -754,7 +754,7 @@ pub fn main() !void {
                 board = Board.parseFen(fen_to_parse, true) catch |e| {
                     if (!started_with_position) {
                         command_line.writeHelpText(VERSION_STRING);
-                        return;
+                        continue;
                     }
                     writeLog("invalid fen: '{s}' error: {}\n", .{ fen_to_parse, e });
                     continue;
