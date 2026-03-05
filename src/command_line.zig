@@ -1038,7 +1038,6 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
             }
 
             const move = viri_move.toMove(&board);
-            board.makeMoveSimple(move);
 
             rc.refresh(.white, &board, &acc.white);
             rc.refresh(.black, &board, &acc.black);
@@ -1051,6 +1050,7 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
                 .black => -acc.forward(.black, &board, &rc),
             };
 
+            board.makeMoveSimple(move);
             try game.addMove(move, eval);
 
             position_count += 1;
