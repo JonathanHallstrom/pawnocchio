@@ -27,6 +27,7 @@ pub const PERCENTILES = [_]f64{
 };
 
 sum: i64 = 0,
+sum_abs: u64 = 0,
 sum_sqr: u128 = 0,
 count: i64 = 0,
 min: i64 = std.math.maxInt(i64),
@@ -42,6 +43,7 @@ pub fn reset(self: *Self) void {
 
 pub fn add(self: *Self, data_point: i64, rng: std.Random) void {
     self.sum += data_point;
+    self.sum_abs += @abs(data_point);
     self.sum_sqr += @as(u128, @abs(data_point)) * @abs(data_point);
     self.count += 1;
     self.min = @min(self.min, data_point);
@@ -81,6 +83,10 @@ pub fn skewness(self: *const Self) f64 {
 
 pub fn average(self: *const Self) f64 {
     return @as(f64, @floatFromInt(self.sum)) / @as(f64, @floatFromInt(self.count));
+}
+
+pub fn averageAbs(self: *const Self) f64 {
+    return @as(f64, @floatFromInt(self.sum_abs)) / @as(f64, @floatFromInt(self.count));
 }
 
 pub fn variance(self: *const Self) f64 {

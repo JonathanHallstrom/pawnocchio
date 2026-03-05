@@ -60,6 +60,7 @@ pub fn printDebugStats() void {
         std.debug.print(
             \\{s}
             \\  avg:  {d:.4}
+            \\  avg abs:  {d:.4}
             \\  std:  {d:.4}
             \\  min:  {d:.4}
             \\  max:  {d:.4}
@@ -70,6 +71,7 @@ pub fn printDebugStats() void {
         , .{
             entry.key_ptr.*,
             entry.value_ptr.average(),
+            entry.value_ptr.averageAbs(),
             entry.value_ptr.standardDeviation(),
             entry.value_ptr.min,
             entry.value_ptr.max,
