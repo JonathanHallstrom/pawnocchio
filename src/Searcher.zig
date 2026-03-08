@@ -701,6 +701,7 @@ fn search(
     }
 
     const cur: *StackEntry = self.stackEntry(0);
+    const prev: *StackEntry = self.stackEntry(-1);
     const board: *Board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
@@ -813,7 +814,7 @@ fn search(
         improving = improvement > 0;
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
-        const prev_eval = self.stackEntry(-1).corrected_eval;
+        const prev_eval = prev.corrected_eval;
 
         if (prev_eval != evaluation.inf_score and
             !cur.move.move.isNull() and
@@ -828,7 +829,7 @@ fn search(
                 1024,
             );
             self.histories.quiet.updateRaw(
-                &self.stackEntry(-1).board,
+                &prev.board,
                 cur.move,
                 update,
             );
@@ -846,7 +847,7 @@ fn search(
         }
     }
     const eval = cur.static_eval;
-    const prev_eval = self.stackEntry(-1).static_eval;
+    const prev_eval = prev.static_eval;
 
     // hindsight extension
     if (!is_pv and
