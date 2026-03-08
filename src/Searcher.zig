@@ -1356,10 +1356,11 @@ fn search(
                 score_type = .lower;
                 cur.failhighs += 1;
                 const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
+                const cutnode_bonus: i32 = if (cutnode) 100 else 0;
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, typed, hist_depth, true, faillow_bonus);
-                        self.histories.updateCont(board, typed, conthist_tables, hist_depth, true, faillow_bonus);
+                        self.histories.updateQuiet(board, typed, hist_depth, true, faillow_bonus + cutnode_bonus);
+                        self.histories.updateCont(board, typed, conthist_tables, hist_depth, true, faillow_bonus + cutnode_bonus);
 
                         for (searched_quiets.slice()) |searched_move| {
                             self.histories.updateQuiet(board, searched_move, hist_depth, false, 0);
@@ -1367,7 +1368,7 @@ fn search(
                         }
                     }
                 } else {
-                    self.histories.updateNoisy(board, typed, hist_depth, true, faillow_bonus);
+                    self.histories.updateNoisy(board, typed, hist_depth, true, faillow_bonus + cutnode_bonus);
                 }
                 for (searched_noisies.slice()) |searched_move| {
                     self.histories.updateNoisy(board, searched_move, hist_depth, false, 0);
