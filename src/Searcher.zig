@@ -1242,6 +1242,10 @@ fn search(
                     const r_depth = tt_entry.flags.getScoreType() != .none and tt_entry.depth >= depth;
                     reduction -= tunables.lmr_ttpv_score * @intFromBool(r_score);
                     reduction -= tunables.lmr_ttpv_depth * @intFromBool(r_depth);
+
+                    if (cutnode and (r_depth or r_score)) {
+                        reduction -= 512;
+                    }
                 }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
