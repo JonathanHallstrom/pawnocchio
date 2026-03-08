@@ -1239,6 +1239,8 @@ fn search(
                 });
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
 
+                reduction -= std.math.clamp(improvement * 2, -500, 500);
+
                 if (tt_pv) {
                     const r_score = tt_entry.flags.getScoreType() != .none and tt_entry.score > alpha;
                     const r_depth = tt_entry.flags.getScoreType() != .none and tt_entry.depth >= depth;
