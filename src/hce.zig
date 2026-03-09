@@ -323,7 +323,7 @@ const Packed = enum(i32) {
 fn computePhase(board: *const Board) u8 {
     var res: u8 = 0;
     for (0..6) |p| {
-        res += gamephaseInc[p] * @popCount(board.pieces[p]);
+        res += gamephaseInc[p] * @popCount(board.pieceBB(PieceType.fromInt(@intCast(p))));
     }
     return res;
 }

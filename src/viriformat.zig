@@ -174,14 +174,15 @@ pub const MarlinPackedBoard = extern struct {
     }
 
     pub fn from(board: Board, loss_draw_win: u8, score: i16) MarlinPackedBoard {
-        const occ = board.white | board.black;
+        const occ = board.occupancy();
         var pieces: [16]u8 = .{0} ** 16;
         {
             var i: usize = 0;
             var iter = Bitboard.iterator(occ);
             while (iter.next()) |sq| : (i += 1) {
-                const piece_type = board.pieceOn(sq).?;
-                const side: Colour = if (Bitboard.contains(board.white, sq)) .white else .black;
+                const cpt = board.colouredPieceOn(sq).?;
+                const piece_type = cpt.toPieceType();
+                const side: Colour = cpt.toColour();
                 const starting_rank: Rank = if (side == .white) .first else .eighth;
 
                 var piece_code: u4 = @intCast(piece_type.toInt());
@@ -204,7 +205,7 @@ pub const MarlinPackedBoard = extern struct {
             }
         }
         return MarlinPackedBoard{
-            .occupancy = LittleEndian(u64).fromNative(board.white | board.black),
+            .occupancy = LittleEndian(u64).fromNative(board.occupancy()),
             .pieces = pieces,
             .stm_ep_square = @as(u8, if (board.stm == .black) 1 << 7 else 0) | @as(u8, if (board.ep_target) |ep_target| ep_target.toInt() else 64),
             .halfmove_clock = board.halfmove,

@@ -26,17 +26,15 @@ const Square = root.Square;
 const Bitboard = root.Bitboard;
 const PieceType = root.PieceType;
 const ColouredPieceType = root.ColouredPieceType;
-const NullableColouredPieceType = root.NullableColouredPieceType;
 const Move = root.Move;
 const movegen = root.movegen;
 const CastlingRights = root.CastlingRights;
 const attacks = root.attacks;
 const Board = @This();
 
-white: u64 = 0,
-black: u64 = 0,
-pieces: [6]u64 = .{0} ** 6,
-mailbox: [64]NullableColouredPieceType = .{NullableColouredPieceType.init()} ** 64,
+bbs: [8]u64 = @splat(0),
+
+mailbox: [64]u8 = @splat(MAILBOX_EMPTY),
 
 halfmove: u8 = 0,
 fullmove: u32 = 1,
@@ -49,122 +47,151 @@ hash: u64 = 0,
 pawn_hash: u64 = 0,
 major_hash: u64 = 0,
 minor_hash: u64 = 0,
-nonpawn_hash: [2]u64 = .{0} ** 2,
+nonpawn_hash: [2]u64 = @splat(0),
 
 castling_rights: CastlingRights = CastlingRights.init(),
 
-pinned: [2]u64 = .{0} ** 2,
-// pinner: [2]u64 = .{0} ** 2,
+pinned: [2]u64 = @splat(0),
+// pinner: [2]u64 = @splat(0),
 checkers: u64 = 0,
-threats: [2]u64 = .{0} ** 2,
-lesser_threats: [2]u64 = .{0} ** 2,
+threats: [2]u64 = @splat(0),
+lesser_threats: [2]u64 = @splat(0),
 
-pub inline fn occupancyFor(self: Board, col: Colour) u64 {
-    return if (col == .white) self.white else self.black;
+pub inline fn white(self: *const Board) u64 {
+    return (&self.bbs)[6];
 }
 
-inline fn occupancyPtrFor(self: *Board, col: Colour) *u64 {
-    return if (col == .white) &self.white else &self.black;
+pub inline fn black(self: *const Board) u64 {
+    return (&self.bbs)[7];
 }
 
-pub inline fn occupancy(self: Board) u64 {
-    return self.white | self.black;
+pub fn whitePtr(self: *Board) *u64 {
+    return &self.bbs[6];
 }
 
-pub inline fn pawnsFor(self: Board, col: Colour) u64 {
-    return self.pieces[0] & self.occupancyFor(col);
+pub fn blackPtr(self: *Board) *u64 {
+    return &self.bbs[7];
 }
 
-pub inline fn knightsFor(self: Board, col: Colour) u64 {
-    return self.pieces[1] & self.occupancyFor(col);
+pub inline fn pieceBB(self: *const Board, piece: PieceType) u64 {
+    return (&self.bbs)[piece.toInt()];
 }
 
-pub inline fn bishopsFor(self: Board, col: Colour) u64 {
-    return self.pieces[2] & self.occupancyFor(col);
+pub inline fn pieceBBs(self: *const Board) *const [6]u64 {
+    return @ptrCast(&self.bbs);
 }
 
-pub inline fn rooksFor(self: Board, col: Colour) u64 {
-    return self.pieces[3] & self.occupancyFor(col);
+pub inline fn pieceBBsMut(self: *Board) *[6]u64 {
+    return @ptrCast(&self.bbs);
 }
 
-pub inline fn queensFor(self: Board, col: Colour) u64 {
-    return self.pieces[4] & self.occupancyFor(col);
+pub inline fn occupancyFor(self: *const Board, col: Colour) u64 {
+    return (&self.bbs)[6 + col.toInt()];
 }
 
-pub inline fn kingFor(self: Board, col: Colour) u64 {
-    return self.pieces[5] & self.occupancyFor(col);
+pub fn occupancyPtrFor(self: *Board, col: Colour) *u64 {
+    return &(&self.bbs)[6 + col.toInt()];
 }
 
-pub inline fn pieceFor(self: Board, col: Colour, piece: PieceType) u64 {
-    return self.pieces[piece.toInt()] & self.occupancyFor(col);
+pub inline fn occupancy(self: *const Board) u64 {
+    return (&self.bbs)[6] | (&self.bbs)[7];
 }
 
-pub inline fn pawns(self: Board) u64 {
-    return self.pieces[0];
+pub inline fn pawnsFor(self: *const Board, col: Colour) u64 {
+    return self.pieceBB(.pawn) & self.occupancyFor(col);
 }
 
-pub inline fn knights(self: Board) u64 {
-    return self.pieces[1];
+pub inline fn knightsFor(self: *const Board, col: Colour) u64 {
+    return self.pieceBB(.knight) & self.occupancyFor(col);
 }
 
-pub inline fn bishops(self: Board) u64 {
-    return self.pieces[2];
+pub inline fn bishopsFor(self: *const Board, col: Colour) u64 {
+    return self.pieceBB(.bishop) & self.occupancyFor(col);
 }
 
-pub inline fn rooks(self: Board) u64 {
-    return self.pieces[3];
+pub inline fn rooksFor(self: *const Board, col: Colour) u64 {
+    return self.pieceBB(.rook) & self.occupancyFor(col);
 }
 
-pub inline fn queens(self: Board) u64 {
-    return self.pieces[4];
+pub inline fn queensFor(self: *const Board, col: Colour) u64 {
+    return self.pieceBB(.queen) & self.occupancyFor(col);
 }
 
-pub inline fn kings(self: Board) u64 {
-    return self.pieces[5];
+pub inline fn kingFor(self: *const Board, col: Colour) u64 {
+    return self.pieceBB(.king) & self.occupancyFor(col);
+}
+
+pub inline fn pieceFor(self: *const Board, col: Colour, piece: PieceType) u64 {
+    return self.pieceBB(piece) & self.occupancyFor(col);
+}
+
+pub inline fn pawns(self: *const Board) u64 {
+    return self.pieceBB(.pawn);
+}
+
+pub inline fn knights(self: *const Board) u64 {
+    return self.pieceBB(.knight);
+}
+
+pub inline fn bishops(self: *const Board) u64 {
+    return self.pieceBB(.bishop);
+}
+
+pub inline fn rooks(self: *const Board) u64 {
+    return self.pieceBB(.rook);
+}
+
+pub inline fn queens(self: *const Board) u64 {
+    return self.pieceBB(.queen);
+}
+
+pub inline fn kings(self: *const Board) u64 {
+    return self.pieceBB(.king);
+}
+
+const MAILBOX_EMPTY: u8 = 1 << 7;
+
+inline fn mailboxValue(pt: PieceType, col: Colour) u8 {
+    return ColouredPieceType.fromPieceType(pt, col).toInt();
+}
+
+inline fn mailboxIsEmpty(raw: u8) bool {
+    assert((raw & MAILBOX_EMPTY != 0) == (raw == MAILBOX_EMPTY));
+    return raw == MAILBOX_EMPTY;
 }
 
 pub inline fn pieceOn(self: *const Board, sq: Square) ?PieceType {
-    const cpt = (&self.mailbox)[sq.toInt()];
-
-    return if (cpt.isNull()) null else cpt.toColouredPieceType().toPieceType();
+    const raw = (&self.mailbox)[sq.toInt()];
+    return if (mailboxIsEmpty(raw)) null else PieceType.fromInt(raw >> 1);
 }
 
-pub inline fn colourOn(self: Board, sq: Square) ?Colour {
-    if (self.isSquareEmpty(sq)) {
-        return null;
-    }
-    return if (Bitboard.contains(self.white, sq)) .white else .black;
-}
-
-pub inline fn isSquareEmpty(self: Board, sq: Square) bool {
+pub inline fn isSquareEmpty(self: *const Board, sq: Square) bool {
     return !Bitboard.contains(self.occupancy(), sq);
 }
 
-pub inline fn nullableColouredPieceOn(self: *const Board, sq: Square) NullableColouredPieceType {
-    return (&self.mailbox)[sq.toInt()];
-}
-
 pub inline fn colouredPieceOn(self: *const Board, sq: Square) ?ColouredPieceType {
-    return self.nullableColouredPieceOn(sq).opt();
+    const raw = (&self.mailbox)[sq.toInt()];
+    if (mailboxIsEmpty(raw)) return null;
+    return ColouredPieceType.fromInt(raw);
 }
 
-pub inline fn startingRankFor(self: Board, col: Colour) Rank {
+pub inline fn startingRankFor(self: *const Board, col: Colour) Rank {
     return self.castling_rights.startingRankFor(col);
 }
 
-pub fn sumPieces(self: Board, values: anytype) std.meta.Child(@TypeOf(values)) {
+pub fn sumPieces(self: *const Board, values: anytype) std.meta.Child(@TypeOf(values)) {
     var res: std.meta.Child(@TypeOf(values)) = 0;
     for (PieceType.all) |pt| {
-        res += (&values)[pt.toInt()] * @popCount(self.pieces[pt.toInt()]);
+        res += (&values)[pt.toInt()] * @popCount(self.pieceBB(pt));
     }
     return res;
 }
 
-pub fn phase(self: Board) u8 {
+pub fn phase(self: *const Board) u8 {
     return self.sumPieces([_]u8{ 0, 1, 1, 3, 6, 0 });
 }
 
-pub fn classicalMaterial(self: Board) u8 {
+pub fn classicalMaterial(self: *const Board) u8 {
     return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
 }
 
@@ -177,7 +204,7 @@ pub fn equal(self: *const Board, other: *const Board) bool {
     return std.meta.eql(self.*, other.*);
 }
 
-pub fn materialScale(self: Board) i32 {
+pub fn materialScale(self: *const Board) i32 {
     const tunables = root.tunable_constants;
     @setEvalBranchQuota(1 << 30);
     const vals: [6]i16 = if (root.tuning.do_tuning) .{
@@ -220,17 +247,14 @@ pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
         for (ranks[7 - r]) |ch| {
             if (c >= 8) return error.TooManyPiecesOnRank;
             const current_square = Square.fromInt(@intCast(8 * r + c));
-            const cpt = ColouredPieceType.fromAsciiLetter(ch);
-            self.mailbox[8 * r + c] = NullableColouredPieceType.from(cpt);
+            const pt = PieceType.fromAsciiLetter(ch);
             if (std.ascii.isLower(ch)) {
-                self.black |= current_square.toBitboard();
-                self.pieces[cpt.?.toPieceType().toInt()] |= current_square.toBitboard();
+                self.addPiece(.black, pt.?, current_square, NullEvalState{});
                 if (ch == 'k') black_king_square = current_square;
                 if (ch == 'r' and current_square.getRank() == .eighth) black_rooks_on_last_rank.append(current_square.getFile()) catch return error.TooManyRooks;
                 c += 1;
             } else if (std.ascii.isUpper(ch)) {
-                self.white |= current_square.toBitboard();
-                self.pieces[cpt.?.toPieceType().toInt()] |= current_square.toBitboard();
+                self.addPiece(.white, pt.?, current_square, NullEvalState{});
                 if (ch == 'K') white_king_square = current_square;
                 if (ch == 'R' and current_square.getRank() == .first) white_rooks_on_first_rank.append(current_square.getFile()) catch return error.TooManyRooks;
                 c += 1;
@@ -428,6 +452,7 @@ pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
 }
 
 pub fn toFen(self: Board) BoundedArray(u8, 128) {
+    @setEvalBranchQuota(10000);
     var out = BoundedArray(u8, 128).init(0) catch unreachable;
     inline for (0..8) |rr| {
         const r = 7 - rr;
@@ -435,13 +460,8 @@ pub fn toFen(self: Board) BoundedArray(u8, 128) {
         inline for (0..8) |c| {
             const idx = r * 8 + c;
             const sq = Square.fromInt(idx);
-            if ((&self.mailbox)[idx].opt()) |pt| {
-                var char = pt.toAsciiLetter();
-                if (self.white & sq.toBitboard() != 0) {
-                    char = std.ascii.toUpper(char);
-                } else {
-                    char = std.ascii.toLower(char);
-                }
+            if (self.colouredPieceOn(sq)) |cpt| {
+                const char = cpt.toAsciiLetter();
                 if (num_unoccupied > 0) out.appendAssumeCapacity('0' + num_unoccupied);
                 out.appendAssumeCapacity(char);
                 num_unoccupied = 0;
@@ -534,16 +554,16 @@ fn frcBackrank(n: anytype) [8]PieceType {
     const n4 = n3 / 6;
     const q = n3 % 6;
 
-    var out: [8]PieceType = .{.pawn} ** 8;
-    out[b1 * 2 + 1] = .bishop;
-    out[b2 * 2] = .bishop;
+    var back_rank: [8]?PieceType = @splat(null);
+    back_rank[b1 * 2 + 1] = .bishop;
+    back_rank[b2 * 2] = .bishop;
 
     {
         var empty: u8 = 0;
         for (0..8) |i| {
-            if (out[i] == .pawn) {
+            if (back_rank[i] == null) {
                 if (empty == q) {
-                    out[i] = .queen;
+                    back_rank[i] = .queen;
                 }
                 empty += 1;
             }
@@ -554,9 +574,9 @@ fn frcBackrank(n: anytype) [8]PieceType {
     {
         var empty: u8 = 0;
         for (0..8) |i| {
-            if (out[i] == .pawn) {
+            if (back_rank[i] == null) {
                 if (empty == knight1) {
-                    out[i] = .knight;
+                    back_rank[i] = .knight;
                 }
                 empty += 1;
             }
@@ -566,20 +586,22 @@ fn frcBackrank(n: anytype) [8]PieceType {
     {
         var empty: u8 = 0;
         for (0..8) |i| {
-            if (out[i] == .pawn) {
+            if (back_rank[i] == null) {
                 if (empty == knight2) {
-                    out[i] = .knight;
+                    back_rank[i] = .knight;
                 }
                 empty += 1;
             }
         }
     }
 
-    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .rook;
-    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .king;
-    out[std.mem.indexOfScalar(PieceType, &out, .pawn) orelse unreachable] = .rook;
-    for (out) |pt| {
-        assert(pt != .pawn);
+    back_rank[std.mem.indexOfScalar(?PieceType, &back_rank, null) orelse unreachable] = .rook;
+    back_rank[std.mem.indexOfScalar(?PieceType, &back_rank, null) orelse unreachable] = .king;
+    back_rank[std.mem.indexOfScalar(?PieceType, &back_rank, null) orelse unreachable] = .rook;
+    var out: [8]PieceType = undefined;
+    for (&out, back_rank) |*out_elem, nullable_elem| {
+        assert(nullable_elem != null);
+        out_elem.* = nullable_elem.?;
     }
     return out;
 }
@@ -596,12 +618,8 @@ pub fn dfrcPosition(n: u20) Board {
     var white_queenside_rook_file: File = undefined;
     var black_queenside_rook_file: File = undefined;
     inline for (0..8) |c| {
-        res.mailbox[c] = ColouredPieceType.fromPieceType(white_rank[c], .white).nullable();
-        res.mailbox[8 + c] = ColouredPieceType.fromPieceType(.pawn, .white).nullable();
-        res.white |= Square.fromInt(c).toBitboard();
-        res.white |= Square.fromInt(8 + c).toBitboard();
-        res.pieces[white_rank[c].toInt()] |= Square.fromInt(c).toBitboard();
-        res.pieces[PieceType.pawn.toInt()] |= Square.fromInt(8 + c).toBitboard();
+        res.addPiece(.white, white_rank[c], Square.fromInt(c), NullEvalState{});
+        res.addPiece(.white, .pawn, Square.fromInt(8 + c), NullEvalState{});
         if (white_rank[c] == .rook) {
             if (white_rook) {
                 white_kingside_rook_file = File.fromInt(c);
@@ -610,13 +628,8 @@ pub fn dfrcPosition(n: u20) Board {
             }
             white_rook = true;
         }
-        res.mailbox[56 + c] = ColouredPieceType.fromPieceType(black_rank[c], .black).nullable();
-        res.mailbox[48 + c] = ColouredPieceType.fromPieceType(.pawn, .black).nullable();
-        res.black |= Square.fromInt(56 + c).toBitboard();
-        res.black |= Square.fromInt(48 + c).toBitboard();
-
-        res.pieces[black_rank[c].toInt()] |= Square.fromInt(56 + c).toBitboard();
-        res.pieces[PieceType.pawn.toInt()] |= Square.fromInt(48 + c).toBitboard();
+        res.addPiece(.black, black_rank[c], Square.fromInt(56 + c), NullEvalState{});
+        res.addPiece(.black, .pawn, Square.fromInt(48 + c), NullEvalState{});
 
         if (black_rank[c] == .rook) {
             if (black_rook) {
@@ -652,52 +665,64 @@ pub fn frcPositionComptime(comptime n: u10) if (n < 960) Board else @compileErro
     return frcPosition(n);
 }
 
-pub fn updatePieceHash(self: *Board, comptime stm: Colour, pt: PieceType, sq: Square) void {
-    self.hash ^= root.zobrist.piece(stm, pt, sq);
-}
-
-pub fn updateCastlingHash(self: *Board) void {
+fn updateCastlingHash(self: *Board) void {
     self.hash ^= root.zobrist.castling(self.castling_rights.rawCastlingAvailability());
 }
 
-pub fn updateTurnHash(self: *Board) void {
+fn updateTurnHash(self: *Board) void {
     self.hash ^= root.zobrist.turn();
 }
 
-pub fn updateEPHash(self: *Board) void {
+fn updateEPHash(self: *Board) void {
     if (self.ep_target) |target|
         self.hash ^= root.zobrist.ep(target);
 }
 
-pub inline fn getHashWithHalfmove(self: Board) u64 {
+pub inline fn getHashWithHalfmove(self: *const Board) u64 {
     return self.hash ^ root.zobrist.halfmove(self.halfmove);
 }
 
-pub inline fn isEnPassant(_: Board, move: Move) bool {
+pub inline fn isEnPassant(_: *const Board, move: Move) bool {
     return move.tp() == .ep;
 }
 
-pub inline fn isCastling(_: Board, move: Move) bool {
+pub inline fn isCastling(_: *const Board, move: Move) bool {
     return move.tp() == .castling;
 }
 
-pub inline fn isPromo(_: Board, move: Move) bool {
+pub inline fn isPromo(_: *const Board, move: Move) bool {
     return move.tp() == .promotion;
 }
 
-pub inline fn isCapture(self: Board, move: Move) bool {
-    return self.isEnPassant(move) or !self.isCastling(move) and self.colourOn(move.to()) != null;
+pub inline fn isCapture(self: *const Board, move: Move) bool {
+    if (self.isEnPassant(move)) {
+        @branchHint(.unpredictable);
+        return true;
+    }
+    return !self.isCastling(move) and !self.isSquareEmpty(move.to());
 }
 
-pub inline fn isNoisy(self: Board, move: Move) bool {
-    return self.isCapture(move) or (self.isPromo(move) and move.promoType() == .queen);
+pub inline fn isNoisy(self: *const Board, move: Move) bool {
+    if (self.isCapture(move)) {
+        @branchHint(.unpredictable);
+        return true;
+    }
+
+    if (std.debug.runtime_safety) {
+        inline for (.{ .knight, .bishop, .rook, .queen }) |pt| {
+            const naive = self.isPromo(move) and move.promoType() == pt;
+            std.debug.assert(naive == move.promoTypeEquals(pt));
+        }
+    }
+
+    return move.promoTypeEquals(.queen);
 }
 
-pub inline fn isQuiet(self: Board, move: Move) bool {
+pub inline fn isQuiet(self: *const Board, move: Move) bool {
     return !self.isNoisy(move);
 }
 
-pub inline fn getCapturedType(self: Board, move: Move) ?PieceType {
+pub inline fn getCapturedType(self: *const Board, move: Move) ?PieceType {
     if (self.isEnPassant(move)) {
         return .pawn;
     }
@@ -707,15 +732,15 @@ pub inline fn getCapturedType(self: Board, move: Move) ?PieceType {
     return null;
 }
 
-pub inline fn kingsideKingDestFor(self: Board, col: Colour) Square {
+pub inline fn kingsideKingDestFor(self: *const Board, col: Colour) Square {
     return Square.fromRankFile(self.startingRankFor(col), File.g);
 }
 
-pub inline fn queensideKingDestFor(self: Board, col: Colour) Square {
+pub inline fn queensideKingDestFor(self: *const Board, col: Colour) Square {
     return Square.fromRankFile(self.startingRankFor(col), File.c);
 }
 
-pub inline fn castlingKingDestFor(self: Board, move: Move, col: Colour) Square {
+pub inline fn castlingKingDestFor(self: *const Board, move: Move, col: Colour) Square {
     if (move.from().toInt() < move.to().toInt()) {
         return self.kingsideKingDestFor(col);
     } else {
@@ -723,15 +748,15 @@ pub inline fn castlingKingDestFor(self: Board, move: Move, col: Colour) Square {
     }
 }
 
-pub inline fn kingsideRookDestFor(self: Board, col: Colour) Square {
+pub inline fn kingsideRookDestFor(self: *const Board, col: Colour) Square {
     return Square.fromRankFile(self.startingRankFor(col), File.f);
 }
 
-pub inline fn queensideRookDestFor(self: Board, col: Colour) Square {
+pub inline fn queensideRookDestFor(self: *const Board, col: Colour) Square {
     return Square.fromRankFile(self.startingRankFor(col), File.d);
 }
 
-pub inline fn castlingRookDestFor(self: Board, move: Move, col: Colour) Square {
+pub inline fn castlingRookDestFor(self: *const Board, move: Move, col: Colour) Square {
     if (move.from().toInt() < move.to().toInt()) {
         return self.kingsideRookDestFor(col);
     } else {
@@ -758,41 +783,41 @@ fn zobristPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square) v
 pub fn addPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square, eval_state: anytype) void {
     const bb = sq.toBitboard();
     self.occupancyPtrFor(col).* |= bb;
-    self.pieces[pt.toInt()] |= bb;
+    self.pieceBBsMut()[pt.toInt()] |= bb;
     self.zobristPiece(col, pt, sq);
-    (&self.mailbox)[sq.toInt()] = ColouredPieceType.fromPieceType(pt, col).nullable();
+    (&self.mailbox)[sq.toInt()] = mailboxValue(pt, col);
     eval_state.add(col, pt, sq);
 }
 
 pub fn removePiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square, eval_state: anytype) void {
     const bb = sq.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
-    self.pieces[pt.toInt()] ^= bb;
+    self.pieceBBsMut()[pt.toInt()] ^= bb;
     self.zobristPiece(col, pt, sq);
-    (&self.mailbox)[sq.toInt()] = NullableColouredPieceType.init();
+    (&self.mailbox)[sq.toInt()] = MAILBOX_EMPTY;
     eval_state.sub(col, pt, sq);
 }
 
 pub fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from: Square, to: Square, eval_state: anytype) void {
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
-    self.pieces[pt.toInt()] ^= bb;
+    self.pieceBBsMut()[pt.toInt()] ^= bb;
     self.zobristPiece(col, pt, from);
     self.zobristPiece(col, pt, to);
-    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
-    (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col).nullable();
+    (&self.mailbox)[from.toInt()] = MAILBOX_EMPTY;
+    (&self.mailbox)[to.toInt()] = mailboxValue(pt, col);
     eval_state.addSub(col, pt, to, col, pt, from);
 }
 
 pub fn movePiecePromo(self: *Board, comptime col: Colour, promo_pt: PieceType, from: Square, to: Square, eval_state: anytype) void {
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
-    self.pieces[PieceType.pawn.toInt()] ^= from.toBitboard();
-    self.pieces[promo_pt.toInt()] ^= to.toBitboard();
+    self.pieceBBsMut()[PieceType.pawn.toInt()] ^= from.toBitboard();
+    self.pieceBBsMut()[promo_pt.toInt()] ^= to.toBitboard();
     self.zobristPiece(col, .pawn, from);
     self.zobristPiece(col, promo_pt, to);
-    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
-    (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(promo_pt, col).nullable();
+    (&self.mailbox)[from.toInt()] = MAILBOX_EMPTY;
+    (&self.mailbox)[to.toInt()] = mailboxValue(promo_pt, col);
     eval_state.addSub(col, promo_pt, to, col, .pawn, from);
 }
 
@@ -800,14 +825,14 @@ pub fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType, from:
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.occupancyPtrFor(col.flipped()).* ^= captured_square.toBitboard();
-    self.pieces[pt.toInt()] ^= bb;
-    self.pieces[captured_pt.toInt()] ^= captured_square.toBitboard();
+    self.pieceBBsMut()[pt.toInt()] ^= bb;
+    self.pieceBBsMut()[captured_pt.toInt()] ^= captured_square.toBitboard();
     self.zobristPiece(col, pt, from);
     self.zobristPiece(col, pt, to);
     self.zobristPiece(col.flipped(), captured_pt, captured_square);
-    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
-    (&self.mailbox)[captured_square.toInt()] = NullableColouredPieceType.init();
-    (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(pt, col).nullable();
+    (&self.mailbox)[from.toInt()] = MAILBOX_EMPTY;
+    (&self.mailbox)[captured_square.toInt()] = MAILBOX_EMPTY;
+    (&self.mailbox)[to.toInt()] = mailboxValue(pt, col);
     eval_state.addSubSub(col, pt, to, col, pt, from, col.flipped(), captured_pt, captured_square);
 }
 
@@ -815,15 +840,15 @@ pub fn movePiecePromoCapture(self: *Board, comptime col: Colour, promo_pt: Piece
     const bb = from.toBitboard() ^ to.toBitboard();
     self.occupancyPtrFor(col).* ^= bb;
     self.occupancyPtrFor(col.flipped()).* ^= captured_square.toBitboard();
-    self.pieces[PieceType.pawn.toInt()] ^= from.toBitboard();
-    self.pieces[promo_pt.toInt()] ^= to.toBitboard();
-    self.pieces[captured_pt.toInt()] ^= captured_square.toBitboard();
+    self.pieceBBsMut()[PieceType.pawn.toInt()] ^= from.toBitboard();
+    self.pieceBBsMut()[promo_pt.toInt()] ^= to.toBitboard();
+    self.pieceBBsMut()[captured_pt.toInt()] ^= captured_square.toBitboard();
     self.zobristPiece(col, .pawn, from);
     self.zobristPiece(col, promo_pt, to);
     self.zobristPiece(col.flipped(), captured_pt, captured_square);
-    (&self.mailbox)[from.toInt()] = NullableColouredPieceType.init();
-    (&self.mailbox)[captured_square.toInt()] = NullableColouredPieceType.init();
-    (&self.mailbox)[to.toInt()] = ColouredPieceType.fromPieceType(promo_pt, col).nullable();
+    (&self.mailbox)[from.toInt()] = MAILBOX_EMPTY;
+    (&self.mailbox)[captured_square.toInt()] = MAILBOX_EMPTY;
+    (&self.mailbox)[to.toInt()] = mailboxValue(promo_pt, col);
     eval_state.addSubSub(col, promo_pt, to, col, .pawn, from, col.flipped(), captured_pt, captured_square);
 }
 
@@ -831,16 +856,16 @@ pub fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, 
     const king_bb = king_from.toBitboard() ^ king_to.toBitboard();
     const rook_bb = rook_from.toBitboard() ^ rook_to.toBitboard();
     self.occupancyPtrFor(col).* ^= king_bb ^ rook_bb;
-    self.pieces[PieceType.king.toInt()] ^= king_bb;
-    self.pieces[PieceType.rook.toInt()] ^= rook_bb;
+    self.pieceBBsMut()[PieceType.king.toInt()] ^= king_bb;
+    self.pieceBBsMut()[PieceType.rook.toInt()] ^= rook_bb;
     self.zobristPiece(col, .king, king_from);
     self.zobristPiece(col, .king, king_to);
     self.zobristPiece(col, .rook, rook_from);
     self.zobristPiece(col, .rook, rook_to);
-    (&self.mailbox)[king_from.toInt()] = NullableColouredPieceType.init();
-    (&self.mailbox)[rook_from.toInt()] = NullableColouredPieceType.init();
-    (&self.mailbox)[king_to.toInt()] = ColouredPieceType.fromPieceType(.king, col).nullable();
-    (&self.mailbox)[rook_to.toInt()] = ColouredPieceType.fromPieceType(.rook, col).nullable();
+    (&self.mailbox)[king_from.toInt()] = MAILBOX_EMPTY;
+    (&self.mailbox)[rook_from.toInt()] = MAILBOX_EMPTY;
+    (&self.mailbox)[king_to.toInt()] = mailboxValue(.king, col);
+    (&self.mailbox)[rook_to.toInt()] = mailboxValue(.rook, col);
     eval_state.addAddSubSub(col, .king, king_to, col, .rook, rook_to, col, .king, king_from, col, .rook, rook_from);
 }
 
@@ -956,12 +981,12 @@ fn resetHashDbg(self: *Board) !void {
         self.updateTurnHash();
     inline for (0..6) |p| {
         const pt = PieceType.fromInt(@intCast(p));
-        var iter = Bitboard.iterator(self.pieces[p]);
+        var iter = Bitboard.iterator(self.pieceBB(pt));
         while (iter.next()) |sq| {
-            if (self.mailbox[sq.toInt()] == null) {
+            if (self.mailbox[sq.toInt()] == MAILBOX_EMPTY) {
                 return error.Broken;
             }
-            self.hash ^= root.zobrist.piece(self.mailbox[sq.toInt()].?.toColour(), pt, sq);
+            self.hash ^= root.zobrist.piece(self.colouredPieceOn(sq).?.toColour(), pt, sq);
         }
     }
 }
@@ -1572,14 +1597,14 @@ pub const NullEvalState = struct {
 // const HashPair = struct {
 //     zobrist: u64 = 0,
 //     crc: u128 = 0,
-//     b: Board = .{},
+//     b: *const Board = .{},
 
 //     fn init(board: *const Board) HashPair {
 //         var hasher = std.hash.Fnv1a_128.init();
 
-//         hasher.update(std.mem.asBytes(&board.white));
-//         hasher.update(std.mem.asBytes(&board.black));
-//         hasher.update(std.mem.asBytes(&board.pieces));
+//         hasher.update(std.mem.asBytes(board.whitePtr()));
+//         hasher.update(std.mem.asBytes(board.blackPtr()));
+//         hasher.update(std.mem.asBytes(board.pieceBBs()));
 //         hasher.update(std.mem.asBytes(&board.ep_target));
 //         hasher.update(std.mem.asBytes(&board.mailbox));
 //         hasher.update(std.mem.asBytes(&board.stm));
@@ -1695,7 +1720,7 @@ pub fn perft(
 test "basic makemove" {
     var board = startpos();
     board.makeMove(.white, Move.quiet(.e2, .e4), Board.NullEvalState{});
-    try std.testing.expectEqual(board.mailbox[Square.e4.toInt()].toColouredPieceType(), ColouredPieceType.white_pawn);
+    try std.testing.expectEqual(@as(u8, ColouredPieceType.white_pawn.toInt()), board.mailbox[Square.e4.toInt()]);
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e4.toBitboard(), Square.e4.toBitboard());
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e2.toBitboard(), 0);
 }

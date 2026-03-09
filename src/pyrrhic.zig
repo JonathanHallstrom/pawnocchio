@@ -57,14 +57,14 @@ pub fn probeWDL(board: *const Board) ?WDL {
     }
     if (board.halfmove > 0 or
         board.castling_rights.rawCastlingAvailability() != 0 or
-        @popCount(board.white | board.black) > c.TB_LARGEST)
+        @popCount(board.occupancy()) > c.TB_LARGEST)
     {
         return null;
     }
 
     const probe_result = c.tb_probe_wdl(
-        board.white,
-        board.black,
+        board.white(),
+        board.black(),
         board.kings(),
         board.queens(),
         board.rooks(),
@@ -97,15 +97,15 @@ pub fn probeRootDTZ(
         return null;
     }
     if (board.castling_rights.rawCastlingAvailability() != 0 or
-        @popCount(board.white | board.black) > c.TB_LARGEST)
+        @popCount(board.occupancy()) > c.TB_LARGEST)
     {
         return null;
     }
     var tb_results = std.mem.zeroes(TbRootMoves);
 
     const probe_result = c.tb_probe_root_dtz(
-        board.white,
-        board.black,
+        board.white(),
+        board.black(),
         board.kings(),
         board.queens(),
         board.rooks(),

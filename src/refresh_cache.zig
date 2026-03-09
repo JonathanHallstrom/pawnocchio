@@ -98,8 +98,8 @@ const NNCacheEntry = struct {
                     (&nnue.weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
             }
         }
-        self.pieces = board.pieces;
-        self.sides = .{ board.white, board.black };
+        self.pieces = board.pieceBBs().*;
+        self.sides = .{ board.white(), board.black() };
         copyAccumulator(acc, &self.accumulator);
     }
 };

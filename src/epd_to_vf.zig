@@ -36,7 +36,7 @@ fn getConnectingMove(from: *const Board, to: *const Board) ?Move {
         return null;
 
     for (0..6) |i|
-        if (@popCount(from.pieces[i] ^ to.pieces[i]) > 3)
+        if (@popCount(from.pieceBBs()[i] ^ to.pieceBBs()[i]) > 3)
             return null;
 
     var movelist = movegen.MoveListReceiver{};

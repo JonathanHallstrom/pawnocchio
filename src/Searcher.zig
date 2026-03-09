@@ -1384,7 +1384,7 @@ fn search(
     }
 
     if (!is_singular_search) {
-        if (score_type == .upper and tt_hit) {
+        if (score_type == .upper and has_tt_move) {
             best_move = tt_entry.move;
         }
         self.writeTT(

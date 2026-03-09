@@ -74,7 +74,7 @@ pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
 pub inline fn whichOutputBucket(board: *const Board) usize {
     const max_piece_count = 32;
     const divisor = (max_piece_count + OUTPUT_BUCKET_COUNT - 1) / OUTPUT_BUCKET_COUNT;
-    return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.white | board.black) - 2) / divisor);
+    return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.occupancy()) - 2) / divisor);
 }
 
 var weights_file: std.fs.File = undefined;

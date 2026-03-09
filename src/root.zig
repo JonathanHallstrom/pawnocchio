@@ -61,7 +61,7 @@ pub const wdl = @import("wdl.zig");
 
 const assert = std.debug.assert;
 
-pub const WDL = enum(u2) {
+pub const WDL = enum(u8) {
     win = 2,
     draw = 1,
     loss = 0,
@@ -74,7 +74,7 @@ pub const WDL = enum(u2) {
     }
 };
 
-pub const Colour = enum(u1) {
+pub const Colour = enum(u8) {
     white = 0,
     black = 1,
 
@@ -291,36 +291,6 @@ pub const PieceType = enum(u8) {
     }
 };
 
-pub const NullableColouredPieceType = enum(u8) {
-    _,
-
-    const null_bit = 128;
-
-    pub fn init() NullableColouredPieceType {
-        return @enumFromInt(null_bit);
-    }
-
-    pub inline fn isNull(self: NullableColouredPieceType) bool {
-        return @intFromEnum(self) & null_bit != 0;
-    }
-
-    pub inline fn from(ocpt: ?ColouredPieceType) NullableColouredPieceType {
-        return if (ocpt) |cpt| fromColouredPieceType(cpt) else NullableColouredPieceType.init();
-    }
-
-    pub inline fn opt(self: NullableColouredPieceType) ?ColouredPieceType {
-        return if (self.isNull()) null else self.toColouredPieceType();
-    }
-
-    pub inline fn fromColouredPieceType(cpt: ColouredPieceType) NullableColouredPieceType {
-        return @enumFromInt(@intFromEnum(cpt));
-    }
-
-    pub inline fn toColouredPieceType(self: NullableColouredPieceType) ColouredPieceType {
-        return @enumFromInt(@intFromEnum(self));
-    }
-};
-
 pub const ColouredPieceType = enum(u8) {
     white_pawn = 0,
     black_pawn = 1,
@@ -339,10 +309,6 @@ pub const ColouredPieceType = enum(u8) {
 
     white_king = 10,
     black_king = 11,
-
-    pub inline fn nullable(self: ColouredPieceType) NullableColouredPieceType {
-        return NullableColouredPieceType.fromColouredPieceType(self);
-    }
 
     pub inline fn fromInt(i: u8) ColouredPieceType {
         return @enumFromInt(i);

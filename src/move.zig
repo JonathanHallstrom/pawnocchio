@@ -107,6 +107,13 @@ pub const Move = enum(u16) {
         return initFromParts(from_.toInt(), to_.toInt(), castling_flag | 2 + col.toInt());
     }
 
+    pub fn promoTypeEquals(self: Move, p: PieceType) bool {
+        const to_check: i16 = p.toInt();
+        const f: i16 = self.flag();
+        const stored = f - promotion_flag + 1;
+        return stored == to_check;
+    }
+
     pub fn promoType(self: Move) PieceType {
         return PieceType.fromInt(@intCast(1 + self.extra()));
     }

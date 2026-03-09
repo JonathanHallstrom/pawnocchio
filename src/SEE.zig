@@ -54,7 +54,8 @@ pub fn value(pt: PieceType, comptime mode: Mode) i16 {
     return (if (root.tuning.do_tuning) SEE_weight else comptime SEE_weight)[pt.toInt()];
 }
 
-fn pickFirstScalar(pieces: *const [6]u64, mask: u64) u8 {
+fn pickFirstScalar(board: *const Board, mask: u64) u8 {
+    const pieces = board.pieceBBs();
     var res: u8 = 0;
     while (res < 6) {
         if (pieces[res] & mask != 0) {
@@ -65,17 +66,19 @@ fn pickFirstScalar(pieces: *const [6]u64, mask: u64) u8 {
     return res;
 }
 
-fn pickFirstVectorized(pieces: *const [6]u64, mask: u64) u8 {
+fn pickFirstVectorized(board: *const Board, mask: u64) u8 {
+    const bbs = &board.bbs;
     const mask_vec: @Vector(8, u64) = @splat(mask);
     const zero: @Vector(8, u64) = @splat(0);
-    const eql: u8 = @bitCast(mask_vec & (pieces.* ++ .{0} ** 2) != zero);
+    const eql: u8 = @bitCast(mask_vec & bbs.* != zero);
+    std.debug.assert(eql != 0);
     return @ctz(eql);
 }
 
 // if we have SIMD support use it otherwise use the scalar version
 const pickFirst = if (std.simd.suggestVectorLength(u8) orelse 0 >= 1) pickFirstVectorized else pickFirstScalar;
 
-pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
+pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
     const from = move.from();
     const to = move.to();
     const from_type = board.pieceOn(from).?;
@@ -135,8 +138,8 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             break;
         }
         const our_attackers = board.occupancyFor(stm) & attackers;
-        const attacker_i = pickFirst(&board.pieces, our_attackers);
-        const attacker_bb = board.pieces[attacker_i] & our_attackers;
+        const attacker_i = pickFirst(board, our_attackers);
+        const attacker_bb = board.pieceBBs()[attacker_i] & our_attackers;
         occ ^= attacker_bb & -%attacker_bb;
 
         attacker = PieceType.fromInt(attacker_i);
@@ -145,10 +148,12 @@ pub fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode:
             break;
         }
 
-        if (attacker == .pawn or attacker == .bishop or attacker == .queen)
+        if (attacker == .pawn or attacker == .bishop or attacker == .queen) {
             attackers |= root.attacks.getBishopAttacks(to, occ) & bishops;
-        if (attacker == .rook or attacker == .queen)
+        }
+        if (attacker == .rook or attacker == .queen) {
             attackers |= root.attacks.getRookAttacks(to, occ) & rooks;
+        }
 
         attackers &= occ;
         score = -score - 1 - value(attacker, mode);
