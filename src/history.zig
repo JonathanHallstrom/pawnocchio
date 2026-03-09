@@ -511,6 +511,35 @@ pub const HistoryTable = struct {
         return terms;
     }
 
+    inline fn totalCont(
+        board: *const Board,
+        typed: TypedMove,
+        tables: ConthistTables,
+    ) i64 {
+        var cont: i64 = 0;
+        const stm = board.stm;
+        inline for (CONTHIST_OFFSETS, tables) |offs, table| {
+            const cstm = if (offs % 2 == 0) stm.flipped() else stm;
+            cont += table.read(cstm, typed);
+        }
+        return cont;
+    }
+
+    pub fn updateContRaw(
+        _: *HistoryTable,
+        board: *const Board,
+        typed: TypedMove,
+        tables: ConthistTables,
+        extra: i32,
+    ) void {
+        const cont = totalCont(board, typed, tables);
+        const stm = board.stm;
+        inline for (CONTHIST_OFFSETS, tables) |offs, table| {
+            const cstm = if (offs % 2 == 0) stm.flipped() else stm;
+            table.updateRaw(cont, cstm, typed, extra);
+        }
+    }
+
     pub fn updateCont(
         _: *HistoryTable,
         board: *const Board,
@@ -520,12 +549,8 @@ pub const HistoryTable = struct {
         is_bonus: bool,
         extra: i32,
     ) void {
-        var cont: i64 = 0;
+        const cont = totalCont(board, typed, tables);
         const stm = board.stm;
-        inline for (CONTHIST_OFFSETS, tables) |offs, table| {
-            const cstm = if (offs % 2 == 0) stm.flipped() else stm;
-            cont += table.read(cstm, typed);
-        }
         inline for (CONTHIST_OFFSETS, 0.., tables) |offs, i, table| {
             const cstm = if (offs % 2 == 0) stm.flipped() else stm;
             const upd = extra + if (is_bonus) ContHistory.bonus(i, depth) else -ContHistory.penalty(i, depth);
