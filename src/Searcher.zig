@@ -1362,8 +1362,8 @@ fn search(
                         self.histories.updateCont(board, typed, conthist_tables, hist_depth, true, faillow_bonus);
 
                         for (searched_quiets.slice()) |searched_move| {
-                            self.histories.updateQuiet(board, searched_move, hist_depth, false, 0);
-                            self.histories.updateCont(board, searched_move, conthist_tables, hist_depth, false, 0);
+                            self.histories.updateQuiet(board, searched_move, hist_depth, false, @intCast(searched_quiets.len * 20));
+                            self.histories.updateCont(board, searched_move, conthist_tables, hist_depth, false, @intCast(searched_quiets.len * 20));
                         }
                     }
                 } else {
