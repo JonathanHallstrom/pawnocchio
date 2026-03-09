@@ -351,22 +351,27 @@ fn unmakeNullMove(self: *Searcher, comptime stm: Colour) void {
     self.ply -= 1;
 }
 
-fn isRepetition(self: *Searcher) bool {
-    const board = &self.stackEntry(0).board;
-
+fn isRepetition(self: *Searcher, board: *const Board) bool {
     const hash = board.hash;
     const amt = @min(self.ply, board.halfmove);
-    for (self.hashes[self.ply - amt .. self.ply]) |previous_hash| {
-        if (previous_hash == hash) {
-            return true; // found repetition in the search tree
+    const haystack = self.hashes[self.ply - amt .. self.ply];
+    var res = false;
+    for (haystack) |e| {
+        if (e == hash) {
+            @branchHint(.unpredictable);
+            res = true;
         }
     }
-    for (self.previous_position_hashes.slice()) |previous_hash| {
-        if (previous_hash == hash) {
-            return true;
+    for (self.previous_position_hashes.slice()) |e| {
+        if (e == hash) {
+            @branchHint(.unpredictable);
+            res = true;
         }
+        // prevent this loop from being unrolled
+        // there will only ever be a few values
+        std.mem.doNotOptimizeAway(e);
     }
-    return false;
+    return res;
 }
 
 fn hasUpcomingRepetition(self: *Searcher) bool {
@@ -736,7 +741,7 @@ fn search(
         }
     }
 
-    if (!is_root and (board.halfmove >= 100 or self.isRepetition())) {
+    if (!is_root and (board.halfmove >= 100 or self.isRepetition(board))) {
         if (board.halfmove >= 100 and is_in_check and !board.hasLegalMove()) {
             return evaluation.matedIn(self.ply);
         } else {
