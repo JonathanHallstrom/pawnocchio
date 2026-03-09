@@ -819,26 +819,6 @@ fn search(
         improving = improvement > 0;
         opponent_worsening = cur.evals.worsening(stm.flipped());
 
-        const prev_eval = prev.corrected_eval;
-
-        if (prev_eval != evaluation.inf_score and
-            !cur.move.move.isNull() and
-            !cur.move_is_noisy)
-        {
-            const update = @divTrunc(
-                std.math.clamp(
-                    -(prev_eval + corrected_static_eval - tunables.eval_hist_offs),
-                    tunables.eval_hist_min,
-                    tunables.eval_hist_max,
-                ) * tunables.eval_hist_mult,
-                1024,
-            );
-            self.histories.quiet.updateRaw(
-                &prev.board,
-                cur.move,
-                update,
-            );
-        }
         if (tt_hit and evaluation.checkTTBound(
             tt_score,
             corrected_static_eval,

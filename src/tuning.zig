@@ -209,10 +209,6 @@ const tunable_defaults = struct {
     pub const noisy_penalty_mult: i32 = 203;
     pub const noisy_penalty_offs: i32 = 266;
     pub const noisy_penalty_max: i32 = 2845;
-    pub const eval_hist_min: i32 = -97;
-    pub const eval_hist_max: i32 = 82;
-    pub const eval_hist_offs: i32 = 126;
-    pub const eval_hist_mult: i32 = 1066;
     pub const high_eval_offs: i32 = 42;
     pub const faillow_mult: i32 = 2446;
     pub const quiet_ordering_weight: i32 = 1024;
@@ -442,10 +438,6 @@ pub const tunables = [_]Tunable{
     .{ .name = "noisy_penalty_mult", .default = tunable_defaults.noisy_penalty_mult },
     .{ .name = "noisy_penalty_offs", .default = tunable_defaults.noisy_penalty_offs },
     .{ .name = "noisy_penalty_max", .default = tunable_defaults.noisy_penalty_max },
-    .{ .name = "eval_hist_min", .default = tunable_defaults.eval_hist_min },
-    .{ .name = "eval_hist_max", .default = tunable_defaults.eval_hist_max },
-    .{ .name = "eval_hist_offs", .default = tunable_defaults.eval_hist_offs },
-    .{ .name = "eval_hist_mult", .default = tunable_defaults.eval_hist_mult },
     .{ .name = "high_eval_offs", .default = tunable_defaults.high_eval_offs },
     .{ .name = "faillow_mult", .default = tunable_defaults.faillow_mult },
     .{ .name = "quiet_ordering_weight", .default = tunable_defaults.quiet_ordering_weight, .min = 0, .max = 2048, .c_end = 128 },
@@ -674,10 +666,6 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var noisy_bonus_max = tunable_defaults.noisy_bonus_max;
     pub var noisy_penalty_mult = tunable_defaults.noisy_penalty_mult;
     pub var noisy_penalty_offs = tunable_defaults.noisy_penalty_offs;
-    pub var eval_hist_min = tunable_defaults.eval_hist_min;
-    pub var eval_hist_max = tunable_defaults.eval_hist_max;
-    pub var eval_hist_offs = tunable_defaults.eval_hist_offs;
-    pub var eval_hist_mult = tunable_defaults.eval_hist_mult;
     pub var noisy_penalty_max = tunable_defaults.noisy_penalty_max;
     pub var high_eval_offs = tunable_defaults.high_eval_offs;
     pub var faillow_mult = tunable_defaults.faillow_mult;
