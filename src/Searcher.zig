@@ -131,7 +131,7 @@ minimal: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
-refresh_cache: if (evaluation.eval_mode == .hce) void else root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT),
+refresh_cache: if (evaluation.eval_mode == .nnue) root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT) else void,
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -1467,7 +1467,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
         }
     }
 
-    const normalized_score = if (self.normalize) root.wdl.normalize(score, root_board.classicalMaterial()) else score;
+    const normalized_score = if (self.normalize and evaluation.eval_mode == .nnue) root.wdl.normalize(score, root_board.classicalMaterial()) else score;
     write("info depth {} seldepth {} score {s}{s} nodes {} nps {} hashfull {} tbhits {} time {} pv {s}\n", .{
         depth,
         self.seldepth,

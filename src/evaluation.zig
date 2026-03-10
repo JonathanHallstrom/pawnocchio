@@ -23,10 +23,12 @@ const Board = root.Board;
 pub const Eval = enum {
     hce,
     nnue,
+    material,
 };
 pub const eval_mode: Eval = std.meta.stringToEnum(Eval, build_options.eval).?;
 const impl = switch (eval_mode) {
     .hce => @import("hce.zig"),
+    .material => @import("material_eval.zig"),
     .nnue => root.nnue,
 };
 
