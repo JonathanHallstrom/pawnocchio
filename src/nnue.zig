@@ -440,36 +440,20 @@ pub const Accumulator = struct {
         // const u32Vec = @as(type, @Vector(vecSize(u32), u32));
 
         const c = struct {
-            fn maddubs(u: u8Vec, i_vec: i8Vec) i16Vec {
-                if (comptime builtin.cpu.arch.isX86()) {
-                    return asm ("vpmaddubsw %[i], %[u], %[ret]"
-                        : [ret] "=x" (-> i16Vec),
-                        : [u] "x" (u),
-                          [i] "x" (i_vec),
-                    );
-                } else {
-                    // Portable: deinterlace into even/odd, widen, multiply, add
-                    const u_i16: @Vector(vecSize(u8), i16) = @intCast(u);
-                    const i_i16: @Vector(vecSize(i8), i16) = @intCast(i_vec);
-                    const even_u = std.simd.deinterlace(2, u_i16)[0];
-                    const odd_u = std.simd.deinterlace(2, u_i16)[1];
-                    const even_i = std.simd.deinterlace(2, i_i16)[0];
-                    const odd_i = std.simd.deinterlace(2, i_i16)[1];
-                    return even_u * even_i + odd_u * odd_i;
-                }
+            fn maddubs(u: u8Vec, i: i8Vec) i16Vec {
+                return asm ("vpmaddubsw %[i], %[u], %[ret]"
+                    : [ret] "=x" (-> i16Vec),
+                    : [u] "x" (u),
+                      [i] "x" (i),
+                );
             }
 
-            // Multiply signed 16-bit values, then horizontally add adjacent pairs to 32-bit
             fn maddwd(a: i16Vec, b: i16Vec) i32Vec {
-                if (comptime builtin.cpu.arch.isX86()) {
-                    return asm ("vpmaddwd %[b], %[a], %[ret]"
-                        : [ret] "=x" (-> i32Vec),
-                        : [a] "x" (a),
-                          [b] "x" (b),
-                    );
-                } else {
-                    return madd(vecSize(i16), a, b);
-                }
+                return asm ("vpmaddwd %[b], %[a], %[ret]"
+                    : [ret] "=x" (-> i32Vec),
+                    : [a] "x" (a),
+                      [b] "x" (b),
+                );
             }
 
             fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
@@ -505,38 +489,18 @@ pub const Accumulator = struct {
             }
 
             fn mulhi(a: i16Vec, b: i16Vec) i16Vec {
-                if (builtin.cpu.arch.isX86()) {
-                    return asm ("vpmulhw %[b], %[a], %[ret]"
-                        : [ret] "=x" (-> i16Vec),
-                        : [a] "x" (a),
-                          [b] "x" (b),
-                    );
-                } else {
-                    const a32: @Vector(vecSize(i16), i32) = @intCast(a);
-                    const b32: @Vector(vecSize(i16), i32) = @intCast(b);
-                    const product = a32 * b32;
-                    return @truncate(product >> @splat(16));
-                }
+                return asm ("vpmulhw %[b], %[a], %[ret]"
+                    : [ret] "=x" (-> i16Vec),
+                    : [a] "x" (a),
+                      [b] "x" (b),
+                );
             }
-
-            // Pack two signed 16-bit vectors into one unsigned 8-bit vector with saturation
             fn packus(a: i16Vec, b: i16Vec) u8Vec {
-                if (builtin.cpu.arch.isX86()) {
-                    return asm ("vpackuswb %[b], %[a], %[ret]"
-                        : [ret] "=x" (-> u8Vec),
-                        : [a] "x" (a),
-                          [b] "x" (b),
-                    );
-                } else {
-                    // Clamp to [0, 255] then truncate, interleaving a and b
-                    const min: i16Vec = @splat(0);
-                    const max: i16Vec = @splat(255);
-                    const a_clamped = @min(@max(a, min), max);
-                    const b_clamped = @min(@max(b, min), max);
-                    const a_u8: @Vector(vecSize(i16), u8) = @intCast(a_clamped);
-                    const b_u8: @Vector(vecSize(i16), u8) = @intCast(b_clamped);
-                    return std.simd.interlace(.{ a_u8, b_u8 });
-                }
+                return asm ("vpackuswb %[b], %[a], %[ret]"
+                    : [ret] "=x" (-> u8Vec),
+                    : [a] "x" (a),
+                      [b] "x" (b),
+                );
             }
         };
         const clamp = struct {
