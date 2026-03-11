@@ -18,6 +18,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const root = @import("root.zig");
+
 const BoundedArray = root.BoundedArray;
 const Colour = root.Colour;
 const File = root.File;
