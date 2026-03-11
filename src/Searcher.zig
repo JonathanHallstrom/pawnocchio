@@ -540,6 +540,7 @@ fn qsearch(
     const tt_hash = board.getHashWithHalfmove();
     const tt_entry, const tt_hit = self.readTT(tt_hash);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
+    const has_tt_move = tt_hit and !tt_entry.move.isNull();
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType())) {
         if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
             return lerp(i16, 10, tunables.qs_tt_fail_medium, tt_score, beta);
@@ -588,7 +589,10 @@ fn qsearch(
         &cur.scores,
         tt_entry.move,
         cur.move.move,
-        board.checkers == 0,
+        board.checkers == 0 and (is_pv or
+            !has_tt_move or
+            tt_entry.flags.getScoreType() == .upper or
+            board.isCapture(tt_entry.move)),
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
