@@ -84,7 +84,7 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "change the binary name") orelse "pawnocchio";
     const eval_mode = b.option(Eval, "eval", "which evaluator to use") orelse .nnue;
-    const default_net_path = "pawnocchio-nets/networks/mixed_data_chonked3.nnue";
+    const default_net_path = "pawnocchio-nets/networks/mixed_data_chonked5.nnue";
 
     const net_override = b.option(std.Build.LazyPath, "net", "use this net");
     if (eval_mode == .hce and net_override != null) {
