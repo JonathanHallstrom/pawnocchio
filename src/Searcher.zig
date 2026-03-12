@@ -1189,8 +1189,8 @@ fn search(
                         extension += 1;
                     }
                 }
-            } else if (s_beta >= beta) {
-                return evaluation.clampScore(s_beta);
+            } else if (s_score >= beta) {
+                return evaluation.clampScore(lerp(i32, 10, 512, s_score, beta));
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
