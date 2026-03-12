@@ -387,9 +387,9 @@ fn HashCorrhist(
 
         inline fn hashIndex(board: *const Board) usize {
             return if (comptime options.side) |side|
-                @intCast(@field(board.*, field_name)[side.toInt()] % size)
+                @intCast((@field(board.*, field_name)[side.toInt()] ^ board.halfmoveHash()) % size)
             else
-                @intCast(@field(board.*, field_name) % size);
+                @intCast((@field(board.*, field_name) ^ board.halfmoveHash()) % size);
         }
 
         inline fn entry(

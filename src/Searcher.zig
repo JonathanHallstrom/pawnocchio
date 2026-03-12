@@ -172,7 +172,7 @@ pub fn writeTT(
 }
 
 fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
-    const hash = self.stackEntry(0).board.getHashWithHalfmove();
+    const hash = self.stackEntry(0).board.hashWithHalfmove();
     const eval = evaluate(stm, &self.stackEntry(0).board, self.evalState(0), &self.refresh_cache);
     self.writeTT(
         false,
@@ -537,7 +537,7 @@ fn qsearch(
     }
     const is_in_check = board.checkers != 0;
 
-    const tt_hash = board.getHashWithHalfmove();
+    const tt_hash = board.hashWithHalfmove();
     const tt_entry, const tt_hit = self.readTT(tt_hash);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType())) {
@@ -750,7 +750,7 @@ fn search(
     }
 
     const is_singular_search = !cur.excluded.isNull();
-    const tt_hash = board.getHashWithHalfmove();
+    const tt_hash = board.hashWithHalfmove();
     var tt_entry: TTEntry = .{};
     var tt_hit = false;
     if (!is_singular_search) {
@@ -1523,7 +1523,7 @@ fn initSearchStack(self: *Searcher, params: Params) void {
         return;
     }
 
-    std.debug.assert(previous_positions[previous_positions.len - 1].getHashWithHalfmove() == board.getHashWithHalfmove());
+    std.debug.assert(previous_positions[previous_positions.len - 1].hashWithHalfmove() == board.hashWithHalfmove());
 
     const usable_moves: u8 = @intCast(@min(previous_moves.len, STACK_PADDING + 1));
     if (usable_moves == 0) {
