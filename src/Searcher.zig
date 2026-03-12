@@ -1140,7 +1140,7 @@ fn search(
             depth >= 6 and
             move == tt_entry.move and
             !is_singular_search and
-            tt_entry.depth + @as(i32, 3) >= depth and
+            tt_entry.depth + @as(i32, 3) + @intFromBool(tt_entry.flags.getPV()) >= depth and
             tt_entry.flags.getScoreType() != .upper)
         {
             var beta_mult: i32 = tunables.singular_beta_mult;
