@@ -1228,7 +1228,7 @@ fn search(
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
-            if (depth >= 3 and num_searched > 1) {
+            if (depth >= 2 and num_searched > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * lmr_hist_score >> 13);
