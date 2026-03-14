@@ -896,8 +896,10 @@ fn search(
             }
         }
 
+        const undefended_pieces = ~board.pawns() & (&board.threats)[stm.toInt()] & ~(&board.threats)[stm.flipped().toInt()];
+
         // razoring
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & (&board.lesser_threats)[stm.toInt()] != 0;
+        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & (undefended_pieces | (&board.lesser_threats)[stm.toInt()]) != 0;
         const depth_3 = @max(0, depth - 3);
         if (eval +
             tunables.razoring_offs +
@@ -917,7 +919,6 @@ fn search(
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
-
         // null move pruning (nmp)
         if (depth >= 4 and
             eval >= beta + tunables.nmp_margin_base - tunables.nmp_margin_mult * depth and
