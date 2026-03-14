@@ -1388,6 +1388,11 @@ fn search(
         return if (is_in_check) mated_score else 0;
     }
 
+    if (!is_root and best_score >= beta and !evaluation.isTBScore(best_score) and !evaluation.isTBScore(alpha)) {
+        const w: i32 = @max(0, depth);
+        best_score = @intCast(@divFloor(best_score * w + beta, w + 1));
+    }
+
     if (!is_singular_search) {
         if (score_type == .upper and has_tt_move) {
             best_move = tt_entry.move;
