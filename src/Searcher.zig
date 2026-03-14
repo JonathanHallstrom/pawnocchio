@@ -872,7 +872,6 @@ fn search(
     {
         // reverse futility pruning (rfp)
         if (eval >= beta - tunables.rfp_min_margin) {
-            const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             const opponent_has_easy_capture = board.occupancyFor(stm) & (&board.lesser_threats)[stm.flipped().toInt()] != 0;
             const conditional_margin =
                 tunables.rfp_improving_margin * @intFromBool(improving) +
@@ -886,7 +885,7 @@ fn search(
                     tunables.rfp_base +
                         tunables.rfp_mult * depth +
                         tunables.rfp_quad * depth * depth +
-                        (corrplexity * tunables.rfp_corrplexity_mult >> 22) +
+                        (correction * tunables.rfp_corrplexity_mult >> 22) +
                         @divTrunc(cur.history_score * history_mult, 16),
                     1024,
                 ) - conditional_margin;
