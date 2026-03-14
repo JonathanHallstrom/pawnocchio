@@ -1227,7 +1227,7 @@ fn search(
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
-            if (depth >= 3 and num_searched > 1) {
+            if (depth >= 2 and num_searched > 1) {
                 const history_lmr_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * lmr_hist_score >> 13);
@@ -1253,7 +1253,7 @@ fn search(
                 }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
-                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth) + @intFromBool(is_pv);
+                const reduced_depth = std.math.clamp(raw_reduced_depth, @as(i32, if (depth == 2) 0 else 1), new_depth) + @intFromBool(is_pv);
                 self.stackEntry(0).reduction =
                     if (raw_reduced_depth == reduced_depth)
                         reduction
