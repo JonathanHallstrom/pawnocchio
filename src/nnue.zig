@@ -35,12 +35,8 @@ pub const L1_SIZE = arch.L1_SIZE;
 pub const L2_SIZE = arch.L2_SIZE;
 pub const L3_SIZE = arch.L3_SIZE;
 pub const SCALE = arch.SCALE;
-pub const Q = arch.Q;
 pub const Q0 = arch.Q0;
 pub const Q1 = arch.Q1;
-pub const Q_BITS = std.math.log2_int_ceil(u32, Q);
-pub const Q0_BITS = std.math.log2_int_ceil(u32, Q0);
-pub const Q1_BITS = std.math.log2_int_ceil(u32, Q1);
 pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
 
 pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
@@ -48,6 +44,12 @@ pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
 pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
 }
+
+const FT_SHIFT_BITS = 9;
+const FT_MULHI_SHIFT = 16 - FT_SHIFT_BITS;
+const L1_NORMALISATION: f32 =
+    @as(f32, @floatFromInt(1 << FT_SHIFT_BITS)) /
+    @as(f32, @floatFromInt(Q0 * Q0 * Q1));
 
 const builtin = @import("builtin");
 const build_options = @import("build_options");
@@ -68,7 +70,7 @@ pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
     if (INPUT_BUCKET_COUNT == 1) {
         return 0;
     }
-    return INPUT_BUCKET_LAYOUT[(if (stm == .white) king_square else king_square.flipRank()).toInt()];
+    return INPUT_BUCKET_LAYOUT[(if (stm == .white) king_square.flipRank() else king_square).toInt()];
 }
 
 pub inline fn whichOutputBucket(board: *const Board) usize {
@@ -87,6 +89,14 @@ pub var weights = @as(*const Weights, @ptrCast(&verbatim_weights));
 
 inline fn hiddenLayerWeightsVector() []const @Vector(vecSize(i16), i16) {
     return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.ft_w))[0 .. weights.ft_w.len / vecSize(i16)];
+}
+
+inline fn clampFloat(value: f32, lo: f32, hi: f32) f32 {
+    return @min(@max(value, lo), hi);
+}
+
+inline fn creluFloat(value: f32) f32 {
+    return clampFloat(value, 0.0, 1.0);
 }
 
 const SquarePieceType = struct {
@@ -539,11 +549,11 @@ pub const Accumulator = struct {
                 n3 = clamp(i16Vec, n3, LO, HI);
                 n4 = @min(n4, HI);
 
-                const sp1 = c.mulhi(s1 << @splat(7), s2);
-                const sp2 = c.mulhi(s3 << @splat(7), s4);
+                const sp1 = c.mulhi(s1 << @splat(FT_MULHI_SHIFT), s2);
+                const sp2 = c.mulhi(s3 << @splat(FT_MULHI_SHIFT), s4);
 
-                const np1 = c.mulhi(n1 << @splat(7), n2);
-                const np2 = c.mulhi(n3 << @splat(7), n4);
+                const np1 = c.mulhi(n1 << @splat(FT_MULHI_SHIFT), n2);
+                const np2 = c.mulhi(n3 << @splat(FT_MULHI_SHIFT), n4);
 
                 const p1: u8Vec = c.packus(sp1, sp2);
                 const p2: u8Vec = c.packus(np1, np2);
@@ -595,57 +605,48 @@ pub const Accumulator = struct {
             }
         }
 
-        // in Q²
-        var l1_out_vec: [2 * L2_SIZE / vecSize(i32)]i32Vec = undefined;
-        {
-            const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&(&weights.l1b)[output_bucket]));
-            const SHIFT = comptime Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
-            for (0..L2_SIZE / vecSize(i32)) |i| {
-                const biases: i32Vec = l1_bias_vec[i];
+        var l1_sums: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
+        for (0..L2_SIZE / vecSize(i32)) |i| {
+            var intermediate: i32Vec = @splat(0);
+            for (l1_intermediate[i]) |e| {
+                intermediate += e;
+            }
+            l1_sums[i] = intermediate;
+        }
 
-                var intermediate: i32Vec = @splat(0);
-                for (l1_intermediate[i]) |e| {
-                    intermediate += e;
-                }
+        var l2_inputs: [L2_SIZE]f32 = undefined;
+        const l1_bias = weights.l1b[output_bucket];
 
-                // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const shifted = intermediate + biases >> @splat(SHIFT);
-
-                const crelu = clamp(i32Vec, shifted, @splat(0), @splat(arch.Q)) << @splat(Q_BITS);
-                const csrelu = clamp(i32Vec, shifted * shifted, @splat(0), @splat(arch.Q * arch.Q));
-
-                l1_out_vec[i] = crelu;
-                l1_out_vec[i + L2_SIZE / vecSize(i32)] = csrelu;
+        for (0..L2_SIZE / vecSize(i32)) |i| {
+            const chunk: [vecSize(i32)]i32 = @bitCast(l1_sums[i]);
+            inline for (0..vecSize(i32)) |j| {
+                const l2_idx = i * vecSize(i32) + j;
+                const l2_result = @as(f32, @floatFromInt(chunk[j])) * L1_NORMALISATION + l1_bias[l2_idx];
+                var l2_activated = creluFloat(l2_result);
+                l2_activated *= l2_activated;
+                l2_inputs[l2_idx] = l2_activated;
             }
         }
 
-        // in Q³
-        var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast((&weights.l2b)[output_bucket]);
-        {
-            const l1_out: *const [2 * L2_SIZE]i32 = @ptrCast(&l1_out_vec);
-            const l2_weight_vec: *const [2 * L2_SIZE][L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l2w)[output_bucket]));
-            for (0..L2_SIZE * 2) |i| {
-                const l1_vec: i32Vec = @splat(l1_out[i]);
-                for (0..L3_SIZE / vecSize(i32)) |j| {
-                    l2_intermediate[j] += l1_vec * (&l2_weight_vec[i])[j];
-                }
+        var l3_neurons = weights.l2b[output_bucket];
+        const l2_weights = &weights.l2w[output_bucket];
+
+        for (0..L2_SIZE) |i| {
+            const l2_input = l2_inputs[i];
+            for (0..L3_SIZE) |j| {
+                l3_neurons[j] += l2_input * l2_weights[i][j];
             }
         }
 
-        // in Q⁴
-        var l3_sum: i32Vec = @splat(0);
-        {
-            const l3_weight_vec: *const [L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l3w)[output_bucket]));
-            for (0..L3_SIZE / vecSize(i32)) |i| {
-                const activated = clamp(i32Vec, l2_intermediate[i], @splat(0), @splat(arch.Q * arch.Q * arch.Q));
-                l3_sum += activated * l3_weight_vec[i];
-            }
+        var result = weights.l3b[output_bucket];
+        const l3_weights = weights.l3w[output_bucket];
+        for (0..L3_SIZE) |i| {
+            var l3_activated = creluFloat(l3_neurons[i]);
+            l3_activated *= l3_activated;
+            result += l3_activated * l3_weights[i];
         }
 
-        const bias = (&weights.l3b)[output_bucket];
-        const scaled = (@reduce(.Add, l3_sum) + bias) * SCALE;
-
-        return evaluation.clampScore(@divTrunc(scaled, arch.Q * arch.Q * arch.Q * arch.Q));
+        return evaluation.clampScore(@as(i32, @intFromFloat(result * @as(f32, SCALE))));
     }
 };
 

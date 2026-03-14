@@ -21,14 +21,33 @@ fn selectNet(
     return net_override orelse b.path(default_net_path);
 }
 
-fn readNet(path: []const u8, allocator: std.mem.Allocator) !*Weights {
+fn readNet(path: []const u8, allocator: std.mem.Allocator) ![]align(64) u8 {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
-    const from_file: *Weights = try allocator.create(Weights);
-    _ = try file.readAll(std.mem.asBytes(from_file));
+    const stat = try file.stat();
+    const file_size = stat.size;
+    const expected_size = nnue_arch.RawWeights.SIZE_BYTES;
+    const bullet_footer_size = 32;
 
-    return from_file;
+    if (file_size != expected_size and file_size != expected_size + bullet_footer_size) {
+        std.log.err(
+            "net '{s}' has unsupported size {} bytes, expected {} or {} bytes",
+            .{ path, file_size, expected_size, expected_size + bullet_footer_size },
+        );
+        return error.UnsupportedNetSize;
+    }
+
+    const bytes = try allocator.alignedAlloc(u8, .@"64", expected_size);
+    @memset(bytes, 0);
+
+    const read = try file.readAll(bytes[0..expected_size]);
+    if (read != expected_size) {
+        std.log.err("short read for net '{s}': read {} bytes, expected {}", .{ path, read, expected_size });
+        return error.ShortNetRead;
+    }
+
+    return bytes;
 }
 
 fn prepareNet(
@@ -38,13 +57,17 @@ fn prepareNet(
     net_lp: std.Build.LazyPath,
     write_files: *std.Build.Step.WriteFile,
 ) !EvalInput {
-    const net_weights = try readNet(net_lp.getPath(b), allocator);
+    const raw_net = try readNet(net_lp.getPath(b), allocator);
+    defer allocator.free(raw_net);
+
+    const net_weights = try allocator.create(Weights);
     defer allocator.destroy(net_weights);
-    nnue_arch.permuteNet(cpu, net_weights);
+    nnue_arch.permuteNet(cpu, raw_net, net_weights);
+    const net_bytes = try allocator.dupe(u8, std.mem.asBytes(net_weights));
 
     return .{ .nnue = .{
         .identifier = net_lp.basename(b, null),
-        .file = write_files.add("net", std.mem.asBytes(net_weights)),
+        .file = write_files.add("net", net_bytes),
     } };
 }
 
@@ -84,7 +107,7 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const name = b.option([]const u8, "name", "change the binary name") orelse "pawnocchio";
     const eval_mode = b.option(Eval, "eval", "which evaluator to use") orelse .nnue;
-    const default_net_path = "pawnocchio-nets/networks/mixed_data_chonked5.nnue";
+    const default_net_path = "hati.nnue";
 
     const net_override = b.option(std.Build.LazyPath, "net", "use this net");
     if (eval_mode == .hce and net_override != null) {

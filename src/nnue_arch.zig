@@ -17,15 +17,38 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const ALIGNMENT = 64;
+
+pub const RawWeights = extern struct {
+    ft_w: [INPUT_BUCKET_COUNT * INPUT_SIZE * L1_SIZE]f32,
+    ft_b: [L1_SIZE]f32,
+    l1w: [OUTPUT_BUCKET_COUNT * L2_SIZE * L1_SIZE]f32,
+    l1b: [OUTPUT_BUCKET_COUNT * L2_SIZE]f32,
+    l2w: [OUTPUT_BUCKET_COUNT * L3_SIZE * L2_SIZE]f32,
+    l2b: [OUTPUT_BUCKET_COUNT * L3_SIZE]f32,
+    l3w: [OUTPUT_BUCKET_COUNT * L3_SIZE]f32,
+    l3b: [OUTPUT_BUCKET_COUNT]f32,
+
+    pub const SIZE_BYTES = sizeBytes(RawWeights);
+};
+
+pub const RAW_FT_W_COUNT = @typeInfo(@FieldType(RawWeights, "ft_w")).array.len;
+pub const RAW_FT_B_COUNT = @typeInfo(@FieldType(RawWeights, "ft_b")).array.len;
+pub const RAW_L1W_COUNT = @typeInfo(@FieldType(RawWeights, "l1w")).array.len;
+pub const RAW_L1B_COUNT = @typeInfo(@FieldType(RawWeights, "l1b")).array.len;
+pub const RAW_L2W_COUNT = @typeInfo(@FieldType(RawWeights, "l2w")).array.len;
+pub const RAW_L2B_COUNT = @typeInfo(@FieldType(RawWeights, "l2b")).array.len;
+pub const RAW_L3W_COUNT = @typeInfo(@FieldType(RawWeights, "l3w")).array.len;
+pub const RAW_L3B_COUNT = @typeInfo(@FieldType(RawWeights, "l3b")).array.len;
+
 pub const Weights = extern struct {
     ft_w: [L1_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
     ft_b: [L1_SIZE]i16 align(ALIGNMENT),
     l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 align(ALIGNMENT),
-    l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]i32 align(ALIGNMENT),
-    l2w: [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32 align(ALIGNMENT),
-    l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
-    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
-    l3b: [OUTPUT_BUCKET_COUNT]i32 align(ALIGNMENT),
+    l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]f32 align(ALIGNMENT),
+    l2w: [OUTPUT_BUCKET_COUNT][L2_SIZE][L3_SIZE]f32 align(ALIGNMENT),
+    l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(ALIGNMENT),
+    l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]f32 align(ALIGNMENT),
+    l3b: [OUTPUT_BUCKET_COUNT]f32 align(ALIGNMENT),
 
     fn l1wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 {
         return @ptrCast(&self.l1w);
@@ -35,38 +58,17 @@ pub const Weights = extern struct {
         return @ptrCast(&self.l1w);
     }
 
-    fn l2wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32 {
-        return @ptrCast(&self.l2w);
-    }
-
-    fn l2wDisk(self: *Weights) *align(64) [2 * L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
-        return @ptrCast(&self.l2w);
-    }
-
-    fn l3wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
-        return @ptrCast(&self.l3w);
-    }
-
-    fn l3wDisk(self: *Weights) *align(64) [L3_SIZE][OUTPUT_BUCKET_COUNT]i32 {
-        return @ptrCast(&self.l3w);
-    }
-
-    pub const WEIGHT_COUNT = blk: {
-        var res = 0;
-        for (std.meta.fields(Weights)) |field| {
-            res += @typeInfo(field.type).array.len;
-        }
-        break :blk res;
-    };
-    pub const SIZE_BYTES = blk: {
-        var res = 0;
-        for (std.meta.fields(Weights)) |field| {
-            const array_info = @typeInfo(field.type).array;
-            res += array_info.len * @sizeOf(array_info.child);
-        }
-        break :blk res;
-    };
+    pub const SIZE_BYTES = sizeBytes(Weights);
 };
+
+fn sizeBytes(comptime T: type) comptime_int {
+    var res = 0;
+    for (std.meta.fields(T)) |field| {
+        const array_info = @typeInfo(field.type).array;
+        res += array_info.len * @sizeOf(array_info.child);
+    }
+    return res;
+}
 
 pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
     if (cpu.has(.x86, .avx512f)) {
@@ -168,115 +170,123 @@ fn totalElements(comptime T: type) comptime_int {
     }
 }
 
-pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
+fn quantize(comptime T: type, value: f32, scale: f32) T {
+    return @intFromFloat(@round(value * scale));
+}
+
+pub fn permuteNet(cpu: std.Target.Cpu, raw_bytes: []align(ALIGNMENT) const u8, net: *Weights) void {
+    @memset(std.mem.asBytes(net), 0);
+    std.debug.assert(raw_bytes.len == RawWeights.SIZE_BYTES);
+    const raw_all = raw_bytes[0..RawWeights.SIZE_BYTES];
+    const raw_floats: []const f32 = std.mem.bytesAsSlice(f32, raw_all);
+    var remaining = raw_floats;
+
+    const ft_w = remaining[0..RAW_FT_W_COUNT];
+    remaining = remaining[RAW_FT_W_COUNT..];
+
+    const ft_b = remaining[0..RAW_FT_B_COUNT];
+    remaining = remaining[RAW_FT_B_COUNT..];
+
+    const l1w = remaining[0..RAW_L1W_COUNT];
+    remaining = remaining[RAW_L1W_COUNT..];
+
+    const l1b = remaining[0..RAW_L1B_COUNT];
+    remaining = remaining[RAW_L1B_COUNT..];
+
+    const l2w = remaining[0..RAW_L2W_COUNT];
+    remaining = remaining[RAW_L2W_COUNT..];
+
+    const l2b = remaining[0..RAW_L2B_COUNT];
+    remaining = remaining[RAW_L2B_COUNT..];
+
+    const l3w = remaining[0..RAW_L3W_COUNT];
+    remaining = remaining[RAW_L3W_COUNT..];
+
+    const l3b = remaining[0..RAW_L3B_COUNT];
+    remaining = remaining[RAW_L3B_COUNT..];
+    std.debug.assert(remaining.len == 0);
+
+    for (0..INPUT_BUCKET_COUNT) |bucket| {
+        for (0..INPUT_SIZE) |input| {
+            for (0..L1_SIZE) |l1| {
+                const raw_idx = (bucket * INPUT_SIZE + input) * L1_SIZE + l1;
+                net.ft_w[(bucket * INPUT_SIZE + input) * L1_SIZE + l1] =
+                    quantize(i16, ft_w[raw_idx], Q0);
+            }
+        }
+    }
+    for (0..L1_SIZE) |l1| {
+        net.ft_b[l1] = quantize(i16, ft_b[l1], Q0);
+    }
+
     if (needsPermuting(cpu)) {
         inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
             permuteBuffer(ptr, permuteOrder(cpu));
         }
     }
 
-    if (cpu.arch.endian() != .little) {
-        inline for (.{
-            &net.ft_w,
-            &net.ft_b,
-            &net.l1w,
-            &net.l1b,
-            &net.l2w,
-            &net.l2b,
-            &net.l3w,
-            &net.l3b,
-        }) |field| {
-            const T = UltimateChild(@TypeOf(field));
-
-            const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
-
-            const p: *[totalElements(@TypeOf(field))]T = @ptrCast(field);
-            for (p) |*e| {
-                e.* = @bitCast(@byteSwap(@as(Int, @bitCast(e.*))));
-            }
-        }
-    }
-
-    // permute l1w for dpbusd
-    {
-        // [L1_SIZE][OUTPUT_BUCKET_COUNT][L2_SIZE]i8
-        const l1w_disk = net.l1wDisk().*;
-
-        // [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8
-        const l1w_inf = net.l1wInference();
-
-        if (hasSupportedSimd(cpu)) {
-            for (0..OUTPUT_BUCKET_COUNT) |ob| {
-                for (0..L1_SIZE / 4) |i| {
-                    for (0..L2_SIZE) |j| {
-                        for (0..4) |k| {
-                            l1w_inf[ob][i * 4 * L2_SIZE + j * 4 + k] = l1w_disk[i * 4 + k][ob][j];
-                        }
-                    }
-                }
-            }
-        } else {
-            for (0..OUTPUT_BUCKET_COUNT) |ob| {
-                for (0..L1_SIZE) |i| {
-                    for (0..L2_SIZE) |j| {
-                        l1w_inf[ob][i * L2_SIZE + j] = l1w_disk[i][ob][j];
+    if (hasSupportedSimd(cpu)) {
+        for (0..OUTPUT_BUCKET_COUNT) |ob| {
+            for (0..L1_SIZE / 4) |i| {
+                for (0..L2_SIZE) |j| {
+                    for (0..4) |k| {
+                        const raw_idx = (ob * L2_SIZE + j) * L1_SIZE + i * 4 + k;
+                        net.l1w[ob][i * 4 * L2_SIZE + j * 4 + k] =
+                            quantize(i8, l1w[raw_idx], Q1);
                     }
                 }
             }
         }
-    }
-
-    // transpose l2w
-    {
-        // [2 * L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32
-        const l2w_disk = net.l2wDisk().*;
-
-        // [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32
-        const l2w_inf = net.l2wInference();
-
+    } else {
         for (0..OUTPUT_BUCKET_COUNT) |ob| {
-            for (0..2 * L2_SIZE) |i| {
-                for (0..L3_SIZE) |j| {
-                    l2w_inf[ob][i * L3_SIZE + j] = l2w_disk[i][ob][j];
+            for (0..L1_SIZE) |i| {
+                for (0..L2_SIZE) |j| {
+                    const raw_idx = (ob * L2_SIZE + j) * L1_SIZE + i;
+                    net.l1w[ob][i * L2_SIZE + j] = quantize(i8, l1w[raw_idx], Q1);
                 }
             }
         }
     }
 
-    // transpose l3w
-    {
-        // [L3_SIZE][OUTPUT_BUCKET_COUNT]i32
-        const l3w_disk = net.l3wDisk().*;
-
-        // [OUTPUT_BUCKET_COUNT][L3_SIZE]i32
-        const l3w_inf = net.l3wInference();
-
-        for (0..OUTPUT_BUCKET_COUNT) |ob| {
-            for (0..L3_SIZE) |i| {
-                l3w_inf[ob][i] = l3w_disk[i][ob];
+    for (0..OUTPUT_BUCKET_COUNT) |ob| {
+        for (0..L2_SIZE) |l2| {
+            net.l1b[ob][l2] = l1b[ob * L2_SIZE + l2];
+        }
+    }
+    for (0..OUTPUT_BUCKET_COUNT) |ob| {
+        for (0..L2_SIZE) |l2| {
+            for (0..L3_SIZE) |l3| {
+                const raw_idx = (ob * L3_SIZE + l3) * L2_SIZE + l2;
+                net.l2w[ob][l2][l3] = l2w[raw_idx];
             }
         }
+    }
+    for (0..OUTPUT_BUCKET_COUNT) |ob| {
+        for (0..L3_SIZE) |l3| {
+            net.l2b[ob][l3] = l2b[ob * L3_SIZE + l3];
+            net.l3w[ob][l3] = l3w[ob * L3_SIZE + l3];
+        }
+        net.l3b[ob] = l3b[ob];
     }
 }
 
 pub const HORIZONTAL_MIRRORING = true;
-pub const INPUT_BUCKET_COUNT: usize = 16;
+pub const INPUT_BUCKET_COUNT: usize = 13;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
-pub const L1_SIZE: usize = 2048;
+pub const L1_SIZE: usize = 1536;
 pub const L2_SIZE: usize = 16;
 pub const L3_SIZE: usize = 32;
 pub const SCALE: i64 = 400;
 pub const Q0 = 255;
 pub const Q1 = 128;
-pub const Q = 64;
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
-    0,  1,  2,  3,  3,  2,  1,  0,
-    4,  5,  6,  7,  7,  6,  5,  4,
+    12, 12, 12, 12, 12, 12, 12, 12,
+    12, 12, 12, 12, 12, 12, 12, 12,
+    11, 11, 11, 11, 11, 11, 11, 11,
+    11, 11, 11, 11, 11, 11, 11, 11,
+    10, 10, 10, 10, 10, 10, 10, 10,
     8,  8,  9,  9,  9,  9,  8,  8,
-    10, 10, 11, 11, 11, 11, 10, 10,
-    12, 12, 13, 13, 13, 13, 12, 12,
-    12, 12, 13, 13, 13, 13, 12, 12,
-    14, 14, 15, 15, 15, 15, 14, 14,
-    14, 14, 15, 15, 15, 15, 14, 14,
+    4,  5,  6,  7,  7,  6,  5,  4,
+    0,  1,  2,  3,  3,  2,  1,  0,
 };
