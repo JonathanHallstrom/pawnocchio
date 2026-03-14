@@ -613,6 +613,7 @@ pub const Accumulator = struct {
             }
             l1_sums[i] = intermediate;
         }
+        @setFloatMode(.optimized);
 
         var l2_inputs: [L2_SIZE]f32 = undefined;
         const l1_bias = weights.l1b[output_bucket];
