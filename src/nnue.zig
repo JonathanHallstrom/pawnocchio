@@ -40,9 +40,14 @@ pub const Q1 = arch.Q1;
 pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
 
 pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
+pub const FLOAT_VEC_BYTES = 64;
 
 pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
+}
+
+pub fn floatVecSize(comptime T: type) comptime_int {
+    return FLOAT_VEC_BYTES / @sizeOf(T);
 }
 
 const FT_SHIFT_BITS = 9;
@@ -446,6 +451,7 @@ pub const Accumulator = struct {
         const i16Vec = @as(type, @Vector(vecSize(i16), i16));
         const i32Vec = @as(type, @Vector(vecSize(i32), i32));
         const u8Vec = @as(type, @Vector(vecSize(u8), u8));
+        const f32Vec = @as(type, @Vector(floatVecSize(f32), f32));
         // const u16Vec = @as(type, @Vector(vecSize(u16), u16));
         // const u32Vec = @as(type, @Vector(vecSize(u32), u32));
 
@@ -605,46 +611,67 @@ pub const Accumulator = struct {
             }
         }
 
-        var l1_sums: [L2_SIZE / vecSize(i32)]i32Vec = undefined;
+        var l1_sums: [L2_SIZE]i32 align(64) = undefined;
         for (0..L2_SIZE / vecSize(i32)) |i| {
             var intermediate: i32Vec = @splat(0);
             for (l1_intermediate[i]) |e| {
                 intermediate += e;
             }
-            l1_sums[i] = intermediate;
-        }
-        @setFloatMode(.optimized);
-
-        var l2_inputs: [L2_SIZE]f32 = undefined;
-        const l1_bias = weights.l1b[output_bucket];
-
-        for (0..L2_SIZE / vecSize(i32)) |i| {
-            const chunk: [vecSize(i32)]i32 = @bitCast(l1_sums[i]);
+            const sums: [vecSize(i32)]i32 = @bitCast(intermediate);
             inline for (0..vecSize(i32)) |j| {
-                const l2_idx = i * vecSize(i32) + j;
-                const l2_result = @as(f32, @floatFromInt(chunk[j])) * L1_NORMALISATION + l1_bias[l2_idx];
-                var l2_activated = creluFloat(l2_result);
-                l2_activated *= l2_activated;
-                l2_inputs[l2_idx] = l2_activated;
+                l1_sums[i * vecSize(i32) + j] = sums[j];
             }
         }
 
-        var l3_neurons = weights.l2b[output_bucket];
+        @setFloatMode(.optimized);
+        var l2_inputs: [L2_SIZE / floatVecSize(f32)]f32Vec = undefined;
+        const l1_bias = weights.l1b[output_bucket];
+        const float_zero: f32Vec = @splat(0.0);
+        const float_one: f32Vec = @splat(1.0);
+        const l1_normalisation: f32Vec = @splat(L1_NORMALISATION);
+
+        for (0..L2_SIZE / floatVecSize(f32)) |i| {
+            const l2_idx = i * floatVecSize(f32);
+            const sums: @Vector(floatVecSize(f32), i32) = l1_sums[l2_idx..][0..floatVecSize(f32)].*;
+            const converted: f32Vec = @floatFromInt(sums);
+            const bias: f32Vec = l1_bias[l2_idx..][0..floatVecSize(f32)].*;
+            const l2_result = converted * l1_normalisation + bias;
+            const l2_clipped = clamp(f32Vec, l2_result, float_zero, float_one);
+            l2_inputs[i] = l2_clipped * l2_clipped;
+        }
+
+        var l3_neurons: [L3_SIZE / floatVecSize(f32)]f32Vec = undefined;
+        for (0..L3_SIZE / floatVecSize(f32)) |i| {
+            const l3_idx = i * floatVecSize(f32);
+            l3_neurons[i] = weights.l2b[output_bucket][l3_idx..][0..floatVecSize(f32)].*;
+        }
         const l2_weights = &weights.l2w[output_bucket];
 
-        for (0..L2_SIZE) |i| {
-            const l2_input = l2_inputs[i];
-            for (0..L3_SIZE) |j| {
-                l3_neurons[j] += l2_input * l2_weights[i][j];
+        for (0..L2_SIZE / floatVecSize(f32)) |i| {
+            const l2_base = i * floatVecSize(f32);
+            inline for (0..floatVecSize(f32)) |lane| {
+                const l2_input: f32Vec = @splat(l2_inputs[i][lane]);
+                const l2_idx = l2_base + lane;
+                for (0..L3_SIZE / floatVecSize(f32)) |j| {
+                    const l3_idx = j * floatVecSize(f32);
+                    const weights_chunk: f32Vec = l2_weights[l2_idx][l3_idx..][0..floatVecSize(f32)].*;
+                    l3_neurons[j] += l2_input * weights_chunk;
+                }
             }
         }
 
         var result = weights.l3b[output_bucket];
         const l3_weights = weights.l3w[output_bucket];
-        for (0..L3_SIZE) |i| {
-            var l3_activated = creluFloat(l3_neurons[i]);
-            l3_activated *= l3_activated;
-            result += l3_activated * l3_weights[i];
+        for (0..L3_SIZE / floatVecSize(f32)) |i| {
+            const l3_idx = i * floatVecSize(f32);
+            const l3_clipped = clamp(f32Vec, l3_neurons[i], float_zero, float_one);
+            const l3_activated = l3_clipped * l3_clipped;
+            const weighted = l3_activated * l3_weights[l3_idx..][0..floatVecSize(f32)].*;
+            const weighted_scalars: [floatVecSize(f32)]f32 = @bitCast(weighted);
+
+            inline for (0..floatVecSize(f32)) |j| {
+                result += weighted_scalars[j];
+            }
         }
 
         return evaluation.clampScore(@as(i32, @intFromFloat(result * @as(f32, SCALE))));
