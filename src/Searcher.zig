@@ -639,7 +639,17 @@ fn qsearch(
                 continue;
             }
 
-            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold + @divTrunc(alpha - static_eval, 8), .pruning)) {
+            const high_hist = @max(0, history_score - 7500);
+            const low_hist = @min(0, history_score + 1000);
+            const see_margin = tunables.qs_see_threshold +
+                @divTrunc(
+                    128 * (alpha - static_eval) +
+                        16 * high_hist +
+                        32 * low_hist,
+                    1024,
+                );
+
+            if (!skip_see_pruning and !SEE.scoreMove(board, move, see_margin, .pruning)) {
                 continue;
             }
         }
