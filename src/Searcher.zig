@@ -639,7 +639,7 @@ fn qsearch(
                 continue;
             }
 
-            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold, .pruning)) {
+            if (!skip_see_pruning and !SEE.scoreMove(board, move, tunables.qs_see_threshold + @divTrunc(alpha - static_eval, 8), .pruning)) {
                 continue;
             }
         }
