@@ -18,6 +18,7 @@ const std = @import("std");
 const root = @import("root.zig");
 const ThreadPool = @import("ThreadPool.zig").ThreadPool;
 const Searcher = root.Searcher;
+const debug_stats_mod = @import("debug_stats.zig");
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
@@ -25,24 +26,38 @@ const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 pub var thread_pool: ThreadPool = undefined;
 
 pub var debug_stats_lock: std.Thread.Mutex = .{};
-pub var debug_stats: std.StringHashMap(@import("DebugStats.zig")) = .init(std.heap.page_allocator);
+pub var debug_stats: std.StringHashMap(debug_stats_mod.Scalar) = .init(std.heap.page_allocator);
+pub var debug_range_stats: std.StringHashMap(debug_stats_mod.Range) = .init(std.heap.page_allocator);
 pub var debug_rng: std.Random.DefaultPrng = undefined;
 
 pub fn dbg(name: []const u8, x: anytype) @TypeOf(x) {
-    _ = switch (@typeInfo(@TypeOf(x))) {
-        .int => dbgInt(name, x),
-        .bool => dbgBool(name, x),
+    switch (@typeInfo(@TypeOf(x))) {
+        .int => dbgImpl(name, x),
+        .bool => dbgImpl(name, @intFromBool(x)),
         else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(x))})),
-    };
+    }
     return x;
 }
 
-pub fn dbgBool(name: []const u8, value: bool) bool {
-    dbgInt(name, @intFromBool(value));
-    return value;
+pub fn dbgRange(name: []const u8, index: anytype, x: anytype, granularity: anytype) @TypeOf(x) {
+    const index_i64 = switch (@typeInfo(@TypeOf(index))) {
+        .int, .comptime_int => @as(i64, @intCast(index)),
+        else => @compileError(std.fmt.comptimePrint("unsupported index type {s}", .{@typeName(@TypeOf(index))})),
+    };
+    const granularity_i64 = switch (@typeInfo(@TypeOf(granularity))) {
+        .int, .comptime_int => @as(i64, @intCast(granularity)),
+        else => @compileError(std.fmt.comptimePrint("unsupported granularity type {s}", .{@typeName(@TypeOf(granularity))})),
+    };
+
+    switch (@typeInfo(@TypeOf(x))) {
+        .int => dbgRangeImpl(name, index_i64, x, granularity_i64),
+        .bool => dbgRangeImpl(name, index_i64, @intFromBool(x), granularity_i64),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(x))})),
+    }
+    return x;
 }
 
-pub fn dbgInt(name: []const u8, value: i64) void {
+fn dbgImpl(name: []const u8, value: i64) void {
     debug_stats_lock.lock();
     defer debug_stats_lock.unlock();
 
@@ -54,41 +69,48 @@ pub fn dbgInt(name: []const u8, value: i64) void {
     gp.value_ptr.add(value, debug_rng.random());
 }
 
+fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void {
+    std.debug.assert(granularity > 0);
+
+    debug_stats_lock.lock();
+    defer debug_stats_lock.unlock();
+
+    const gp = debug_range_stats.getOrPut(name) catch unreachable;
+    if (!gp.found_existing) {
+        gp.value_ptr.* = debug_stats_mod.Range.init(std.heap.page_allocator, granularity);
+        gp.key_ptr.* = std.heap.page_allocator.dupe(u8, name) catch @panic("OOM");
+    } else {
+        std.debug.assert(gp.value_ptr.granularity == granularity);
+    }
+    gp.value_ptr.add(index, value, debug_rng.random());
+}
+
 pub fn printDebugStats() void {
+    var writer = &root.stdout_writer.interface;
+
     var iter = debug_stats.iterator();
     while (iter.next()) |entry| {
-        std.debug.print(
-            \\{s}
-            \\  avg:  {d:.4}
-            \\  avg abs:  {d:.4}
-            \\  std:  {d:.4}
-            \\  min:  {d:.4}
-            \\  max:  {d:.4}
-            \\  skew: {d:.4}
-            \\  count: {d}
-            \\  percentiles:
-            \\
-        , .{
-            entry.key_ptr.*,
-            entry.value_ptr.average(),
-            entry.value_ptr.averageAbs(),
-            entry.value_ptr.standardDeviation(),
-            entry.value_ptr.min,
-            entry.value_ptr.max,
-            entry.value_ptr.skewness(),
-            entry.value_ptr.count,
-        });
-        inline for (@import("DebugStats.zig").PERCENTILES, 0..) |percentile, i| {
-            const percentile_str = std.fmt.comptimePrint("{d}:", .{percentile});
-            const format = std.fmt.comptimePrint("    {s:<5} {{d:.0}}\n", .{percentile_str});
-            std.debug.print(format, .{entry.value_ptr.percentiles[i]});
-        }
+        writer.print("{s}\n", .{entry.key_ptr.*}) catch unreachable;
+        entry.value_ptr.format(writer) catch unreachable;
     }
+
+    var range_iter = debug_range_stats.iterator();
+    while (range_iter.next()) |entry| {
+        writer.print("{s}\n", .{entry.key_ptr.*}) catch unreachable;
+        entry.value_ptr.format(writer) catch unreachable;
+    }
+
+    writer.flush() catch unreachable;
 }
 
 pub fn resetDebugStats() void {
     var iter = debug_stats.valueIterator();
     while (iter.next()) |e| {
+        e.reset();
+    }
+
+    var range_iter = debug_range_stats.valueIterator();
+    while (range_iter.next()) |e| {
         e.reset();
     }
 }
@@ -98,6 +120,7 @@ pub fn init() !void {
     try thread_pool.setTTSize(16);
     try thread_pool.setThreadCount(1);
     debug_stats = .init(std.heap.page_allocator); // yes its inefficient no i don't care
+    debug_range_stats = .init(std.heap.page_allocator);
     debug_rng.seed(@bitCast(std.time.microTimestamp()));
 }
 
@@ -111,6 +134,18 @@ pub fn deinit() void {
     }
 
     debug_stats.deinit();
+
+    var range_values = debug_range_stats.valueIterator();
+    while (range_values.next()) |value| {
+        value.deinit();
+    }
+
+    var range_keys = debug_range_stats.keyIterator();
+    while (range_keys.next()) |key| {
+        std.heap.page_allocator.free(key.*);
+    }
+
+    debug_range_stats.deinit();
 }
 
 pub fn reset() void {
