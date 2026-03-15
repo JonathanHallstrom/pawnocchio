@@ -790,6 +790,7 @@ fn search(
 
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.getPV());
+    const tt_move_quiet = has_tt_move and board.isQuiet(tt_entry.move);
 
     // internal iterative reduction (iir)
     if (depth >= 4 + (if (is_pv) 4 else 0) and
@@ -903,7 +904,8 @@ fn search(
             tunables.razoring_offs +
             tunables.razoring_mult * depth +
             tunables.razoring_quad * depth_3 * depth_3 +
-            tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha)
+            tunables.razoring_easy_capture * @intFromBool(we_have_easy_capture) <= alpha and
+            !tt_move_quiet)
         {
             const razor_score = if (is_tt_corrected_eval) eval else self.qsearch(
                 is_root,
