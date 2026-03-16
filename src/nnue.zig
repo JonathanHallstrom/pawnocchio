@@ -665,7 +665,7 @@ pub const Accumulator = struct {
                         );
 
                         // sadalp: pairwise add-accumulate i16 into i32
-                    return asm (
+                        return asm (
                             \\sadalp %[s].4s, %[p].8h
                         : [s] "=w" (-> i32Vec),
                             : [p] "w" (pairwise),
