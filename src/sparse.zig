@@ -20,6 +20,8 @@ const root = @import("root.zig");
 const Square = root.Square;
 const Bitboard = root.Bitboard;
 
+const builtin = @import("builtin");
+
 const nnue = root.nnue;
 
 const L1_SIZE = nnue.L1_SIZE;
@@ -58,10 +60,11 @@ pub inline fn findNonZeroIndices(
     var base: @Vector(8, u16) = @splat(0);
 
     var i: usize = 0;
-    while (i < nnue.L1_SIZE) : (i += nnue.vecSize(u8)) {
-        const mask = getMask(ft[i..][0..nnue.vecSize(i8)].*);
+    while (i < nnue.L1_SIZE) : (i += 2 * nnue.vecSize(u8)) {
+        const mask = @as(u64, getMask(ft[i..][0..nnue.vecSize(i8)].*)) |
+            getMask(ft[i + nnue.vecSize(u8) ..][0..nnue.vecSize(i8)].*);
 
-        inline for (0..nnue.vecSize(i32) / 8) |j| {
+        inline for (0..2 * nnue.vecSize(i32) / 8) |j| {
             const byte = mask >> (8 * j) & 0xff;
 
             const mask_indices = NONZERO_INDICES[byte];

@@ -492,7 +492,6 @@ pub const Accumulator = struct {
 
             fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
                 if (comptime builtin.cpu.arch == .aarch64) {
-                    std.debug.print("hello world", .{});
                     // Re-interpret u8 as i8
                     const u_i8: i8Vec = @bitCast(u);
 
@@ -671,7 +670,6 @@ pub const Accumulator = struct {
             }
         }
 
-        std.debug.print("1", .{});
         const L2_UNROLL = 4;
         // in Q0² / 2⁹ * Q1
         var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
@@ -684,7 +682,6 @@ pub const Accumulator = struct {
             var i_outer: usize = 0;
 
             while (i_outer + 2 * L2_UNROLL <= num_nonzero_indices) : (i_outer += 2 * L2_UNROLL) {
-                std.debug.print("1", .{});
                 for (0..L2_SIZE / vecSize(i32)) |j| {
                     for (0..L2_UNROLL) |i_inner| {
                         const i_1 = nonzero_indices[i_outer + 2 * i_inner];
@@ -705,7 +702,6 @@ pub const Accumulator = struct {
                 const i = nonzero_indices[i_outer];
                 const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
 
-                std.debug.print("2", .{});
                 for (0..L2_SIZE / vecSize(i32)) |j| {
                     l1_intermediate[j][0] = c.dpbusd(
                         l1_intermediate[j][0],
