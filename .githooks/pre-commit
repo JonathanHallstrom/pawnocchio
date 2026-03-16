@@ -6,17 +6,30 @@ if ! zig fmt --check .; then
     exit 1
 fi
 
-if ! zig build check; then
+
+zig build check &
+CHECK_PID=$!
+zig build -Deval=hce check &
+HCE_CHECK_PID=$!
+zig build test -- tests/reduced.epd &
+TEST_PID=$!
+
+STATUS=0
+
+if ! wait "$CHECK_PID"; then
     echo "building failed"
-    exit 1
+    STATUS=1
 fi
 
-if ! zig build -Deval=hce check; then
+if ! wait "$HCE_CHECK_PID"; then
     echo "hce build failed"
-    exit 1
+    STATUS=1
 fi
 
-if ! zig build --release=small test -- tests/standard.epd; then
+if ! wait "$TEST_PID"; then
     echo "tests failed"
-    exit 1
+    STATUS=1
 fi
+
+exit "$STATUS"
+
