@@ -29,7 +29,7 @@ inline fn copyAccumulator(noalias dst: [*]i16, noalias src: *const [nnue.L1_SIZE
     const src_vec: *const [vec_len]Vec = @ptrCast(@alignCast(src));
     const dst_vec: *[vec_len]Vec = @ptrCast(@alignCast(dst));
 
-    inline for (0..vec_len) |i| {
+    for (0..vec_len) |i| {
         dst_vec[i] = src_vec[i];
     }
 }

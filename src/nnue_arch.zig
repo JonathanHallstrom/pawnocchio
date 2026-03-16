@@ -73,7 +73,7 @@ pub const Target = enum {
     avx512,
     avx2,
     ssse3,
-    scalar,
+    fallback,
 };
 
 pub fn target(cpu: std.Target.Cpu) Target {
@@ -90,7 +90,7 @@ pub fn target(cpu: std.Target.Cpu) Target {
     if (cpu.has(.x86, .ssse3)) {
         return .ssse3;
     }
-    return .scalar;
+    return .fallback;
 }
 
 pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
@@ -99,7 +99,7 @@ pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
         .avx512 => 64,
         .avx2 => 32,
         .ssse3 => 16,
-        .scalar => 1,
+        .fallback => std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
     };
 }
 
@@ -109,19 +109,21 @@ pub fn permuteOrder(cpu: std.Target.Cpu) []const u8 {
     return switch (target(cpu)) {
         .avx512vnni, .avx512 => &[_]u8{ 0, 2, 4, 6, 1, 3, 5, 7 },
         .avx2 => &[_]u8{ 0, 2, 1, 3 },
-        .ssse3, .scalar => &[_]u8{},
+        .ssse3, .fallback => &[_]u8{},
     };
 }
 
 pub fn needsPermuting(cpu: std.Target.Cpu) bool {
     return switch (target(cpu)) {
         .avx512vnni, .avx512, .avx2 => true,
-        .ssse3, .scalar => false,
+        .ssse3, .fallback => false,
     };
 }
 
 pub fn hasSupportedSimd(cpu: std.Target.Cpu) bool {
-    return target(cpu) != .scalar;
+    return switch (target(cpu)) {
+        .avx512vnni, .avx512, .avx2, .ssse3, .fallback => true,
+    };
 }
 
 pub fn permuteBuffer(ptr: anytype, order: anytype) void {

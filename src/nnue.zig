@@ -46,29 +46,11 @@ pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
 pub const TARGET = arch.target(@import("builtin").cpu);
 pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
 
-comptime {
-    if (TARGET == .scalar) {
-        @compileError("scalar NNUE target is not implemented yet");
-    }
-}
-
 pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
 }
 
 const build_options = @import("build_options");
-
-fn madd(
-    comptime N: comptime_int,
-    a: @Vector(N, i16),
-    b: @Vector(N, i16),
-) @Vector(N / 2, i32) {
-    const a0 = @as(@Vector(N / 2, i32), @intCast(std.simd.deinterlace(2, a)[0]));
-    const a1 = @as(@Vector(N / 2, i32), @intCast(std.simd.deinterlace(2, a)[1]));
-    const b0 = @as(@Vector(N / 2, i32), @intCast(std.simd.deinterlace(2, b)[0]));
-    const b1 = @as(@Vector(N / 2, i32), @intCast(std.simd.deinterlace(2, b)[1]));
-    return (a0 * b0 + a1 * b1);
-}
 
 pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
     if (INPUT_BUCKET_COUNT == 1) {
@@ -451,7 +433,19 @@ pub const Accumulator = struct {
                         : [u] "0" (u),
                           [i] "x" (i),
                     ),
-                    .scalar => unreachable,
+                    .fallback => {
+                        const u_parts = std.simd.deinterlace(2, u);
+                        const i_parts = std.simd.deinterlace(2, i);
+
+                        const products_even =
+                            @as(i16Vec, u_parts[0]) *
+                            @as(i16Vec, i_parts[0]);
+                        const products_odd =
+                            @as(i16Vec, u_parts[1]) *
+                            @as(i16Vec, i_parts[1]);
+
+                        return products_even +| products_odd;
+                    },
                 }
             }
 
@@ -467,45 +461,19 @@ pub const Accumulator = struct {
                         : [a] "0" (a),
                           [b] "x" (b),
                     ),
-                    .scalar => unreachable,
-                }
-            }
+                    .fallback => {
+                        const u_parts = std.simd.deinterlace(2, a);
+                        const i_parts = std.simd.deinterlace(2, b);
 
-            fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
-                switch (TARGET) {
-                    .avx512vnni => {
-                        var s = sum;
-                        asm ("vpdpbusd %[i], %[u], %[s]"
-                            : [s] "+x" (s),
-                            : [u] "x" (u),
-                              [i] "x" (i),
-                        );
-                        return s;
+                        const products_even =
+                            @as(i32Vec, u_parts[0]) *
+                            @as(i32Vec, i_parts[0]);
+                        const products_odd =
+                            @as(i32Vec, u_parts[1]) *
+                            @as(i32Vec, i_parts[1]);
+
+                        return products_even + products_odd;
                     },
-                    .avx512, .avx2, .ssse3 => {
-                        const partial_sums = maddubs(u, i);
-
-                        const ones: i16Vec = @splat(1);
-                        const dot_products = maddwd(partial_sums, ones);
-
-                        return sum + dot_products;
-                    },
-                    .scalar => unreachable,
-                }
-            }
-            fn dpbusdx2(sum: i32Vec, u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec) i32Vec {
-                switch (TARGET) {
-                    .avx512vnni => return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2),
-                    .avx512, .avx2, .ssse3 => {
-                        const partial_sums_1 = maddubs(u_1, i_1);
-                        const partial_sums_2 = maddubs(u_2, i_2);
-
-                        const ones: i16Vec = @splat(1);
-                        const dot_products = maddwd(partial_sums_1 + partial_sums_2, ones);
-
-                        return sum + dot_products;
-                    },
-                    .scalar => unreachable,
                 }
             }
 
@@ -521,9 +489,15 @@ pub const Accumulator = struct {
                         : [a] "0" (a),
                           [b] "x" (b),
                     ),
-                    .scalar => unreachable,
+                    .fallback => {
+                        const WideVec = @Vector(vecSize(i16), i32);
+                        const products: WideVec =
+                            @as(WideVec, @intCast(a)) * @as(WideVec, @intCast(b));
+                        return @as(i16Vec, @intCast(products >> @as(WideVec, @splat(16))));
+                    },
                 }
             }
+
             fn packus(a: i16Vec, b: i16Vec) u8Vec {
                 switch (TARGET) {
                     .avx512vnni, .avx512, .avx2 => return asm ("vpackuswb %[b], %[a], %[ret]"
@@ -536,16 +510,52 @@ pub const Accumulator = struct {
                         : [a] "0" (a),
                           [b] "x" (b),
                     ),
-                    .scalar => unreachable,
+                    .fallback => {
+                        const LO: i16Vec = @splat(0);
+                        const a_packed: @Vector(vecSize(i16), u8) = @intCast(@max(a, LO));
+                        const b_packed: @Vector(vecSize(i16), u8) = @intCast(@max(b, LO));
+                        const halves: [2]@Vector(vecSize(i16), u8) = .{ a_packed, b_packed };
+                        return @bitCast(halves);
+                    },
+                }
+            }
+
+            fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
+                switch (TARGET) {
+                    .avx512vnni => {
+                        var s = sum;
+                        asm ("vpdpbusd %[i], %[u], %[s]"
+                            : [s] "+x" (s),
+                            : [u] "x" (u),
+                              [i] "x" (i),
+                        );
+                        return s;
+                    },
+                    .avx512, .avx2, .ssse3, .fallback => {
+                        const partial_sums = maddubs(u, i);
+
+                        const ones: i16Vec = @splat(1);
+                        const dot_products = maddwd(partial_sums, ones);
+                        return sum + dot_products;
+                    },
+                }
+            }
+
+            fn dpbusdx2(sum: i32Vec, u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec) i32Vec {
+                switch (TARGET) {
+                    .avx512vnni => return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2),
+                    .avx512, .avx2, .ssse3, .fallback => {
+                        const partial_sums_1 = maddubs(u_1, i_1);
+                        const partial_sums_2 = maddubs(u_2, i_2);
+
+                        const ones: i16Vec = @splat(1);
+                        const dot_products = maddwd(partial_sums_1 + partial_sums_2, ones);
+
+                        return sum + dot_products;
+                    },
                 }
             }
         };
-        const clamp = struct {
-            fn impl(comptime T: type, x: T, lo: T, hi: T) T {
-                return @min(@max(x, lo), hi);
-            }
-        }.impl;
-
         const output_bucket = whichOutputBucket(board);
 
         // in Q0² / 2⁹
@@ -566,14 +576,14 @@ pub const Accumulator = struct {
                 var n3: i16Vec = ntm_acc[i + vecSize(i16) ..][0..vecSize(i16)].*;
                 var n4: i16Vec = ntm_acc[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
 
-                s1 = clamp(i16Vec, s1, LO, HI);
+                s1 = std.math.clamp(s1, LO, HI);
                 s2 = @min(s2, HI);
-                s3 = clamp(i16Vec, s3, LO, HI);
+                s3 = std.math.clamp(s3, LO, HI);
                 s4 = @min(s4, HI);
 
-                n1 = clamp(i16Vec, n1, LO, HI);
+                n1 = std.math.clamp(n1, LO, HI);
                 n2 = @min(n2, HI);
-                n3 = clamp(i16Vec, n3, LO, HI);
+                n3 = std.math.clamp(n3, LO, HI);
                 n4 = @min(n4, HI);
 
                 const sp1 = c.mulhi(s1 << @splat(7), s2);
@@ -637,6 +647,9 @@ pub const Accumulator = struct {
         {
             const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&(&weights.l1b)[output_bucket]));
             const SHIFT = comptime Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
+            const LO: i32Vec = @splat(0);
+            const HI: i32Vec = @splat(Q);
+            const HI2: i32Vec = @splat(Q * Q);
             for (0..L2_SIZE / vecSize(i32)) |i| {
                 const biases: i32Vec = l1_bias_vec[i];
 
@@ -648,8 +661,8 @@ pub const Accumulator = struct {
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
                 const shifted = intermediate + biases >> @splat(SHIFT);
 
-                const crelu = clamp(i32Vec, shifted, @splat(0), @splat(arch.Q)) << @splat(Q_BITS);
-                const csrelu = clamp(i32Vec, shifted * shifted, @splat(0), @splat(arch.Q * arch.Q));
+                const crelu = std.math.clamp(shifted, LO, HI) << @splat(Q_BITS);
+                const csrelu = std.math.clamp(shifted * shifted, LO, HI2);
 
                 l1_out_vec[i] = crelu;
                 l1_out_vec[i + L2_SIZE / vecSize(i32)] = csrelu;
@@ -673,8 +686,10 @@ pub const Accumulator = struct {
         var l3_sum: i32Vec = @splat(0);
         {
             const l3_weight_vec: *const [L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l3w)[output_bucket]));
+            const LO: i32Vec = @splat(0);
+            const HI3: i32Vec = @splat(Q * Q * Q);
             for (0..L3_SIZE / vecSize(i32)) |i| {
-                const activated = clamp(i32Vec, l2_intermediate[i], @splat(0), @splat(arch.Q * arch.Q * arch.Q));
+                const activated = std.math.clamp(l2_intermediate[i], LO, HI3);
                 l3_sum += activated * l3_weight_vec[i];
             }
         }
