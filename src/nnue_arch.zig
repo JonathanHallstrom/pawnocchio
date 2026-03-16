@@ -72,6 +72,7 @@ pub const Target = enum {
     avx512vnni,
     avx512,
     avx2,
+    aarch64,
     ssse3,
     sse2,
     fallback,
@@ -88,6 +89,9 @@ pub fn target(cpu: std.Target.Cpu) Target {
     if (cpu.has(.x86, .avx2)) {
         return .avx2;
     }
+    if (cpu.has(.aarch64, .neon)) {
+        return .aarch64;
+    }
     if (cpu.has(.x86, .ssse3)) {
         return .ssse3;
     }
@@ -102,6 +106,7 @@ pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
         .avx512vnni => 64,
         .avx512 => 64,
         .avx2 => 32,
+        .aarch64 => 16,
         .ssse3 => 16,
         .sse2 => 16,
         .fallback => std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
@@ -114,14 +119,14 @@ pub fn permuteOrder(cpu: std.Target.Cpu) []const u8 {
     return switch (target(cpu)) {
         .avx512vnni, .avx512 => &.{ 0, 2, 4, 6, 1, 3, 5, 7 },
         .avx2 => &.{ 0, 2, 1, 3 },
-        .ssse3, .sse2, .fallback => &.{},
+        .aarch64, .ssse3, .sse2, .fallback => &.{},
     };
 }
 
 pub fn needsPermuting(cpu: std.Target.Cpu) bool {
     return switch (target(cpu)) {
         .avx512vnni, .avx512, .avx2 => true,
-        .ssse3, .sse2, .fallback => false,
+        .aarch64, .ssse3, .sse2, .fallback => false,
     };
 }
 

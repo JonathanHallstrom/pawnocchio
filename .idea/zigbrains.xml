@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="BuildScanner">
+    <option name="projects">
+      <list><![CDATA[{
+  "name": "<root>",
+  "version": null,
+  "path": "/Users/kelseyde/git/dan/pawnocchio",
+  "steps": [
+    {
+      "name": "install",
+      "description": "Copy build artifacts to prefix path",
+      "kind": "install_artifact"
+    },
+    {
+      "name": "uninstall",
+      "description": "Remove build artifacts from prefix path",
+      "kind": "uninstall"
+    },
+    {
+      "name": "run",
+      "description": "run pawnocchio",
+      "kind": "run"
+    },
+    {
+      "name": "test",
+      "description": "run unit tests",
+      "kind": "run"
+    },
+    {
+      "name": "check",
+      "description": "Check if project compiles",
+      "kind": "compile"
+    }
+  ],
+  "modules": [
+    {
+      "root": "src/main.zig",
+      "public": false,
+      "imports": []
+    },
+    {
+      "root": "src/root.zig",
+      "public": false,
+      "imports": []
+    }
+  ],
+  "dependencies": []
+}]]></list>
+    </option>
+  </component>
+  <component name="ZigToolchain" toolchain="48049fcb-a7fc-488e-9bc2-f2d9379f6ca8" />
+</project>

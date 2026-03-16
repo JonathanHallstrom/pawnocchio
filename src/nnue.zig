@@ -433,7 +433,7 @@ pub const Accumulator = struct {
                         : [u] "0" (u),
                           [i] "x" (i),
                     ),
-                    .sse2, .fallback => {
+                    .aarch64, .sse2, .fallback => {
                         const u_parts = std.simd.deinterlace(2, u);
                         const i_parts = std.simd.deinterlace(2, i);
 
@@ -461,6 +461,28 @@ pub const Accumulator = struct {
                         : [a] "0" (a),
                           [b] "x" (b),
                     ),
+                    .aarch64 => {
+                        // NEON: vmull_s16(low, low) + vmull_high_s16(full, full) then pairwise add
+                        // Equivalent to vpmaddwd: multiply pairs of i16 and add adjacent products to i32
+                        const lo: @Vector(4, i32) = asm (
+                            \\smull %[ret].4s, %[a].4h, %[b].4h
+                        : [ret] "=w" (-> @Vector(4, i32)),
+                            : [a] "w" (a),
+                              [b] "w" (b),
+                        );
+                        const hi: @Vector(4, i32) = asm (
+                            \\smull2 %[ret].4s, %[a].8h, %[b].8h
+                        : [ret] "=w" (-> @Vector(4, i32)),
+                            : [a] "w" (a),
+                              [b] "w" (b),
+                        );
+                        return asm (
+                            \\addp %[ret].4s, %[lo].4s, %[hi].4s
+                        : [ret] "=w" (-> i32Vec),
+                            : [lo] "w" (lo),
+                              [hi] "w" (hi),
+                        );
+                    },
                     .fallback => {
                         const u_parts = std.simd.deinterlace(2, a);
                         const i_parts = std.simd.deinterlace(2, b);
@@ -489,6 +511,31 @@ pub const Accumulator = struct {
                         : [a] "0" (a),
                           [b] "x" (b),
                     ),
+                    .aarch64 => {
+                        // smull  -> multiply low 4 i16 pairs, widening to 4 i32
+                        const lo: @Vector(4, i32) = asm (
+                                \\smull %[ret].4s, %[a].4h, %[b].4h
+                            : [ret] "=w" (-> @Vector(4, i32)),
+                                : [a] "w" (a),
+                                  [b] "w" (b),
+                            );
+                            // smull2 -> multiply high 4 i16 pairs, widening to 4 i32
+                        const hi: @Vector(4, i32) = asm (
+                                \\smull2 %[ret].4s, %[a].8h, %[b].8h
+                            : [ret] "=w" (-> @Vector(4, i32)),
+                                : [a] "w" (a),
+                                  [b] "w" (b),
+                            );
+                            const lo_as_i16: i16Vec = @bitCast(lo);
+                            const hi_as_i16: i16Vec = @bitCast(hi);
+                            // uzp2   -> extract high 16 bits from each i32 lane and combine back to 8 i16
+                        return asm (
+                                \\uzp2 %[ret].8h, %[lo].8h, %[hi].8h
+                            : [ret] "=w" (-> i16Vec),
+                                : [lo] "w" (lo_as_i16),
+                                  [hi] "w" (hi_as_i16),
+                            );
+                    },
                     .fallback => {
                         const WideVec = @Vector(vecSize(i16), i32);
                         const products: WideVec =
@@ -510,7 +557,7 @@ pub const Accumulator = struct {
                         : [a] "0" (a),
                           [b] "x" (b),
                     ),
-                    .fallback => {
+                    .aarch64, .fallback => {
                         const LO: i16Vec = @splat(0);
                         const a_packed: @Vector(vecSize(i16), u8) = @intCast(@max(a, LO));
                         const b_packed: @Vector(vecSize(i16), u8) = @intCast(@max(b, LO));
@@ -538,13 +585,49 @@ pub const Accumulator = struct {
                         const dot_products = maddwd(partial_sums, ones);
                         return sum + dot_products;
                     },
+                    .aarch64 => {
+                        // Re-interpret u8 as i8
+                    const u_i8: i8Vec = @bitCast(u);
+
+                        // smull: signed multiply low 8 bytes -> 8 x i16
+                    const lo: @Vector(8, i16) = asm (
+                            \\smull %[ret].8h, %[u].8b, %[i].8b
+                        : [ret] "=w" (-> @Vector(8, i16)),
+                            : [u] "w" (u_i8),
+                              [i] "w" (i),
+                        );
+
+                        // smull2: signed multiply high 8 bytes -> 8 x i16
+                    const hi: @Vector(8, i16) = asm (
+                            \\smull2 %[ret].8h, %[u].16b, %[i].16b
+                        : [ret] "=w" (-> @Vector(8, i16)),
+                            : [u] "w" (u_i8),
+                              [i] "w" (i),
+                        );
+
+                        // addp: pairwise add i16 pairs
+                    const pairwise: @Vector(8, i16) = asm (
+                            \\addp %[ret].8h, %[lo].8h, %[hi].8h
+                        : [ret] "=w" (-> @Vector(8, i16)),
+                            : [lo] "w" (lo),
+                              [hi] "w" (hi),
+                        );
+
+                        // sadalp: pairwise add-accumulate i16 into i32
+                    return asm (
+                            \\sadalp %[s].4s, %[p].8h
+                        : [s] "=w" (-> i32Vec),
+                            : [p] "w" (pairwise),
+                              [_] "0" (sum),
+                        );
+                    }
                 }
             }
 
             fn dpbusdx2(sum: i32Vec, u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec) i32Vec {
                 switch (TARGET) {
                     .avx512vnni => return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2),
-                    .avx512, .avx2, .ssse3, .sse2, .fallback => {
+                    .avx512, .avx2, .aarch64, .ssse3, .sse2, .fallback => {
                         const partial_sums_1 = maddubs(u_1, i_1);
                         const partial_sums_2 = maddubs(u_2, i_2);
 
