@@ -441,23 +441,93 @@ pub const Accumulator = struct {
 
         const c = struct {
             fn maddubs(u: u8Vec, i: i8Vec) i16Vec {
-                return asm ("vpmaddubsw %[i], %[u], %[ret]"
-                    : [ret] "=x" (-> i16Vec),
-                    : [u] "x" (u),
-                      [i] "x" (i),
-                );
+                if (comptime builtin.cpu.arch == .aarch64) {
+                    // NEON: unsigned * signed widening multiply, then pairwise add adjacent pairs
+                    const u_i16: @Vector(vecSize(u8), i16) = @intCast(u);
+                    const i_i16: @Vector(vecSize(i8), i16) = @intCast(i);
+                    const even_u = std.simd.deinterlace(2, u_i16)[0];
+                    const odd_u = std.simd.deinterlace(2, u_i16)[1];
+                    const even_i = std.simd.deinterlace(2, i_i16)[0];
+                    const odd_i = std.simd.deinterlace(2, i_i16)[1];
+                    return even_u * even_i + odd_u * odd_i;
+                } else {
+                    return asm ("vpmaddubsw %[i], %[u], %[ret]"
+                        : [ret] "=x" (-> i16Vec),
+                        : [u] "x" (u),
+                          [i] "x" (i),
+                    );
+                }
             }
 
             fn maddwd(a: i16Vec, b: i16Vec) i32Vec {
-                return asm ("vpmaddwd %[b], %[a], %[ret]"
-                    : [ret] "=x" (-> i32Vec),
-                    : [a] "x" (a),
-                      [b] "x" (b),
-                );
+                if (comptime builtin.cpu.arch == .aarch64) {
+                    // NEON: vmull_s16(low, low) + vmull_high_s16(full, full) then pairwise add
+                    // Equiv to vpmaddwd: multiply pairs of i16 and add adjacent products to i32
+                    const lo: @Vector(4, i32) = asm (
+                        \\smull %[ret].4s, %[a].4h, %[b].4h
+                        : [ret] "=w" (-> @Vector(4, i32)),
+                        : [a] "w" (a),
+                          [b] "w" (b),
+                    );
+                    const hi: @Vector(4, i32) = asm (
+                        \\smull2 %[ret].4s, %[a].8h, %[b].8h
+                        : [ret] "=w" (-> @Vector(4, i32)),
+                        : [a] "w" (a),
+                          [b] "w" (b),
+                    );
+                    return asm (
+                        \\addp %[ret].4s, %[lo].4s, %[hi].4s
+                        : [ret] "=w" (-> i32Vec),
+                        : [lo] "w" (lo),
+                          [hi] "w" (hi),
+                    );
+                } else {
+                    return asm ("vpmaddwd %[b], %[a], %[ret]"
+                        : [ret] "=x" (-> i32Vec),
+                        : [a] "x" (a),
+                          [b] "x" (b),
+                    );
+                }
             }
 
             fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
-                if (builtin.cpu.has(.x86, .avx512vnni) and false) {
+                if (comptime builtin.cpu.arch == .aarch64) {
+                    std.debug.print("hello world", .{});
+                    // Re-interpret u8 as i8
+                    const u_i8: i8Vec = @bitCast(u);
+
+                    // smull: signed multiply low 8 bytes -> 8 x i16
+                    const lo: @Vector(8, i16) = asm (
+                        \\smull %[ret].8h, %[u].8b, %[i].8b
+                        : [ret] "=w" (-> @Vector(8, i16)),
+                        : [u] "w" (u_i8),
+                          [i] "w" (i),
+                    );
+
+                    // smull2: signed multiply high 8 bytes -> 8 x i16
+                    const hi: @Vector(8, i16) = asm (
+                        \\smull2 %[ret].8h, %[u].16b, %[i].16b
+                        : [ret] "=w" (-> @Vector(8, i16)),
+                        : [u] "w" (u_i8),
+                          [i] "w" (i),
+                    );
+
+                    // addp: pairwise add i16 pairs
+                    const pairwise: @Vector(8, i16) = asm (
+                        \\addp %[ret].8h, %[lo].8h, %[hi].8h
+                        : [ret] "=w" (-> @Vector(8, i16)),
+                        : [lo] "w" (lo),
+                          [hi] "w" (hi),
+                    );
+
+                    // sadalp: pairwise add-accumulate i16 into i32
+                    return asm (
+                        \\sadalp %[s].4s, %[p].8h
+                        : [s] "=w" (-> i32Vec),
+                        : [p] "w" (pairwise),
+                          [_] "0" (sum),
+                    );
+                } else if (comptime builtin.cpu.has(.x86, .avx512vnni) and false) {
                     var s = sum;
                     asm ("vpdpbusd %[i], %[u], %[s]"
                         : [s] "+x" (s),
@@ -475,7 +545,9 @@ pub const Accumulator = struct {
                 }
             }
             fn dpbusdx2(sum: i32Vec, u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec) i32Vec {
-                if (builtin.cpu.has(.x86, .avx512vnni) and false) {
+                if (comptime builtin.cpu.arch == .aarch64) {
+                    return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2);
+                } else if (builtin.cpu.has(.x86, .avx512vnni) and false) {
                     return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2);
                 } else {
                     const partial_sums_1 = maddubs(u_1, i_1);
@@ -489,18 +561,64 @@ pub const Accumulator = struct {
             }
 
             fn mulhi(a: i16Vec, b: i16Vec) i16Vec {
-                return asm ("vpmulhw %[b], %[a], %[ret]"
-                    : [ret] "=x" (-> i16Vec),
-                    : [a] "x" (a),
-                      [b] "x" (b),
-                );
+                if (comptime builtin.cpu.arch == .aarch64) {
+                    // smull  -> multiply low 4 i16 pairs, widening to 4 i32
+                    const lo: @Vector(4, i32) = asm (
+                        \\smull %[ret].4s, %[a].4h, %[b].4h
+                        : [ret] "=w" (-> @Vector(4, i32)),
+                        : [a] "w" (a),
+                          [b] "w" (b),
+                    );
+                    // smull2 -> multiply high 4 i16 pairs, widening to 4 i32
+                    const hi: @Vector(4, i32) = asm (
+                        \\smull2 %[ret].4s, %[a].8h, %[b].8h
+                        : [ret] "=w" (-> @Vector(4, i32)),
+                        : [a] "w" (a),
+                          [b] "w" (b),
+                    );
+                    const lo_as_i16: i16Vec = @bitCast(lo);
+                    const hi_as_i16: i16Vec = @bitCast(hi);
+                    // uzp2   -> extract high 16 bits from each i32 lane and combine back to 8 i16
+                    return asm (
+                        \\uzp2 %[ret].8h, %[lo].8h, %[hi].8h
+                        : [ret] "=w" (-> i16Vec),
+                        : [lo] "w" (lo_as_i16),
+                          [hi] "w" (hi_as_i16),
+                    );
+                } else {
+                    return asm ("vpmulhw %[b], %[a], %[ret]"
+                        : [ret] "=x" (-> i16Vec),
+                        : [a] "x" (a),
+                          [b] "x" (b),
+                    );
+                }
             }
             fn packus(a: i16Vec, b: i16Vec) u8Vec {
-                return asm ("vpackuswb %[b], %[a], %[ret]"
-                    : [ret] "=x" (-> u8Vec),
-                    : [a] "x" (a),
-                      [b] "x" (b),
-                );
+                if (comptime builtin.cpu.arch == .aarch64) {
+                    // std.debug.print("hello world", .{});
+                    // NEON: vqmovun_s16 (saturating move unsigned narrow)
+                    // packus(a, b) packs two i16 vecs into one u8 vec with unsigned saturation
+                    // x86 vpackuswb packs a in low half, b in high half
+                    const lo: @Vector(8, u8) = asm (
+                        \\sqxtun %[ret].8b, %[v].8h
+                        : [ret] "=w" (-> @Vector(8, u8)),
+                        : [v] "w" (a),
+                    );
+                    const result: u8Vec = asm (
+                        \\sqxtun2 %[ret].16b, %[v].8h
+                        : [ret] "=w" (-> u8Vec),
+                        : [v] "w" (b),
+                          [_] "0" (lo),
+                    );
+                    return result;
+                } else {
+
+                    return asm ("vpackuswb %[b], %[a], %[ret]"
+                        : [ret] "=x" (-> u8Vec),
+                        : [a] "x" (a),
+                          [b] "x" (b),
+                    );
+                }
             }
         };
         const clamp = struct {
@@ -553,6 +671,7 @@ pub const Accumulator = struct {
             }
         }
 
+        std.debug.print("1", .{});
         const L2_UNROLL = 4;
         // in Q0² / 2⁹ * Q1
         var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
@@ -565,6 +684,7 @@ pub const Accumulator = struct {
             var i_outer: usize = 0;
 
             while (i_outer + 2 * L2_UNROLL <= num_nonzero_indices) : (i_outer += 2 * L2_UNROLL) {
+                std.debug.print("1", .{});
                 for (0..L2_SIZE / vecSize(i32)) |j| {
                     for (0..L2_UNROLL) |i_inner| {
                         const i_1 = nonzero_indices[i_outer + 2 * i_inner];
@@ -585,6 +705,7 @@ pub const Accumulator = struct {
                 const i = nonzero_indices[i_outer];
                 const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
 
+                std.debug.print("2", .{});
                 for (0..L2_SIZE / vecSize(i32)) |j| {
                     l1_intermediate[j][0] = c.dpbusd(
                         l1_intermediate[j][0],
