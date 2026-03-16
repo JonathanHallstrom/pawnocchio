@@ -437,23 +437,23 @@ pub const Accumulator = struct {
                         // Widen u8 to u16 (unsigned)
                         const u_lo: @Vector(8, u16) = asm (
                             \\ushll %[ret].8h, %[v].8b, #0
-                        : [ret] "=w" (-> @Vector(8, u16)),
+                            : [ret] "=w" (-> @Vector(8, u16)),
                             : [v] "w" (u),
                         );
                         const u_hi: @Vector(8, u16) = asm (
                             \\ushll2 %[ret].8h, %[v].16b, #0
-                        : [ret] "=w" (-> @Vector(8, u16)),
+                            : [ret] "=w" (-> @Vector(8, u16)),
                             : [v] "w" (u),
                         );
                         // Widen i8 to i16 (signed)
                         const i_lo: @Vector(8, i16) = asm (
                             \\sshll %[ret].8h, %[v].8b, #0
-                        : [ret] "=w" (-> @Vector(8, i16)),
+                            : [ret] "=w" (-> @Vector(8, i16)),
                             : [v] "w" (i),
                         );
                         const i_hi: @Vector(8, i16) = asm (
                             \\sshll2 %[ret].8h, %[v].16b, #0
-                        : [ret] "=w" (-> @Vector(8, i16)),
+                            : [ret] "=w" (-> @Vector(8, i16)),
                             : [v] "w" (i),
                         );
                         // Multiply: reinterpret u16 as i16 for mul instruction; products fit in i16
@@ -462,7 +462,7 @@ pub const Accumulator = struct {
                         // Pairwise add adjacent i16 pairs -> 8 x i16
                         return asm (
                             \\addp %[ret].8h, %[lo].8h, %[hi].8h
-                        : [ret] "=w" (-> i16Vec),
+                            : [ret] "=w" (-> i16Vec),
                             : [lo] "w" (prod_lo),
                               [hi] "w" (prod_hi),
                         );
@@ -500,19 +500,19 @@ pub const Accumulator = struct {
                         // Equivalent to vpmaddwd: multiply pairs of i16 and add adjacent products to i32
                         const lo: @Vector(4, i32) = asm (
                             \\smull %[ret].4s, %[a].4h, %[b].4h
-                        : [ret] "=w" (-> @Vector(4, i32)),
+                            : [ret] "=w" (-> @Vector(4, i32)),
                             : [a] "w" (a),
                               [b] "w" (b),
                         );
                         const hi: @Vector(4, i32) = asm (
                             \\smull2 %[ret].4s, %[a].8h, %[b].8h
-                        : [ret] "=w" (-> @Vector(4, i32)),
+                            : [ret] "=w" (-> @Vector(4, i32)),
                             : [a] "w" (a),
                               [b] "w" (b),
                         );
                         return asm (
                             \\addp %[ret].4s, %[lo].4s, %[hi].4s
-                        : [ret] "=w" (-> i32Vec),
+                            : [ret] "=w" (-> i32Vec),
                             : [lo] "w" (lo),
                               [hi] "w" (hi),
                         );
@@ -548,24 +548,24 @@ pub const Accumulator = struct {
                     .aarch64 => {
                         // smull -> multiply low 4 i16 pairs, widening to 4 i32
                         const lo: @Vector(4, i32) = asm (
-                                \\smull %[ret].4s, %[a].4h, %[b].4h
+                            \\smull %[ret].4s, %[a].4h, %[b].4h
                             : [ret] "=w" (-> @Vector(4, i32)),
-                                : [a] "w" (a),
-                                  [b] "w" (b),
-                            );
+                            : [a] "w" (a),
+                              [b] "w" (b),
+                        );
                         // smull2 -> multiply high 4 i16 pairs, widening to 4 i32
                         const hi: @Vector(4, i32) = asm (
-                                \\smull2 %[ret].4s, %[a].8h, %[b].8h
+                            \\smull2 %[ret].4s, %[a].8h, %[b].8h
                             : [ret] "=w" (-> @Vector(4, i32)),
-                                : [a] "w" (a),
-                                  [b] "w" (b),
-                            );
+                            : [a] "w" (a),
+                              [b] "w" (b),
+                        );
                         const lo_as_i16: i16Vec = @bitCast(lo);
                         const hi_as_i16: i16Vec = @bitCast(hi);
                         // uzp2 -> extract high 16 bits from each i32 lane and combine back to 8 i16
                         return asm (
                             \\uzp2 %[ret].8h, %[lo].8h, %[hi].8h
-                        : [ret] "=w" (-> i16Vec),
+                            : [ret] "=w" (-> i16Vec),
                             : [lo] "w" (lo_as_i16),
                               [hi] "w" (hi_as_i16),
                         );
@@ -592,12 +592,12 @@ pub const Accumulator = struct {
                         // x86 vpackuswb packs a in low half, b in high half
                         const lo: @Vector(8, u8) = asm (
                             \\sqxtun %[ret].8b, %[v].8h
-                        : [ret] "=w" (-> @Vector(8, u8)),
+                            : [ret] "=w" (-> @Vector(8, u8)),
                             : [v] "w" (a),
                         );
                         const result: u8Vec = asm (
                             \\sqxtun2 %[ret].16b, %[v].8h
-                        : [ret] "=w" (-> u8Vec),
+                            : [ret] "=w" (-> u8Vec),
                             : [v] "w" (b),
                               [_] "0" (lo),
                         );
@@ -643,7 +643,7 @@ pub const Accumulator = struct {
                         // smull: signed multiply low 8 bytes -> 8 x i16
                         const lo: @Vector(8, i16) = asm (
                             \\smull %[ret].8h, %[u].8b, %[i].8b
-                        : [ret] "=w" (-> @Vector(8, i16)),
+                            : [ret] "=w" (-> @Vector(8, i16)),
                             : [u] "w" (u_i8),
                               [i] "w" (i),
                         );
@@ -651,7 +651,7 @@ pub const Accumulator = struct {
                         // smull2: signed multiply high 8 bytes -> 8 x i16
                         const hi: @Vector(8, i16) = asm (
                             \\smull2 %[ret].8h, %[u].16b, %[i].16b
-                        : [ret] "=w" (-> @Vector(8, i16)),
+                            : [ret] "=w" (-> @Vector(8, i16)),
                             : [u] "w" (u_i8),
                               [i] "w" (i),
                         );
@@ -659,7 +659,7 @@ pub const Accumulator = struct {
                         // addp: pairwise add i16 pairs
                         const pairwise: @Vector(8, i16) = asm (
                             \\addp %[ret].8h, %[lo].8h, %[hi].8h
-                        : [ret] "=w" (-> @Vector(8, i16)),
+                            : [ret] "=w" (-> @Vector(8, i16)),
                             : [lo] "w" (lo),
                               [hi] "w" (hi),
                         );
@@ -667,11 +667,11 @@ pub const Accumulator = struct {
                         // sadalp: pairwise add-accumulate i16 into i32
                         return asm (
                             \\sadalp %[s].4s, %[p].8h
-                        : [s] "=w" (-> i32Vec),
+                            : [s] "=w" (-> i32Vec),
                             : [p] "w" (pairwise),
                               [_] "0" (sum),
                         );
-                    }
+                    },
                 }
             }
 
