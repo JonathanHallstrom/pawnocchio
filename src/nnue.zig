@@ -43,13 +43,19 @@ pub const Q0_BITS = std.math.log2_int_ceil(u32, Q0);
 pub const Q1_BITS = std.math.log2_int_ceil(u32, Q1);
 pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
 
+pub const TARGET = arch.target(@import("builtin").cpu);
 pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
+
+comptime {
+    if (TARGET == .scalar) {
+        @compileError("scalar NNUE target is not implemented yet");
+    }
+}
 
 pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
 }
 
-const builtin = @import("builtin");
 const build_options = @import("build_options");
 
 fn madd(
@@ -425,82 +431,113 @@ pub const Accumulator = struct {
             self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
         }
         std.debug.assert(board.stm == stm);
-        // if (true)
-        //     return 0;
         const stm_acc = self.accFor(stm);
         const ntm_acc = self.accFor(stm.flipped());
-        // const stm_vec = self.vecAccFor(stm);
-        // const ntm_vec = self.vecAccFor(stm.flipped());
-        // //             vvvvvvvv annotation to help zls
         const i8Vec = @as(type, @Vector(vecSize(i8), i8));
         const i16Vec = @as(type, @Vector(vecSize(i16), i16));
         const i32Vec = @as(type, @Vector(vecSize(i32), i32));
         const u8Vec = @as(type, @Vector(vecSize(u8), u8));
-        // const u16Vec = @as(type, @Vector(vecSize(u16), u16));
-        // const u32Vec = @as(type, @Vector(vecSize(u32), u32));
 
         const c = struct {
             fn maddubs(u: u8Vec, i: i8Vec) i16Vec {
-                return asm ("vpmaddubsw %[i], %[u], %[ret]"
-                    : [ret] "=x" (-> i16Vec),
-                    : [u] "x" (u),
-                      [i] "x" (i),
-                );
+                switch (TARGET) {
+                    .avx512vnni, .avx512, .avx2 => return asm ("vpmaddubsw %[i], %[u], %[ret]"
+                        : [ret] "=x" (-> i16Vec),
+                        : [u] "x" (u),
+                          [i] "x" (i),
+                    ),
+                    .ssse3 => return asm ("pmaddubsw %[i], %[u]"
+                        : [ret] "=x" (-> i16Vec),
+                        : [u] "0" (u),
+                          [i] "x" (i),
+                    ),
+                    .scalar => unreachable,
+                }
             }
 
             fn maddwd(a: i16Vec, b: i16Vec) i32Vec {
-                return asm ("vpmaddwd %[b], %[a], %[ret]"
-                    : [ret] "=x" (-> i32Vec),
-                    : [a] "x" (a),
-                      [b] "x" (b),
-                );
+                switch (TARGET) {
+                    .avx512vnni, .avx512, .avx2 => return asm ("vpmaddwd %[b], %[a], %[ret]"
+                        : [ret] "=x" (-> i32Vec),
+                        : [a] "x" (a),
+                          [b] "x" (b),
+                    ),
+                    .ssse3 => return asm ("pmaddwd %[b], %[a]"
+                        : [ret] "=x" (-> i32Vec),
+                        : [a] "0" (a),
+                          [b] "x" (b),
+                    ),
+                    .scalar => unreachable,
+                }
             }
 
             fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
-                if (builtin.cpu.has(.x86, .avx512vnni) and false) {
-                    var s = sum;
-                    asm ("vpdpbusd %[i], %[u], %[s]"
-                        : [s] "+x" (s),
-                        : [u] "x" (u),
-                          [i] "x" (i),
-                    );
-                    return s;
-                } else {
-                    const partial_sums = maddubs(u, i);
+                switch (TARGET) {
+                    .avx512vnni => {
+                        var s = sum;
+                        asm ("vpdpbusd %[i], %[u], %[s]"
+                            : [s] "+x" (s),
+                            : [u] "x" (u),
+                              [i] "x" (i),
+                        );
+                        return s;
+                    },
+                    .avx512, .avx2, .ssse3 => {
+                        const partial_sums = maddubs(u, i);
 
-                    const ones: i16Vec = @splat(1);
-                    const dot_products = maddwd(partial_sums, ones);
+                        const ones: i16Vec = @splat(1);
+                        const dot_products = maddwd(partial_sums, ones);
 
-                    return sum + dot_products;
+                        return sum + dot_products;
+                    },
+                    .scalar => unreachable,
                 }
             }
             fn dpbusdx2(sum: i32Vec, u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec) i32Vec {
-                if (builtin.cpu.has(.x86, .avx512vnni) and false) {
-                    return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2);
-                } else {
-                    const partial_sums_1 = maddubs(u_1, i_1);
-                    const partial_sums_2 = maddubs(u_2, i_2);
+                switch (TARGET) {
+                    .avx512vnni => return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2),
+                    .avx512, .avx2, .ssse3 => {
+                        const partial_sums_1 = maddubs(u_1, i_1);
+                        const partial_sums_2 = maddubs(u_2, i_2);
 
-                    const ones: i16Vec = @splat(1);
-                    const dot_products = maddwd(partial_sums_1 + partial_sums_2, ones);
+                        const ones: i16Vec = @splat(1);
+                        const dot_products = maddwd(partial_sums_1 + partial_sums_2, ones);
 
-                    return sum + dot_products;
+                        return sum + dot_products;
+                    },
+                    .scalar => unreachable,
                 }
             }
 
             fn mulhi(a: i16Vec, b: i16Vec) i16Vec {
-                return asm ("vpmulhw %[b], %[a], %[ret]"
-                    : [ret] "=x" (-> i16Vec),
-                    : [a] "x" (a),
-                      [b] "x" (b),
-                );
+                switch (TARGET) {
+                    .avx512vnni, .avx512, .avx2 => return asm ("vpmulhw %[b], %[a], %[ret]"
+                        : [ret] "=x" (-> i16Vec),
+                        : [a] "x" (a),
+                          [b] "x" (b),
+                    ),
+                    .ssse3 => return asm ("pmulhw %[b], %[a]"
+                        : [ret] "=x" (-> i16Vec),
+                        : [a] "0" (a),
+                          [b] "x" (b),
+                    ),
+                    .scalar => unreachable,
+                }
             }
             fn packus(a: i16Vec, b: i16Vec) u8Vec {
-                return asm ("vpackuswb %[b], %[a], %[ret]"
-                    : [ret] "=x" (-> u8Vec),
-                    : [a] "x" (a),
-                      [b] "x" (b),
-                );
+                switch (TARGET) {
+                    .avx512vnni, .avx512, .avx2 => return asm ("vpackuswb %[b], %[a], %[ret]"
+                        : [ret] "=x" (-> u8Vec),
+                        : [a] "x" (a),
+                          [b] "x" (b),
+                    ),
+                    .ssse3 => return asm ("packuswb %[b], %[a]"
+                        : [ret] "=x" (-> u8Vec),
+                        : [a] "0" (a),
+                          [b] "x" (b),
+                    ),
+                    .scalar => unreachable,
+                }
             }
         };
         const clamp = struct {

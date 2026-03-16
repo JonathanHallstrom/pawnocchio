@@ -68,58 +68,60 @@ pub const Weights = extern struct {
     };
 };
 
-pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
+pub const Target = enum {
+    avx512vnni,
+    avx512,
+    avx2,
+    ssse3,
+    scalar,
+};
+
+pub fn target(cpu: std.Target.Cpu) Target {
+    // disabled, slower
+    if (cpu.has(.x86, .avx512vnni) and false) {
+        return .avx512vnni;
+    }
     if (cpu.has(.x86, .avx512f)) {
-        return 64;
+        return .avx512;
     }
     if (cpu.has(.x86, .avx2)) {
-        return 32;
+        return .avx2;
     }
-    if (cpu.has(.aarch64, .neon)) {
-        return 16;
+    if (cpu.has(.x86, .ssse3)) {
+        return .ssse3;
     }
-    return 1;
+    return .scalar;
+}
+
+pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
+    return switch (target(cpu)) {
+        .avx512vnni => 64,
+        .avx512 => 64,
+        .avx2 => 32,
+        .ssse3 => 16,
+        .scalar => 1,
+    };
 }
 
 const LONGEST_PERMUTE_LEN = 8;
 
 pub fn permuteOrder(cpu: std.Target.Cpu) []const u8 {
-    if (cpu.has(.x86, .avx512f)) {
-        return &[_]u8{ 0, 2, 4, 6, 1, 3, 5, 7 };
-    }
-    if (cpu.has(.x86, .avx2)) {
-        return &[_]u8{ 0, 2, 1, 3 };
-    }
-    if (cpu.has(.aarch64, .neon)) {
-        return &[_]u8{0};
-    }
-    return &[_]u8{};
+    return switch (target(cpu)) {
+        .avx512vnni, .avx512 => &[_]u8{ 0, 2, 4, 6, 1, 3, 5, 7 },
+        .avx2 => &[_]u8{ 0, 2, 1, 3 },
+        .ssse3, .scalar => &[_]u8{},
+    };
 }
 
 pub fn needsPermuting(cpu: std.Target.Cpu) bool {
-    if (cpu.has(.x86, .avx512f)) {
-        return true;
-    }
-    if (cpu.has(.x86, .avx2)) {
-        return true;
-    }
-    if (cpu.has(.aarch64, .neon)) {
-        return false;
-    }
-    return false;
+    return switch (target(cpu)) {
+        .avx512vnni, .avx512, .avx2 => true,
+        .ssse3, .scalar => false,
+    };
 }
 
 pub fn hasSupportedSimd(cpu: std.Target.Cpu) bool {
-    if (cpu.has(.x86, .avx512f)) {
-        return true;
-    }
-    if (cpu.has(.x86, .avx2)) {
-        return true;
-    }
-    if (cpu.has(.aarch64, .neon)) {
-        return true;
-    }
-    return false;
+    return target(cpu) != .scalar;
 }
 
 pub fn permuteBuffer(ptr: anytype, order: anytype) void {

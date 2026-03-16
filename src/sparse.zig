@@ -58,10 +58,15 @@ pub inline fn findNonZeroIndices(
     var base: @Vector(8, u16) = @splat(0);
 
     var i: usize = 0;
-    while (i < nnue.L1_SIZE) : (i += nnue.vecSize(u8)) {
-        const mask = getMask(ft[i..][0..nnue.vecSize(i8)].*);
+    const UNROLL = @max(1, 8 / nnue.vecSize(i32));
+    while (i < nnue.L1_SIZE) {
+        var mask: u64 = 0;
+        for (0..UNROLL) |j| {
+            mask |= @as(u64, getMask(ft[i..][0..nnue.vecSize(i8)].*)) << @intCast(j * nnue.vecSize(i32));
+            i += nnue.vecSize(i8);
+        }
 
-        inline for (0..nnue.vecSize(i32) / 8) |j| {
+        inline for (0..UNROLL * nnue.vecSize(i32) / 8) |j| {
             const byte = mask >> (8 * j) & 0xff;
 
             const mask_indices = NONZERO_INDICES[byte];
