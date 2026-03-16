@@ -912,8 +912,9 @@ fn search(
                 alpha,
                 alpha + 1,
             );
-
-            return evaluation.clampScore(razor_score);
+            if (razor_score <= alpha) {
+                return evaluation.clampScore(razor_score);
+            }
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
