@@ -73,6 +73,7 @@ pub const Target = enum {
     avx512,
     avx2,
     ssse3,
+    sse2,
     fallback,
 };
 
@@ -90,6 +91,9 @@ pub fn target(cpu: std.Target.Cpu) Target {
     if (cpu.has(.x86, .ssse3)) {
         return .ssse3;
     }
+    if (cpu.has(.x86, .sse2)) {
+        return .sse2;
+    }
     return .fallback;
 }
 
@@ -99,6 +103,7 @@ pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
         .avx512 => 64,
         .avx2 => 32,
         .ssse3 => 16,
+        .sse2 => 16,
         .fallback => std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
     };
 }
@@ -107,23 +112,23 @@ const LONGEST_PERMUTE_LEN = 8;
 
 pub fn permuteOrder(cpu: std.Target.Cpu) []const u8 {
     return switch (target(cpu)) {
-        .avx512vnni, .avx512 => &[_]u8{ 0, 2, 4, 6, 1, 3, 5, 7 },
-        .avx2 => &[_]u8{ 0, 2, 1, 3 },
-        .ssse3, .fallback => &[_]u8{},
+        .avx512vnni, .avx512 => &.{ 0, 2, 4, 6, 1, 3, 5, 7 },
+        .avx2 => &.{ 0, 2, 1, 3 },
+        .ssse3, .sse2, .fallback => &.{},
     };
 }
 
 pub fn needsPermuting(cpu: std.Target.Cpu) bool {
     return switch (target(cpu)) {
         .avx512vnni, .avx512, .avx2 => true,
-        .ssse3, .fallback => false,
+        .ssse3, .sse2, .fallback => false,
     };
 }
 
-pub fn hasSupportedSimd(cpu: std.Target.Cpu) bool {
-    return switch (target(cpu)) {
-        .avx512vnni, .avx512, .avx2, .ssse3, .fallback => true,
-    };
+// in case i want to readd truly scalar inference at some point
+pub fn needsL1Permute(cpu: std.Target.Cpu) bool {
+    _ = cpu;
+    return true;
 }
 
 pub fn permuteBuffer(ptr: anytype, order: anytype) void {
@@ -209,7 +214,7 @@ pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
         // [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8
         const l1w_inf = net.l1wInference();
 
-        if (hasSupportedSimd(cpu)) {
+        if (needsL1Permute(cpu)) {
             for (0..OUTPUT_BUCKET_COUNT) |ob| {
                 for (0..L1_SIZE / 4) |i| {
                     for (0..L2_SIZE) |j| {

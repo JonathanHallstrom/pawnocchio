@@ -433,7 +433,7 @@ pub const Accumulator = struct {
                         : [u] "0" (u),
                           [i] "x" (i),
                     ),
-                    .fallback => {
+                    .sse2, .fallback => {
                         const u_parts = std.simd.deinterlace(2, u);
                         const i_parts = std.simd.deinterlace(2, i);
 
@@ -456,7 +456,7 @@ pub const Accumulator = struct {
                         : [a] "x" (a),
                           [b] "x" (b),
                     ),
-                    .ssse3 => return asm ("pmaddwd %[b], %[a]"
+                    .ssse3, .sse2 => return asm ("pmaddwd %[b], %[a]"
                         : [ret] "=x" (-> i32Vec),
                         : [a] "0" (a),
                           [b] "x" (b),
@@ -484,7 +484,7 @@ pub const Accumulator = struct {
                         : [a] "x" (a),
                           [b] "x" (b),
                     ),
-                    .ssse3 => return asm ("pmulhw %[b], %[a]"
+                    .ssse3, .sse2 => return asm ("pmulhw %[b], %[a]"
                         : [ret] "=x" (-> i16Vec),
                         : [a] "0" (a),
                           [b] "x" (b),
@@ -505,7 +505,7 @@ pub const Accumulator = struct {
                         : [a] "x" (a),
                           [b] "x" (b),
                     ),
-                    .ssse3 => return asm ("packuswb %[b], %[a]"
+                    .ssse3, .sse2 => return asm ("packuswb %[b], %[a]"
                         : [ret] "=x" (-> u8Vec),
                         : [a] "0" (a),
                           [b] "x" (b),
@@ -531,7 +531,7 @@ pub const Accumulator = struct {
                         );
                         return s;
                     },
-                    .avx512, .avx2, .ssse3, .fallback => {
+                    .avx512, .avx2, .ssse3, .sse2, .fallback => {
                         const partial_sums = maddubs(u, i);
 
                         const ones: i16Vec = @splat(1);
@@ -544,7 +544,7 @@ pub const Accumulator = struct {
             fn dpbusdx2(sum: i32Vec, u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec) i32Vec {
                 switch (TARGET) {
                     .avx512vnni => return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2),
-                    .avx512, .avx2, .ssse3, .fallback => {
+                    .avx512, .avx2, .ssse3, .sse2, .fallback => {
                         const partial_sums_1 = maddubs(u_1, i_1);
                         const partial_sums_2 = maddubs(u_2, i_2);
 
