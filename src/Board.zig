@@ -55,6 +55,7 @@ castling_rights: CastlingRights = CastlingRights.init(),
 pinned: [2]u64 = @splat(0),
 // pinner: [2]u64 = @splat(0),
 checkers: u64 = 0,
+checking_squares: [5]u64 = .{0} ** 5,
 threats: [2]u64 = @splat(0),
 lesser_threats: [2]u64 = @splat(0),
 
@@ -910,7 +911,7 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
     var iter = Bitboard.iterator(self.bishopsFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.getBishopAttacks(sq, occ);
+        threatened |= attacks.bishopAttacks(sq, occ);
     }
 
     // threatened now has all pieces attacked by pawns or by knights or bishops
@@ -919,7 +920,7 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
 
     iter = Bitboard.iterator(self.rooksFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.getRookAttacks(sq, occ);
+        threatened |= attacks.rookAttacks(sq, occ);
     }
 
     // threatened now has all pieces attacked by pawns or by knights or bishops or rooks
@@ -928,7 +929,7 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
 
     iter = Bitboard.iterator(self.queensFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.getBishopAttacks(sq, occ) | attacks.getRookAttacks(sq, occ);
+        threatened |= attacks.bishopAttacks(sq, occ) | attacks.rookAttacks(sq, occ);
     }
 
     threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
@@ -941,14 +942,33 @@ pub fn updateMasks(self: *Board, col: Colour) void {
     self.updatePins(.black);
     self.updateThreats(.white);
     self.updateThreats(.black);
-    self.checkers = switch (col) {
-        inline else => |col_comptime| movegen.attackersFor(
-            col_comptime.flipped(),
-            self,
-            Square.fromBitboard(self.kingFor(col)),
-            self.occupancy(),
-        ),
-    };
+    self.updateCheckingSquares(col);
+    self.updateCheckers(col);
+}
+
+inline fn updateCheckingSquares(self: *Board, stm: Colour) void {
+    const king_sq = Square.fromBitboard(self.kingFor(stm));
+    const occ = self.occupancy();
+    const checking_squares = &self.checking_squares;
+    checking_squares[PieceType.pawn.toInt()] = Bitboard.pawnAttacks(king_sq, stm);
+    checking_squares[PieceType.knight.toInt()] = Bitboard.knightMoves(king_sq);
+    checking_squares[PieceType.bishop.toInt()] = attacks.bishopAttacks(king_sq, occ);
+    checking_squares[PieceType.rook.toInt()] = attacks.rookAttacks(king_sq, occ);
+    checking_squares[PieceType.queen.toInt()] =
+        checking_squares[PieceType.bishop.toInt()] |
+        checking_squares[PieceType.rook.toInt()];
+}
+
+inline fn updateCheckers(self: *Board, stm: Colour) void {
+    const attacker = stm.flipped();
+    const checking_squares = &self.checking_squares;
+    const bishops_and_queens = self.bishopsFor(attacker) | self.queensFor(attacker);
+    const rooks_and_queens = self.rooksFor(attacker) | self.queensFor(attacker);
+    self.checkers =
+        (self.pawnsFor(attacker) & checking_squares[PieceType.pawn.toInt()]) |
+        (self.knightsFor(attacker) & checking_squares[PieceType.knight.toInt()]) |
+        (bishops_and_queens & checking_squares[PieceType.bishop.toInt()]) |
+        (rooks_and_queens & checking_squares[PieceType.rook.toInt()]);
 }
 
 pub fn resetHash(self: *Board) void {
@@ -1010,9 +1030,9 @@ pub inline fn givesCheckApproximate(noalias self: *const Board, comptime stm: Co
     if (them_king & switch (self.pieceOn(from).?) { // direct check
         .pawn => Bitboard.pawnAttacks(to, stm),
         .knight => Bitboard.knightMoves(to),
-        .bishop => attacks.getBishopAttacks(to, self.occupancy()),
-        .rook => attacks.getRookAttacks(to, self.occupancy()),
-        .queen => attacks.getBishopAttacks(to, self.occupancy()) | attacks.getRookAttacks(to, self.occupancy()),
+        .bishop => attacks.bishopAttacks(to, self.occupancy()),
+        .rook => attacks.rookAttacks(to, self.occupancy()),
+        .queen => attacks.bishopAttacks(to, self.occupancy()) | attacks.rookAttacks(to, self.occupancy()),
         .king => 0,
     } != 0) {
         @branchHint(.unlikely);
@@ -1482,9 +1502,9 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
     return to_bb & switch (pt) {
         .pawn => unreachable,
         .knight => Bitboard.knightMoves(from),
-        .bishop => attacks.getBishopAttacks(from, self.occupancy()),
-        .rook => attacks.getRookAttacks(from, self.occupancy()),
-        .queen => attacks.getBishopAttacks(from, self.occupancy()) | attacks.getRookAttacks(from, self.occupancy()),
+        .bishop => attacks.bishopAttacks(from, self.occupancy()),
+        .rook => attacks.rookAttacks(from, self.occupancy()),
+        .queen => attacks.bishopAttacks(from, self.occupancy()) | attacks.rookAttacks(from, self.occupancy()),
         .king => unreachable,
     } != 0;
 }

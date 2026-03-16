@@ -149,10 +149,10 @@ pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, compt
         }
 
         if (attacker == .pawn or attacker == .bishop or attacker == .queen) {
-            attackers |= root.attacks.getBishopAttacks(to, occ) & bishops;
+            attackers |= root.attacks.bishopAttacks(to, occ) & bishops;
         }
         if (attacker == .rook or attacker == .queen) {
-            attackers |= root.attacks.getRookAttacks(to, occ) & rooks;
+            attackers |= root.attacks.rookAttacks(to, occ) & rooks;
         }
 
         attackers &= occ;

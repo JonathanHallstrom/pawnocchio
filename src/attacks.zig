@@ -26,5 +26,5 @@ else
     @import("magics.zig");
 pub const AttackEntry = attack_impl.AttackEntry;
 pub const init = attack_impl.init;
-pub const getBishopAttacks = attack_impl.getBishopAttacks;
-pub const getRookAttacks = attack_impl.getRookAttacks;
+pub const bishopAttacks = attack_impl.getBishopAttacks;
+pub const rookAttacks = attack_impl.getRookAttacks;
