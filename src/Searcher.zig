@@ -967,6 +967,88 @@ fn search(
         }
     }
 
+    if (!is_root and
+        !is_pv and
+        !is_in_check and
+        !is_singular_search and
+        depth >= 5)
+    {
+        const probcut_see_margin = 50;
+        const probcut_reduction = 4;
+        const probcut_beta = beta + 225;
+
+        if (!evaluation.isMateScore(probcut_beta) and
+            !(tt_hit and
+                tt_entry.depth >= depth - probcut_reduction and
+                tt_entry.flags.getScoreType() == .upper and
+                tt_score < probcut_beta))
+        {
+            const probcut_ttmove = if (tt_hit) tt_entry.move else Move.init();
+            const probcut_see = @max(0, probcut_beta - @as(i32, eval) + probcut_see_margin);
+            var probcut_mp = MovePicker.initProbcut(
+                &cur.movelist,
+                &cur.scores,
+                probcut_ttmove,
+                cur.move.move,
+                probcut_see,
+            );
+            defer probcut_mp.deinit();
+
+            while (probcut_mp.next(
+                stm,
+                &self.histories,
+                undefined, // conthist tables are not used, probcut only searches noisies
+                board,
+            )) |typed| {
+                const move = typed.move;
+                self.prefetch(board, move);
+                if (!board.isLegal(stm, move)) {
+                    continue;
+                }
+                if (std.debug.runtime_safety) {
+                    std.debug.assert(board.isNoisy(move));
+                }
+
+                self.makeMove(stm, typed);
+                defer self.unmakeMove(stm, move);
+
+                var score = -self.qsearch(
+                    false,
+                    false,
+                    stm.flipped(),
+                    -probcut_beta,
+                    -probcut_beta + 1,
+                );
+                if (score >= probcut_beta) {
+                    score = -self.search(
+                        false,
+                        false,
+                        stm.flipped(),
+                        -probcut_beta,
+                        -probcut_beta + 1,
+                        depth - probcut_reduction,
+                        true,
+                    );
+                }
+                if (self.stop.load(.acquire)) {
+                    return 0;
+                }
+                if (score >= probcut_beta) {
+                    self.writeTT(
+                        tt_pv,
+                        tt_hash,
+                        move,
+                        score,
+                        .lower,
+                        depth - probcut_reduction,
+                        raw_static_eval,
+                    );
+                    return score;
+                }
+            }
+        }
+    }
+
     const conthist_tables = self.getConthistTables(stm);
     var mp = MovePicker.init(
         &cur.movelist,
