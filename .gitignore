@@ -3,3 +3,7 @@ zig-cache
 zig-out
 src/networks
 data
+.idea
+.DS_Store
+pawnocchio.iml
+pawnocchio
