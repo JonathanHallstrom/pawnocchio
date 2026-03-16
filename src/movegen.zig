@@ -136,15 +136,15 @@ pub inline fn generateAllNoisiesWithMask(comptime stm: Colour, noalias board: *c
 }
 pub fn slidingAttackersFor(comptime col: Colour, noalias board: *const Board, square: Square, occ: u64) u64 {
     const attacks_from_square =
-        (attacks.getBishopAttacks(square, occ) & (board.bishops() | board.queens())) |
-        (attacks.getRookAttacks(square, occ) & (board.rooks() | board.queens()));
+        (attacks.bishopAttacks(square, occ) & (board.bishops() | board.queens())) |
+        (attacks.rookAttacks(square, occ) & (board.rooks() | board.queens()));
     return attacks_from_square & board.occupancyFor(col);
 }
 
 pub fn attackersFor(comptime col: Colour, noalias board: *const Board, square: Square, occ: u64) u64 {
     const attacks_from_square =
-        (attacks.getBishopAttacks(square, occ) & (board.bishops() | board.queens())) |
-        (attacks.getRookAttacks(square, occ) & (board.rooks() | board.queens())) |
+        (attacks.bishopAttacks(square, occ) & (board.bishops() | board.queens())) |
+        (attacks.rookAttacks(square, occ) & (board.rooks() | board.queens())) |
         (Bitboard.pawnAttacks(square, col.flipped()) & board.pawns()) |
         (Bitboard.knightMoves(square) & board.knights()) |
         (Bitboard.kingMoves(square) & board.kings());
@@ -155,10 +155,10 @@ pub fn attackersFor(comptime col: Colour, noalias board: *const Board, square: S
 pub inline fn getAttacks(comptime col: Colour, pt: PieceType, square: Square, occ: u64) u64 {
     return switch (pt) {
         .pawn => Bitboard.pawnAttacks(square, col.flipped()),
-        .bishop => attacks.getBishopAttacks(square, occ),
+        .bishop => attacks.bishopAttacks(square, occ),
         .knight => Bitboard.knightMoves(square),
-        .rook => attacks.getRookAttacks(square, occ),
-        .queen => attacks.getBishopAttacks(square, occ) | attacks.getRookAttacks(square, occ),
+        .rook => attacks.rookAttacks(square, occ),
+        .queen => attacks.bishopAttacks(square, occ) | attacks.rookAttacks(square, occ),
         .king => Bitboard.kingMoves(square),
     };
 }
@@ -353,7 +353,7 @@ pub inline fn generateSliderQuiets(comptime stm: Colour, noalias board: *const B
     {
         var from_iter = Bitboard.iterator(rook_sliders);
         while (from_iter.next()) |from| {
-            var reachable = attacks.getRookAttacks(from, occ) & ~occ & check_mask;
+            var reachable = attacks.rookAttacks(from, occ) & ~occ & check_mask;
             if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
@@ -365,7 +365,7 @@ pub inline fn generateSliderQuiets(comptime stm: Colour, noalias board: *const B
     {
         var from_iter = Bitboard.iterator(bishop_sliders);
         while (from_iter.next()) |from| {
-            var reachable = attacks.getBishopAttacks(from, occ) & ~occ & check_mask;
+            var reachable = attacks.bishopAttacks(from, occ) & ~occ & check_mask;
             if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
@@ -390,7 +390,7 @@ pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const 
     {
         var from_iter = Bitboard.iterator(rook_sliders);
         while (from_iter.next()) |from| {
-            var reachable = attacks.getRookAttacks(from, occ) & them & check_mask;
+            var reachable = attacks.rookAttacks(from, occ) & them & check_mask;
             if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
             var to_iter = Bitboard.iterator(reachable);
@@ -402,7 +402,7 @@ pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const 
     {
         var from_iter = Bitboard.iterator(bishop_slides);
         while (from_iter.next()) |from| {
-            var reachable = attacks.getBishopAttacks(from, occ) & them & check_mask;
+            var reachable = attacks.bishopAttacks(from, occ) & them & check_mask;
             if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
                 reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
 

@@ -201,14 +201,14 @@ pub export fn knightAttacks(sq: u8) u64 {
     return root.Bitboard.knightMoves(sq);
 }
 pub export fn bishopAttacks(sq: u8, occ: u64) u64 {
-    return root.attacks.getBishopAttacks(root.Square.fromInt(sq), occ);
+    return root.attacks.bishopAttacks(root.Square.fromInt(sq), occ);
 }
 pub export fn rookAttacks(sq: u8, occ: u64) u64 {
-    return root.attacks.getRookAttacks(root.Square.fromInt(sq), occ);
+    return root.attacks.rookAttacks(root.Square.fromInt(sq), occ);
 }
 pub export fn queenAttacks(sq: u8, occ: u64) u64 {
-    return root.attacks.getBishopAttacks(root.Square.fromInt(sq), occ) |
-        root.attacks.getRookAttacks(root.Square.fromInt(sq), occ);
+    return root.attacks.bishopAttacks(root.Square.fromInt(sq), occ) |
+        root.attacks.rookAttacks(root.Square.fromInt(sq), occ);
 }
 pub export fn kingAttacks(sq: u8) u64 {
     return root.Bitboard.kingMoves(sq);
