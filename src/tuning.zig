@@ -322,6 +322,7 @@ const tunable_defaults = struct {
     pub const noisy_history_pruning_mult: i32 = -2835;
     pub const qs_futility_margin: i32 = 152;
     pub const qs_hp_margin: i32 = -3906;
+    pub const qs_alpha_eval_diff_mult: i32 = 128;
     pub const corrhist_pawn_weight: i32 = 990;
     pub const corrhist_nonpawn_weight: i32 = 1113;
     pub const corrhist_prev_weight: i32 = 779;
@@ -555,6 +556,7 @@ pub const tunables = [_]Tunable{
     .{ .name = "noisy_history_pruning_mult", .default = tunable_defaults.noisy_history_pruning_mult, .min = -7382, .max = 9, .c_end = 294 },
     .{ .name = "qs_futility_margin", .default = tunable_defaults.qs_futility_margin, .min = -10, .max = 305, .c_end = 11 },
     .{ .name = "qs_hp_margin", .default = tunable_defaults.qs_hp_margin, .min = -6000, .max = 0, .c_end = 400 },
+    .{ .name = "qs_alpha_eval_diff_mult", .default = tunable_defaults.qs_alpha_eval_diff_mult, .min = -1024, .max = 1024, .c_end = 64 },
     .{ .name = "corrhist_pawn_weight", .default = tunable_defaults.corrhist_pawn_weight, .min = -10, .max = 1825, .c_end = 72 },
     .{ .name = "corrhist_nonpawn_weight", .default = tunable_defaults.corrhist_nonpawn_weight, .min = -10, .max = 1500, .c_end = 59 },
     .{ .name = "corrhist_prev_weight", .default = tunable_defaults.corrhist_prev_weight, .min = -10, .max = 2875, .c_end = 114 },
@@ -788,6 +790,7 @@ pub const tunable_constants = if (do_tuning) struct {
     pub var noisy_history_pruning_mult = tunable_defaults.noisy_history_pruning_mult;
     pub var qs_futility_margin = tunable_defaults.qs_futility_margin;
     pub var qs_hp_margin = tunable_defaults.qs_hp_margin;
+    pub var qs_alpha_eval_diff_mult = tunable_defaults.qs_alpha_eval_diff_mult;
     pub var corrhist_pawn_weight = tunable_defaults.corrhist_pawn_weight;
     pub var corrhist_nonpawn_weight = tunable_defaults.corrhist_nonpawn_weight;
     pub var corrhist_prev_weight = tunable_defaults.corrhist_prev_weight;
