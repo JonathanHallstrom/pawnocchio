@@ -1359,14 +1359,23 @@ fn search(
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
-                const hist_depth = depth + @as(i32, if (score >= beta + tunables.high_eval_offs) 1 else 0);
+                var hist_depth = depth;
+                if (score >= beta + tunables.high_eval_offs) {
+                    hist_depth += 1;
+                }
+
                 score_type = .lower;
                 cur.failhighs += 1;
-                const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
+
+                var extra_bonus: i32 = 0;
+                if (eval < alpha) {
+                    extra_bonus += 150 + (tunables.faillow_mult * @max(0, alpha - eval) >> 10);
+                }
+
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
-                        self.histories.updateQuiet(board, typed, hist_depth, true, faillow_bonus);
-                        self.histories.updateCont(board, typed, conthist_tables, hist_depth, true, faillow_bonus);
+                        self.histories.updateQuiet(board, typed, hist_depth, true, extra_bonus);
+                        self.histories.updateCont(board, typed, conthist_tables, hist_depth, true, extra_bonus);
 
                         for (searched_quiets.slice()) |searched_move| {
                             self.histories.updateQuiet(board, searched_move, hist_depth, false, 0);
@@ -1374,7 +1383,7 @@ fn search(
                         }
                     }
                 } else {
-                    self.histories.updateNoisy(board, typed, hist_depth, true, faillow_bonus);
+                    self.histories.updateNoisy(board, typed, hist_depth, true, extra_bonus);
                 }
                 for (searched_noisies.slice()) |searched_move| {
                     self.histories.updateNoisy(board, searched_move, hist_depth, false, 0);
