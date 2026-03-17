@@ -1359,10 +1359,17 @@ fn search(
             alpha = score;
             score_type = .exact;
             if (score >= beta) {
-                const hist_depth = depth + @as(i32, if (score >= beta + tunables.high_eval_offs) 1 else 0);
+                var hist_depth = depth;
+
+                if (score >= beta + tunables.high_eval_offs) {
+                    hist_depth += 1;
+                }
+
                 score_type = .lower;
                 cur.failhighs += 1;
-                const faillow_bonus = @divTrunc(tunables.faillow_mult * @max(0, alpha - eval), 1024);
+
+                const faillow_bonus = tunables.faillow_mult * @max(0, alpha - eval) >> 10;
+
                 if (is_quiet) {
                     if (depth >= 3 or num_searched_quiets >= 2) {
                         self.histories.updateQuiet(board, typed, hist_depth, true, faillow_bonus);
