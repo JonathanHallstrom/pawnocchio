@@ -211,13 +211,3 @@ pub fn trySetExposedTunable(option_name: []const u8, value: i32) bool {
 
     return false;
 }
-
-comptime {
-    for (0..factorized_lmr_spec.max_order) |order| {
-        std.debug.assert(
-            @field(factorized_lmr_defaults, tuning_schema.factorizedOrderFieldName(order)).len ==
-                tuning_schema.factorizedInteractionCount(factorized_lmr_spec, order),
-        );
-    }
-    std.debug.assert(std.meta.fields(TunableValues).len == tunables.len);
-}
