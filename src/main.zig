@@ -24,6 +24,42 @@ const Move = root.Move;
 
 const VERSION_STRING = "1.9.2";
 
+fn writeTuningOptions() void {
+    var ctx: u8 = 0;
+    root.tuning.forEachExposedTunable(u8, &ctx, struct {
+        fn call(_: *u8, param: root.tuning.TunableParam) void {
+            write("option name {s} type spin default {} min {} max {}\n", .{ param.name, param.default, param.min, param.max });
+        }
+    }.call);
+}
+
+fn writeSpsaInputs() void {
+    var ctx: u8 = 0;
+    root.tuning.forEachExposedTunable(u8, &ctx, struct {
+        fn call(_: *u8, param: root.tuning.TunableParam) void {
+            write(
+                "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                .{
+                    param.name,
+                    @as(f64, @floatFromInt(param.default)),
+                    @as(f64, @floatFromInt(param.min)),
+                    @as(f64, @floatFromInt(param.max)),
+                    param.c_end,
+                },
+            );
+        }
+    }.call);
+}
+
+fn printTuningSchema() void {
+    var ctx: u8 = 0;
+    root.tuning.forEachExposedTunable(u8, &ctx, struct {
+        fn call(_: *u8, param: root.tuning.TunableParam) void {
+            write("{s}, {}\n", .{ param.name, param.current });
+        }
+    }.call);
+}
+
 pub fn main() !void {
     root.init();
     defer root.deinit();
@@ -103,59 +139,16 @@ pub fn main() !void {
             write("option name Minimal type check default false\n", .{});
             write("option name SoftNodes type check default false\n", .{});
             write("option name EnableWeirdTCs type check default false\n", .{});
-            if (root.tuning.do_tuning) {
-                for (root.tuning.tunables) |tunable| {
-                    write(
-                        "option name {s} type spin default {} min {} max {}\n",
-                        .{ tunable.name, tunable.default, tunable.getMin(), tunable.getMax() },
-                    );
-                }
-            }
-            if (root.tuning.do_factorized_tuning) {
-                const factorized_lmr = root.tuning.factorized_lmr;
-                const factorized_lmr_params = root.tuning.factorized_lmr_params;
-                inline for (0..3, .{ factorized_lmr.one, factorized_lmr.two, factorized_lmr.three }) |i, arr| {
-                    inline for (arr, 0..) |val, j| {
-                        write(
-                            "option name factorized_{}_{} type spin default {} min {} max {}\n",
-                            .{ i, j, val, factorized_lmr_params.min, factorized_lmr_params.max },
-                        );
-                    }
-                }
+            if (root.tuning.do_tuning or root.tuning.do_factorized_tuning) {
+                writeTuningOptions();
             }
             write("uciok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "banner")) {
             write("{s}\n", .{banner});
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
-            for (root.tuning.tunables) |tunable| {
-                write(
-                    "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
-                    .{
-                        tunable.name,
-                        @as(f64, @floatFromInt(tunable.default)),
-                        @as(f64, @floatFromInt(tunable.getMin())),
-                        @as(f64, @floatFromInt(tunable.getMax())),
-                        tunable.getCend(),
-                    },
-                );
-            }
-            const factorized_lmr = root.tuning.factorized_lmr;
-            const factorized_lmr_params = root.tuning.factorized_lmr_params;
-            inline for (0..3, .{ factorized_lmr.one, factorized_lmr.two, factorized_lmr.three }) |i, arr| {
-                inline for (arr, 0..) |val, j| {
-                    write(
-                        "factorized_{}_{}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
-                        .{
-                            i,
-                            j,
-                            val,
-                            factorized_lmr_params.min,
-                            factorized_lmr_params.max,
-                            factorized_lmr_params.c_end,
-                        },
-                    );
-                }
-            }
+            writeSpsaInputs();
+        } else if (std.ascii.eqlIgnoreCase(command, "print_schema")) {
+            printTuningSchema();
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
             previous_positions.clearRetainingCapacity();
@@ -289,29 +282,12 @@ pub fn main() !void {
                 }
             }
 
-            if (root.tuning.do_tuning) {
-                inline for (root.tuning.tunables) |tunable| {
-                    if (std.ascii.eqlIgnoreCase(tunable.name, option_name)) {
-                        @field(root.tuning.tunable_constants, tunable.name) = std.fmt.parseInt(i32, value, 10) catch {
-                            writeLog("invalid constant: '{s}'\n", .{value});
-                            continue :loop;
-                        };
-                    }
-                }
-            }
-            if (root.tuning.do_factorized_tuning) {
-                const factorized_lmr = root.tuning.factorized_lmr;
-                inline for (0..3, .{ &factorized_lmr.one, &factorized_lmr.two, &factorized_lmr.three }) |i, arr| {
-                    inline for (arr, 0..) |*val_ptr, j| {
-                        const name = std.fmt.comptimePrint("factorized_{}_{}", .{ i, j });
-                        if (std.ascii.eqlIgnoreCase(name, option_name)) {
-                            val_ptr.* = std.fmt.parseInt(i16, value, 10) catch {
-                                writeLog("invalid constant: '{s}'\n", .{value});
-                                continue :loop;
-                            };
-                        }
-                    }
-                }
+            if (root.tuning.do_tuning or root.tuning.do_factorized_tuning) {
+                const parsed_value = std.fmt.parseInt(i32, value, 10) catch {
+                    writeLog("invalid constant: '{s}'\n", .{value});
+                    continue :loop;
+                };
+                _ = root.tuning.trySetExposedTunable(option_name, parsed_value);
             }
         } else if (root.use_tbs and std.ascii.eqlIgnoreCase(command, "ProbeWDL")) {
             std.debug.print("{any}\n", .{root.pyrrhic.probeWDL(&board)});

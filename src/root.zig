@@ -30,8 +30,8 @@ pub const use_tbs = @import("build_options").use_tbs;
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 pub const pyrrhic = @import("pyrrhic.zig");
 pub const evaluation = @import("evaluation.zig");
-pub const Eval = evaluation.Eval;
-pub const eval_mode: Eval = std.meta.stringToEnum(Eval, @import("build_options").eval) orelse unreachable;
+pub const EvalMode = @import("eval_mode.zig").EvalMode;
+pub const eval_mode: EvalMode = std.meta.stringToEnum(EvalMode, @import("build_options").eval) orelse unreachable;
 pub const nnue = if (eval_mode == .hce)
     @compileError("cannot use NNUE in HCE build mode")
 else
