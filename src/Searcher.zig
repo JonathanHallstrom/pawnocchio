@@ -444,17 +444,37 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
 
 inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
     var res: i32 = 0;
-    comptime var two = 0;
-    comptime var three = 0;
-    inline for (0..N) |i| {
-        res += weights.one[i] * @intFromBool(params[i]);
-        inline for (i + 1..N) |j| {
-            res += weights.two[two] * @intFromBool(params[i] and params[j]);
-            inline for (j + 1..N) |k| {
-                res += weights.three[three] * @intFromBool(params[i] and params[j] and params[k]);
-                three += 1;
-            }
-            two += 1;
+    inline for (0..std.meta.fields(@TypeOf(weights)).len) |order| {
+        switch (order) {
+            0 => {
+                const table = @field(weights, std.fmt.comptimePrint("{}", .{order + 1}));
+                inline for (0..N) |i| {
+                    res += table[i] * @as(i32, @intFromBool(params[i]));
+                }
+            },
+            1 => {
+                const table = @field(weights, std.fmt.comptimePrint("{}", .{order + 1}));
+                comptime var index = 0;
+                inline for (0..N) |i| {
+                    inline for (i + 1..N) |j| {
+                        res += table[index] * @as(i32, @intFromBool(params[i] and params[j]));
+                        index += 1;
+                    }
+                }
+            },
+            2 => {
+                const table = @field(weights, std.fmt.comptimePrint("{}", .{order + 1}));
+                comptime var index = 0;
+                inline for (0..N) |i| {
+                    inline for (i + 1..N) |j| {
+                        inline for (j + 1..N) |k| {
+                            res += table[index] * @as(i32, @intFromBool(params[i] and params[j] and params[k]));
+                            index += 1;
+                        }
+                    }
+                }
+            },
+            else => @compileError("order>3 not impled"),
         }
     }
     return @intCast(res);
@@ -463,7 +483,7 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
 const precomp_lmr_factorised = if (!tuning.do_factorized_tuning)
 blk: {
     @setEvalBranchQuota(1 << 30);
-    const N = tuning.factorized_lmr.N;
+    const N = tuning.factorized_lmr_input_count;
     var res: [1 << N]i16 = undefined;
 
     for (&res, 0..) |*val, i| {
@@ -471,7 +491,7 @@ blk: {
         for (0..N) |j| {
             params[j] = i >> j & 1 != 0;
         }
-        val.* = convolve(N, params, tuning.factorized_lmr);
+        val.* = convolve(N, params, tuning.factorized_lmr.*);
     }
 
     break :blk res;
@@ -479,7 +499,7 @@ blk: {
 
 inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
     if (tuning.do_factorized_tuning) {
-        return convolve(N, params, tuning.factorized_lmr);
+        return convolve(N, params, tuning.factorized_lmr.*);
     } else {
         var i: usize = 0;
         inline for (0..N) |j| {
@@ -1043,14 +1063,19 @@ fn search(
             conthist_tables,
             is_quiet,
         );
+        const lmr_depth_hist_weights = tuning.historyWeights("lmr_depth_hist");
+        const hp_hist_weights = tuning.historyWeights("hp_hist");
+        const lmr_hist_weights = tuning.historyWeights("lmr_hist");
+        const rfp_hist_weights = tuning.historyWeights("rfp_hist");
+        const fp_hist_weights = tuning.quietHistoryWeights("fp_hist");
         const lmr_depth_hist_score =
-            if (is_quiet) tuning.lmrDepthHistQ(history_terms) else tuning.lmrDepthHistN(history_terms);
+            if (is_quiet) tuning.histQ(history_terms, lmr_depth_hist_weights.q) else tuning.histN(history_terms, lmr_depth_hist_weights.n);
         const hp_hist_score =
-            if (is_quiet) tuning.hpHistQ(history_terms) else tuning.hpHistN(history_terms);
+            if (is_quiet) tuning.histQ(history_terms, hp_hist_weights.q) else tuning.histN(history_terms, hp_hist_weights.n);
         const lmr_hist_score =
-            if (is_quiet) tuning.lmrHistQ(history_terms) else tuning.lmrHistN(history_terms);
+            if (is_quiet) tuning.histQ(history_terms, lmr_hist_weights.q) else tuning.histN(history_terms, lmr_hist_weights.n);
         const rfp_hist_score =
-            if (is_quiet) tuning.rfpHistQ(history_terms) else tuning.rfpHistN(history_terms);
+            if (is_quiet) tuning.histQ(history_terms, rfp_hist_weights.q) else tuning.histN(history_terms, rfp_hist_weights.n);
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
@@ -1078,7 +1103,7 @@ fn search(
                 var futility_value = eval +
                     tunables.fp_base +
                     @divTrunc(lmr_depth * tunables.fp_mult +
-                        @divTrunc(tuning.fpHistQ(history_terms) * tunables.fp_hist_mult, 4), 1024);
+                        @divTrunc(tuning.histQ(history_terms, fp_hist_weights) * tunables.fp_hist_mult, 4), 1024);
 
                 if (is_pv) {
                     futility_value += tunables.fp_pv_base + tunables.fp_pv_mult * depth;
