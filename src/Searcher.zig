@@ -1157,6 +1157,10 @@ fn search(
                 see_pruning_thresh -= tunables.see_pv_offs;
             }
 
+            if (!is_quiet) {
+                see_pruning_thresh += @divTrunc(alpha - eval, 8);
+            }
+
             if (!skip_see_pruning and
                 !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
             {
