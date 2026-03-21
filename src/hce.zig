@@ -360,7 +360,9 @@ pub const State = struct {
         self.* = init(board);
     }
 
-    pub fn update(_: State, _: *const State, _: *const Board, _: anytype) void {}
+    pub fn update(self: *State, other: *const State, _: *const Board, _: anytype) void {
+        self.* = other.*;
+    }
 
     pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
         self.state = self.state.add(readPieceSquareTable(col, pt, square));

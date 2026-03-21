@@ -1679,8 +1679,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.fixupPreviousPositionHashes();
 
     self.initSearchStack(params);
-    if (root.evaluation.eval_mode == .nnue)
-        self.evalStateRoot()[0].initInPlace(&board);
+    self.evalStateRoot()[0].initInPlace(&board);
     self.histories.age();
     self.ttage +%= 1;
 }
@@ -1948,6 +1947,7 @@ fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
         .normalize = false,
         .minimal = false,
     });
+    searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1]);
 }
 
 test retainOnlyDuplicates {
