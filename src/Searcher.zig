@@ -994,6 +994,18 @@ fn search(
                 }
             }
         }
+
+        const probcut_beta = beta + 375;
+        if (tt_hit and
+            !evaluation.isTBScore(tt_score) and
+            !evaluation.isTBScore(beta) and
+            !evaluation.isTBScore(probcut_beta) and
+            tt_entry.flags.getScoreType().givesLowerBound() and
+            tt_score >= probcut_beta and
+            tt_entry.depth >= depth - 2)
+        {
+            return tt_score;
+        }
     }
 
     const conthist_tables = self.getConthistTables(stm);
