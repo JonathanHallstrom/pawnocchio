@@ -1182,7 +1182,10 @@ fn search(
             var beta_mult: i32 = tunables.singular_beta_mult;
             beta_mult -= @intFromBool(is_pv) * tunables.singular_beta_pv_mult;
             beta_mult += @intFromBool(tt_pv) * tunables.singular_beta_ttpv_mult;
-            const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - depth * beta_mult, 1024));
+            const s_beta = @max(
+                evaluation.matedIn(0) + 1,
+                @divTrunc(@as(i32, tt_score) * 1024 - depth * beta_mult, 1024),
+            );
             const s_depth = depth * tunables.singular_depth_mult - tunables.singular_depth_offs >> 10;
 
             cur.excluded = move;
@@ -1226,7 +1229,7 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
-                return evaluation.clampScore(s_beta);
+                return @intCast(s_beta);
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
