@@ -300,6 +300,7 @@ pub const schema = .{
     .bnfp_depth_limit = scalar(.{}),
     .bnfp_base = scalar(.{}),
     .bnfp_mult = scalar(.{}),
+    .bnfp_captured = scalar(.{ .default = 1024 }),
 
     .see_quiet_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 20 }),
     .see_noisy_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 5 }),

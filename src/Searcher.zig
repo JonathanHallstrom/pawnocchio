@@ -1137,10 +1137,12 @@ fn search(
                 {
                     continue;
                 }
-                const futility_value = eval +
+                const captured_value = SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
+                const futility_value =
+                    eval +
                     tunables.bnfp_base +
-                    @divTrunc(lmr_depth * tunables.bnfp_mult, 1024) +
-                    SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
+                    (lmr_depth * tunables.bnfp_mult +
+                        captured_value * tunables.bnfp_captured >> 10);
                 if (mp.stage == .bad_noisies and
                     !is_in_check and
                     lmr_depth <= tunables.bnfp_depth_limit and
