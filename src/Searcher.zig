@@ -480,32 +480,39 @@ inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
     return @intCast(res);
 }
 
-const precomp_lmr_factorised = if (!tuning.do_factorized_tuning)
-blk: {
-    @setEvalBranchQuota(1 << 30);
-    const N = tuning.factorized_lmr_input_count;
-    var res: [1 << N]i16 = undefined;
+fn precomputeFactorized(comptime N: usize, comptime weights: anytype) type {
+    return struct {
+        const vals = blk: {
+            @setEvalBranchQuota(1 << 30);
+            var precomp: [1 << N]i16 = undefined;
+            for (&precomp, 0..) |*val, i| {
+                var params: [N]bool = undefined;
+                for (0..N) |j| {
+                    params[j] = i >> j & 1 != 0;
+                }
+                val.* = convolve(N, params, weights);
+            }
+            break :blk precomp;
+        };
 
-    for (&res, 0..) |*val, i| {
-        var params: [N]bool = undefined;
-        for (0..N) |j| {
-            params[j] = i >> j & 1 != 0;
+        pub inline fn query(params: [N]bool) i16 {
+            var i: usize = 0;
+            inline for (0..N) |j| {
+                i |= @as(usize, @intFromBool(params[j])) << j;
+            }
+            return vals[i];
         }
-        val.* = convolve(N, params, tuning.factorized_lmr.*);
-    }
-
-    break :blk res;
-} else void{};
+    };
+}
 
 inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
     if (tuning.do_factorized_tuning) {
-        return convolve(N, params, tuning.factorized_lmr.*);
+        return convolve(N, params, tuning.factorized_lmr.values.*);
     } else {
-        var i: usize = 0;
-        inline for (0..N) |j| {
-            i |= @as(usize, @intFromBool(params[j])) << j;
-        }
-        return precomp_lmr_factorised[i];
+        return precomputeFactorized(
+            tuning.factorized_lmr.input_count,
+            tuning.factorized_lmr.values.*,
+        ).query(params);
     }
 }
 

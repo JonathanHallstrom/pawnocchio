@@ -26,7 +26,7 @@ const VERSION_STRING = "1.9.2";
 
 fn writeTuningOptions() void {
     var ctx: u8 = 0;
-    root.tuning.forEachExposedTunable(u8, &ctx, struct {
+    root.tuning.forEachTunable(u8, &ctx, struct {
         fn call(_: *u8, param: root.tuning.TunableParam) void {
             write("option name {s} type spin default {} min {} max {}\n", .{ param.name, param.default, param.min, param.max });
         }
@@ -35,7 +35,7 @@ fn writeTuningOptions() void {
 
 fn writeSpsaInputs() void {
     var ctx: u8 = 0;
-    root.tuning.forEachExposedTunable(u8, &ctx, struct {
+    root.tuning.forEachTunable(u8, &ctx, struct {
         fn call(_: *u8, param: root.tuning.TunableParam) void {
             write(
                 "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
@@ -53,7 +53,7 @@ fn writeSpsaInputs() void {
 
 fn printTuningSchema() void {
     var ctx: u8 = 0;
-    root.tuning.forEachExposedTunable(u8, &ctx, struct {
+    root.tuning.forEachTunable(u8, &ctx, struct {
         fn call(_: *u8, param: root.tuning.TunableParam) void {
             write("{s}, {}\n", .{ param.name, param.current });
         }

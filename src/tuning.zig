@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const factorized = @import("tuning/factorized.zig");
 const tuning_schema = @import("tuning/schema.zig");
 const tuning_generated = @import("tuning_generated");
 
@@ -107,60 +108,14 @@ const tunable_constants_storage = if (do_tuning) struct {
 
 pub const tunable_constants = &tunable_constants_storage.value;
 
-const factorized_lmr_spec = tuning_schema.schema.factorized_lmr.Factorized;
-pub const factorized_lmr_input_count = factorized_lmr_spec.inputs.len;
-pub const factorized_lmr_defaults = tuning_generated.factorized_lmr_defaults;
+pub const factorized_lmr = factorized.Family(.{
+    .enabled = do_factorized_tuning,
+    .spec = tuning_schema.schema.factorized_lmr.Factorized,
+    .defaults = tuning_generated.factorized_lmr_defaults,
+    .tunables = tuning_generated.factorized_lmr_tunables,
+});
 
-const FactorizedLmrValues = @TypeOf(factorized_lmr_defaults);
-const factorized_lmr_storage = if (do_factorized_tuning) struct {
-    pub var value: FactorizedLmrValues = factorized_lmr_defaults;
-} else struct {
-    pub const value: FactorizedLmrValues = factorized_lmr_defaults;
-};
-
-pub const factorized_lmr = &factorized_lmr_storage.value;
-
-const factorized_lmr_tunables = tuning_generated.factorized_lmr_tunables;
-
-fn getFactorizedValue(
-    comptime spec: tuning_schema.FactorizedTunable,
-    values: anytype,
-    order: u8,
-    index: usize,
-) i32 {
-    inline for (0..spec.max_order) |order_idx| {
-        if (order == order_idx) {
-            return @field(values, tuning_schema.factorizedOrderFieldName(order_idx))[index];
-        }
-    }
-    unreachable;
-}
-
-fn setFactorizedValue(
-    comptime spec: tuning_schema.FactorizedTunable,
-    values: anytype,
-    order: u8,
-    index: usize,
-    value: i32,
-) void {
-    inline for (0..spec.max_order) |order_idx| {
-        if (order == order_idx) {
-            @field(values.*, tuning_schema.factorizedOrderFieldName(order_idx))[index] = value;
-            return;
-        }
-    }
-    unreachable;
-}
-
-fn getFactorizedLmrValue(order: u8, index: usize) i32 {
-    return getFactorizedValue(factorized_lmr_spec, factorized_lmr.*, order, index);
-}
-
-fn setFactorizedLmrValue(order: u8, index: usize, value: i32) void {
-    setFactorizedValue(factorized_lmr_spec, factorized_lmr, order, index, value);
-}
-
-pub fn forEachExposedTunable(
+pub fn forEachTunable(
     comptime Context: type,
     ctx: *Context,
     comptime visit: fn (*Context, TunableParam) void,
@@ -176,21 +131,21 @@ pub fn forEachExposedTunable(
         });
     }
 
-    if (do_factorized_tuning) {
-        inline for (factorized_lmr_tunables) |tunable| {
+    if (factorized_lmr.enabled) {
+        inline for (factorized_lmr.tunables) |tunable| {
             visit(ctx, .{
                 .name = tunable.name,
                 .default = tunable.default,
                 .min = tunable.min,
                 .max = tunable.max,
                 .c_end = tunable.c_end,
-                .current = getFactorizedLmrValue(tunable.order, tunable.index),
+                .current = factorized_lmr.get(tunable.order, tunable.index),
             });
         }
     }
 }
 
-pub fn trySetExposedTunable(option_name: []const u8, value: i32) bool {
+pub fn trySetTunable(option_name: []const u8, value: i32) bool {
     if (do_tuning) {
         inline for (tunables) |tunable| {
             if (std.ascii.eqlIgnoreCase(tunable.name, option_name)) {
@@ -200,13 +155,8 @@ pub fn trySetExposedTunable(option_name: []const u8, value: i32) bool {
         }
     }
 
-    if (do_factorized_tuning) {
-        inline for (factorized_lmr_tunables) |tunable| {
-            if (std.ascii.eqlIgnoreCase(tunable.name, option_name)) {
-                setFactorizedLmrValue(tunable.order, tunable.index, value);
-                return true;
-            }
-        }
+    if (factorized_lmr.trySet(option_name, value)) {
+        return true;
     }
 
     return false;
