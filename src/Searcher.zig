@@ -636,6 +636,7 @@ fn qsearch(
     }) |pt| {
         checks |= board.threatsBy(stm, pt) & board.checkingSquaresFor(pt);
     }
+    checks &= board.occupancyFor(stm.flipped());
 
     while (mp.next(
         stm,
