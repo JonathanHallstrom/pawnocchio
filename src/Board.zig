@@ -55,8 +55,9 @@ castling_rights: CastlingRights = CastlingRights.init(),
 pinned: [2]u64 = @splat(0),
 // pinner: [2]u64 = @splat(0),
 checkers: u64 = 0,
-checking_squares: [5]u64 = .{0} ** 5,
+checking_squares: [5]u64 = @splat(0),
 threats: [2]u64 = @splat(0),
+threats_by: [2][PieceType.all.len]u64 = @splat(@splat(0)),
 lesser_threats: [2]u64 = @splat(0),
 
 pub inline fn white(self: *const Board) u64 {
@@ -97,6 +98,22 @@ pub fn occupancyPtrFor(self: *Board, col: Colour) *u64 {
 
 pub inline fn occupancy(self: *const Board) u64 {
     return (&self.bbs)[6] | (&self.bbs)[7];
+}
+
+pub inline fn threatsFor(self: *const Board, col: Colour) u64 {
+    return self.threats[col.toInt()];
+}
+
+pub inline fn threatsBy(self: *const Board, col: Colour, pt: PieceType) u64 {
+    return self.threats_by[col.toInt()][pt.toInt()];
+}
+
+pub inline fn lesserThreatsFor(self: *const Board, col: Colour) u64 {
+    return self.lesser_threats[col.toInt()];
+}
+
+pub inline fn checkingSquaresFor(self: *const Board, pt: PieceType) u64 {
+    return self.checking_squares[pt.toInt()];
 }
 
 pub inline fn pawnsFor(self: *const Board, col: Colour) u64 {
@@ -873,41 +890,52 @@ pub fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, 
 
 pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     const occ = self.occupancy();
-    var threatened: u64 = 0;
+    const pawn_threats = Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
+    const knight_threats = Bitboard.knightMoveBitBoard(self.knightsFor(col));
+    var bishop_threats: u64 = 0;
+    var rook_threats: u64 = 0;
+    var queen_threats: u64 = 0;
+    const king_threats = Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
     var lesser_threatened: u64 = 0;
-
-    threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
 
     // threatened now has all pieces attacked by pawns
     // so knights and bishops would be worth more
-    lesser_threatened |= (self.knights() | self.bishops()) & threatened;
-
-    threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
+    lesser_threatened |= (self.knights() | self.bishops()) & pawn_threats;
     var iter = Bitboard.iterator(self.bishopsFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.bishopAttacks(sq, occ);
+        bishop_threats |= attacks.bishopAttacks(sq, occ);
     }
 
     // threatened now has all pieces attacked by pawns or by knights or bishops
     // so rooks are worth more than the attacking pieces
-    lesser_threatened |= self.rooks() & threatened;
+    const minor_threats = pawn_threats | knight_threats | bishop_threats;
+    lesser_threatened |= self.rooks() & minor_threats;
 
     iter = Bitboard.iterator(self.rooksFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.rookAttacks(sq, occ);
+        rook_threats |= attacks.rookAttacks(sq, occ);
     }
 
     // threatened now has all pieces attacked by pawns or by knights or bishops or rooks
     // so queens are worth more than the attacking pieces
-    lesser_threatened |= self.queens() & threatened;
+    const major_threats = minor_threats | rook_threats;
+    lesser_threatened |= self.queens() & major_threats;
 
     iter = Bitboard.iterator(self.queensFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.bishopAttacks(sq, occ) | attacks.rookAttacks(sq, occ);
+        queen_threats |= attacks.bishopAttacks(sq, occ) | attacks.rookAttacks(sq, occ);
     }
 
-    threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
+    const threatened = pawn_threats | knight_threats | bishop_threats | rook_threats | queen_threats | king_threats;
     self.threats[col.toInt()] = threatened;
+    self.threats_by[col.toInt()] = .{
+        pawn_threats,
+        knight_threats,
+        bishop_threats,
+        rook_threats,
+        queen_threats,
+        king_threats,
+    };
     self.lesser_threats[col.toInt()] = lesser_threatened;
 }
 

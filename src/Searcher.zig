@@ -626,6 +626,17 @@ fn qsearch(
 
     const conthist_tables = self.getConthistTables(stm);
 
+    var checks: u64 = 0;
+    inline for ([_]root.PieceType{
+        .pawn,
+        .knight,
+        .bishop,
+        .rook,
+        .queen,
+    }) |pt| {
+        checks |= board.threatsBy(stm, pt) & board.checkingSquaresFor(pt);
+    }
+
     while (mp.next(
         stm,
         &self.histories,
@@ -650,10 +661,16 @@ fn qsearch(
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, typed);
             if (num_searched >= 2 and
-                history_score < tunables.qs_hp_margin)
+                history_score < tunables.qs_hp_margin and
+                !board.isDirectCheck(move))
             {
-                break;
+                if (checks == 0) {
+                    break;
+                } else {
+                    continue;
+                }
             }
+
             if (!is_in_check and
                 futility <= alpha and
                 !is_recapture and
