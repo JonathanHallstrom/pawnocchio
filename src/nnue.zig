@@ -75,9 +75,7 @@ const net = @embedFile("net");
 const verbatim_weights: [net.len:0]u8 align(64) = net.*;
 
 const default_weights = @as(*const Weights, @ptrCast(&verbatim_weights));
-var replicated_weights: numa.ReplicatedConstant(Weights) = .{
-    .fallback = default_weights,
-};
+var weights_by_node: numa.PerNode(Weights) = .{};
 
 inline fn hiddenLayerWeightsVector(weights: *const Weights) []const @Vector(vecSize(i16), i16) {
     return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.ft_w))[0 .. weights.ft_w.len / vecSize(i16)];
@@ -87,18 +85,23 @@ pub fn init() !void {
     if (!use_numa) {
         return;
     }
-    try replicated_weights.init();
+    try weights_by_node.allocCopyToAll(default_weights);
 }
 
 pub fn deinit() void {
     if (!use_numa) {
         return;
     }
-    replicated_weights.deinit();
+    weights_by_node.deinit();
 }
 
 pub fn weightsForNode(node: usize) *const Weights {
-    return replicated_weights.forNode(node);
+    if (!use_numa) {
+        return default_weights;
+    }
+
+    std.debug.assert(numa.isActive());
+    return weights_by_node.getConst(node) orelse unreachable;
 }
 
 const SquarePieceType = struct {

@@ -114,31 +114,6 @@ pub fn PerNode(comptime T: type) type {
     };
 }
 
-pub fn ReplicatedConstant(comptime T: type) type {
-    return struct {
-        fallback: *const T,
-        per_node: PerNode(T) = .{},
-
-        const Self = @This();
-
-        pub fn init(self: *Self) !void {
-            try self.per_node.allocCopyToAll(self.fallback);
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.per_node.deinit();
-        }
-
-        pub fn forNode(self: *const Self, node: usize) *const T {
-            if (self.per_node.getConst(node)) |ptr| {
-                return ptr;
-            }
-
-            return self.fallback;
-        }
-    };
-}
-
 pub fn init() !void {
     if (!enabled) {
         return;
