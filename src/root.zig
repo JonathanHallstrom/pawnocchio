@@ -32,6 +32,7 @@ pub const pyrrhic = @import("pyrrhic.zig");
 pub const evaluation = @import("evaluation.zig");
 pub const EvalMode = @import("eval_mode.zig").EvalMode;
 pub const eval_mode: EvalMode = std.meta.stringToEnum(EvalMode, @import("build_options").eval) orelse unreachable;
+pub const numa = @import("numa.zig");
 pub const nnue = if (eval_mode == .hce)
     @compileError("cannot use NNUE in HCE build mode")
 else
@@ -98,6 +99,10 @@ pub fn init() void {
             stdout_writer = stdout.writerStreaming(&stdout_buf);
             attacks.init();
             cuckoo.init();
+            numa.init() catch |e| std.debug.panic("Fatal: couldn't initialize NUMA support, error: {}\n", .{e});
+            if (eval_mode == .nnue) {
+                nnue.init() catch |e| std.debug.panic("Fatal: couldn't initialize NNUE state, error: {}\n", .{e});
+            }
             engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
         }
         var init_once = std.once(initImpl);
@@ -109,6 +114,10 @@ pub fn deinit() void {
     const globals = struct {
         fn deinitImpl() void {
             pyrrhic.deinit();
+            if (eval_mode == .nnue) {
+                nnue.deinit();
+            }
+            numa.deinit();
             stdout_writer.interface.flush() catch std.debug.panic("failed to flush stdout", .{});
         }
         var deinit_once = std.once(deinitImpl);

@@ -28,8 +28,19 @@ const impl = switch (eval_mode) {
     .nnue => root.nnue,
 };
 
+pub const Context = switch (eval_mode) {
+    .nnue => struct {
+        weights: *const root.nnue.Weights,
+        refresh_cache: *root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT),
+    },
+    inline else => struct {},
+};
+
 pub const State = impl.State;
-pub const evaluate = impl.evaluate;
+
+pub inline fn evaluate(comptime stm: root.Colour, board: *const Board, state: *State, ctx: Context) i16 {
+    return impl.evaluate(stm, board, state, ctx);
+}
 
 pub fn evalPosition(board: *const Board) i16 {
     return impl.evalPosition(board);

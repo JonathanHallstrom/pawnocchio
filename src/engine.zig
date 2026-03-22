@@ -19,6 +19,8 @@ const root = @import("root.zig");
 const ThreadPool = @import("ThreadPool.zig").ThreadPool;
 const Searcher = root.Searcher;
 const debug_stats_mod = @import("debug_stats.zig");
+const numa = @import("numa.zig");
+const nnue = if (root.eval_mode == .nnue) @import("nnue.zig") else void;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
@@ -202,10 +204,18 @@ fn datagenWorker(
     writer_mutex: *std.Thread.Mutex,
     stats: *DatagenStats,
 ) void {
+    numa.bindCurrentThread(i) catch |err| {
+        std.log.debug("failed to bind datagen thread {} to NUMA node: {}", .{ i, err });
+    };
+
     const searcher = thread_pool.searchers.items[i];
     const old_tt = searcher.tt;
     defer searcher.tt = old_tt;
     @memset(std.mem.asBytes(searcher), 0);
+    if (root.eval_mode == .nnue) {
+        searcher.nnue_weights = nnue.weightsForNode(numa.nodeForThread(i));
+        searcher.refresh_cache.initInPlace(searcher.nnue_weights);
+    }
     searcher.tt = std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster)) catch std.debug.panic("allocation failed\n", .{});
     const viriformat = root.viriformat;
     var seed: u64 = 0;

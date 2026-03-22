@@ -17,10 +17,10 @@
 const std = @import("std");
 
 const root = @import("root.zig");
-const nnue = root.nnue;
 
 const BoundedArray = root.BoundedArray;
 const evaluation = root.evaluation;
+const nnue = if (evaluation.eval_mode == .nnue) root.nnue else void;
 const movegen = root.movegen;
 const Move = root.Move;
 const Board = root.Board;
@@ -132,6 +132,7 @@ tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
 refresh_cache: if (evaluation.eval_mode == .nnue) root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT) else void,
+nnue_weights: if (evaluation.eval_mode == .nnue) *const nnue.Weights else void,
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -173,7 +174,7 @@ pub fn writeTT(
 
 fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
     const hash = self.stackEntry(0).board.getHashWithHalfmove();
-    const eval = evaluate(stm, &self.stackEntry(0).board, self.evalState(0), &self.refresh_cache);
+    const eval = evaluate(stm, &self.stackEntry(0).board, self.evalState(0), self.evalContext());
     self.writeTT(
         false,
         hash,
@@ -184,6 +185,16 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
         eval,
     );
     return eval;
+}
+
+fn evalContext(self: *Searcher) evaluation.Context {
+    return switch (evaluation.eval_mode) {
+        .nnue => .{
+            .weights = self.nnue_weights,
+            .refresh_cache = &self.refresh_cache,
+        },
+        inline else => .{},
+    };
 }
 
 inline fn prefetch(self: *const Searcher, board: *const Board, move: Move) void {
@@ -300,8 +311,6 @@ fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
     const board = &prev_stack_entry.board;
     const move = typed.move;
 
-    new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
-
     new_stack_entry.init(
         board,
         typed,
@@ -309,11 +318,10 @@ fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
         prev_stack_entry.evals,
         prev_stack_entry.usable_moves + 1,
     );
+    new_eval_state.update(prev_eval_state, &new_stack_entry.board);
     self.ply += 1;
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMove(stm, move, new_eval_state);
-    if (root.evaluation.eval_mode == .nnue)
-        new_eval_state.bindBoard(&new_stack_entry.board);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
 
@@ -329,8 +337,6 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const new_stack_entry = self.stackEntry(1);
     const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
-
-    new_eval_state.update(prev_eval_state, board, &self.refresh_cache);
     new_stack_entry.init(
         board,
         TypedMove.init(),
@@ -338,11 +344,10 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
         prev_stack_entry.evals,
         0,
     );
+    new_eval_state.update(prev_eval_state, &new_stack_entry.board);
     self.ply += 1;
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
-    if (root.evaluation.eval_mode == .nnue)
-        new_eval_state.bindBoard(&new_stack_entry.board);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
 
@@ -1680,7 +1685,10 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.fixupPreviousPositionHashes();
 
     self.initSearchStack(params);
-    self.evalStateRoot()[0].initInPlace(&board);
+    switch (evaluation.eval_mode) {
+        .nnue => self.evalStateRoot()[0].initInPlace(&board, self.nnue_weights),
+        inline else => self.evalStateRoot()[0].initInPlace(&board),
+    }
     self.histories.age();
     self.ttage +%= 1;
 }
@@ -1948,7 +1956,14 @@ fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
         .normalize = false,
         .minimal = false,
     });
-    searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1]);
+    switch (evaluation.eval_mode) {
+        .nnue => {
+            searcher.nnue_weights = nnue.weightsForNode(0);
+            searcher.refresh_cache.initInPlace(searcher.nnue_weights);
+            searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1], searcher.nnue_weights);
+        },
+        inline else => searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1]),
+    }
 }
 
 test retainOnlyDuplicates {

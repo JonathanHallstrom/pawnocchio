@@ -194,11 +194,13 @@ fn prepareNet(
 fn buildOptions(
     b: *std.Build,
     use_tbs: bool,
+    use_numa: bool,
     eval_mode: EvalMode,
     eval_input: EvalInput,
 ) *std.Build.Step.Options {
     const options = b.addOptions();
     options.addOption(bool, "use_tbs", use_tbs);
+    options.addOption(bool, "use_numa", use_numa);
     options.addOption([]const u8, "eval", @tagName(eval_mode));
     options.addOption([]const u8, "eval_identifier", switch (eval_input) {
         .hce => "hce",
@@ -526,6 +528,11 @@ pub fn build(b: *std.Build) !void {
         null;
     const emit_symbols = b.option(bool, "emit_symbols", "keep debug symbols") orelse false;
     const use_tbs = b.option(bool, "use_tbs", "enable tablebases") orelse true;
+    const use_numa = b.option(bool, "use_numa", "link to libnuma for NUMA aware resource management") orelse false;
+    if (use_numa and target.result.os.tag != .linux) {
+        std.log.err("build cannot use numa on non linux targets\n", .{});
+        return error.IncompatibleFlags;
+    }
     const minimal_executable = switch (optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
@@ -539,12 +546,15 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
             .omit_frame_pointer = minimal_executable,
             .strip = minimal_executable,
-            .link_libc = target.result.os.tag == .windows or use_tbs,
+            .link_libc = target.result.os.tag == .windows or use_tbs or use_numa,
         }),
         .use_llvm = true,
         .linkage = linkage_mode,
     });
-    configureArtifact(b, exe, buildOptions(b, use_tbs, eval_mode, eval_input), eval_input, generated_files, tuning_generated_file);
+    configureArtifact(b, exe, buildOptions(b, use_tbs, use_numa, eval_mode, eval_input), eval_input, generated_files, tuning_generated_file);
+    if (use_numa) {
+        exe.root_module.linkSystemLibrary("numa", .{});
+    }
     if (use_tbs) {
         exe.addCSourceFile(.{
             .file = b.path("src/Pyrrhic/tbprobe.c"),
@@ -573,10 +583,14 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/root.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = use_numa,
         }),
         .use_llvm = true,
     });
-    configureArtifact(b, unit_tests, buildOptions(b, false, eval_mode, eval_input), eval_input, generated_files, tuning_generated_file);
+    configureArtifact(b, unit_tests, buildOptions(b, false, use_numa, eval_mode, eval_input), eval_input, generated_files, tuning_generated_file);
+    if (use_numa) {
+        unit_tests.root_module.linkSystemLibrary("numa", .{});
+    }
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const test_step = b.step("test", "run unit tests");

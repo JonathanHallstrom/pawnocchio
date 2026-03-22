@@ -16,6 +16,7 @@
 
 const std = @import("std");
 const root = @import("root.zig");
+const builtin = @import("builtin");
 const Board = root.Board;
 const Square = root.Square;
 const PieceType = root.PieceType;
@@ -25,6 +26,7 @@ const evaluation = root.evaluation;
 const Move = root.Move;
 
 const arch = @import("nnue_arch.zig");
+const numa = @import("numa.zig");
 
 pub const Weights = arch.Weights;
 pub const HORIZONTAL_MIRRORING = arch.HORIZONTAL_MIRRORING;
@@ -51,6 +53,7 @@ pub fn vecSize(comptime T: type) comptime_int {
 }
 
 const build_options = @import("build_options");
+const use_numa = build_options.use_numa and builtin.os.tag == .linux and builtin.link_libc;
 
 pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
     if (INPUT_BUCKET_COUNT == 1) {
@@ -71,10 +74,31 @@ var mapper: @import("MappedFile.zig") = undefined;
 const net = @embedFile("net");
 const verbatim_weights: [net.len:0]u8 align(64) = net.*;
 
-pub var weights = @as(*const Weights, @ptrCast(&verbatim_weights));
+const default_weights = @as(*const Weights, @ptrCast(&verbatim_weights));
+var replicated_weights: numa.ReplicatedConstant(Weights) = .{
+    .fallback = default_weights,
+};
 
-inline fn hiddenLayerWeightsVector() []const @Vector(vecSize(i16), i16) {
+inline fn hiddenLayerWeightsVector(weights: *const Weights) []const @Vector(vecSize(i16), i16) {
     return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.ft_w))[0 .. weights.ft_w.len / vecSize(i16)];
+}
+
+pub fn init() !void {
+    if (!use_numa) {
+        return;
+    }
+    try replicated_weights.init();
+}
+
+pub fn deinit() void {
+    if (!use_numa) {
+        return;
+    }
+    replicated_weights.deinit();
+}
+
+pub fn weightsForNode(node: usize) *const Weights {
+    return replicated_weights.forNode(node);
 }
 
 const SquarePieceType = struct {
@@ -159,7 +183,7 @@ pub const Accumulator = struct {
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
 
-    pub inline fn default() Accumulator {
+    pub inline fn default(weights: *const Weights) Accumulator {
         return .{
             .white = weights.ft_b,
             .black = weights.ft_b,
@@ -192,8 +216,12 @@ pub const Accumulator = struct {
         self.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
     }
 
-    pub fn initInPlace(self: *Accumulator, board: *const Board) void {
-        self.* = default();
+    pub fn initInPlace(
+        self: *Accumulator,
+        board: *const Board,
+        weights: *const Weights,
+    ) void {
+        self.* = default(weights);
         self.setMirrored(board);
         self.dirty_piece = .clean;
         self.pending_parent = false;
@@ -205,51 +233,49 @@ pub const Accumulator = struct {
             {
                 var iter = Bitboard.iterator(board.pieceFor(.white, tp));
                 while (iter.next()) |sq| {
-                    self.doAddCopy(self, .white, .white, white_king_sq, tp, sq);
-                    self.doAddCopy(self, .black, .white, black_king_sq, tp, sq);
+                    self.doAddCopy(self, weights, .white, .white, white_king_sq, tp, sq);
+                    self.doAddCopy(self, weights, .black, .white, black_king_sq, tp, sq);
                 }
             }
             {
                 var iter = Bitboard.iterator(board.pieceFor(.black, tp));
                 while (iter.next()) |sq| {
-                    self.doAddCopy(self, .white, .black, white_king_sq, tp, sq);
-                    self.doAddCopy(self, .black, .black, black_king_sq, tp, sq);
+                    self.doAddCopy(self, weights, .white, .black, white_king_sq, tp, sq);
+                    self.doAddCopy(self, weights, .black, .black, black_king_sq, tp, sq);
                 }
             }
         }
     }
 
-    pub fn update(noalias self: *Accumulator, other: *Accumulator, board: *const Board, refresh_cache: anytype) void {
-        _ = board;
-        _ = refresh_cache;
+    pub fn update(
+        noalias self: *Accumulator,
+        other: *Accumulator,
+        board: *const Board,
+    ) void {
         std.debug.assert(@intFromPtr(other) + @sizeOf(Accumulator) == @intFromPtr(self));
         self.pending_parent = true;
-        self.board_ref = null;
+        self.board_ref = board;
         self.dirty_piece = .clean;
     }
 
-    pub fn bindBoard(noalias self: *Accumulator, board: *const Board) void {
-        self.board_ref = board;
-    }
-
-    fn resolvePending(noalias self: *Accumulator, refresh_cache: anytype) void {
+    fn resolvePending(noalias self: *Accumulator, ctx: anytype) void {
         if (!self.pending_parent) {
             return;
         }
         const parent: *Accumulator = @ptrFromInt(@intFromPtr(self) - @sizeOf(Accumulator));
-        parent.resolvePending(refresh_cache);
+        parent.resolvePending(ctx);
         const board = self.board_ref orelse unreachable;
         switch (board.stm) {
             inline else => |stm| {
-                self.applyUpdate(.copy, parent, stm.flipped(), board, refresh_cache);
+                self.applyUpdate(.copy, parent, stm.flipped(), board, ctx);
             },
         }
         self.pending_parent = false;
     }
 
-    pub fn init(board: *const Board) Accumulator {
-        var acc = default();
-        acc.initInPlace(board);
+    pub fn init(board: *const Board, weights: *const Weights) Accumulator {
+        var acc = default(weights);
+        acc.initInPlace(board, weights);
         return acc;
     }
 
@@ -259,39 +285,39 @@ pub const Accumulator = struct {
         }
     }
 
-    inline fn doAddCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
+    inline fn doAddCopy(self: *Accumulator, other: *const Accumulator, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
         const add_idx = vecIdx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
 
         for (0..L1_SIZE / vecSize(i16)) |i| {
             self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
-                hiddenLayerWeightsVector()[add_idx + i];
+                hiddenLayerWeightsVector(weights)[add_idx + i];
         }
     }
 
-    inline fn doAddSubCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
+    inline fn doAddSubCopy(self: *Accumulator, other: *const Accumulator, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
         const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
         const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
 
         for (0..L1_SIZE / vecSize(i16)) |i| {
             self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
-                hiddenLayerWeightsVector()[add_idx + i] -
-                hiddenLayerWeightsVector()[sub_idx + i];
+                hiddenLayerWeightsVector(weights)[add_idx + i] -
+                hiddenLayerWeightsVector(weights)[sub_idx + i];
         }
     }
 
-    inline fn doAddSubSubCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
+    inline fn doAddSubSubCopy(self: *Accumulator, other: *const Accumulator, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
         const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
         const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
         const opp_sub_idx = vecIdx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
         for (0..L1_SIZE / vecSize(i16)) |i| {
             self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
-                hiddenLayerWeightsVector()[add_idx + i] -
-                hiddenLayerWeightsVector()[sub_idx + i] -
-                hiddenLayerWeightsVector()[opp_sub_idx + i];
+                hiddenLayerWeightsVector(weights)[add_idx + i] -
+                hiddenLayerWeightsVector(weights)[sub_idx + i] -
+                hiddenLayerWeightsVector(weights)[opp_sub_idx + i];
         }
     }
 
-    inline fn doAddAddSubSubCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
+    inline fn doAddAddSubSubCopy(self: *Accumulator, other: *const Accumulator, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
         const add1_idx = vecIdx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
         const sub1_idx = vecIdx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
         const add2_idx = vecIdx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
@@ -299,10 +325,10 @@ pub const Accumulator = struct {
 
         for (0..L1_SIZE / vecSize(i16)) |i| {
             self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
-                hiddenLayerWeightsVector()[add1_idx + i] -
-                hiddenLayerWeightsVector()[sub1_idx + i] +
-                hiddenLayerWeightsVector()[add2_idx + i] -
-                hiddenLayerWeightsVector()[sub2_idx + i];
+                hiddenLayerWeightsVector(weights)[add1_idx + i] -
+                hiddenLayerWeightsVector(weights)[sub1_idx + i] +
+                hiddenLayerWeightsVector(weights)[add2_idx + i] -
+                hiddenLayerWeightsVector(weights)[sub2_idx + i];
         }
     }
 
@@ -319,8 +345,10 @@ pub const Accumulator = struct {
         noalias other: if (mode == .inplace) @TypeOf(null) else *const Accumulator,
         comptime stm: Colour,
         board: *const Board,
-        refresh_cache: anytype,
+        ctx: anytype,
     ) void {
+        const weights = ctx.weights;
+        const refresh_cache = ctx.refresh_cache;
         if (mode == .copy) {
             self.white_mirrored = other.white_mirrored;
             self.black_mirrored = other.black_mirrored;
@@ -339,33 +367,33 @@ pub const Accumulator = struct {
         switch (self.dirty_piece) {
             .clean => unreachable,
             .add_sub => |state| {
-                self.doAddSubCopy(copy, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq);
+                self.doAddSubCopy(copy, weights, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq);
                 if (state.add.pt == .king and needsRefresh(stm, state.add.sq, state.sub.sq)) {
                     @branchHint(.unlikely);
                     self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    refresh_cache.refresh(stm, board, self.accFor(stm));
+                    refresh_cache.refresh(weights, stm, board, self.accFor(stm));
                 } else {
-                    self.doAddSubCopy(copy, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq);
+                    self.doAddSubCopy(copy, weights, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq);
                 }
             },
             .add_sub_sub => |state| {
-                self.doAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                self.doAddSubSubCopy(copy, weights, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
                 if (state.add.pt == .king and needsRefresh(stm, state.add.sq, state.sub1.sq)) {
                     @branchHint(.unlikely);
                     self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    refresh_cache.refresh(stm, board, self.accFor(stm));
+                    refresh_cache.refresh(weights, stm, board, self.accFor(stm));
                 } else {
-                    self.doAddSubSubCopy(copy, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                    self.doAddSubSubCopy(copy, weights, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
                 }
             },
             .add_add_sub_sub => |state| {
-                self.doAddAddSubSubCopy(copy, stm.flipped(), stm, them_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                self.doAddAddSubSubCopy(copy, weights, stm.flipped(), stm, them_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
                 if (needsRefresh(stm, state.add1.sq, state.sub1.sq)) {
                     @branchHint(.unlikely);
                     self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    refresh_cache.refresh(stm, board, self.accFor(stm));
+                    refresh_cache.refresh(weights, stm, board, self.accFor(stm));
                 } else {
-                    self.doAddAddSubSubCopy(copy, stm, stm, us_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                    self.doAddAddSubSubCopy(copy, weights, stm, stm, us_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
                 }
             },
         }
@@ -407,10 +435,11 @@ pub const Accumulator = struct {
         } };
     }
 
-    pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, refresh_cache: anytype) i16 {
-        self.resolvePending(refresh_cache);
+    pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, ctx: anytype) i16 {
+        const weights = ctx.weights;
+        self.resolvePending(ctx);
         if (!self.dirty_piece.isClean()) {
-            self.applyUpdate(.inplace, null, stm.flipped(), board, refresh_cache);
+            self.applyUpdate(.inplace, null, stm.flipped(), board, ctx);
         }
         std.debug.assert(board.stm == stm);
         const stm_acc = self.accFor(stm);
@@ -837,18 +866,22 @@ pub const Accumulator = struct {
 
 pub const State = Accumulator;
 
-pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State, refresh_cache: anytype) i16 {
-    return eval_state.forward(stm, board, refresh_cache);
+pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State, ctx: anytype) i16 {
+    return eval_state.forward(stm, board, ctx);
 }
 
 pub fn evalPosition(board: *const Board) i16 {
-    const RC = @import("refresh_cache.zig").refreshCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT);
-    var cache: RC = undefined;
-    cache.initInPlace();
-    var acc = Accumulator.init(board);
+    const RefreshCache = @import("refresh_cache.zig").refreshCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT);
+    const weights = weightsForNode(0);
+    var cache: RefreshCache = undefined;
+    cache.initInPlace(weights);
+    var acc = Accumulator.init(board, weights);
     switch (board.stm) {
         inline else => |stm| {
-            return acc.forward(stm, board, &cache);
+            return acc.forward(stm, board, .{
+                .weights = weights,
+                .refresh_cache = &cache,
+            });
         },
     }
 }
