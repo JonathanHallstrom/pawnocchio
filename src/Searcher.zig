@@ -40,6 +40,7 @@ const evaluate = evaluation.evaluate;
 const TTEntry = root.TTEntry;
 const TTCluster = root.TTCluster;
 const cuckoo = root.cuckoo;
+const stores_numa_weights = evaluation.eval_mode == .nnue and root.numa.enabled;
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -132,7 +133,7 @@ tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
 refresh_cache: if (evaluation.eval_mode == .nnue) root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT) else void,
-nnue_weights: if (evaluation.eval_mode == .nnue) *const nnue.Weights else void,
+nnue_weights: if (stores_numa_weights) *const nnue.Weights else void,
 histories: history.HistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
@@ -187,10 +188,10 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
     return eval;
 }
 
-fn evalContext(self: *Searcher) evaluation.Context {
+inline fn evalContext(self: *Searcher) evaluation.Context {
     return switch (evaluation.eval_mode) {
         .nnue => .{
-            .weights = self.nnue_weights,
+            .weights = if (stores_numa_weights) self.nnue_weights else nnue.verbatim_weights,
             .refresh_cache = &self.refresh_cache,
         },
         inline else => .{},
@@ -1686,7 +1687,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
 
     self.initSearchStack(params);
     switch (evaluation.eval_mode) {
-        .nnue => self.evalStateRoot()[0].initInPlace(&board, self.nnue_weights),
+        .nnue => self.evalStateRoot()[0].initInPlace(&board, if (stores_numa_weights) self.nnue_weights else nnue.weightsForNode(0)),
         inline else => self.evalStateRoot()[0].initInPlace(&board),
     }
     self.histories.age();
@@ -1958,9 +1959,12 @@ fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
     });
     switch (evaluation.eval_mode) {
         .nnue => {
-            searcher.nnue_weights = nnue.weightsForNode(0);
-            searcher.refresh_cache.initInPlace(searcher.nnue_weights);
-            searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1], searcher.nnue_weights);
+            const weights = nnue.weightsForNode(0);
+            if (stores_numa_weights) {
+                searcher.nnue_weights = weights;
+            }
+            searcher.refresh_cache.initInPlace(weights);
+            searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1], weights);
         },
         inline else => searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1]),
     }

@@ -72,9 +72,9 @@ var weights_file: std.fs.File = undefined;
 var mapped_weights: []align(std.heap.pageSize()) const u8 = undefined;
 var mapper: @import("MappedFile.zig") = undefined;
 const net = @embedFile("net");
-const verbatim_weights: [net.len:0]u8 align(64) = net.*;
+const verbatim_backing: [net.len:0]u8 align(64) = net.*;
 
-const default_weights = @as(*const Weights, @ptrCast(&verbatim_weights));
+pub const verbatim_weights = @as(*const Weights, @ptrCast(&verbatim_backing));
 var weights_by_node: numa.PerNode(Weights) = .{};
 
 inline fn hiddenLayerWeightsVector(weights: *const Weights) []const @Vector(vecSize(i16), i16) {
@@ -85,7 +85,7 @@ pub fn init() !void {
     if (!use_numa) {
         return;
     }
-    try weights_by_node.allocCopyToAll(default_weights);
+    try weights_by_node.allocCopyToAll(verbatim_weights);
 }
 
 pub fn deinit() void {
@@ -97,7 +97,7 @@ pub fn deinit() void {
 
 pub fn weightsForNode(node: usize) *const Weights {
     if (!use_numa) {
-        return default_weights;
+        return verbatim_weights;
     }
 
     std.debug.assert(numa.isActive());

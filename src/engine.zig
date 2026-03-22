@@ -213,8 +213,11 @@ fn datagenWorker(
     defer searcher.tt = old_tt;
     @memset(std.mem.asBytes(searcher), 0);
     if (root.eval_mode == .nnue) {
-        searcher.nnue_weights = nnue.weightsForNode(numa.nodeForThread(i));
-        searcher.refresh_cache.initInPlace(searcher.nnue_weights);
+        const weights = if (root.numa.enabled) nnue.weightsForNode(numa.nodeForThread(i)) else nnue.weightsForNode(0);
+        if (root.numa.enabled) {
+            searcher.nnue_weights = weights;
+        }
+        searcher.refresh_cache.initInPlace(weights);
     }
     searcher.tt = std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster)) catch std.debug.panic("allocation failed\n", .{});
     const viriformat = root.viriformat;
