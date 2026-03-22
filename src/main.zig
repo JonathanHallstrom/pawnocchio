@@ -287,7 +287,7 @@ pub fn main() !void {
                     writeLog("invalid constant: '{s}'\n", .{value});
                     continue :loop;
                 };
-                _ = root.tuning.trySetExposedTunable(option_name, parsed_value);
+                _ = root.tuning.trySetTunable(option_name, parsed_value);
             }
         } else if (root.use_tbs and std.ascii.eqlIgnoreCase(command, "ProbeWDL")) {
             std.debug.print("{any}\n", .{root.pyrrhic.probeWDL(&board)});

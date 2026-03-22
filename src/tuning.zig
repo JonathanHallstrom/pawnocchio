@@ -19,8 +19,8 @@ const factorized = @import("tuning/factorized.zig");
 const tuning_schema = @import("tuning/schema.zig");
 const tuning_generated = @import("tuning_generated");
 
-pub const do_tuning = false;
-pub const do_factorized_tuning = false;
+pub const do_tuning = true;
+pub const do_factorized_tuning = true;
 
 pub const Tunable = tuning_generated.Tunable;
 pub const FactorizedTunable = tuning_generated.FactorizedTunable;
@@ -115,6 +115,13 @@ pub const factorized_lmr = factorized.Family(.{
     .tunables = tuning_generated.factorized_lmr_tunables,
 });
 
+pub const factorized_lmr_moveloop = factorized.Family(.{
+    .enabled = do_factorized_tuning,
+    .spec = tuning_schema.schema.factorized_lmr_moveloop.Factorized,
+    .defaults = tuning_generated.factorized_lmr_moveloop_defaults,
+    .tunables = tuning_generated.factorized_lmr_moveloop_tunables,
+});
+
 pub fn forEachTunable(
     comptime Context: type,
     ctx: *Context,
@@ -143,6 +150,19 @@ pub fn forEachTunable(
             });
         }
     }
+
+    if (factorized_lmr_moveloop.enabled) {
+        inline for (factorized_lmr_moveloop.tunables) |tunable| {
+            visit(ctx, .{
+                .name = tunable.name,
+                .default = tunable.default,
+                .min = tunable.min,
+                .max = tunable.max,
+                .c_end = tunable.c_end,
+                .current = factorized_lmr_moveloop.get(tunable.order, tunable.index),
+            });
+        }
+    }
 }
 
 pub fn trySetTunable(option_name: []const u8, value: i32) bool {
@@ -156,6 +176,10 @@ pub fn trySetTunable(option_name: []const u8, value: i32) bool {
     }
 
     if (factorized_lmr.trySet(option_name, value)) {
+        return true;
+    }
+
+    if (factorized_lmr_moveloop.trySet(option_name, value)) {
         return true;
     }
 

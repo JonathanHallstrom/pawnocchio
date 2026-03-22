@@ -151,6 +151,23 @@ pub const schema = .{
         .max = 2048,
         .c_end = 128,
     }),
+    .factorized_lmr_moveloop = factorized(.{
+        .inputs = &.{
+            "pv",
+            "cutnode",
+            "improving",
+            "ttmove",
+            "ttpv",
+            "quiet",
+            "directcheck",
+            "root",
+            "2failhighs",
+        },
+        .max_order = 3,
+        .min = -2048,
+        .max = 2048,
+        .c_end = 128,
+    }),
 
     .quiet_bonus_mult = scalar(.{}),
     .quiet_bonus_offs = scalar(.{}),

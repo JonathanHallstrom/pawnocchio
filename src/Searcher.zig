@@ -516,6 +516,17 @@ inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
     }
 }
 
+inline fn getFactorisedLmrMoveloop(comptime N: usize, params: [N]bool) i16 {
+    if (tuning.do_factorized_tuning) {
+        return convolve(N, params, tuning.factorized_lmr_moveloop.values.*);
+    } else {
+        return precomputeFactorized(
+            tuning.factorized_lmr_moveloop.input_count,
+            tuning.factorized_lmr_moveloop.values.*,
+        ).query(params);
+    }
+}
+
 fn checkSearch(
     self: *Searcher,
     comptime is_root: bool,
@@ -1083,11 +1094,24 @@ fn search(
         const rfp_hist_score =
             if (is_quiet) tuning.histQ(history_terms, rfp_hist_weights.q) else tuning.histN(history_terms, rfp_hist_weights.n);
 
+        const is_direct_check = board.isDirectCheck(move);
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
-            var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
-            base_lmr -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
-            var lmr_depth: i32 = (depth << 10) - base_lmr;
+            var reduction = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
+            reduction -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
+            reduction += getFactorisedLmrMoveloop(9, .{
+                is_pv,
+                cutnode,
+                improving,
+                has_tt_move,
+                tt_pv,
+                is_quiet,
+                is_direct_check,
+                is_root,
+                cur.failhighs > 2,
+            });
+
+            var lmr_depth: i32 = (depth << 10) - reduction;
 
             if (!is_pv and
                 num_searched >= lmp_margin)
