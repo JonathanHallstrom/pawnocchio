@@ -1119,18 +1119,112 @@ test hasCheck {
     }
 }
 
+test discoveredCheck {
+    root.init();
+
+    inline for (.{
+        .{
+            .fen = "3k4/8/8/8/8/8/K2N4/3R4 w - - 0 1",
+            .move = Move.quiet(.d2, .f3),
+        },
+        .{
+            .fen = "7k/8/8/8/8/8/KR6/B7 w - - 0 1",
+            .move = Move.quiet(.b2, .b3),
+        },
+    }) |case| {
+        try std.testing.expect((try parseFen(case.fen, true)).discoveredCheck(case.move));
+    }
+
+    inline for (.{
+        .{
+            .fen = "3k4/8/8/8/1K1N4/8/8/8 w - - 0 1",
+            .move = Move.quiet(.d4, .c6),
+        },
+        .{
+            .fen = "3k4/8/8/8/8/8/K2N4/3R4 w - - 0 1",
+            .move = Move.quiet(.a2, .a3),
+        },
+    }) |case| {
+        try std.testing.expect(!(try parseFen(case.fen, true)).discoveredCheck(case.move));
+    }
+}
+
 test givesCheck {
     root.init();
 
-    {
-        const board = try parseFen("3k4/8/8/8/1K1N4/8/8/8 w - - 0 1", true);
-        try std.testing.expect(board.givesCheck(Move.quiet(.d4, .c6)));
-        try std.testing.expect(!board.givesCheck(Move.quiet(.d4, .f5)));
+    inline for (.{
+        .{
+            .fen = "3k4/8/8/8/1K1N4/8/8/8 w - - 0 1",
+            .move = Move.quiet(.d4, .c6),
+        },
+        .{
+            .fen = "3k4/8/8/8/3K4/8/3B4/8 w - - 0 1",
+            .move = Move.quiet(.d2, .g5),
+        },
+        .{
+            .fen = "3k4/8/8/8/4K3/8/5R2/8 w - - 0 1",
+            .move = Move.quiet(.f2, .d2),
+        },
+        .{
+            .fen = "3k4/8/4P3/3K4/8/8/8/8 w - - 0 1",
+            .move = Move.quiet(.e6, .e7),
+        },
+    }) |case| {
+        const board = try parseFen(case.fen, true);
+        try std.testing.expect(board.isDirectCheck(case.move));
+        try std.testing.expect(board.givesCheck(case.move));
     }
 
-    {
-        const board = try parseFen("3k4/8/8/8/8/8/K2N4/3R4 w - - 0 1", true);
-        try std.testing.expect(board.givesCheck(Move.quiet(.d2, .f3)));
+    inline for (.{
+        .{
+            .fen = "3k4/8/8/8/1K1N4/8/8/8 w - - 0 1",
+            .move = Move.quiet(.d4, .f5),
+        },
+        .{
+            .fen = "3k4/8/8/8/3K4/8/3B4/8 w - - 0 1",
+            .move = Move.quiet(.d2, .e3),
+        },
+        .{
+            .fen = "3k4/8/8/8/4K3/8/5R2/8 w - - 0 1",
+            .move = Move.quiet(.f2, .f3),
+        },
+        .{
+            .fen = "3k4/8/8/3KP3/8/8/8/8 w - - 0 1",
+            .move = Move.quiet(.e5, .e6),
+        },
+    }) |case| {
+        const board = try parseFen(case.fen, true);
+        try std.testing.expect(!board.isDirectCheck(case.move));
+        try std.testing.expect(!board.givesCheck(case.move));
+    }
+
+    inline for (.{
+        .{
+            .fen = "3k4/8/8/8/8/8/K2N4/3R4 w - - 0 1",
+            .move = Move.quiet(.d2, .f3),
+        },
+        .{
+            .fen = "7k/8/8/8/8/8/KR6/B7 w - - 0 1",
+            .move = Move.quiet(.b2, .b3),
+        },
+    }) |case| {
+        const board = try parseFen(case.fen, true);
+        try std.testing.expect(board.discoveredCheck(case.move));
+        try std.testing.expect(board.givesCheck(case.move));
+    }
+
+    inline for (.{
+        .{
+            .fen = "3k4/8/8/8/1K1N4/8/8/8 w - - 0 1",
+            .move = Move.quiet(.d4, .c6),
+        },
+        .{
+            .fen = "3k4/8/8/8/8/8/K2N4/3R4 w - - 0 1",
+            .move = Move.quiet(.a2, .a3),
+        },
+    }) |case| {
+        const board = try parseFen(case.fen, true);
+        try std.testing.expect(!board.discoveredCheck(case.move));
     }
 }
 
