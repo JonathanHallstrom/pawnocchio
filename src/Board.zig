@@ -112,6 +112,14 @@ pub inline fn lesserThreatsFor(self: *const Board, col: Colour) u64 {
     return self.lesser_threats[col.toInt()];
 }
 
+pub inline fn pinnedFor(self: *const Board, col: Colour) u64 {
+    return self.pinned[col.toInt()];
+}
+
+fn pinnedPtrFor(self: *Board, col: Colour) *u64 {
+    return &self.pinned[col.toInt()];
+}
+
 pub inline fn checkingSquaresFor(self: *const Board, pt: PieceType) u64 {
     return self.checking_squares[pt.toInt()];
 }
@@ -971,7 +979,7 @@ inline fn updateKingThreats(self: *Board, comptime stm: Colour) void {
                     self.checkers |= slider_sq.toBitboard();
                 },
                 1 => if (pieces_between & occ != 0) {
-                    self.pinned[victim.toInt()] |= pieces_between;
+                    self.pinnedPtrFor(victim).* |= pieces_between;
                 },
                 else => {},
             }
@@ -1042,7 +1050,14 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
 pub inline fn isDirectCheck(noalias self: *const Board, move: Move) bool {
     const piece = if (move.tp() == .promotion) move.promoType() else self.pieceOn(move.from()).?;
     if (piece == .king) return false;
-    return self.checking_squares[piece.toInt()] & move.to().toBitboard() != 0;
+    return (&self.checking_squares)[piece.toInt()] & move.to().toBitboard() != 0;
+}
+
+pub inline fn givesCheck(noalias self: *const Board, move: Move) bool {
+    if (self.pinnedFor(self.stm.flipped()) & move.from().toBitboard() != 0) {
+        return true;
+    }
+    return self.isDirectCheck(move);
 }
 
 fn hasDirectCheck(noalias self: *const Board) bool {
@@ -1084,7 +1099,7 @@ test hasDirectCheck {
 }
 
 pub inline fn hasCheck(noalias self: *const Board) bool {
-    if ((&self.pinned)[self.stm.flipped().toInt()] & self.occupancyFor(self.stm) != 0) {
+    if (self.pinnedFor(self.stm.flipped()) & self.occupancyFor(self.stm) != 0) {
         return true;
     }
     return self.hasDirectCheck();
@@ -1097,6 +1112,21 @@ test hasCheck {
         "3k4/8/3K4/8/8/8/8/3R4 w - - 0 1",
     }) |fen| {
         try std.testing.expect((try parseFen(fen, true)).hasCheck());
+    }
+}
+
+test givesCheck {
+    root.init();
+
+    {
+        const board = try parseFen("3k4/8/8/8/1K1N4/8/8/8 w - - 0 1", true);
+        try std.testing.expect(board.givesCheck(Move.quiet(.d4, .c6)));
+        try std.testing.expect(!board.givesCheck(Move.quiet(.d4, .f5)));
+    }
+
+    {
+        const board = try parseFen("3k4/8/8/8/8/8/K2N4/3R4 w - - 0 1", true);
+        try std.testing.expect(board.givesCheck(Move.quiet(.d2, .f3)));
     }
 }
 
@@ -1384,7 +1414,7 @@ pub fn hasLegalMove(self: *const Board) bool {
 
 fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const rook_from = move.to();
-    if (self.pinned[stm.toInt()] & rook_from.toBitboard() != 0) {
+    if (self.pinnedFor(stm) & rook_from.toBitboard() != 0) {
         return false;
     }
     const rook_to = self.castlingRookDestFor(move, stm);
@@ -1433,7 +1463,7 @@ pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool
         return attackers == 0;
     }
 
-    if (self.pinned[stm.toInt()] & from.toBitboard() != 0) {
+    if (self.pinnedFor(stm) & from.toBitboard() != 0) {
         return Bitboard.extendingRayBb(from, to) & self.kingFor(stm) != 0;
     }
 
@@ -1532,7 +1562,7 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         return false;
     }
 
-    if ((&self.pinned)[stm.toInt()] & from_bb != 0) {
+    if (self.pinnedFor(stm) & from_bb != 0) {
         if (Bitboard.extendingRayBb(from, to) & self.kingFor(stm) == 0) {
             return false;
         }
