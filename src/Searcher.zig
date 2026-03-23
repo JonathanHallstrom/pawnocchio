@@ -690,6 +690,9 @@ fn qsearch(
         if (score > alpha) {
             best_move = move;
             alpha = score;
+            if (is_pv) {
+                self.updatePv(move);
+            }
             if (score >= beta) {
                 score_type = .lower;
                 break;
@@ -1227,7 +1230,7 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
-                return evaluation.clampScore(s_beta);
+                return @intCast(s_beta);
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
