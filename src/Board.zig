@@ -55,8 +55,9 @@ castling_rights: CastlingRights = CastlingRights.init(),
 pinned: [2]u64 = @splat(0),
 // pinner: [2]u64 = @splat(0),
 checkers: u64 = 0,
-checking_squares: [5]u64 = .{0} ** 5,
+checking_squares: [5]u64 = @splat(0),
 threats: [2]u64 = @splat(0),
+threats_by: [2][PieceType.all.len]u64 = @splat(@splat(0)),
 lesser_threats: [2]u64 = @splat(0),
 
 pub inline fn white(self: *const Board) u64 {
@@ -97,6 +98,22 @@ pub fn occupancyPtrFor(self: *Board, col: Colour) *u64 {
 
 pub inline fn occupancy(self: *const Board) u64 {
     return (&self.bbs)[6] | (&self.bbs)[7];
+}
+
+pub inline fn threatsFor(self: *const Board, col: Colour) u64 {
+    return self.threats[col.toInt()];
+}
+
+pub inline fn threatsBy(self: *const Board, col: Colour, pt: PieceType) u64 {
+    return self.threats_by[col.toInt()][pt.toInt()];
+}
+
+pub inline fn lesserThreatsFor(self: *const Board, col: Colour) u64 {
+    return self.lesser_threats[col.toInt()];
+}
+
+pub inline fn checkingSquaresFor(self: *const Board, pt: PieceType) u64 {
+    return self.checking_squares[pt.toInt()];
 }
 
 pub inline fn pawnsFor(self: *const Board, col: Colour) u64 {
@@ -873,41 +890,52 @@ pub fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, 
 
 pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     const occ = self.occupancy();
-    var threatened: u64 = 0;
+    const pawn_threats = Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
+    const knight_threats = Bitboard.knightMoveBitBoard(self.knightsFor(col));
+    var bishop_threats: u64 = 0;
+    var rook_threats: u64 = 0;
+    var queen_threats: u64 = 0;
+    const king_threats = Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
     var lesser_threatened: u64 = 0;
-
-    threatened |= Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
 
     // threatened now has all pieces attacked by pawns
     // so knights and bishops would be worth more
-    lesser_threatened |= (self.knights() | self.bishops()) & threatened;
-
-    threatened |= Bitboard.knightMoveBitBoard(self.knightsFor(col));
+    lesser_threatened |= (self.knights() | self.bishops()) & pawn_threats;
     var iter = Bitboard.iterator(self.bishopsFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.bishopAttacks(sq, occ);
+        bishop_threats |= attacks.bishopAttacks(sq, occ);
     }
 
     // threatened now has all pieces attacked by pawns or by knights or bishops
     // so rooks are worth more than the attacking pieces
-    lesser_threatened |= self.rooks() & threatened;
+    const minor_threats = pawn_threats | knight_threats | bishop_threats;
+    lesser_threatened |= self.rooks() & minor_threats;
 
     iter = Bitboard.iterator(self.rooksFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.rookAttacks(sq, occ);
+        rook_threats |= attacks.rookAttacks(sq, occ);
     }
 
     // threatened now has all pieces attacked by pawns or by knights or bishops or rooks
     // so queens are worth more than the attacking pieces
-    lesser_threatened |= self.queens() & threatened;
+    const major_threats = minor_threats | rook_threats;
+    lesser_threatened |= self.queens() & major_threats;
 
     iter = Bitboard.iterator(self.queensFor(col));
     while (iter.next()) |sq| {
-        threatened |= attacks.bishopAttacks(sq, occ) | attacks.rookAttacks(sq, occ);
+        queen_threats |= attacks.bishopAttacks(sq, occ) | attacks.rookAttacks(sq, occ);
     }
 
-    threatened |= Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
+    const threatened = pawn_threats | knight_threats | bishop_threats | rook_threats | queen_threats | king_threats;
     self.threats[col.toInt()] = threatened;
+    self.threats_by[col.toInt()] = .{
+        pawn_threats,
+        knight_threats,
+        bishop_threats,
+        rook_threats,
+        queen_threats,
+        king_threats,
+    };
     self.lesser_threats[col.toInt()] = lesser_threatened;
 }
 
@@ -928,7 +956,6 @@ inline fn updateKingThreats(self: *Board, comptime stm: Colour) void {
 
     inline for (.{ Colour.white, Colour.black }) |victim| {
         const king_sq = Square.fromBitboard(self.kingFor(victim));
-        const victim_occ = self.occupancyFor(victim);
         const attacker = victim.flipped();
         const rook_sliders = (self.rooks() | self.queens()) & self.occupancyFor(attacker);
         const bishop_sliders = (self.bishops() | self.queens()) & self.occupancyFor(attacker);
@@ -943,7 +970,7 @@ inline fn updateKingThreats(self: *Board, comptime stm: Colour) void {
                 0 => if (victim == stm) {
                     self.checkers |= slider_sq.toBitboard();
                 },
-                1 => if (pieces_between & victim_occ != 0) {
+                1 => if (pieces_between & occ != 0) {
                     self.pinned[victim.toInt()] |= pieces_between;
                 },
                 else => {},
@@ -1009,14 +1036,68 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     self.ep_target = null;
     self.halfmove += 1;
     self.stm = stm.flipped();
-
-    // dont call updateMasks since there has been no change in the position, especially not checkers
+    self.updateMasks(stm.flipped());
 }
 
 pub inline fn isDirectCheck(noalias self: *const Board, move: Move) bool {
     const piece = if (move.tp() == .promotion) move.promoType() else self.pieceOn(move.from()).?;
     if (piece == .king) return false;
     return self.checking_squares[piece.toInt()] & move.to().toBitboard() != 0;
+}
+
+fn hasDirectCheck(noalias self: *const Board) bool {
+    const forward: i8 = if (self.stm == .white) 1 else -1;
+    var checks: u64 = self.checkingSquaresFor(.pawn) & Bitboard.move(self.pawnsFor(self.stm), forward, 0);
+
+    inline for ([_]root.PieceType{
+        .knight,
+        .bishop,
+        .rook,
+        .queen,
+    }) |pt| {
+        checks |= self.threatsBy(self.stm, pt) & self.checkingSquaresFor(pt);
+    }
+    checks &= ~self.occupancyFor(self.stm);
+
+    return checks != 0;
+}
+
+test hasDirectCheck {
+    root.init();
+    inline for (.{
+        "3k4/8/8/8/1K1N4/8/8/8 w - - 0 1",
+        "3k4/8/8/8/3K4/8/3B4/8 w - - 0 1",
+        "3k4/8/3K4/8/8/8/5R2/8 w - - 0 1",
+        "3k4/8/4P3/3K4/8/8/8/8 w - - 0 1",
+    }) |fen| {
+        try std.testing.expect((try parseFen(fen, true)).hasDirectCheck());
+    }
+
+    inline for (.{
+        "3k4/8/8/3K4/8/8/8/3R4 w - - 0 1",
+        "3k4/8/8/3K4/8/8/8/8 w - - 0 1",
+        "3k4/8/8/3K1N2/8/8/8/8 w - - 0 1",
+        "3k4/8/8/3KP3/8/8/8/8 w - - 0 1",
+    }) |fen| {
+        try std.testing.expect(!(try parseFen(fen, true)).hasDirectCheck());
+    }
+}
+
+pub inline fn hasCheck(noalias self: *const Board) bool {
+    if ((&self.pinned)[self.stm.flipped().toInt()] & self.occupancyFor(self.stm) != 0) {
+        return true;
+    }
+    return self.hasDirectCheck();
+}
+
+test hasCheck {
+    root.init();
+    inline for (.{
+        "3k4/8/8/8/8/8/K2N4/3R4 w - - 0 1",
+        "3k4/8/3K4/8/8/8/8/3R4 w - - 0 1",
+    }) |fen| {
+        try std.testing.expect((try parseFen(fen, true)).hasCheck());
+    }
 }
 
 pub fn makeMoveSimple(noalias self: *Board, move: Move) void {

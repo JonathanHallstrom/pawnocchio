@@ -652,6 +652,7 @@ fn qsearch(
             if (history_score < tunables.qs_hp_margin) {
                 break;
             }
+
             if (!is_in_check and
                 futility <= alpha and
                 !is_recapture and
