@@ -1053,8 +1053,12 @@ pub inline fn isDirectCheck(noalias self: *const Board, move: Move) bool {
     return (&self.checking_squares)[piece.toInt()] & move.to().toBitboard() != 0;
 }
 
+pub inline fn discoveredCheck(noalias self: *const Board, move: Move) bool {
+    return self.pinnedFor(self.stm.flipped()) & move.from().toBitboard() != 0;
+}
+
 pub inline fn givesCheck(noalias self: *const Board, move: Move) bool {
-    if (self.pinnedFor(self.stm.flipped()) & move.from().toBitboard() != 0) {
+    if (self.discoveredCheck(move)) {
         return true;
     }
     return self.isDirectCheck(move);
