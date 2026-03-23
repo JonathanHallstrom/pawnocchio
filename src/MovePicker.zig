@@ -21,7 +21,7 @@ const root = @import("root.zig");
 const Move = root.Move;
 const Board = root.Board;
 const ScoredMove = root.ScoredMove;
-const MoveReceiver = root.FilteringMoveReceiver;
+const MoveReceiver = movegen.MoveListReceiver;
 const movegen = root.movegen;
 const SEE = root.SEE;
 const PieceType = root.PieceType;
@@ -61,7 +61,6 @@ pub fn init(
     is_singular_search: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
-    movelist_.filter = ttmove_;
     var stage: Stage = undefined;
     if (is_singular_search or ttmove_.isNull()) {
         @branchHint(.unpredictable);
@@ -89,7 +88,6 @@ pub fn initQs(
     skip_quiets: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
-    movelist_.filter = ttmove_;
     var stage: Stage = undefined;
     if (ttmove_.isNull()) {
         @branchHint(.unpredictable);
@@ -219,7 +217,11 @@ pub fn next(
                 continue :sw .generate_quiets;
             }
             const best_idx = self.findBest();
-            const res = TypedMove.fromBoard(board, self.prev_move, self.movelist.vals.slice()[best_idx]);
+            const move = self.movelist.vals.slice()[best_idx];
+            if (move == self.ttmove) {
+                continue :sw .good_noisies;
+            }
+            const res = TypedMove.fromBoard(board, self.prev_move, move);
             const history_score = histories.readNoisy(board, res);
             const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
                 root.tuning.tunable_constants.good_noisy_ordering_base;
@@ -250,7 +252,11 @@ pub fn next(
             if (self.first == self.last or self.skip_quiets) {
                 continue :sw .bad_noisy_prep;
             }
-            return TypedMove.fromBoard(board, self.prev_move, self.movelist.vals.slice()[self.findBest()]);
+            const move = self.movelist.vals.slice()[self.findBest()];
+            if (move == self.ttmove) {
+                continue :sw .quiets;
+            }
+            return TypedMove.fromBoard(board, self.prev_move, move);
         },
         .bad_noisy_prep => {
             self.first = 0;
@@ -262,7 +268,11 @@ pub fn next(
             if (self.first == self.last) {
                 return null;
             }
-            return TypedMove.fromBoard(board, self.prev_move, self.movelist.vals.slice()[self.findBest()]);
+            const move = self.movelist.vals.slice()[self.findBest()];
+            if (move == self.ttmove) {
+                continue :sw .bad_noisies;
+            }
+            return TypedMove.fromBoard(board, self.prev_move, move);
         },
     };
 }

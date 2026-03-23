@@ -196,7 +196,7 @@ pub inline fn readTT(self: *const Searcher, hash: u64) TTCluster.TTData {
 
 pub const StackEntry = struct {
     board: Board,
-    movelist: root.FilteringMoveReceiver,
+    movelist: root.movegen.MoveListReceiver,
     scores: [256]i32,
     move: TypedMove,
     move_is_noisy: bool,
