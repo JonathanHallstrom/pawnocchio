@@ -168,6 +168,10 @@ inline fn noisyValue(
     res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
     res += histories.readNoisy(board, typed);
 
+    if (board.discoveredCheck(typed.move)) {
+        res += 1024;
+    }
+
     return res;
 }
 
