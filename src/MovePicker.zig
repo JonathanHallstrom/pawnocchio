@@ -197,7 +197,7 @@ pub fn next(
                 continue :sw .generate_noisies;
             }
             self.stage = .generate_noisies;
-            if (board.isPseudoLegal(stm, self.ttmove)) {
+            if (board.isLegal(stm, self.ttmove)) {
                 return TypedMove.fromBoard(board, self.prev_move, self.ttmove);
             }
             continue :sw .generate_noisies;

@@ -54,24 +54,7 @@ pub inline fn generateAll(noalias board: *const Board, noalias move_receiver: an
 
 pub inline fn legalMoveList(noalias board: *const Board) MoveListReceiver {
     var move_receiver = MoveListReceiver{};
-    switch (board.stm) {
-        inline else => |stm| {
-            generateAllNoisies(stm, board, &move_receiver);
-            generateAllQuiets(stm, board, &move_receiver);
-
-            var num_legal: usize = 0;
-
-            const slice = move_receiver.vals.slice();
-            for (slice) |move| {
-                slice[num_legal] = move;
-                if (board.isLegal(stm, move)) {
-                    num_legal += 1;
-                }
-            }
-
-            move_receiver.vals.len = num_legal;
-        },
-    }
+    generateAll(board, &move_receiver);
     return move_receiver;
 }
 
@@ -163,6 +146,18 @@ pub inline fn getAttacks(comptime col: Colour, pt: PieceType, square: Square, oc
     };
 }
 
+fn pawnPinMasks(comptime stm: Colour, noalias board: *const Board) struct { u64, u64, u64, u64 } {
+    const king_sq = Square.fromBitboard(board.kingFor(stm));
+    const ki = king_sq.toInt();
+    const pinned = board.pinnedFor(stm);
+    const file_pin_mask = @as(u64, 0x0101010101010101) << @intCast(king_sq.getFile().toInt());
+    const ne_sw_diag = Bitboard.rayArrayPtr(1, 1)[ki] | Bitboard.rayArrayPtr(-1, -1)[ki] | king_sq.toBitboard();
+    const nw_se_diag = Bitboard.rayArrayPtr(1, -1)[ki] | Bitboard.rayArrayPtr(-1, 1)[ki] | king_sq.toBitboard();
+    const left_pin_mask = if (stm == .white) nw_se_diag else ne_sw_diag;
+    const right_pin_mask = if (stm == .white) ne_sw_diag else nw_se_diag;
+    return .{ pinned, file_pin_mask, left_pin_mask, right_pin_mask };
+}
+
 pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
     const d_rank = if (stm == .white) 1 else -1;
 
@@ -174,8 +169,10 @@ pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Boa
 
     const pawns = board.pawnsFor(stm);
     const occ = board.occupancy();
+    const pinned, const file_pin_mask, _, _ = pawnPinMasks(stm, board);
+    const pushable = (pawns & ~pinned) | (pawns & pinned & file_pin_mask);
 
-    const one_forward = Bitboard.move(pawns, d_rank, 0) & ~occ & ~promo_mask;
+    const one_forward = Bitboard.move(pushable, d_rank, 0) & ~occ & ~promo_mask;
     {
         var iter = Bitboard.iterator(one_forward & check_mask);
         while (iter.next()) |sq| {
@@ -191,7 +188,7 @@ pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Boa
         }
     }
 
-    const under_promos = Bitboard.move(pawns, d_rank, 0) & ~occ & promo_mask & check_mask;
+    const under_promos = Bitboard.move(pushable, d_rank, 0) & ~occ & promo_mask & check_mask;
     {
         var iter = Bitboard.iterator(under_promos);
         while (iter.next()) |sq| {
@@ -211,8 +208,12 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
     const pawns = board.pawnsFor(stm);
     const them = board.occupancyFor(stm.flipped());
     const occ = board.occupancy();
+    const pinned, const file_pin_mask, const left_pin_mask, const right_pin_mask = pawnPinMasks(stm, board);
+    const left_movable = (pawns & ~pinned) | (pawns & pinned & left_pin_mask);
+    const right_movable = (pawns & ~pinned) | (pawns & pinned & right_pin_mask);
+    const pushable = (pawns & ~pinned) | (pawns & pinned & file_pin_mask);
 
-    const left_captures = Bitboard.move(pawns, d_rank, -1) & them & check_mask;
+    const left_captures = Bitboard.move(left_movable, d_rank, -1) & them & check_mask;
     const left_captures_non_promo = left_captures & ~promo_mask;
     {
         var iter = Bitboard.iterator(left_captures_non_promo);
@@ -220,7 +221,7 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
             move_receiver.receive(Move.capture(sq.move(-d_rank, 1), sq));
         }
     }
-    const right_captures = Bitboard.move(pawns, d_rank, 1) & them & check_mask;
+    const right_captures = Bitboard.move(right_movable, d_rank, 1) & them & check_mask;
     const right_captures_non_promo = right_captures & ~promo_mask;
     {
         var iter = Bitboard.iterator(right_captures_non_promo);
@@ -251,7 +252,7 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
         }
     }
 
-    const queen_promos = Bitboard.move(pawns, d_rank, 0) & ~occ & promo_mask & check_mask;
+    const queen_promos = Bitboard.move(pushable, d_rank, 0) & ~occ & promo_mask & check_mask;
     {
         var iter = Bitboard.iterator(queen_promos);
         while (iter.next()) |sq| {
@@ -260,13 +261,29 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
     }
 
     if (board.ep_target) |target| {
-        if (Bitboard.move(pawns, d_rank, -1) & target.toBitboard() != 0) {
-            move_receiver.receive(Move.enPassant(target.move(-d_rank, 1), target));
+        const captured_sq = target.move(-d_rank, 0);
+        const captured_bb = captured_sq.toBitboard();
+        if (board.checkers & ~captured_bb != 0) return;
+
+        if (Bitboard.move(left_movable, d_rank, -1) & target.toBitboard() != 0) {
+            const from = target.move(-d_rank, 1);
+            if (isEpLegal(stm, board, from, target, captured_sq, occ)) {
+                move_receiver.receive(Move.enPassant(from, target));
+            }
         }
-        if (Bitboard.move(pawns, d_rank, 1) & target.toBitboard() != 0) {
-            move_receiver.receive(Move.enPassant(target.move(-d_rank, -1), target));
+        if (Bitboard.move(right_movable, d_rank, 1) & target.toBitboard() != 0) {
+            const from = target.move(-d_rank, -1);
+            if (isEpLegal(stm, board, from, target, captured_sq, occ)) {
+                move_receiver.receive(Move.enPassant(from, target));
+            }
         }
     }
+}
+
+fn isEpLegal(comptime stm: Colour, noalias board: *const Board, from: Square, to: Square, captured: Square, occ: u64) bool {
+    const king_sq = Square.fromBitboard(board.kingFor(stm));
+    const occ_after = occ ^ from.toBitboard() ^ to.toBitboard() ^ captured.toBitboard();
+    return slidingAttackersFor(stm.flipped(), board, king_sq, occ_after) == 0;
 }
 
 pub inline fn generateKnightQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
@@ -299,8 +316,9 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
     const king = board.kingFor(stm);
     const king_sq = Square.fromBitboard(king);
     const occ = board.occupancy();
+    const their_threats = board.threatsFor(stm.flipped());
 
-    var to_iter = Bitboard.iterator(Bitboard.kingMoves(king_sq) & ~occ);
+    var to_iter = Bitboard.iterator(Bitboard.kingMoves(king_sq) & ~occ & ~their_threats);
     while (to_iter.next()) |to| {
         move_receiver.receive(Move.quiet(king_sq, to));
     }
@@ -314,16 +332,17 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
         const kingside_rook_square = Square.fromRankFile(home_rank, kingside_rook_file);
         const queenside_rook_square = Square.fromRankFile(home_rank, queenside_rook_file);
 
-        const can_kingside_castle = board.castling_rights.kingsideCastlingFor(stm) and
-            Bitboard.queenRayBetweenExclusive(king_sq, kingside_rook_square) & occ == 0;
-        const can_queenside_castle = board.castling_rights.queensideCastlingFor(stm) and
-            Bitboard.queenRayBetweenExclusive(king_sq, queenside_rook_square) & occ == 0;
-
-        if (can_kingside_castle) {
-            move_receiver.receive(Move.castlingKingside(stm, king_sq, kingside_rook_square));
+        if (board.castling_rights.kingsideCastlingFor(stm)) {
+            const castle_move = Move.castlingKingside(stm, king_sq, kingside_rook_square);
+            if (board.isCastlingMoveLegal(stm, castle_move)) {
+                move_receiver.receive(castle_move);
+            }
         }
-        if (can_queenside_castle) {
-            move_receiver.receive(Move.castlingQueenside(stm, king_sq, queenside_rook_square));
+        if (board.castling_rights.queensideCastlingFor(stm)) {
+            const castle_move = Move.castlingQueenside(stm, king_sq, queenside_rook_square);
+            if (board.isCastlingMoveLegal(stm, castle_move)) {
+                move_receiver.receive(castle_move);
+            }
         }
     }
 }
@@ -331,13 +350,12 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
 pub inline fn generateKingNoisies(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
     const king = board.kingFor(stm);
     const them = board.occupancyFor(stm.flipped());
+    const their_threats = board.threatsFor(stm.flipped());
+    const king_sq = Square.fromBitboard(king);
 
-    var from_iter = Bitboard.iterator(king);
-    while (from_iter.next()) |from| {
-        var to_iter = Bitboard.iterator(Bitboard.kingMoves(from) & them);
-        while (to_iter.next()) |to| {
-            move_receiver.receive(Move.quiet(from, to));
-        }
+    var to_iter = Bitboard.iterator(Bitboard.kingMoves(king_sq) & them & ~their_threats);
+    while (to_iter.next()) |to| {
+        move_receiver.receive(Move.capture(king_sq, to));
     }
 }
 
