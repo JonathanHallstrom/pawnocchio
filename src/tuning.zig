@@ -19,8 +19,8 @@ const factorized = @import("tuning/factorized.zig");
 const tuning_schema = @import("tuning/schema.zig");
 const tuning_generated = @import("tuning_generated");
 
-pub const do_tuning = true;
-pub const do_factorized_tuning = true;
+pub const do_tuning = false;
+pub const do_factorized_tuning = false;
 
 pub const Tunable = tuning_generated.Tunable;
 pub const FactorizedTunable = tuning_generated.FactorizedTunable;
