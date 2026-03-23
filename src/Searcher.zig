@@ -1287,7 +1287,7 @@ fn search(
                 reduction += @as(i32, tunables.lmr_alpha_raise_mult) * alpha_raises;
 
                 if (tt_pv) {
-                    const r_score = tt_entry.flags.getScoreType() != .none and tt_entry.score > alpha;
+                    const r_score = tt_entry.flags.getScoreType().givesLowerBound() and tt_entry.score > alpha;
                     const r_depth = tt_entry.flags.getScoreType() != .none and tt_entry.depth >= depth;
                     reduction -= tunables.lmr_ttpv_score * @intFromBool(r_score);
                     reduction -= tunables.lmr_ttpv_depth * @intFromBool(r_depth);
