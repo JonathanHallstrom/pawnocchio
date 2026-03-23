@@ -928,7 +928,6 @@ inline fn updateKingThreats(self: *Board, comptime stm: Colour) void {
 
     inline for (.{ Colour.white, Colour.black }) |victim| {
         const king_sq = Square.fromBitboard(self.kingFor(victim));
-        const victim_occ = self.occupancyFor(victim);
         const attacker = victim.flipped();
         const rook_sliders = (self.rooks() | self.queens()) & self.occupancyFor(attacker);
         const bishop_sliders = (self.bishops() | self.queens()) & self.occupancyFor(attacker);
@@ -943,7 +942,7 @@ inline fn updateKingThreats(self: *Board, comptime stm: Colour) void {
                 0 => if (victim == stm) {
                     self.checkers |= slider_sq.toBitboard();
                 },
-                1 => if (pieces_between & victim_occ != 0) {
+                1 => if (pieces_between & occ != 0) {
                     self.pinned[victim.toInt()] |= pieces_between;
                 },
                 else => {},
@@ -1017,6 +1016,36 @@ pub inline fn isDirectCheck(noalias self: *const Board, move: Move) bool {
     const piece = if (move.tp() == .promotion) move.promoType() else self.pieceOn(move.from()).?;
     if (piece == .king) return false;
     return self.checking_squares[piece.toInt()] & move.to().toBitboard() != 0;
+}
+
+pub fn givesCheck(noalias self: *const Board, comptime stm: Colour, move: Move) bool {
+    var res = self.isDirectCheck(move);
+
+    const ntm_pinned = (&self.pinned)[stm.flipped().toInt()];
+    const is_discovery = Bitboard.contains(ntm_pinned, move.from());
+
+    // probably too rare to be useful
+    // const ntm_king = self.kingFor(stm.flipped());
+    // const ntm_king_sq = Square.fromBitboard(ntm_king);
+    // const ray = Bitboard.queenRayBetweenExclusive(
+    //     ntm_king_sq,
+    //     move.from(),
+    // );
+    // const fake_discovery = Bitboard.contains(ray, move.to());
+
+    if (is_discovery) {
+        @branchHint(.unpredictable);
+        res = true;
+    }
+
+    return res;
+}
+
+test givesCheck {
+    const pos = try Board.parseFen("3k4/8/8/8/8/8/K2N4/3R4 w - - 0 1", false);
+
+    try std.testing.expect(!pos.isDirectCheck(Move.quiet(.d2, .b3)));
+    try std.testing.expect(pos.givesCheck(.white, Move.quiet(.d2, .b3)));
 }
 
 pub fn makeMoveSimple(noalias self: *Board, move: Move) void {

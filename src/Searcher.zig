@@ -656,7 +656,7 @@ fn qsearch(
                 futility <= alpha and
                 !is_recapture and
                 @abs(alpha) <= 2000 and
-                !board.isDirectCheck(move) and
+                !board.givesCheck(stm, move) and
                 !SEE.scoreMove(board, move, 1, .pruning))
             {
                 if (!evaluation.isTBScore(best_score)) {
