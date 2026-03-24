@@ -650,7 +650,7 @@ fn qsearch(
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, typed);
             if (history_score < tunables.qs_hp_margin) {
-                break;
+                continue;
             }
 
             if (!is_in_check and
