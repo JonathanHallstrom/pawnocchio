@@ -1231,7 +1231,18 @@ fn search(
                     }
                 }
             } else if (s_beta >= beta) {
-                return @intCast(s_beta);
+                const value: i16 = @intCast(s_beta);
+                self.writeTT(
+                    tt_pv,
+                    tt_hash,
+                    move,
+                    value,
+                    .lower,
+                    s_depth,
+                    raw_static_eval,
+                );
+
+                return value;
             } else if (cutnode) {
                 extension -= 3;
             } else if (tt_entry.score >= beta) {
