@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+const builtin = @import("builtin");
 const std = @import("std");
 const root = @import("root.zig");
 
@@ -33,6 +34,12 @@ pub const MoveListReceiver = struct {
     fn receive(self: *@This(), move: Move) void {
         self.vals.appendAssumeCapacity(move);
     }
+
+    pub fn receiveMany(self: *@This(), chunk: @Vector(32, u16), count: usize) void {
+        const moves: [32]Move = @bitCast(chunk);
+        @memcpy(self.vals.unusedCapacitySlice()[0..32], moves[0..32]);
+        self.vals.len += count;
+    }
 };
 
 pub const CountReceiver = struct {
@@ -42,6 +49,88 @@ pub const CountReceiver = struct {
         self.count += 1;
     }
 };
+
+const has_vbmi2 = builtin.cpu.has(.x86, .avx512vbmi2);
+
+inline fn moveBits(from: u8, to: u8, flag: u16) u16 {
+    return @as(u16, from) | @as(u16, to) << 6 | flag << 12;
+}
+
+const default_move_template: [64][64]u16 = blk: {
+    @setEvalBranchQuota(10_000);
+    var table: [64][64]u16 = undefined;
+    for (0..64) |from| {
+        for (0..64) |to| {
+            table[from][to] = moveBits(@intCast(from), @intCast(to), Move.default_flag);
+        }
+    }
+    break :blk table;
+};
+
+fn offsetMoveTemplate(comptime from_rank_delta: i8, comptime from_file_delta: i8, comptime flag: u16) [64]u16 {
+    @setEvalBranchQuota(10_000);
+    var table = [_]u16{0} ** 64;
+    for (0..64) |to_idx| {
+        const to_rank: i8 = @intCast(to_idx / 8);
+        const to_file: i8 = @intCast(to_idx % 8);
+        const from_rank = to_rank + from_rank_delta;
+        const from_file = to_file + from_file_delta;
+        if (from_rank >= 0 and from_rank < 8 and from_file >= 0 and from_file < 8) {
+            const to: u8 = @intCast(to_idx);
+            const from: u8 = @intCast(from_rank * 8 + from_file);
+            table[to_idx] = moveBits(from, to, flag);
+        }
+    }
+    return table;
+}
+
+fn vpcompressw(src: @Vector(32, u16), mask: u32) @Vector(32, u16) {
+    return asm ("vpcompressw %[src], %[ret] {%[mask]} {z}"
+        : [ret] "=x" (-> @Vector(32, u16)),
+        : [src] "x" (src),
+          [mask] "{k1}" (mask),
+    );
+}
+
+inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) void {
+    const ReceiverType = @TypeOf(receiver.*);
+    if (ReceiverType == CountReceiver) {
+        receiver.count += @popCount(bb);
+        return;
+    }
+    if (comptime has_vbmi2 and std.meta.hasFn(ReceiverType, "receiveMany")) {
+        const lo: u32 = @truncate(bb);
+        const hi: u32 = @truncate(bb >> 32);
+        const lo_count: usize = @popCount(lo);
+        const hi_count: usize = @popCount(hi);
+        if (lo_count != 0) {
+            receiver.receiveMany(vpcompressw(template[0..32].*, lo), lo_count);
+        }
+        if (hi_count != 0) {
+            receiver.receiveMany(vpcompressw(template[32..64].*, hi), hi_count);
+        }
+    } else {
+        var it = Bitboard.iterator(bb);
+        while (it.next()) |to| {
+            receiver.receive(@as(Move, @enumFromInt(template[to.toInt()])));
+        }
+    }
+}
+
+inline fn emitBB(from: Square, bb: u64, receiver: anytype) void {
+    emitTemplateBB(&default_move_template[from.toInt()], bb, receiver);
+}
+
+inline fn emitOffsetBB(
+    comptime from_rank_delta: i8,
+    comptime from_file_delta: i8,
+    comptime flag: u16,
+    bb: u64,
+    receiver: anytype,
+) void {
+    const template = comptime offsetMoveTemplate(from_rank_delta, from_file_delta, flag);
+    emitTemplateBB(&template, bb, receiver);
+}
 
 pub inline fn generateAll(noalias board: *const Board, noalias move_receiver: anytype) void {
     switch (board.stm) {
@@ -54,24 +143,7 @@ pub inline fn generateAll(noalias board: *const Board, noalias move_receiver: an
 
 pub inline fn legalMoveList(noalias board: *const Board) MoveListReceiver {
     var move_receiver = MoveListReceiver{};
-    switch (board.stm) {
-        inline else => |stm| {
-            generateAllNoisies(stm, board, &move_receiver);
-            generateAllQuiets(stm, board, &move_receiver);
-
-            var num_legal: usize = 0;
-
-            const slice = move_receiver.vals.slice();
-            for (slice) |move| {
-                slice[num_legal] = move;
-                if (board.isLegal(stm, move)) {
-                    num_legal += 1;
-                }
-            }
-
-            move_receiver.vals.len = num_legal;
-        },
-    }
+    generateAll(board, &move_receiver);
     return move_receiver;
 }
 
@@ -163,7 +235,20 @@ pub inline fn getAttacks(comptime col: Colour, pt: PieceType, square: Square, oc
     };
 }
 
+fn pawnPinMasks(comptime stm: Colour, noalias board: *const Board) struct { u64, u64, u64, u64 } {
+    const king_sq = Square.fromBitboard(board.kingFor(stm));
+    const ki = king_sq.toInt();
+    const pinned = board.pinnedFor(stm);
+    const file_pin_mask = @as(u64, 0x0101010101010101) << @intCast(king_sq.getFile().toInt());
+    const ne_sw_diag = Bitboard.rayArrayPtr(1, 1)[ki] | Bitboard.rayArrayPtr(-1, -1)[ki] | king_sq.toBitboard();
+    const nw_se_diag = Bitboard.rayArrayPtr(1, -1)[ki] | Bitboard.rayArrayPtr(-1, 1)[ki] | king_sq.toBitboard();
+    const left_pin_mask = if (stm == .white) nw_se_diag else ne_sw_diag;
+    const right_pin_mask = if (stm == .white) ne_sw_diag else nw_se_diag;
+    return .{ pinned, file_pin_mask, left_pin_mask, right_pin_mask };
+}
+
 pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
+    const ReceiverType = @TypeOf(move_receiver.*);
     const d_rank = if (stm == .white) 1 else -1;
 
     const double_move_destination_rank = if (stm == .white) 3 else 4;
@@ -174,25 +259,19 @@ pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Boa
 
     const pawns = board.pawnsFor(stm);
     const occ = board.occupancy();
+    const pinned, const file_pin_mask, _, _ = pawnPinMasks(stm, board);
+    const pushable = (pawns & ~pinned) | (pawns & pinned & file_pin_mask);
 
-    const one_forward = Bitboard.move(pawns, d_rank, 0) & ~occ & ~promo_mask;
-    {
-        var iter = Bitboard.iterator(one_forward & check_mask);
-        while (iter.next()) |sq| {
-            move_receiver.receive(Move.quiet(sq.move(-d_rank, 0), sq));
-        }
-    }
+    const one_forward = Bitboard.move(pushable, d_rank, 0) & ~occ & ~promo_mask;
+    emitOffsetBB(if (stm == .white) -1 else 1, 0, Move.default_flag, one_forward & check_mask, move_receiver);
 
     const two_forward = Bitboard.move(one_forward, d_rank, 0) & ~occ & double_move_mask & check_mask;
-    {
-        var iter = Bitboard.iterator(two_forward);
-        while (iter.next()) |sq| {
-            move_receiver.receive(Move.quiet(sq.move(2 * -d_rank, 0), sq));
-        }
-    }
+    emitOffsetBB(if (stm == .white) -2 else 2, 0, Move.default_flag, two_forward, move_receiver);
 
-    const under_promos = Bitboard.move(pawns, d_rank, 0) & ~occ & promo_mask & check_mask;
-    {
+    const under_promos = Bitboard.move(pushable, d_rank, 0) & ~occ & promo_mask & check_mask;
+    if (ReceiverType == CountReceiver) {
+        move_receiver.count += @popCount(under_promos) * 3;
+    } else {
         var iter = Bitboard.iterator(under_promos);
         while (iter.next()) |sq| {
             move_receiver.receive(Move.promo(sq.move(-d_rank, 0), sq, .knight));
@@ -203,6 +282,7 @@ pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Boa
 }
 
 pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
+    const ReceiverType = @TypeOf(move_receiver.*);
     const d_rank = if (stm == .white) 1 else -1;
 
     const final_rank: u6 = board.startingRankFor(stm.flipped()).toInt();
@@ -211,26 +291,22 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
     const pawns = board.pawnsFor(stm);
     const them = board.occupancyFor(stm.flipped());
     const occ = board.occupancy();
+    const pinned, const file_pin_mask, const left_pin_mask, const right_pin_mask = pawnPinMasks(stm, board);
+    const left_movable = (pawns & ~pinned) | (pawns & pinned & left_pin_mask);
+    const right_movable = (pawns & ~pinned) | (pawns & pinned & right_pin_mask);
+    const pushable = (pawns & ~pinned) | (pawns & pinned & file_pin_mask);
 
-    const left_captures = Bitboard.move(pawns, d_rank, -1) & them & check_mask;
+    const left_captures = Bitboard.move(left_movable, d_rank, -1) & them & check_mask;
     const left_captures_non_promo = left_captures & ~promo_mask;
-    {
-        var iter = Bitboard.iterator(left_captures_non_promo);
-        while (iter.next()) |sq| {
-            move_receiver.receive(Move.capture(sq.move(-d_rank, 1), sq));
-        }
-    }
-    const right_captures = Bitboard.move(pawns, d_rank, 1) & them & check_mask;
+    emitOffsetBB(if (stm == .white) -1 else 1, 1, Move.default_flag, left_captures_non_promo, move_receiver);
+    const right_captures = Bitboard.move(right_movable, d_rank, 1) & them & check_mask;
     const right_captures_non_promo = right_captures & ~promo_mask;
-    {
-        var iter = Bitboard.iterator(right_captures_non_promo);
-        while (iter.next()) |sq| {
-            move_receiver.receive(Move.capture(sq.move(-d_rank, -1), sq));
-        }
-    }
+    emitOffsetBB(if (stm == .white) -1 else 1, -1, Move.default_flag, right_captures_non_promo, move_receiver);
 
     const left_capture_promos = left_captures & promo_mask;
-    {
+    if (ReceiverType == CountReceiver) {
+        move_receiver.count += @popCount(left_capture_promos) * 4;
+    } else {
         var iter = Bitboard.iterator(left_capture_promos);
         while (iter.next()) |sq| {
             move_receiver.receive(Move.promo(sq.move(-d_rank, 1), sq, .queen));
@@ -241,7 +317,9 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
     }
 
     const right_capture_promos = right_captures & promo_mask;
-    {
+    if (ReceiverType == CountReceiver) {
+        move_receiver.count += @popCount(right_capture_promos) * 4;
+    } else {
         var iter = Bitboard.iterator(right_capture_promos);
         while (iter.next()) |sq| {
             move_receiver.receive(Move.promo(sq.move(-d_rank, -1), sq, .queen));
@@ -251,47 +329,58 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
         }
     }
 
-    const queen_promos = Bitboard.move(pawns, d_rank, 0) & ~occ & promo_mask & check_mask;
-    {
-        var iter = Bitboard.iterator(queen_promos);
-        while (iter.next()) |sq| {
-            move_receiver.receive(Move.promo(sq.move(-d_rank, 0), sq, .queen));
-        }
-    }
+    const queen_promos = Bitboard.move(pushable, d_rank, 0) & ~occ & promo_mask & check_mask;
+    emitOffsetBB(
+        if (stm == .white) -1 else 1,
+        0,
+        Move.promotion_flag | (@as(u16, PieceType.queen.toInt()) - 1),
+        queen_promos,
+        move_receiver,
+    );
 
     if (board.ep_target) |target| {
-        if (Bitboard.move(pawns, d_rank, -1) & target.toBitboard() != 0) {
-            move_receiver.receive(Move.enPassant(target.move(-d_rank, 1), target));
+        const captured_sq = target.move(-d_rank, 0);
+        const captured_bb = captured_sq.toBitboard();
+        if (board.checkers & ~captured_bb != 0) return;
+
+        if (Bitboard.move(left_movable, d_rank, -1) & target.toBitboard() != 0) {
+            const from = target.move(-d_rank, 1);
+            if (isEpLegal(stm, board, from, target, captured_sq, occ)) {
+                move_receiver.receive(Move.enPassant(from, target));
+            }
         }
-        if (Bitboard.move(pawns, d_rank, 1) & target.toBitboard() != 0) {
-            move_receiver.receive(Move.enPassant(target.move(-d_rank, -1), target));
+        if (Bitboard.move(right_movable, d_rank, 1) & target.toBitboard() != 0) {
+            const from = target.move(-d_rank, -1);
+            if (isEpLegal(stm, board, from, target, captured_sq, occ)) {
+                move_receiver.receive(Move.enPassant(from, target));
+            }
         }
     }
 }
 
+fn isEpLegal(comptime stm: Colour, noalias board: *const Board, from: Square, to: Square, captured: Square, occ: u64) bool {
+    const king_sq = Square.fromBitboard(board.kingFor(stm));
+    const occ_after = occ ^ from.toBitboard() ^ to.toBitboard() ^ captured.toBitboard();
+    return slidingAttackersFor(stm.flipped(), board, king_sq, occ_after) == 0;
+}
+
 pub inline fn generateKnightQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
-    const knights = board.knightsFor(stm) & ~(&board.pinned)[stm.toInt()];
+    const knights = board.knightsFor(stm) & ~board.pinnedFor(stm);
     const occ = board.occupancy();
 
     var from_iter = Bitboard.iterator(knights);
     while (from_iter.next()) |from| {
-        var to_iter = Bitboard.iterator(Bitboard.knightMoves(from) & ~occ & check_mask);
-        while (to_iter.next()) |to| {
-            move_receiver.receive(Move.quiet(from, to));
-        }
+        emitBB(from, Bitboard.knightMoves(from) & ~occ & check_mask, move_receiver);
     }
 }
 
 pub inline fn generateKnightNoisies(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
-    const knights = board.knightsFor(stm);
+    const knights = board.knightsFor(stm) & ~board.pinnedFor(stm);
     const them = board.occupancyFor(stm.flipped());
 
-    var from_iter = Bitboard.iterator(knights & ~(&board.pinned)[stm.toInt()]);
+    var from_iter = Bitboard.iterator(knights);
     while (from_iter.next()) |from| {
-        var to_iter = Bitboard.iterator(Bitboard.knightMoves(from) & them & check_mask);
-        while (to_iter.next()) |to| {
-            move_receiver.receive(Move.capture(from, to));
-        }
+        emitBB(from, Bitboard.knightMoves(from) & them & check_mask, move_receiver);
     }
 }
 
@@ -299,11 +388,9 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
     const king = board.kingFor(stm);
     const king_sq = Square.fromBitboard(king);
     const occ = board.occupancy();
+    const their_threats = board.threatsFor(stm.flipped());
 
-    var to_iter = Bitboard.iterator(Bitboard.kingMoves(king_sq) & ~occ);
-    while (to_iter.next()) |to| {
-        move_receiver.receive(Move.quiet(king_sq, to));
-    }
+    emitBB(king_sq, Bitboard.kingMoves(king_sq) & ~occ & ~their_threats, move_receiver);
 
     if (board.checkers == 0) {
         const home_rank: Rank = board.startingRankFor(stm);
@@ -314,16 +401,17 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
         const kingside_rook_square = Square.fromRankFile(home_rank, kingside_rook_file);
         const queenside_rook_square = Square.fromRankFile(home_rank, queenside_rook_file);
 
-        const can_kingside_castle = board.castling_rights.kingsideCastlingFor(stm) and
-            Bitboard.queenRayBetweenExclusive(king_sq, kingside_rook_square) & occ == 0;
-        const can_queenside_castle = board.castling_rights.queensideCastlingFor(stm) and
-            Bitboard.queenRayBetweenExclusive(king_sq, queenside_rook_square) & occ == 0;
-
-        if (can_kingside_castle) {
-            move_receiver.receive(Move.castlingKingside(stm, king_sq, kingside_rook_square));
+        if (board.castling_rights.kingsideCastlingFor(stm)) {
+            const castle_move = Move.castlingKingside(stm, king_sq, kingside_rook_square);
+            if (board.isCastlingMoveLegal(stm, castle_move)) {
+                move_receiver.receive(castle_move);
+            }
         }
-        if (can_queenside_castle) {
-            move_receiver.receive(Move.castlingQueenside(stm, king_sq, queenside_rook_square));
+        if (board.castling_rights.queensideCastlingFor(stm)) {
+            const castle_move = Move.castlingQueenside(stm, king_sq, queenside_rook_square);
+            if (board.isCastlingMoveLegal(stm, castle_move)) {
+                move_receiver.receive(castle_move);
+            }
         }
     }
 }
@@ -331,14 +419,10 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
 pub inline fn generateKingNoisies(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
     const king = board.kingFor(stm);
     const them = board.occupancyFor(stm.flipped());
+    const their_threats = board.threatsFor(stm.flipped());
+    const king_sq = Square.fromBitboard(king);
 
-    var from_iter = Bitboard.iterator(king);
-    while (from_iter.next()) |from| {
-        var to_iter = Bitboard.iterator(Bitboard.kingMoves(from) & them);
-        while (to_iter.next()) |to| {
-            move_receiver.receive(Move.quiet(from, to));
-        }
-    }
+    emitBB(king_sq, Bitboard.kingMoves(king_sq) & them & ~their_threats, move_receiver);
 }
 
 pub inline fn generateSliderQuiets(comptime stm: Colour, noalias board: *const Board, check_mask: u64, noalias move_receiver: anytype) void {
@@ -350,28 +434,42 @@ pub inline fn generateSliderQuiets(comptime stm: Colour, noalias board: *const B
     const bishop_sliders = bishops | queens;
 
     const occ = board.occupancy();
+    const pinned = board.pinnedFor(stm);
+    const king_sq = Square.fromBitboard(board.kingFor(stm));
     {
-        var from_iter = Bitboard.iterator(rook_sliders);
+        var from_iter = Bitboard.iterator(rook_sliders & ~pinned);
         while (from_iter.next()) |from| {
-            var reachable = attacks.rookAttacks(from, occ) & ~occ & check_mask;
-            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
-                reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
-            var to_iter = Bitboard.iterator(reachable);
-            while (to_iter.next()) |to| {
-                move_receiver.receive(Move.quiet(from, to));
-            }
+            const reachable = attacks.rookAttacks(from, occ) & ~occ & check_mask;
+            emitBB(from, reachable, move_receiver);
         }
     }
     {
-        var from_iter = Bitboard.iterator(bishop_sliders);
+        var from_iter = Bitboard.iterator(rook_sliders & pinned);
         while (from_iter.next()) |from| {
-            var reachable = attacks.bishopAttacks(from, occ) & ~occ & check_mask;
-            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
-                reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
-            var to_iter = Bitboard.iterator(reachable);
-            while (to_iter.next()) |to| {
-                move_receiver.receive(Move.quiet(from, to));
-            }
+            const reachable =
+                attacks.rookAttacks(from, occ) &
+                ~occ &
+                check_mask &
+                Bitboard.extendingRayBb(king_sq, from);
+            emitBB(from, reachable, move_receiver);
+        }
+    }
+    {
+        var from_iter = Bitboard.iterator(bishop_sliders & ~pinned);
+        while (from_iter.next()) |from| {
+            const reachable = attacks.bishopAttacks(from, occ) & ~occ & check_mask;
+            emitBB(from, reachable, move_receiver);
+        }
+    }
+    {
+        var from_iter = Bitboard.iterator(bishop_sliders & pinned);
+        while (from_iter.next()) |from| {
+            const reachable =
+                attacks.bishopAttacks(from, occ) &
+                ~occ &
+                check_mask &
+                Bitboard.extendingRayBb(king_sq, from);
+            emitBB(from, reachable, move_receiver);
         }
     }
 }
@@ -386,30 +484,43 @@ pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const 
 
     const occ = board.occupancy();
     const them = board.occupancyFor(stm.flipped());
+    const pinned = board.pinnedFor(stm);
+    const king_sq = Square.fromBitboard(board.kingFor(stm));
 
     {
-        var from_iter = Bitboard.iterator(rook_sliders);
+        var from_iter = Bitboard.iterator(rook_sliders & ~pinned);
         while (from_iter.next()) |from| {
-            var reachable = attacks.rookAttacks(from, occ) & them & check_mask;
-            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
-                reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
-            var to_iter = Bitboard.iterator(reachable);
-            while (to_iter.next()) |to| {
-                move_receiver.receive(Move.quiet(from, to));
-            }
+            const reachable = attacks.rookAttacks(from, occ) & them & check_mask;
+            emitBB(from, reachable, move_receiver);
         }
     }
     {
-        var from_iter = Bitboard.iterator(bishop_slides);
+        var from_iter = Bitboard.iterator(rook_sliders & pinned);
         while (from_iter.next()) |from| {
-            var reachable = attacks.bishopAttacks(from, occ) & them & check_mask;
-            if (from.toBitboard() & (&board.pinned)[stm.toInt()] != 0)
-                reachable &= Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(stm)), from);
-
-            var to_iter = Bitboard.iterator(reachable);
-            while (to_iter.next()) |to| {
-                move_receiver.receive(Move.quiet(from, to));
-            }
+            const reachable =
+                attacks.rookAttacks(from, occ) &
+                them &
+                check_mask &
+                Bitboard.extendingRayBb(king_sq, from);
+            emitBB(from, reachable, move_receiver);
+        }
+    }
+    {
+        var from_iter = Bitboard.iterator(bishop_slides & ~pinned);
+        while (from_iter.next()) |from| {
+            const reachable = attacks.bishopAttacks(from, occ) & them & check_mask;
+            emitBB(from, reachable, move_receiver);
+        }
+    }
+    {
+        var from_iter = Bitboard.iterator(bishop_slides & pinned);
+        while (from_iter.next()) |from| {
+            const reachable =
+                attacks.bishopAttacks(from, occ) &
+                them &
+                check_mask &
+                Bitboard.extendingRayBb(king_sq, from);
+            emitBB(from, reachable, move_receiver);
         }
     }
 }

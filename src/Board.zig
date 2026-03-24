@@ -528,7 +528,7 @@ pub fn toFen(self: Board) BoundedArray(u8, 128) {
                 movegen.generateAllNoisies(stm_comptime, &self, &rec);
 
                 for (rec.vals.slice()) |move| {
-                    if (self.isEnPassant(move) and self.isLegal(stm_comptime, move)) {
+                    if (self.isEnPassant(move)) {
                         valid = true;
                         break;
                     }
@@ -897,7 +897,7 @@ pub fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, 
 }
 
 pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
-    const occ = self.occupancy();
+    const occ = self.occupancy() ^ self.kingFor(col.flipped());
     const pawn_threats = Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
     const knight_threats = Bitboard.knightMoveBitBoard(self.knightsFor(col));
     var bishop_threats: u64 = 0;
@@ -1325,8 +1325,6 @@ pub inline fn parseMoveStr(self: *const Board, str: []const u8) !Move {
             movegen.generateAllQuiets(stm, self, &rec);
 
             for (rec.vals.slice()) |move| {
-                if (!self.isLegal(stm, move)) continue;
-
                 if (std.mem.eql(u8, move.toString(self).slice(), str)) {
                     return move;
                 }
@@ -1351,9 +1349,6 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
                 root.movegen.generateKingQuiets(stm, self, &ml);
                 const queenside = san_move_inp.len >= "O-O-O".len and std.mem.eql(u8, san_move_inp[0..5], "O-O-O");
                 for (ml.vals.slice()) |move| {
-                    if (!self.isLegal(stm, move)) {
-                        continue;
-                    }
                     if (move.tp() != .castling) {
                         continue;
                     }
@@ -1423,10 +1418,6 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
                 if (promo_type != move_promotype) {
                     continue;
                 }
-                if (!self.isLegal(stm, move)) {
-                    continue;
-                }
-
                 if (!std.debug.runtime_safety) {
                     return move;
                 }
@@ -1479,7 +1470,7 @@ pub fn pickMoveDatagen(self: *Board, rng: std.Random) ?Move {
             }
             std.sort.pdq(root.ScoredMove, ml.vals.slice(), void{}, root.ScoredMove.desc);
             for (ml.vals.slice()) |m| {
-                if (self.isLegal(stm, m.move) and root.SEE.scoreMove(self, m.move, -200, .pruning)) {
+                if (root.SEE.scoreMove(self, m.move, -200, .pruning)) {
                     return m.move;
                 }
             }
@@ -1491,26 +1482,16 @@ pub fn pickMoveDatagen(self: *Board, rng: std.Random) ?Move {
 pub fn hasLegalMove(self: *const Board) bool {
     switch (self.stm) {
         inline else => |stm| {
-            var ml = root.movegen.MoveListReceiver{};
+            var ml = root.movegen.CountReceiver{};
             root.movegen.generateAllNoisies(stm, self, &ml);
-            for (ml.vals.slice()) |m| {
-                if (self.isLegal(stm, m)) {
-                    return true;
-                }
-            }
-            ml.vals.clear();
+            if (ml.count > 0) return true;
             root.movegen.generateAllQuiets(stm, self, &ml);
-            for (ml.vals.slice()) |m| {
-                if (self.isLegal(stm, m)) {
-                    return true;
-                }
-            }
-            return false;
+            return ml.count > 0;
         },
     }
 }
 
-fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
+pub fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const rook_from = move.to();
     if (self.pinnedFor(stm) & rook_from.toBitboard() != 0) {
         return false;
@@ -1533,42 +1514,7 @@ fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move) boo
     return need_to_be_unattacked & self.threats[stm.flipped().toInt()] == 0;
 }
 
-pub inline fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
-    const move_tp = move.tp();
-    if (move_tp == .castling) {
-        return self.isCastlingMoveLegal(stm, move);
-    }
-    const from = move.from();
-    const to = move.to();
-    const pt = self.colouredPieceOn(from).?;
-    assert(pt.toColour() == stm);
-    if (pt.toPieceType() == .king) {
-        const attackers = movegen.attackersFor(stm.flipped(), self, to, self.occupancy() ^ from.toBitboard());
-        return attackers == 0;
-    }
-
-    if (move_tp == .ep) {
-        const pawn_d_rank = if (stm == .white) 1 else -1;
-        const captured = to.move(-pawn_d_rank, 0);
-        const occ_change = from.toBitboard() ^ to.toBitboard() ^ captured.toBitboard();
-
-        const attackers = movegen.slidingAttackersFor(
-            stm.flipped(),
-            self,
-            Square.fromBitboard(self.kingFor(stm)),
-            self.occupancy() ^ occ_change,
-        );
-        return attackers == 0;
-    }
-
-    if (self.pinnedFor(stm) & from.toBitboard() != 0) {
-        return Bitboard.extendingRayBb(from, to) & self.kingFor(stm) != 0;
-    }
-
-    return true;
-}
-
-pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
+pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const from = move.from();
     const to = move.to();
     if (from == to or move.isNull()) {
@@ -1596,38 +1542,62 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         if (!from_is_king or !to_is_rook) {
             return false;
         }
-        // no pieces in between is checked in `isLegal`
-        return true;
+
+        if (extra & 1 != stm.toInt()) {
+            return false;
+        }
+        const is_kingside = extra & 2 == 0;
+        if (is_kingside != (to.getFile().toInt() > from.getFile().toInt())) {
+            return false;
+        }
+
+        return self.isCastlingMoveLegal(stm, move);
     }
 
-    // equivalent since from != to
-    // (us_occ & from_bb == 0) or (us_occ & to_bb != 0)
-    // this saves 1 cycle
     if ((self.occupancyFor(stm) & (from_bb | to_bb)) != from_bb) {
         return false;
     }
 
     const pt = self.pieceOn(from).?;
 
-    // if we're in double check it has to be the king that moves, and it cant be castling
     if (self.checkers & self.checkers -% 1 != 0) {
         return pt == .king and
-            tp == .default and
-            Bitboard.kingMoves(from) & to_bb != 0;
+            tp == .default and move.extra() == 0 and
+            Bitboard.kingMoves(from) & to_bb != 0 and
+            self.threatsFor(stm.flipped()) & to_bb == 0 and
+            movegen.attackersFor(stm.flipped(), self, to, self.occupancy() ^ from_bb) == 0;
     }
 
     if (pt == .king) {
-        return Bitboard.kingMoves(from) & to_bb != 0 and tp == .default;
+        return Bitboard.kingMoves(from) & to_bb != 0 and
+            tp == .default and move.extra() == 0 and
+            self.threatsFor(stm.flipped()) & to_bb == 0 and
+            movegen.attackersFor(stm.flipped(), self, to, self.occupancy() ^ from_bb) == 0;
     }
 
     if (tp == .ep) {
-        return pt == .pawn and
-            to == self.ep_target and
-            Bitboard.pawnAttacks(from, stm) & to_bb != 0;
+        if (move.extra() != 0 or pt != .pawn or to != self.ep_target or Bitboard.pawnAttacks(from, stm) & to_bb == 0)
+            return false;
+
+        const pawn_d_rank = if (stm == .white) 1 else -1;
+        const captured = to.move(-pawn_d_rank, 0);
+        const occ_change = from_bb ^ to_bb ^ captured.toBitboard();
+        return movegen.slidingAttackersFor(
+            stm.flipped(),
+            self,
+            Square.fromBitboard(self.kingFor(stm)),
+            self.occupancy() ^ occ_change,
+        ) == 0;
     }
 
     if (self.checkers != 0) {
         if (Bitboard.checkMask(Square.fromBitboard(self.kingFor(stm)), Square.fromBitboard(self.checkers)) & to_bb == 0) {
+            return false;
+        }
+    }
+
+    if (self.pinnedFor(stm) & from_bb != 0) {
+        if (Bitboard.extendingRayBb(from, to) & self.kingFor(stm) == 0) {
             return false;
         }
     }
@@ -1639,6 +1609,9 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         const double_push_rank: Rank = if (stm == .white) .fourth else .fifth;
         const double_push_mask = @as(u64, 0b11111111) << @as(comptime_int, comptime double_push_rank.toInt()) * 8;
 
+        if ((to_bb & promo_mask != 0) != (tp == .promotion)) return false;
+        if (tp == .default and move.extra() != 0) return false;
+
         var allowed: u64 = 0;
         allowed |= Bitboard.move(from_bb, d_rank, 0) & ~self.occupancy();
         allowed |= Bitboard.move(allowed, d_rank, 0) & ~self.occupancy() & double_push_mask;
@@ -1646,24 +1619,13 @@ pub fn isPseudoLegal(self: *const Board, comptime stm: Colour, move: Move) bool 
         allowed |= Bitboard.move(from_bb, d_rank, 1) & self.occupancyFor(stm.flipped());
         allowed |= Bitboard.move(from_bb, d_rank, -1) & self.occupancyFor(stm.flipped());
 
-        if (tp == .promotion) {
-            allowed &= promo_mask;
-        }
-
         return allowed & to_bb != 0;
     } else if (tp == .promotion) {
         return false;
     }
 
-    // we already handled castling, ep, and promotion
-    if (tp != .default) {
+    if (tp != .default or move.extra() != 0) {
         return false;
-    }
-
-    if (self.pinnedFor(stm) & from_bb != 0) {
-        if (Bitboard.extendingRayBb(from, to) & self.kingFor(stm) == 0) {
-            return false;
-        }
     }
 
     return to_bb & switch (pt) {
@@ -1806,14 +1768,73 @@ pub const NullEvalState = struct {
 //     }
 // };
 
-// threadlocal var hash_backing: [1 << 20]HashPair = undefined;
+const plausible_moves = computePlausibleMoves();
+
+fn computePlausibleMoves() BoundedArray(Move, 8192) {
+    @setEvalBranchQuota(1_000_000);
+    var result: BoundedArray(Move, 8192) = .{};
+
+    for (0..64) |from_int| {
+        const from_rank = from_int / 8;
+        const from_file = from_int % 8;
+        const from = Square.fromInt(@intCast(from_int));
+
+        for (0..64) |to_int| {
+            if (from_int == to_int) continue;
+            const to_rank = to_int / 8;
+            const to_file = to_int % 8;
+            const to = Square.fromInt(@intCast(to_int));
+
+            const rank_diff = if (to_rank >= from_rank) to_rank - from_rank else from_rank - to_rank;
+            const file_diff = if (to_file >= from_file) to_file - from_file else from_file - to_file;
+
+            const is_queen = (rank_diff == 0 or file_diff == 0 or rank_diff == file_diff) and rank_diff <= 7 and file_diff <= 7;
+            const is_knight = (rank_diff == 1 and file_diff == 2) or (rank_diff == 2 and file_diff == 1);
+
+            if (is_queen or is_knight) {
+                result.appendAssumeCapacity(Move.quiet(from, to));
+            }
+
+            const is_white_promo = from_rank == 6 and to_rank == 7;
+            const is_black_promo = from_rank == 1 and to_rank == 0;
+            const is_pawn_push = file_diff == 0 and rank_diff == 1;
+            const is_pawn_capture = file_diff == 1 and rank_diff == 1;
+
+            if ((is_white_promo or is_black_promo) and (is_pawn_push or is_pawn_capture)) {
+                result.appendAssumeCapacity(Move.promo(from, to, .knight));
+                result.appendAssumeCapacity(Move.promo(from, to, .bishop));
+                result.appendAssumeCapacity(Move.promo(from, to, .rook));
+                result.appendAssumeCapacity(Move.promo(from, to, .queen));
+            }
+
+            const is_white_ep = from_rank == 4 and to_rank == 5;
+            const is_black_ep = from_rank == 3 and to_rank == 2;
+            if ((is_white_ep or is_black_ep) and is_pawn_capture) {
+                result.appendAssumeCapacity(Move.enPassant(from, to));
+            }
+
+            if ((from_rank == 0 and to_rank == 0) or (from_rank == 7 and to_rank == 7)) {
+                const col_offset: u16 = if (from_rank == 7) 1 else 0;
+                const ks = Move.castlingKingside(@enumFromInt(col_offset), from, to);
+                const qs = Move.castlingQueenside(@enumFromInt(col_offset), from, to);
+                result.appendAssumeCapacity(ks);
+                if (@intFromEnum(ks) != @intFromEnum(qs)) {
+                    result.appendAssumeCapacity(qs);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 fn perft_impl(
     self: *const Board,
     comptime is_root: bool,
     comptime stm: Colour,
     comptime quiet: bool,
+    comptime verify: bool,
     depth: i32,
-    // hashes_: []HashPair,
 ) u64 {
     if (depth == 0) return 1;
     var movelist = movegen.MoveListReceiver{};
@@ -1821,54 +1842,63 @@ fn perft_impl(
     movegen.generateAllQuiets(stm, self, &movelist);
     var res: u64 = 0;
 
-    // const hashes: []HashPair = if (is_root) &hash_backing else hashes_;
-    // if (is_root) {
-    //     @memset(&hash_backing, .{});
-    // }
-
-    // const new_entry = HashPair.init(self);
-    // const hash_for_indexing = new_entry.zobrist;
-    // const prev_entry = hashes[@intCast(hash_for_indexing % hashes.len)];
-    // if ((prev_entry.zobrist != new_entry.zobrist) != (prev_entry.crc != new_entry.crc)) {
-    //     std.debug.print(
-    //         \\--------------------------------------------
-    //         \\collision
-    //         \\crc: {} {}
-    //         \\zobrist: {} {}
-    //         \\fen: {s} {s}
-    //         \\--------------------------------------------
-    //         \\
-    //     , .{
-    //         prev_entry.crc,
-    //         new_entry.crc,
-    //         prev_entry.zobrist,
-    //         new_entry.zobrist,
-    //         prev_entry.b.toFen().slice(),
-    //         new_entry.b.toFen().slice(),
-    //     });
-    //     @panic("");
-    // }
-    // hashes[hash_for_indexing % hashes.len] = new_entry;
+    if (verify) {
+        var is_legal_count: usize = 0;
+        for (plausible_moves.slice()) |m| {
+            if (self.isLegal(stm, m)) is_legal_count += 1;
+        }
+        if (is_legal_count != movelist.vals.len) {
+            std.debug.print("mismatch at {s}: movegen={} legal={}\n", .{
+                self.toFen().slice(),
+                movelist.vals.len,
+                is_legal_count,
+            });
+            for (plausible_moves.slice()) |m| {
+                if (!self.isLegal(stm, m)) continue;
+                var found = false;
+                for (movelist.vals.slice()) |gen_move| {
+                    if (gen_move == m) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    std.debug.print("  extra: {s} (tp={} extra={})\n", .{
+                        m.toString(self).slice(),
+                        @intFromEnum(m.tp()),
+                        m.extra(),
+                    });
+                }
+            }
+            for (movelist.vals.slice()) |gen_move| {
+                var found = false;
+                for (plausible_moves.slice()) |m| {
+                    if (gen_move == m) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    std.debug.print("  missing: {s} (tp={} extra={})\n", .{
+                        gen_move.toString(self).slice(),
+                        @intFromEnum(gen_move.tp()),
+                        gen_move.extra(),
+                    });
+                }
+            }
+            std.debug.panic("legal movegen count ({}) does not match isLegal count ({})", .{
+                movelist.vals.len,
+                is_legal_count,
+            });
+        }
+    }
 
     if (depth == 1) {
-        for (movelist.vals.slice()) |move| {
-            const is_legal = self.isLegal(stm, move);
-            // if (is_legal and !self.isPseudoLegal(stm, move)) {
-            //     std.debug.print("{s} {s}\n", .{ self.toFen().slice(), move.toString(self).slice() });
-            //     @panic("not pseudolegal");
-            // }
-            res += @intFromBool(is_legal);
-            // if (is_root and is_legal and !quiet) {
-            //     std.debug.print("{s}: 1\n", .{move.toString(self).slice()});
-            // }
-        }
+        res += movelist.vals.len;
     } else {
         for (movelist.vals.slice()) |move| {
-            if (!self.isLegal(stm, move)) continue;
-            // assert(self.isPseudoLegal(stm, move));
             var cp = self.*;
             cp.makeMove(stm, move, NullEvalState{});
-            // std.debug.print("{} {s} {s}\n", .{depth, move.toString(self).slice(), self.toFen().slice()});
             if (is_root and !quiet) {
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
@@ -1876,8 +1906,8 @@ fn perft_impl(
                 false,
                 stm.flipped(),
                 quiet,
+                verify,
                 depth - 1,
-                // if (is_root) &hash_backing else hashes,
             );
             res += count;
             if (is_root and !quiet) {
@@ -1898,8 +1928,24 @@ pub fn perft(
             true,
             stm_comptime,
             quiet,
+            false,
             depth,
-            // &.{},
+        ),
+    };
+}
+
+pub fn perftVerify(
+    self: Board,
+    comptime quiet: bool,
+    depth: i32,
+) u64 {
+    return switch (self.stm) {
+        inline else => |stm_comptime| self.perft_impl(
+            true,
+            stm_comptime,
+            quiet,
+            true,
+            depth,
         ),
     };
 }
