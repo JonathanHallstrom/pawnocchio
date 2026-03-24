@@ -645,6 +645,10 @@ fn qsearch(
         const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
+            if (num_searched >= 3) {
+                break;
+            }
+
             const history_score = self.histories.readNoisy(board, typed);
             if (history_score < tunables.qs_hp_margin) {
                 continue;
