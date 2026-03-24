@@ -179,7 +179,7 @@ inline fn quietValue(
     const terms = histories.readMoveTerms(board, typed, conthist_tables, true);
     var res = tuning.histQ(terms, tuning.quietHistoryWeights("ord"));
 
-    if (board.isDirectCheck(typed.move)) {
+    if (board.givesCheck(typed.move)) {
         res += 5000;
     }
 
