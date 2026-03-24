@@ -646,7 +646,13 @@ fn qsearch(
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, typed);
-            if (history_score < tunables.qs_hp_margin) {
+            var hp_margin = tunables.qs_hp_margin;
+
+            if (is_recapture) {
+                hp_margin -= 1024;
+            }
+
+            if (history_score < hp_margin) {
                 continue;
             }
 
