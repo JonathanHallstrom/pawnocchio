@@ -191,7 +191,7 @@ inline fn quietValue(
     }
 
     if (root.Bitboard.contains(danger, typed.move.to())) {
-        res -= 2000;
+        res -= @max(2, typed.tp.toInt()) * @as(i32, 1000);
     }
 
     return res;
