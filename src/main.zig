@@ -324,14 +324,15 @@ pub fn main() !void {
                         mate_score_opt = -root.evaluation.matedIn(@abs(depth) * 2 - 1);
                     }
                 }
-                if (std.ascii.eqlIgnoreCase(command_part, "perft")) {
+                if (std.ascii.eqlIgnoreCase(command_part, "perft") or std.ascii.eqlIgnoreCase(command_part, "perft_verify")) {
+                    const do_verify = std.ascii.eqlIgnoreCase(command_part, "perft_verify");
                     const depth_to_parse = std.mem.trim(u8, parts.rest(), &std.ascii.whitespace);
                     const depth = std.fmt.parseInt(i32, depth_to_parse, 10) catch {
                         writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
                     var timer = std.time.Timer.start() catch unreachable;
-                    const nodes = board.perft(false, depth);
+                    const nodes = if (do_verify) board.perftVerify(false, depth) else board.perft(false, depth);
                     const elapsed_ns = timer.read();
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;

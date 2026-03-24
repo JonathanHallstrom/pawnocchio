@@ -208,7 +208,7 @@ pub inline fn readTT(self: *const Searcher, hash: u64) TTCluster.TTData {
 
 pub const StackEntry = struct {
     board: Board,
-    movelist: root.FilteringMoveReceiver,
+    movelist: root.movegen.MoveListReceiver,
     scores: [256]i32,
     move: TypedMove,
     move_is_noisy: bool,
@@ -641,9 +641,6 @@ fn qsearch(
         const move = typed.move;
         std.debug.assert(!move.isNull());
         self.prefetch(board, move);
-        if (!board.isLegal(stm, move)) {
-            continue;
-        }
 
         if (std.debug.runtime_safety and
             (mp.stage == .good_noisies or mp.stage == .bad_noisies))
@@ -656,7 +653,7 @@ fn qsearch(
         if (best_score > evaluation.matedIn(MAX_PLY)) {
             const history_score = self.histories.readNoisy(board, typed);
             if (history_score < tunables.qs_hp_margin) {
-                break;
+                continue;
             }
 
             if (!is_in_check and
@@ -1053,15 +1050,12 @@ fn search(
         }
         std.debug.assert(!move.isNull());
         self.prefetch(board, move);
-        if (!board.isLegal(stm, move)) {
-            continue;
-        }
         if (is_root) {
             self.root_move = self.root_move orelse move;
         }
         num_legal += 1;
 
-        if (is_root and !board.isPseudoLegal(stm, move)) {
+        if (is_root and !board.isLegal(stm, move)) {
             write("info string ERROR: Illegal move in root {s} {s}\n", .{ board.toFen().slice(), move.toString(board).slice() });
             continue;
         }
@@ -1718,7 +1712,7 @@ fn pickBestMove(b: *const Board) struct { i16, Move } {
         const move = searcher.root_move orelse continue;
         switch (b.stm) {
             inline else => |stm| {
-                if (!b.isPseudoLegal(stm, move) or !b.isLegal(stm, move)) {
+                if (!b.isLegal(stm, move)) {
                     write("info string Illegal move {s} encountered in root\n", .{move.toString(b).slice()});
                     continue;
                 }
@@ -1889,7 +1883,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 switch (board.stm) {
                     inline else => |stm| {
                         if (tt_hit and
-                            board.isPseudoLegal(stm, tt_entry.move) and
                             board.isLegal(stm, tt_entry.move))
                         {
                             move = tt_entry.move;
@@ -1903,9 +1896,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     for (list.vals.slice()) |mv| {
                         switch (board.stm) {
                             inline else => |stm| {
-                                if (board.isPseudoLegal(stm, mv) and
-                                    board.isLegal(stm, mv))
-                                {
+                                if (board.isLegal(stm, mv)) {
                                     move = mv;
                                     break;
                                 }

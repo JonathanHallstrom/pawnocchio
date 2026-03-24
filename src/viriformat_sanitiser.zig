@@ -165,10 +165,6 @@ fn parseSingleGame(
 
         switch (board.stm) {
             inline else => |stm| {
-                if (!board.isPseudoLegal(stm, move)) {
-                    error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
-                    return error.MoveNotPseudoLegal;
-                }
                 if (!board.isLegal(stm, move)) {
                     error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
                     return error.MoveNotLegal;
