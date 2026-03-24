@@ -178,7 +178,13 @@ inline fn quietValue(
     typed: TypedMove,
 ) i32 {
     const terms = histories.readMoveTerms(board, typed, conthist_tables, true);
-    return tuning.histQ(terms, tuning.quietHistoryWeights("ord"));
+    var res = tuning.histQ(terms, tuning.quietHistoryWeights("ord"));
+
+    if (board.isDirectCheck(typed.move)) {
+        res += 5000;
+    }
+
+    return res;
 }
 
 const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;
