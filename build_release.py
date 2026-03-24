@@ -14,6 +14,8 @@ builds = [
     ("x86_64", "windows", "x86_64", "znver4", None),
     ("x86_64", "windows", "x86_64", "znver5", None),
     ("aarch64", "windows", "aarch64", None, None),
+    ("aarch64", "windows", "aarch64", "baseline+dotprod", "aarch64-dotprod"),
+    ("aarch64", "windows", "aarch64", "baseline+dotprod+i8mm", "aarch64-modern"),
 
     ("x86_64", "linux", "x86_64", None, None),
     ("x86_64", "linux", "x86_64", "x86_64_v2", "x86_64_v2"),
@@ -26,9 +28,11 @@ builds = [
     ("x86_64", "linux", "x86_64", "znver5", None),
     ("aarch64", "linux", "aarch64", None, None),
     ("aarch64", "linux", "aarch64", "baseline+dotprod", "aarch64-dotprod"),
+    ("aarch64", "linux", "aarch64", "baseline+dotprod+i8mm", "aarch64-modern"),
 
     ("x86_64", "macos", "x86_64", None, None),
-    ("aarch64", "macos", "aarch64", None, None),
+    ("x86_64", "macos", "x86_64", "x86_64_v2", "x86_64_v2"),
+    ("aarch64", "macos", "aarch64", "apple_m1", "apple_m1"),
 ]
 
 commands = []
