@@ -1009,6 +1009,7 @@ fn search(
     );
     defer mp.deinit();
     var best_move = Move.init();
+    var best_move_hist: i32 = 0;
     var best_score = -evaluation.inf_score;
     var searched_quiets: BoundedArray(TypedMove, 16) = .{};
     var searched_noisies: BoundedArray(TypedMove, 8) = .{};
@@ -1086,6 +1087,8 @@ fn search(
             if (is_quiet) tuning.histQ(history_terms, lmr_hist_weights.q) else tuning.histN(history_terms, lmr_hist_weights.n);
         const rfp_hist_score =
             if (is_quiet) tuning.histQ(history_terms, rfp_hist_weights.q) else tuning.histN(history_terms, rfp_hist_weights.n);
+        const ord_score =
+            if (is_quiet) tuning.histQ(history_terms, tuning.quietHistoryWeights("ord")) else history_terms.noisy;
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const lmr_history_mult: i64 = if (is_quiet) tunables.lmr_quiet_history_mult else tunables.lmr_noisy_history_mult;
@@ -1388,6 +1391,7 @@ fn search(
 
         if (score > alpha) {
             best_move = move;
+            best_move_hist = ord_score;
             if (is_root) {
                 self.root_move = move;
                 self.root_score = best_score;
@@ -1457,7 +1461,7 @@ fn search(
 
         if (!is_in_check and (best_score <= alpha_original or
             board.isQuiet(best_move) or
-            !SEE.scoreMove(board, best_move, 0, .pruning)))
+            !SEE.scoreMove(board, best_move, -best_move_hist * 8 >> 10, .pruning)))
         {
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
