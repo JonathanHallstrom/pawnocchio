@@ -652,6 +652,9 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
     var approximator = if (approximate) try @import("HyperLogLog.zig").init(20, allocator) else undefined;
     defer if (approximate) approximator.deinit(allocator);
 
+    var score_diff_stats = @import("debug_stats.zig").Scalar{};
+    var rng = std.Random.DefaultPrng.init(0);
+
     const viriformat = root.viriformat;
     while (!br.atEnd()) {
         var marlin_board: viriformat.MarlinPackedBoard = undefined;
@@ -685,6 +688,7 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         var had_tb_win = false;
         var had_tb_draw = false;
         var had_tb_loss = false;
+        var prev_score: ?i32 = null;
         for (0..std.math.maxInt(usize)) |move_idx| {
             var move_eval_pair: viriformat.MoveEvalPair = undefined;
             br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
@@ -707,6 +711,12 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
             }
 
             const move = viri_move.toMove(&board);
+            const score = move_eval_pair.eval.toNative();
+            defer prev_score = score;
+
+            if (prev_score) |p| {
+                score_diff_stats.add(@abs(p - score), rng.random());
+            }
 
             switch (board.stm) {
                 inline else => |stm| {
@@ -740,7 +750,7 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
                     piece_counts[col.toInt()].getPtr(pt)[count] += 1;
                 }
             }
-            score_counts[@intCast(@as(isize, move_eval_pair.eval.toNative()) - std.math.minInt(i16))] += 1;
+            score_counts[@intCast(@as(isize, score) - std.math.minInt(i16))] += 1;
             if (approximate) {
                 approximator.add(board.hash);
             } else {
@@ -806,6 +816,8 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         formatPositionCounts(false, king_pos),
         formatPositionCounts(true, king_pos),
     });
+
+    write("score diff stats:\n{f}\n", .{score_diff_stats});
 
     write("writing score distribution to 'score_distribution.txt'\n", .{});
     var score_distr_file = try createOutputFile("score_distribution.txt", parsed.@"allow-overwrite");
