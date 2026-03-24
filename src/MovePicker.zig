@@ -176,12 +176,22 @@ inline fn quietValue(
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
     typed: TypedMove,
+    danger_squares: *const [6]u64,
 ) i32 {
     const terms = histories.readMoveTerms(board, typed, conthist_tables, true);
     var res = tuning.histQ(terms, tuning.quietHistoryWeights("ord"));
 
     if (board.isDirectCheck(typed.move)) {
         res += 5000;
+    }
+
+    const danger = danger_squares[typed.tp.toInt()];
+    if (root.Bitboard.contains(danger, typed.move.from())) {
+        res += @max(2, typed.tp.toInt()) * @as(i32, 2000);
+    }
+
+    if (root.Bitboard.contains(danger, typed.move.to())) {
+        res -= 2000;
     }
 
     return res;
@@ -245,8 +255,30 @@ pub fn next(
             }
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
+
+            const pawn = board.threatsBy(stm.flipped(), .pawn);
+            const knight = board.threatsBy(stm.flipped(), .knight);
+            const bishop = board.threatsBy(stm.flipped(), .bishop);
+            const rook = board.threatsBy(stm.flipped(), .rook);
+
+            const minor = pawn | knight | bishop;
+            const major = minor | rook;
+            const danger_squares: [6]u64 = .{
+                0,
+                pawn,
+                pawn,
+                minor,
+                major,
+                0,
+            };
             for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
-                self.scores[self.first + i] = quietValue(histories, conthist_tables, board, TypedMove.fromBoard(board, self.prev_move, move));
+                self.scores[self.first + i] = quietValue(
+                    histories,
+                    conthist_tables,
+                    board,
+                    TypedMove.fromBoard(board, self.prev_move, move),
+                    &danger_squares,
+                );
             }
             self.last = self.movelist.vals.len;
             self.stage = .quiets;
