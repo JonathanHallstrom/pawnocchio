@@ -1181,7 +1181,8 @@ fn search(
             var beta_mult: i32 = tunables.singular_beta_mult;
             beta_mult -= @intFromBool(is_pv) * tunables.singular_beta_pv_mult;
             beta_mult += @intFromBool(tt_pv) * tunables.singular_beta_ttpv_mult;
-            const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - depth * beta_mult, 1024));
+            const se_depth = depth >> @intFromBool(tt_entry.flags.getScoreType() == .exact);
+            const s_beta = @max(evaluation.matedIn(0) + 1, @divTrunc(tt_entry.score * @as(i32, 1024) - se_depth * beta_mult, 1024));
             const s_depth = depth * tunables.singular_depth_mult - tunables.singular_depth_offs >> 10;
 
             cur.excluded = move;
