@@ -1253,6 +1253,7 @@ fn search(
             defer self.unmakeMove(stm, move);
 
             const gives_check = self.stackEntry(0).board.checkers != 0;
+
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) {
                 self.node_counts[move.from().toInt()][move.to().toInt()] += self.nodes - node_count_before;

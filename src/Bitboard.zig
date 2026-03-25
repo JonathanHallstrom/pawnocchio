@@ -54,6 +54,16 @@ pub inline fn move(bitboard: u64, d_rank: anytype, d_file: anytype) u64 {
     return res;
 }
 
+pub fn fileBB(file: root.File) u64 {
+    const first_file = std.math.maxInt(u64) / std.math.maxInt(u8);
+    return first_file << @intCast(file.toInt());
+}
+
+pub fn rankBB(rank: root.Rank) u64 {
+    const first_rank: u64 = 0b11111111;
+    return first_rank << @intCast(rank.toInt() * 8);
+}
+
 pub fn pext(src: u64, mask: u64) u64 {
     if (@inComptime() or !std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2)) {
         var res: u64 = 0;

@@ -251,11 +251,8 @@ pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Boa
     const ReceiverType = @TypeOf(move_receiver.*);
     const d_rank = if (stm == .white) 1 else -1;
 
-    const double_move_destination_rank = if (stm == .white) 3 else 4;
-    const double_move_mask: u64 = 0b11111111 << 8 * double_move_destination_rank;
-
-    const final_rank: u6 = board.startingRankFor(stm.flipped()).toInt();
-    const promo_mask: u64 = @as(u64, 0b11111111) << 8 * final_rank;
+    const double_move_mask: u64 = Bitboard.rankBB(if (stm == .white) .fourth else .fifth);
+    const promo_mask: u64 = Bitboard.rankBB(board.startingRankFor(stm.flipped()));
 
     const pawns = board.pawnsFor(stm);
     const occ = board.occupancy();
@@ -285,8 +282,7 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
     const ReceiverType = @TypeOf(move_receiver.*);
     const d_rank = if (stm == .white) 1 else -1;
 
-    const final_rank: u6 = board.startingRankFor(stm.flipped()).toInt();
-    const promo_mask: u64 = @as(u64, 0b11111111) << 8 * final_rank;
+    const promo_mask: u64 = Bitboard.rankBB(board.startingRankFor(stm.flipped()));
 
     const pawns = board.pawnsFor(stm);
     const them = board.occupancyFor(stm.flipped());

@@ -190,11 +190,11 @@ pub const File = enum {
     g,
     h,
 
-    pub fn fromInt(int: u3) File {
+    pub fn fromInt(int: u8) File {
         return @enumFromInt(int);
     }
 
-    pub fn toInt(self: File) u3 {
+    pub fn toInt(self: File) u8 {
         return @intFromEnum(self);
     }
 
@@ -227,7 +227,7 @@ pub const Rank = enum {
         return @enumFromInt(int);
     }
 
-    pub fn toInt(self: Rank) u3 {
+    pub fn toInt(self: Rank) u8 {
         return @intFromEnum(self);
     }
 

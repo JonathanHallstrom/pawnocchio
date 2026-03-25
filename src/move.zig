@@ -118,8 +118,8 @@ pub const Move = enum(u16) {
         return PieceType.fromInt(@intCast(1 + self.extra()));
     }
 
-    pub fn getEnPassantPawnSquare(self: Move, comptime col: Colour) Square {
-        return self.to().move(if (col == .white) -1 else 1, 0);
+    pub fn getEnPassantPawnSquare(self: Move) Square {
+        return Square.fromRankFile(self.from().getRank(), self.to().getFile());
     }
 
     pub fn toString(self: Move, board: *const Board) BoundedArray(u8, 5) {

@@ -1047,10 +1047,15 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     self.updateMasks(stm.flipped());
 }
 
+fn destPiece(noalias self: *const Board, move: Move) PieceType {
+    return if (move.tp() == .promotion) move.promoType() else self.pieceOn(move.from()).?;
+}
+
 pub inline fn isDirectCheck(noalias self: *const Board, move: Move) bool {
-    const piece = if (move.tp() == .promotion) move.promoType() else self.pieceOn(move.from()).?;
+    const piece = self.destPiece(move);
     if (piece == .king) return false;
-    return (&self.checking_squares)[piece.toInt()] & move.to().toBitboard() != 0;
+
+    return self.checkingSquaresFor(piece) & move.to().toBitboard() != 0;
 }
 
 pub inline fn discoveredCheck(noalias self: *const Board, move: Move) bool {
@@ -1289,7 +1294,7 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
             @branchHint(.unlikely);
             const from = move.from();
             const to = move.to();
-            const target = move.getEnPassantPawnSquare(stm);
+            const target = move.getEnPassantPawnSquare();
             updated_halfmove = 0;
             self.movePieceCapture(stm, .pawn, from, to, .pawn, target, eval_state);
         },
