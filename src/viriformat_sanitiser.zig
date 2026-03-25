@@ -34,6 +34,8 @@ const ParseError = error{
     InputTooShortForMoveEvalPair,
     MoveNotPseudoLegal,
     MoveNotLegal,
+    MoveWronglyEncoded,
+    InvalidInitialPos,
 };
 
 const ErrorContext = struct {
@@ -41,6 +43,8 @@ const ErrorContext = struct {
     fen_buffer: BoundedArray(u8, 128) = .{},
     move_buffer: BoundedArray(u8, 5) = .{},
     score: ?i16 = null,
+    initial_position_from_file: ?viriformat.MarlinPackedBoard = null,
+    initial_position_decoded: ?viriformat.MarlinPackedBoard = null,
 
     fn reset(self: *ErrorContext) void {
         self.* = .{};
@@ -63,6 +67,17 @@ const ErrorContext = struct {
         self.score = score;
     }
 
+    fn captureInitialPositionDiff(
+        self: *ErrorContext,
+        board: *const Board,
+        initial_position_from_file: viriformat.MarlinPackedBoard,
+        initial_position_decoded: viriformat.MarlinPackedBoard,
+    ) void {
+        self.capturePos(0, board, null, null);
+        self.initial_position_from_file = initial_position_from_file;
+        self.initial_position_decoded = initial_position_decoded;
+    }
+
     fn fen(self: *const ErrorContext) ?[]const u8 {
         return if (self.fen_buffer.len == 0) null else self.fen_buffer.slice();
     }
@@ -71,6 +86,10 @@ const ErrorContext = struct {
         return if (self.move_buffer.len == 0) null else self.move_buffer.slice();
     }
 };
+
+fn isIgnoredInitialPositionField(comptime field_name: []const u8) bool {
+    return comptime std.mem.eql(u8, field_name, "eval") or std.mem.eql(u8, field_name, "extra");
+}
 
 fn printParsedGameLine(game: *const Game, error_ctx: *const ErrorContext) void {
     var board = game.initial_position.toBoard() catch return;
@@ -93,6 +112,34 @@ fn printParsedGameLine(game: *const Game, error_ctx: *const ErrorContext) void {
     std.debug.print("\n", .{});
 }
 
+fn printInitialPositionDiff(error_ctx: *const ErrorContext) void {
+    const initial_position_from_file = error_ctx.initial_position_from_file orelse return;
+    const initial_position_decoded = error_ctx.initial_position_decoded orelse return;
+
+    std.debug.print("  initial_position diff:\n", .{});
+    inline for (std.meta.fields(viriformat.MarlinPackedBoard)) |field| {
+        if (comptime isIgnoredInitialPositionField(field.name)) {
+            continue;
+        }
+        if (!std.meta.eql(@field(initial_position_from_file, field.name), @field(initial_position_decoded, field.name))) {
+            std.debug.print(
+                "    {s}: file={any} decoded={any}\n",
+                .{
+                    field.name,
+                    @field(initial_position_from_file, field.name),
+                    @field(initial_position_decoded, field.name),
+                },
+            );
+        }
+    }
+    std.debug.print("  initial_position bytes (file): {any}\n", .{
+        std.mem.asBytes(&initial_position_from_file),
+    });
+    std.debug.print("  initial_position bytes (decoded): {any}\n", .{
+        std.mem.asBytes(&initial_position_decoded),
+    });
+}
+
 fn isRecoverableParseError(e: anyerror) bool {
     return switch (e) {
         error.InputTooShortForHeader,
@@ -105,6 +152,8 @@ fn isRecoverableParseError(e: anyerror) bool {
         error.InputTooShortForMoveEvalPair,
         error.MoveNotPseudoLegal,
         error.MoveNotLegal,
+        error.MoveWronglyEncoded,
+        error.InvalidInitialPos,
         => true,
         else => false,
     };
@@ -114,6 +163,21 @@ const ParseGameError =
     ParseError ||
     viriformat.Error ||
     std.mem.Allocator.Error;
+
+fn sameInitialPosition(
+    a: viriformat.MarlinPackedBoard,
+    b: viriformat.MarlinPackedBoard,
+) bool {
+    inline for (std.meta.fields(viriformat.MarlinPackedBoard)) |field| {
+        if (comptime isIgnoredInitialPositionField(field.name)) {
+            continue;
+        }
+        if (!std.meta.eql(@field(a, field.name), @field(b, field.name))) {
+            return false;
+        }
+    }
+    return true;
+}
 
 fn parseSingleGame(
     input: []const u8,
@@ -140,6 +204,11 @@ fn parseSingleGame(
     game.reset(board);
     game.setOutCome(@enumFromInt(initial.wdl));
 
+    if (!sameInitialPosition(initial, game.initial_position)) {
+        error_ctx.captureInitialPositionDiff(&board, initial, game.initial_position);
+        return error.InvalidInitialPos;
+    }
+
     var prev_move: Move = undefined;
     while (i < input.len) {
         if (input.len - i < 4) {
@@ -162,6 +231,24 @@ fn parseSingleGame(
             break;
         }
         prev_move = move;
+
+        var moves = root.movegen.MoveListReceiver{};
+
+        root.movegen.generateAll(&board, &moves);
+
+        if (for (moves.vals.slice()) |generated| {
+            if (move == generated) break false;
+        } else true) {
+            error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
+            return error.MoveNotPseudoLegal;
+        }
+
+        if (for (moves.vals.slice()) |generated| {
+            if (move_eval.move.data == viriformat.ViriMove.fromMove(generated).data) break false;
+        } else true) {
+            error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
+            return error.MoveWronglyEncoded;
+        }
 
         switch (board.stm) {
             inline else => |stm| {
@@ -213,6 +300,7 @@ pub fn sanitiseBufferToFile(
                         std.debug.print("  final_fen: {s}\n", .{fen});
                         printParsedGameLine(&game, &error_ctx);
                     }
+                    printInitialPositionDiff(&error_ctx);
                 }
                 skipped += 1;
                 i += 1;
@@ -224,6 +312,7 @@ pub fn sanitiseBufferToFile(
                     std.debug.print("  final_fen: {s}\n", .{fen});
                     printParsedGameLine(&game, &error_ctx);
                 }
+                printInitialPositionDiff(&error_ctx);
             }
             return e;
         };
