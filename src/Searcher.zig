@@ -1088,7 +1088,7 @@ fn search(
             var lmr_depth: i32 = (depth << 10) - base_lmr;
 
             if (!is_pv and
-                num_searched >= lmp_margin)
+                num_searched >= lmp_margin + @as(i32, if (board.isDirectCheck(move)) 1 else 0))
             {
                 mp.skip_quiets = true;
                 if (is_quiet) {
