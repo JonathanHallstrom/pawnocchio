@@ -15,14 +15,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const build_options = @import("build_options");
 const root = @import("root.zig");
 const command_line = @import("command_line.zig");
 const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
 const Move = root.Move;
-
-const VERSION_STRING = "1.9.2";
 
 fn writeTuningOptions() void {
     var ctx: u8 = 0;
@@ -71,7 +70,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = if (std.debug.runtime_safety) gpa.allocator() else std.heap.smp_allocator;
 
-    if (try command_line.handle(allocator, VERSION_STRING)) {
+    if (try command_line.handle(allocator, build_options.version_string)) {
         return;
     }
 
@@ -126,7 +125,7 @@ pub fn main() !void {
         };
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
-            write("id name pawnocchio {s}\n", .{VERSION_STRING});
+            write("id name pawnocchio {s}\n", .{build_options.version_string});
             write("id author Jonathan Hallström\n", .{});
             write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
@@ -730,7 +729,7 @@ pub fn main() !void {
 
                 board = Board.parseFen(fen_to_parse, true) catch |e| {
                     if (!started_with_position) {
-                        command_line.writeHelpText(VERSION_STRING);
+                        command_line.writeHelpText(build_options.version_string);
                         continue;
                     }
                     writeLog("invalid fen: '{s}' error: {}\n", .{ fen_to_parse, e });
