@@ -185,10 +185,12 @@ inline fn quietValue(
 
     const danger = danger_squares[typed.tp.toInt()];
     if (root.Bitboard.contains(danger, typed.move.from())) {
+        @branchHint(.unpredictable);
         res += @max(2, typed.tp.toInt()) * @as(i32, 2000);
     }
 
     if (root.Bitboard.contains(danger, typed.move.to())) {
+        @branchHint(.unpredictable);
         res -= @max(2, typed.tp.toInt()) * @as(i32, 1000);
     }
 
