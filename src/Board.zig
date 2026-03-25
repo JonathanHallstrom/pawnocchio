@@ -1060,16 +1060,30 @@ pub inline fn isDirectCheck(noalias self: *const Board, move: Move) bool {
 
 pub inline fn discoveredCheck(noalias self: *const Board, move: Move) bool {
     const stm = self.stm;
-    const ntm_king = self.kingFor(stm.flipped());
+    const ntm = stm.flipped();
+    const ntm_king = self.kingFor(ntm);
     const ntm_king_sq = Square.fromBitboard(ntm_king);
-    const ray = Bitboard.queenRayBetweenExclusive(
-        ntm_king_sq,
-        move.from(),
-    );
+    const ray = Bitboard.queenRayBetweenExclusive(ntm_king_sq, move.from());
 
     const fake_discovery = Bitboard.contains(ray, move.to());
     const is_pinned_to_enemy_king = self.pinnedFor(self.stm.flipped()) & move.from().toBitboard() != 0;
-    return is_pinned_to_enemy_king and !fake_discovery;
+    if (is_pinned_to_enemy_king and !fake_discovery) return true;
+
+    if (move.tp() == .ep) {
+        const from_bb = move.from().toBitboard();
+        const to_bb = move.to().toBitboard();
+        const target = move.getEnPassantPawnSquare();
+
+        const occ_after = self.occupancy() ^ from_bb ^ to_bb ^ target.toBitboard();
+
+        const is_bishop_discovery = self.checkingSquaresFor(.bishop) & self.pinnedFor(ntm) & target.toBitboard() != 0;
+
+        const is_rook_discovery = attacks.rookAttacks(ntm_king_sq, occ_after) & (self.rooksFor(stm) | self.queensFor(stm)) != 0;
+
+        return is_bishop_discovery or is_rook_discovery;
+    }
+
+    return false;
 }
 
 pub inline fn givesCheck(noalias self: *const Board, move: Move) bool {
@@ -1161,6 +1175,52 @@ test discoveredCheck {
         },
     }) |case| {
         try std.testing.expect(!(try parseFen(case.fen, true)).discoveredCheck(case.move));
+    }
+}
+
+test "en passant discovered check" {
+    root.init();
+
+    inline for (.{
+        .{
+            .fen = "8/8/8/R3Pp1k/8/8/8/7K w - f6 0 1",
+            .move = Move.enPassant(.e5, .f6),
+        },
+        .{
+            .fen = "8/8/8/Q3Pp1k/8/8/8/7K w - f6 0 1",
+            .move = Move.enPassant(.e5, .f6),
+        },
+        .{
+            .fen = "7k/8/8/3Pp3/8/2B5/8/7K w - e6 0 1",
+            .move = Move.enPassant(.d5, .e6),
+        },
+        .{
+            .fen = "7k/8/8/8/r2pP2K/8/8/8 b - e3 0 1",
+            .move = Move.enPassant(.d4, .e3),
+        },
+    }) |case| {
+        var board = try parseFen(case.fen, true);
+        try std.testing.expect(!board.isDirectCheck(case.move));
+        try std.testing.expect(board.discoveredCheck(case.move));
+        try std.testing.expect(board.givesCheck(case.move));
+
+        board.makeMoveSimple(case.move);
+        try std.testing.expect(board.checkers != 0);
+    }
+
+    inline for (.{
+        .{
+            .fen = "8/8/8/R3Ppnk/8/8/8/7K w - f6 0 1",
+            .move = Move.enPassant(.e5, .f6),
+        },
+    }) |case| {
+        var board = try parseFen(case.fen, true);
+        try std.testing.expect(!board.isDirectCheck(case.move));
+        try std.testing.expect(!board.discoveredCheck(case.move));
+        try std.testing.expect(!board.givesCheck(case.move));
+
+        board.makeMoveSimple(case.move);
+        try std.testing.expectEqual(@as(u64, 0), board.checkers);
     }
 }
 
