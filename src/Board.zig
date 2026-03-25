@@ -1054,7 +1054,17 @@ pub inline fn isDirectCheck(noalias self: *const Board, move: Move) bool {
 }
 
 pub inline fn discoveredCheck(noalias self: *const Board, move: Move) bool {
-    return self.pinnedFor(self.stm.flipped()) & move.from().toBitboard() != 0;
+    const stm = self.stm;
+    const ntm_king = self.kingFor(stm.flipped());
+    const ntm_king_sq = Square.fromBitboard(ntm_king);
+    const ray = Bitboard.queenRayBetweenExclusive(
+        ntm_king_sq,
+        move.from(),
+    );
+
+    const fake_discovery = Bitboard.contains(ray, move.to());
+    const is_pinned_to_enemy_king = self.pinnedFor(self.stm.flipped()) & move.from().toBitboard() != 0;
+    return is_pinned_to_enemy_king and !fake_discovery;
 }
 
 pub inline fn givesCheck(noalias self: *const Board, move: Move) bool {
