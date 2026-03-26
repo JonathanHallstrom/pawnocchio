@@ -37,21 +37,21 @@ pub fn value(pt: PieceType, comptime mode: Mode) i16 {
         return ([_]i16{ 100, 300, 350, 500, 900, 0 })[pt.toInt()];
     }
     const SEE_weight = if (mode == .pruning) [_]i16{
-        @intCast(root.tunable_constants.see_pawn_pruning),
-        @intCast(root.tunable_constants.see_knight_pruning),
-        @intCast(root.tunable_constants.see_bishop_pruning),
-        @intCast(root.tunable_constants.see_rook_pruning),
-        @intCast(root.tunable_constants.see_queen_pruning),
+        @intCast(root.TUNABLE_CONSTANTS.see_pawn_pruning),
+        @intCast(root.TUNABLE_CONSTANTS.see_knight_pruning),
+        @intCast(root.TUNABLE_CONSTANTS.see_bishop_pruning),
+        @intCast(root.TUNABLE_CONSTANTS.see_rook_pruning),
+        @intCast(root.TUNABLE_CONSTANTS.see_queen_pruning),
         0,
     } else [_]i16{
-        @intCast(root.tunable_constants.see_pawn_ordering),
-        @intCast(root.tunable_constants.see_knight_ordering),
-        @intCast(root.tunable_constants.see_bishop_ordering),
-        @intCast(root.tunable_constants.see_rook_ordering),
-        @intCast(root.tunable_constants.see_queen_ordering),
+        @intCast(root.TUNABLE_CONSTANTS.see_pawn_ordering),
+        @intCast(root.TUNABLE_CONSTANTS.see_knight_ordering),
+        @intCast(root.TUNABLE_CONSTANTS.see_bishop_ordering),
+        @intCast(root.TUNABLE_CONSTANTS.see_rook_ordering),
+        @intCast(root.TUNABLE_CONSTANTS.see_queen_ordering),
         0,
     };
-    return (if (root.tuning.do_tuning) SEE_weight else comptime SEE_weight)[pt.toInt()];
+    return (if (root.tuning.DO_TUNING) SEE_weight else comptime SEE_weight)[pt.toInt()];
 }
 
 fn pickFirstScalar(board: *const Board, mask: u64) u8 {
@@ -72,11 +72,17 @@ fn pickFirstVectorized(board: *const Board, mask: u64) u8 {
     const zero: @Vector(8, u64) = @splat(0);
     const eql: u8 = @bitCast(mask_vec & bbs.* != zero);
     std.debug.assert(eql != 0);
-    return @ctz(eql);
+    return switch (@import("builtin").cpu.arch.endian()) {
+        .little => @ctz(eql),
+        .big => @clz(eql),
+    };
 }
 
 // if we have SIMD support use it otherwise use the scalar version
-const pickFirst = if (std.simd.suggestVectorLength(u8) orelse 0 >= 1) pickFirstVectorized else pickFirstScalar;
+const pickFirst = switch (std.simd.suggestVectorLength(u64) orelse 0) {
+    0, 1 => pickFirstScalar,
+    else => pickFirstVectorized,
+};
 
 pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
     const from = move.from();

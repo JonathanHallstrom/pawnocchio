@@ -38,7 +38,7 @@ pub const AttackEntry = struct {
     }
 };
 
-const bishop_attack_entries = blk: {
+const BISHOP_ATTACK_ENTRIES = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64]AttackEntry = undefined;
     var offs: u32 = 0;
@@ -53,11 +53,11 @@ const bishop_attack_entries = blk: {
         offs += @as(u32, 1) << @intCast(@popCount(relevant));
     }
 
-    if (offs != bishop_array_size) @compileError("bug");
+    if (offs != BISHOP_ARRAY_SIZE) @compileError("bug");
 
     break :blk res;
 };
-const rook_attack_entries = blk: {
+const ROOK_ATTACK_ENTRIES = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64]AttackEntry = undefined;
     var offs: u32 = 0;
@@ -72,24 +72,24 @@ const rook_attack_entries = blk: {
         offs += @as(u32, 1) << @intCast(@popCount(relevant));
     }
 
-    if (offs != rook_array_size) @compileError("bug");
+    if (offs != ROOK_ARRAY_SIZE) @compileError("bug");
 
     break :blk res;
 };
-const rook_array_size = 102400;
-const bishop_array_size = 5248;
+const ROOK_ARRAY_SIZE = 102400;
+const BISHOP_ARRAY_SIZE = 5248;
 
-const compressed_rook_attacks = true;
+const COMPRESSED_ROOK_ATTACKS = true;
 
-var bishop_attacks: [bishop_array_size]u64 = undefined;
-var rook_attacks: [rook_array_size]if (compressed_rook_attacks) u16 else u64 = undefined;
+var bishop_attacks: [BISHOP_ARRAY_SIZE]u64 = undefined;
+var rook_attacks: [ROOK_ARRAY_SIZE]if (COMPRESSED_ROOK_ATTACKS) u16 else u64 = undefined;
 
 pub fn init() void {
-    attack_array_generation.generateBishopAttackArrayInPlace(bishop_attack_entries, &bishop_attacks);
-    if (compressed_rook_attacks) {
-        attack_array_generation.generateRookAttackArrayInPlaceCompressed(rook_attack_entries, &rook_attacks);
+    attack_array_generation.generateBishopAttackArrayInPlace(BISHOP_ATTACK_ENTRIES, &bishop_attacks);
+    if (COMPRESSED_ROOK_ATTACKS) {
+        attack_array_generation.generateRookAttackArrayInPlaceCompressed(ROOK_ATTACK_ENTRIES, &rook_attacks);
     } else {
-        attack_array_generation.generateRookAttackArrayInPlace(rook_attack_entries, &rook_attacks);
+        attack_array_generation.generateRookAttackArrayInPlace(ROOK_ATTACK_ENTRIES, &rook_attacks);
     }
 }
 
@@ -97,16 +97,16 @@ pub fn getBishopAttacks(square: Square, blockers: u64) u64 {
     if (@inComptime()) {
         return attack_array_generation.computeBishopAttacks(square, blockers);
     }
-    return (&bishop_attacks)[@intCast((&bishop_attack_entries)[square.toInt()].getBishopIndex(blockers))];
+    return (&bishop_attacks)[@intCast((&BISHOP_ATTACK_ENTRIES)[square.toInt()].getBishopIndex(blockers))];
 }
 pub fn getRookAttacks(square: Square, blockers: u64) u64 {
     if (@inComptime()) {
         return attack_array_generation.computeRookAttacks(square, blockers);
     }
-    if (compressed_rook_attacks) {
-        const magic = (&rook_attack_entries)[square.toInt()];
+    if (COMPRESSED_ROOK_ATTACKS) {
+        const magic = (&ROOK_ATTACK_ENTRIES)[square.toInt()];
         return Bitboard.pdep((&rook_attacks)[@intCast(magic.getRookIndex(blockers))], magic.mask_full);
     } else {
-        return (&rook_attacks)[@intCast((&rook_attack_entries)[square.toInt()].getRookIndex(blockers))];
+        return (&rook_attacks)[@intCast((&ROOK_ATTACK_ENTRIES)[square.toInt()].getRookIndex(blockers))];
     }
 }

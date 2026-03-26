@@ -109,31 +109,33 @@ pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
         .aarch64 => 16,
         .ssse3 => 16,
         .sse2 => 16,
-        .fallback => std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
+        .fallback => if (cpu.arch.endian() != .little) 4 else std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
     };
 }
 
 const LONGEST_PERMUTE_LEN = 8;
 
-pub fn permuteOrder(cpu: std.Target.Cpu) []const u8 {
-    return switch (target(cpu)) {
+pub fn permuteOrderFor(target_kind: Target) []const u8 {
+    return switch (target_kind) {
         .avx512vnni, .avx512 => &.{ 0, 2, 4, 6, 1, 3, 5, 7 },
         .avx2 => &.{ 0, 2, 1, 3 },
         .aarch64, .ssse3, .sse2, .fallback => &.{},
     };
 }
 
-pub fn needsPermuting(cpu: std.Target.Cpu) bool {
-    return switch (target(cpu)) {
+pub fn needsPermutingFor(target_kind: Target) bool {
+    return switch (target_kind) {
         .avx512vnni, .avx512, .avx2 => true,
         .aarch64, .ssse3, .sse2, .fallback => false,
     };
 }
 
-// in case i want to readd truly scalar inference at some point
-pub fn needsL1Permute(cpu: std.Target.Cpu) bool {
-    _ = cpu;
-    return true;
+pub fn parseTarget(name: []const u8) ?Target {
+    return std.meta.stringToEnum(Target, name);
+}
+
+pub fn parseEndian(name: []const u8) ?std.builtin.Endian {
+    return std.meta.stringToEnum(std.builtin.Endian, name);
 }
 
 pub fn permuteBuffer(ptr: anytype, order: anytype) void {
@@ -182,14 +184,15 @@ fn totalElements(comptime T: type) comptime_int {
     }
 }
 
-pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
-    if (needsPermuting(cpu)) {
+pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *Weights) void {
+    if (needsPermutingFor(target_kind)) {
+        const order = permuteOrderFor(target_kind);
         inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
-            permuteBuffer(ptr, permuteOrder(cpu));
+            permuteBuffer(ptr, order);
         }
     }
 
-    if (cpu.arch.endian() != .little) {
+    if (endian != .little) {
         inline for (.{
             &net.ft_w,
             &net.ft_b,
@@ -219,21 +222,11 @@ pub fn permuteNet(cpu: std.Target.Cpu, net: *Weights) void {
         // [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8
         const l1w_inf = net.l1wInference();
 
-        if (needsL1Permute(cpu)) {
-            for (0..OUTPUT_BUCKET_COUNT) |ob| {
-                for (0..L1_SIZE / 4) |i| {
-                    for (0..L2_SIZE) |j| {
-                        for (0..4) |k| {
-                            l1w_inf[ob][i * 4 * L2_SIZE + j * 4 + k] = l1w_disk[i * 4 + k][ob][j];
-                        }
-                    }
-                }
-            }
-        } else {
-            for (0..OUTPUT_BUCKET_COUNT) |ob| {
-                for (0..L1_SIZE) |i| {
-                    for (0..L2_SIZE) |j| {
-                        l1w_inf[ob][i * L2_SIZE + j] = l1w_disk[i][ob][j];
+        for (0..OUTPUT_BUCKET_COUNT) |ob| {
+            for (0..L1_SIZE / 4) |i| {
+                for (0..L2_SIZE) |j| {
+                    for (0..4) |k| {
+                        l1w_inf[ob][i * 4 * L2_SIZE + j * 4 + k] = l1w_disk[i * 4 + k][ob][j];
                     }
                 }
             }

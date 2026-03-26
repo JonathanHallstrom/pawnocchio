@@ -19,7 +19,7 @@ const std = @import("std");
 const root = @import("root.zig");
 
 const Move = root.Move;
-const tunable_constants = root.tunable_constants;
+const TUNABLE_CONSTANTS = root.TUNABLE_CONSTANTS;
 
 hard_time: u64 = 0, // must always have a hard time limit
 soft_time: ?u64 = null,
@@ -39,10 +39,10 @@ pub fn initStandard(board: *const root.Board, remaining_ns: u64, increment_ns: u
     var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
     const start_time = t.read();
     const hard_time = (remaining_ns -| overhead_ns) * @as(u128, @min(
-        @as(u128, @intCast(tunable_constants.hard_limit_base + (tunable_constants.hard_limit_phase_mult * (32 -| board.phase()) >> 6))),
+        @as(u128, @intCast(TUNABLE_CONSTANTS.hard_limit_base + (TUNABLE_CONSTANTS.hard_limit_phase_mult * (32 -| board.phase()) >> 6))),
         1024,
     )) >> 10;
-    const soft_time = (remaining_ns -| overhead_ns) * @as(u128, @intCast(tunable_constants.soft_limit_base)) + increment_ns * @as(u128, @intCast(tunable_constants.soft_limit_incr)) >> 10;
+    const soft_time = (remaining_ns -| overhead_ns) * @as(u128, @intCast(TUNABLE_CONSTANTS.soft_limit_base)) + increment_ns * @as(u128, @intCast(TUNABLE_CONSTANTS.soft_limit_incr)) >> 10;
     return Limits{
         .hard_time = @intCast(start_time + hard_time),
         .soft_time = @intCast(start_time + soft_time),
@@ -87,15 +87,15 @@ pub inline fn checkSearch(self: *Limits, nodes: u64) bool {
 fn computeNodeCountFactor(_: *const Limits, best_move_count: u64, total_nodes: u64) u128 {
     const best_count = @min(best_move_count, total_nodes);
     const node_fraction = @as(u128, best_count) * 1024 / @max(1, total_nodes);
-    return @as(u64, @intCast(tunable_constants.nodetm_mult)) * (@as(u64, @intCast(tunable_constants.nodetm_base)) -| node_fraction);
+    return @as(u64, @intCast(TUNABLE_CONSTANTS.nodetm_mult)) * (@as(u64, @intCast(TUNABLE_CONSTANTS.nodetm_base)) -| node_fraction);
 }
 
 fn computeEvalStabilityFactor(_: *const Limits, stab: i64) u64 {
-    return @intCast(@max(tunable_constants.eval_stab_lim, tunable_constants.eval_stab_base -| @divTrunc(tunable_constants.eval_stab_offs * stab, 1024)));
+    return @intCast(@max(TUNABLE_CONSTANTS.eval_stab_lim, TUNABLE_CONSTANTS.eval_stab_base -| @divTrunc(TUNABLE_CONSTANTS.eval_stab_offs * stab, 1024)));
 }
 
 fn computeMoveStabilityFactor(_: *const Limits, stab: i64) u64 {
-    return @intCast(@max(tunable_constants.move_stab_lim, tunable_constants.move_stab_base -| @divTrunc(tunable_constants.move_stab_offs * stab, 1024)));
+    return @intCast(@max(TUNABLE_CONSTANTS.move_stab_lim, TUNABLE_CONSTANTS.move_stab_base -| @divTrunc(TUNABLE_CONSTANTS.move_stab_offs * stab, 1024)));
 }
 
 pub fn checkRoot(

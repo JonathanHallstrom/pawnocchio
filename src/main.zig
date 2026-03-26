@@ -62,15 +62,21 @@ fn printTuningSchema() void {
 pub fn main() !void {
     root.init();
     defer root.deinit();
-    defer {
+    defer if (!build_options.tools_only) {
         root.engine.stopSearch();
         root.engine.waitUntilDoneSearching();
-    }
+    };
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = if (std.debug.runtime_safety) gpa.allocator() else std.heap.smp_allocator;
+    const version = build_options.version_string;
 
-    if (try command_line.handle(allocator, build_options.version_string)) {
+    if (try command_line.handle(allocator, version)) {
+        return;
+    }
+
+    if (build_options.tools_only) {
+        command_line.writeHelp(version);
         return;
     }
 
@@ -125,7 +131,7 @@ pub fn main() !void {
         };
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
-            write("id name pawnocchio {s}\n", .{build_options.version_string});
+            write("id name pawnocchio {s}\n", .{version});
             write("id author Jonathan Hallström\n", .{});
             write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
@@ -138,12 +144,12 @@ pub fn main() !void {
             write("option name Minimal type check default false\n", .{});
             write("option name SoftNodes type check default false\n", .{});
             write("option name EnableWeirdTCs type check default false\n", .{});
-            if (root.tuning.do_tuning or root.tuning.do_factorized_tuning) {
+            if (root.tuning.DO_TUNING or root.tuning.DO_FACTORIZED_TUNING) {
                 writeTuningOptions();
             }
             write("uciok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "banner")) {
-            write("{s}\n", .{banner});
+            write("{s}\n", .{BANNER});
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             writeSpsaInputs();
         } else if (std.ascii.eqlIgnoreCase(command, "print_schema")) {
@@ -253,7 +259,7 @@ pub fn main() !void {
                 });
             }
 
-            if (root.use_tbs) {
+            if (root.USE_TBS) {
                 if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name) and !std.ascii.eqlIgnoreCase("<empty>", value) and value.len > 0) {
                     var dir = std.fs.openDirAbsolute(value, .{ .iterate = true }) catch {
                         write("info string Failed to open specified directory for Syzygy Tablebases '{s}'\n", .{value});
@@ -281,14 +287,14 @@ pub fn main() !void {
                 }
             }
 
-            if (root.tuning.do_tuning or root.tuning.do_factorized_tuning) {
+            if (root.tuning.DO_TUNING or root.tuning.DO_FACTORIZED_TUNING) {
                 const parsed_value = std.fmt.parseInt(i32, value, 10) catch {
                     writeLog("invalid constant: '{s}'\n", .{value});
                     continue :loop;
                 };
                 _ = root.tuning.trySetExposedTunable(option_name, parsed_value);
             }
-        } else if (root.use_tbs and std.ascii.eqlIgnoreCase(command, "ProbeWDL")) {
+        } else if (root.USE_TBS and std.ascii.eqlIgnoreCase(command, "ProbeWDL")) {
             std.debug.print("{any}\n", .{root.pyrrhic.probeWDL(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "isready")) {
             root.engine.waitUntilDoneSearching();
@@ -336,7 +342,7 @@ pub fn main() !void {
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;
                 }
-                if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and root.evaluation.eval_mode == .nnue) {
+                if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and root.evaluation.EVAL_MODE == .nnue) {
                     const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
                     var cache: RC = undefined;
                     cache.initInPlace();
@@ -369,8 +375,8 @@ pub fn main() !void {
                     write("evals: {} in {D} ({} eps) res: {}\n", .{ iterations, elapsed_ns, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
                     continue :loop;
                 }
-                if (std.ascii.eqlIgnoreCase(command_part, "refreshbench") and root.evaluation.eval_mode == .nnue) {
-                    const refresh_fens = @import("refresh_fens.zig").fens;
+                if (std.ascii.eqlIgnoreCase(command_part, "refreshbench") and root.evaluation.EVAL_MODE == .nnue) {
+                    const refresh_fens = @import("refresh_fens.zig").FENS;
                     const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
                     var cache: RC = undefined;
                     cache.initInPlace();
@@ -598,7 +604,7 @@ pub fn main() !void {
             const keep_moves = @min(
                 previous_moves.items.len,
                 @max(
-                    @as(usize, @min(board.halfmove, root.Searcher.MAX_HALFMOVE)),
+                    @as(usize, @min(board.halfmove, root.SEARCH_MAX_HALFMOVE)),
                     root.history.CONTHIST_OFFSETS.len,
                 ),
             );
@@ -654,7 +660,7 @@ pub fn main() !void {
             const abs_average = @as(f64, @floatFromInt(abs_sum)) / @as(f64, @floatFromInt(count));
             std.debug.print("sum: {} sum abs: {}\n", .{ sum, abs_sum });
             std.debug.print("average: {d:.4} average abs: {d:.4}\n", .{ average, abs_average });
-        } else if (root.evaluation.eval_mode == .nnue and std.ascii.eqlIgnoreCase(command, "nneval")) {
+        } else if (root.evaluation.EVAL_MODE == .nnue and std.ascii.eqlIgnoreCase(command, "nneval")) {
             const raw_eval = root.nnue.evalPosition(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
             const normalized = root.wdl.normalize(scaled, board.classicalMaterial());
@@ -729,7 +735,7 @@ pub fn main() !void {
 
                 board = Board.parseFen(fen_to_parse, true) catch |e| {
                     if (!started_with_position) {
-                        command_line.writeHelpText(build_options.version_string);
+                        command_line.writeHelp(version);
                         continue;
                     }
                     writeLog("invalid fen: '{s}' error: {}\n", .{ fen_to_parse, e });
@@ -799,7 +805,7 @@ pub fn main() !void {
     }
 }
 
-const banner =
+const BANNER =
     \\⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     \\⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     \\⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⣿⣿⣿⣿⣶⣦⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀

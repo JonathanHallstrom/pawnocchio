@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const build_options = @import("build_options");
 const root = @import("root.zig");
 const arg_parser = @import("arg_parser.zig");
 const edit_distance = @import("edit_distance.zig");
@@ -29,6 +30,7 @@ const DATAGEN_NODES_DEFAULT: u64 = 7000;
 const CMD_SUGGEST_BASE: usize = 120;
 const CMD_SUGGEST_EXTRA: usize = 20;
 const SHOW_SUGGESTION_COST: bool = false;
+const TOOLS_ONLY = build_options.tools_only;
 
 const Command = enum {
     help,
@@ -213,16 +215,16 @@ fn ensureTbPathExists(tb_path: []const u8) !void {
     };
 }
 
-pub fn handle(allocator: std.mem.Allocator, version_string: []const u8) !bool {
+pub fn handle(allocator: std.mem.Allocator, version: []const u8) !bool {
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
     _ = args.next() orelse "pawnocchio";
 
-    const datagen_threads_default: usize = std.Thread.getCpuCount() catch 1;
-    while (args.next()) |arg| {
+    const threads: usize = std.Thread.getCpuCount() catch 1;
+    if (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            handleHelp(version_string, datagen_threads_default);
+            handleHelp(version, threads);
             return true;
         }
 
@@ -231,11 +233,19 @@ pub fn handle(allocator: std.mem.Allocator, version_string: []const u8) !bool {
         if (std.meta.stringToEnum(Command, command_token)) |command| {
             (switch (command) {
                 .help => {
-                    handleHelp(version_string, datagen_threads_default);
+                    handleHelp(version, threads);
                     return true;
                 },
-                .datagen => handleDatagen(&args, datagen_threads_default),
-                .genfens => handleGenfens(arg, allocator),
+                .datagen => if (TOOLS_ONLY) {
+                    writeLog("datagen is unavailable in this build\n", .{});
+                } else {
+                    try handleDatagen(&args, threads);
+                },
+                .genfens => if (TOOLS_ONLY) {
+                    writeLog("genfens is unavailable in this build\n", .{});
+                } else {
+                    try handleGenfens(arg, allocator);
+                },
                 .pgntovf => handlePgnToVf(&args, allocator),
                 .epdtovf => handleEpdToVf(&args, allocator),
                 .vftotxt => handleVfToTxt(&args),
@@ -243,7 +253,11 @@ pub fn handle(allocator: std.mem.Allocator, version_string: []const u8) !bool {
                 .@"relabel-tb" => handleRelabelTb(&args, allocator),
                 .@"relabel-chonker" => handleRelabelChonker(&args, allocator),
                 .sanitise => handleSanitise(&args, allocator),
-                .bench => handleBench(&args),
+                .bench => if (TOOLS_ONLY) {
+                    writeLog("bench is unavailable in this build\n", .{});
+                } else {
+                    try handleBench(&args);
+                },
             }) catch |e| {
                 if (e != error.HelpRequested) {
                     return e;
@@ -259,31 +273,41 @@ pub fn handle(allocator: std.mem.Allocator, version_string: []const u8) !bool {
     return false;
 }
 
-pub fn writeHelpText(version_string: []const u8) void {
-    handleHelp(version_string, std.Thread.getCpuCount() catch 1);
+pub fn writeHelp(version: []const u8) void {
+    handleHelp(version, std.Thread.getCpuCount() catch 1);
 }
 
-fn handleHelp(version_string: []const u8, datagen_threads_default: usize) void {
+fn handleHelp(version: []const u8, threads: usize) void {
     std.debug.print(
         \\pawnocchio {s} - UCI chess engine
         \\
         \\USAGE:
         \\  pawnocchio [COMMAND] [ARGUMENTS]
-        \\  pawnocchio (starts in UCI mode)
+    , .{version});
+    if (!TOOLS_ONLY) {
+        std.debug.print("  pawnocchio (starts in UCI mode)\n", .{});
+    }
+    std.debug.print(
         \\
         \\TOOLS:
         \\
-        \\  bench [--depth <DEPTH>] [<DEPTH> (positional)]
-        \\      run benchmark. default depth: {d}
-        \\
-        \\  datagen --threads N --nodes N --positions N
-        \\      generate training data. arguments must be passed as --key value or --key=value
-        \\      defaults: threads={d}, nodes={d}
-        \\
-        \\  genfens "<COUNT> seed <SEED> book <BOOK|none>"
-        \\      generate FENs. note: must be enclosed in quotes due to argument parsing
-        \\      example: pawnocchio "genfens 100 seed 12345 book book.bin"
-        \\
+    , .{});
+    if (!TOOLS_ONLY) {
+        std.debug.print(
+            \\  bench [--depth <DEPTH>] [<DEPTH> (positional)]
+            \\      run benchmark. default depth: {d}
+            \\
+            \\  datagen --threads N --nodes N --positions N
+            \\      generate training data. arguments must be passed as --key value or --key=value
+            \\      defaults: threads={d}, nodes={d}
+            \\
+            \\  genfens "<COUNT> seed <SEED> book <BOOK|none>"
+            \\      generate FENs. note: must be enclosed in quotes due to argument parsing
+            \\      example: pawnocchio "genfens 100 seed 12345 book book.bin"
+            \\
+        , .{ BENCH_DEPTH_DEFAULT, threads, DATAGEN_NODES_DEFAULT });
+    }
+    std.debug.print(
         \\  pgntovf --input <INPUT.pgn> [<INPUT.pgn> (positional)] [--skip-broken-games] [--allow-non-pgn-extension] [--allow-overwrite] [--output <OUTPUT>]
         \\      convert PGN to viriformat. default output: <INPUT>.vf
         \\
@@ -308,26 +332,30 @@ fn handleHelp(version_string: []const u8, datagen_threads_default: usize) void {
         \\  help
         \\      show this help message and exit
         \\
-        \\UCI COMMANDS:
-        \\  uci                     - handshake
-        \\  isready                 - synchronization
-        \\  setoption               - set Hash, Threads, SyzygyPath, EnableWeirdTCs, etc
-        \\  ucinewgame              - clear hash and reset
-        \\  position                - set board (fen <FEN> | startpos) [moves ...]
-        \\  go                      - search. params: depth, nodes, softnodes, movetime,
-        \\                            wtime, btime, winc, binc, mate, perft, perft_file
-        \\  stop                    - stop current search
-        \\  wait                    - wait for search to complete
-        \\  d                       - print position
-        \\  banner                  - print engine logo
-        \\  nneval                  - show raw/scaled NNUE evaluation
-        \\  hceval                  - show hand crafted evaluation
-        \\  get_scale               - read evaluation scale from file
-        \\  bullet_evals            - run eval on a set of known test positions
-        \\  ProbeWDL                - query Syzygy tablebase
-        \\  quit                    - exit
-        \\
-    , .{ version_string, BENCH_DEPTH_DEFAULT, datagen_threads_default, DATAGEN_NODES_DEFAULT });
+    , .{});
+    if (!TOOLS_ONLY) {
+        std.debug.print(
+            \\UCI COMMANDS:
+            \\  uci                     - handshake
+            \\  isready                 - synchronization
+            \\  setoption               - set Hash, Threads, SyzygyPath, EnableWeirdTCs, etc
+            \\  ucinewgame              - clear hash and reset
+            \\  position                - set board (fen <FEN> | startpos) [moves ...]
+            \\  go                      - search. params: depth, nodes, softnodes, movetime,
+            \\                            wtime, btime, winc, binc, mate, perft, perft_file
+            \\  stop                    - stop current search
+            \\  wait                    - wait for search to complete
+            \\  d                       - print position
+            \\  banner                  - print engine logo
+            \\  nneval                  - show raw/scaled NNUE evaluation
+            \\  hceval                  - show hand crafted evaluation
+            \\  get_scale               - read evaluation scale from file
+            \\  bullet_evals            - run eval on a set of known test positions
+            \\  ProbeWDL                - query Syzygy tablebase
+            \\  quit                    - exit
+            \\
+        , .{});
+    }
 }
 
 fn handleBench(args: anytype) !void {
@@ -340,7 +368,7 @@ fn handleBench(args: anytype) !void {
     try runBench(bench_args.depth);
 }
 
-fn handleDatagen(args: anytype, datagen_threads_default: usize) !void {
+fn handleDatagen(args: anytype, default_threads: usize) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -352,35 +380,35 @@ fn handleDatagen(args: anytype, datagen_threads_default: usize) !void {
         "datagen",
     );
 
-    const datagen_threads = parsed.threads orelse datagen_threads_default;
+    const datagen_threads = parsed.threads orelse default_threads;
     std.debug.print("datagenning with {} threads\n", .{datagen_threads});
     try root.engine.setThreadCount(datagen_threads);
     try root.engine.datagen(parsed.nodes, parsed.positions);
 }
 
 fn handleGenfens(arg: []const u8, allocator: std.mem.Allocator) !void {
-    var genfens_seed: u64 = 0;
-    var genfens_count: usize = 0;
-    var genfens_book: ?[]const u8 = null;
-    var genfens_args = std.mem.tokenizeScalar(u8, arg, ' ');
-    _ = genfens_args.next(); // discard "genfens"
-    genfens_count = std.fmt.parseInt(usize, genfens_args.next() orelse "", 10) catch |e| {
+    var seed: u64 = 0;
+    var count: usize = 0;
+    var book: ?[]const u8 = null;
+    var tokens = std.mem.tokenizeScalar(u8, arg, ' ');
+    _ = tokens.next(); // discard "genfens"
+    count = std.fmt.parseInt(usize, tokens.next() orelse "", 10) catch |e| {
         writeLog("invalid fen count, error: '{}'\n", .{e});
         return e;
     };
-    _ = genfens_args.next(); // discard "seed"
-    genfens_seed = std.fmt.parseInt(u64, genfens_args.next() orelse "", 10) catch |e| {
+    _ = tokens.next(); // discard "seed"
+    seed = std.fmt.parseInt(u64, tokens.next() orelse "", 10) catch |e| {
         writeLog("invalid seed, error: '{}'\n", .{e});
         return e;
     };
-    _ = genfens_args.next(); // discard "book"
+    _ = tokens.next(); // discard "book"
 
-    if (genfens_args.next()) |path| {
+    if (tokens.next()) |path| {
         if (!std.ascii.eqlIgnoreCase(path, "none")) {
-            genfens_book = path;
+            book = path;
         }
     }
-    try root.engine.genfens(genfens_book, genfens_count, genfens_seed, &root.stdout_writer, allocator);
+    try root.engine.genfens(book, count, seed, &root.stdout_writer, allocator);
 }
 
 fn handlePgnToVf(args: anytype, allocator: std.mem.Allocator) !void {
@@ -949,7 +977,7 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
 }
 
 fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
-    if (root.eval_mode != .nnue) {
+    if (root.EVAL_MODE != .nnue) {
         return error.NNUENotEnabled;
     }
 

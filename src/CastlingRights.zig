@@ -27,10 +27,10 @@ raw: u16,
 
 const CastlingRights = @This();
 
-pub const white_kingside_castle: u8 = 1;
-pub const black_kingside_castle: u8 = 2;
-pub const white_queenside_castle: u8 = 4;
-pub const black_queenside_castle: u8 = 8;
+pub const WHITE_KINGSIDE_CASTLE: u8 = 1;
+pub const BLACK_KINGSIDE_CASTLE: u8 = 2;
+pub const WHITE_QUEENSIDE_CASTLE: u8 = 4;
+pub const BLACK_QUEENSIDE_CASTLE: u8 = 8;
 
 pub fn init() CastlingRights {
     return .{
@@ -72,16 +72,16 @@ pub fn getBlackQueensideRookFile(self: CastlingRights) File {
 
 pub fn kingsideCastlingFor(self: CastlingRights, col: Colour) bool {
     if (col == .white) {
-        return self.raw & white_kingside_castle != 0;
+        return self.raw & WHITE_KINGSIDE_CASTLE != 0;
     } else {
-        return self.raw & black_kingside_castle != 0;
+        return self.raw & BLACK_KINGSIDE_CASTLE != 0;
     }
 }
 pub fn queensideCastlingFor(self: CastlingRights, col: Colour) bool {
     if (col == .white) {
-        return self.raw & white_queenside_castle != 0;
+        return self.raw & WHITE_QUEENSIDE_CASTLE != 0;
     } else {
-        return self.raw & black_queenside_castle != 0;
+        return self.raw & BLACK_QUEENSIDE_CASTLE != 0;
     }
 }
 

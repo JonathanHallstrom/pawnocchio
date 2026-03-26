@@ -24,7 +24,7 @@ const ColouredPieceType = root.ColouredPieceType;
 const PieceType = root.PieceType;
 const Board = root.Board;
 const evaluation = root.evaluation;
-const tunables = root.tunable_constants;
+const TUNABLES = root.TUNABLE_CONSTANTS;
 
 pub const TypedMove = struct {
     move: Move,
@@ -120,15 +120,15 @@ pub const QuietHistory = struct {
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
-            depth * tunables.quiet_bonus_mult + tunables.quiet_bonus_offs,
-            tunables.quiet_bonus_max,
+            depth * TUNABLES.quiet_bonus_mult + TUNABLES.quiet_bonus_offs,
+            TUNABLES.quiet_bonus_max,
         ));
     }
 
     fn penalty(depth: i32) i16 {
         return @intCast(@min(
-            depth * tunables.quiet_penalty_mult + tunables.quiet_penalty_offs,
-            tunables.quiet_penalty_max,
+            depth * TUNABLES.quiet_penalty_mult + TUNABLES.quiet_penalty_offs,
+            TUNABLES.quiet_penalty_max,
         ));
     }
 
@@ -177,15 +177,15 @@ pub const PawnHistory = struct {
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
-            depth * tunables.pawn_bonus_mult + tunables.pawn_bonus_offs,
-            tunables.pawn_bonus_max,
+            depth * TUNABLES.pawn_bonus_mult + TUNABLES.pawn_bonus_offs,
+            TUNABLES.pawn_bonus_max,
         ));
     }
 
     fn penalty(depth: i32) i16 {
         return @intCast(@min(
-            depth * tunables.pawn_penalty_mult + tunables.pawn_penalty_offs,
-            tunables.pawn_penalty_max,
+            depth * TUNABLES.pawn_penalty_mult + TUNABLES.pawn_penalty_offs,
+            TUNABLES.pawn_penalty_max,
         ));
     }
 
@@ -230,15 +230,15 @@ pub const NoisyHistory = struct {
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
-            depth * tunables.noisy_bonus_mult + tunables.noisy_bonus_offs,
-            tunables.noisy_bonus_max,
+            depth * TUNABLES.noisy_bonus_mult + TUNABLES.noisy_bonus_offs,
+            TUNABLES.noisy_bonus_max,
         ));
     }
 
     fn penalty(depth: i32) i16 {
         return @intCast(@min(
-            depth * tunables.noisy_penalty_mult + tunables.noisy_penalty_offs,
-            tunables.noisy_penalty_max,
+            depth * TUNABLES.noisy_penalty_mult + TUNABLES.noisy_penalty_offs,
+            TUNABLES.noisy_penalty_max,
         ));
     }
 
@@ -314,19 +314,19 @@ pub const ContHistory = struct {
     fn bonus(comptime idx: usize, depth: i32) i16 {
         const mult, const offs, const max = switch (idx) {
             0 => .{
-                tunables.cont1_bonus_mult,
-                tunables.cont1_bonus_offs,
-                tunables.cont1_bonus_max,
+                TUNABLES.cont1_bonus_mult,
+                TUNABLES.cont1_bonus_offs,
+                TUNABLES.cont1_bonus_max,
             },
             1 => .{
-                tunables.cont2_bonus_mult,
-                tunables.cont2_bonus_offs,
-                tunables.cont2_bonus_max,
+                TUNABLES.cont2_bonus_mult,
+                TUNABLES.cont2_bonus_offs,
+                TUNABLES.cont2_bonus_max,
             },
             2 => .{
-                tunables.cont4_bonus_mult,
-                tunables.cont4_bonus_offs,
-                tunables.cont4_bonus_max,
+                TUNABLES.cont4_bonus_mult,
+                TUNABLES.cont4_bonus_offs,
+                TUNABLES.cont4_bonus_max,
             },
             else => unreachable,
         };
@@ -339,19 +339,19 @@ pub const ContHistory = struct {
     fn penalty(comptime idx: usize, depth: i32) i16 {
         const mult, const offs, const max = switch (idx) {
             0 => .{
-                tunables.cont1_penalty_mult,
-                tunables.cont1_penalty_offs,
-                tunables.cont1_penalty_max,
+                TUNABLES.cont1_penalty_mult,
+                TUNABLES.cont1_penalty_offs,
+                TUNABLES.cont1_penalty_max,
             },
             1 => .{
-                tunables.cont2_penalty_mult,
-                tunables.cont2_penalty_offs,
-                tunables.cont2_penalty_max,
+                TUNABLES.cont2_penalty_mult,
+                TUNABLES.cont2_penalty_offs,
+                TUNABLES.cont2_penalty_max,
             },
             2 => .{
-                tunables.cont4_penalty_mult,
-                tunables.cont4_penalty_offs,
-                tunables.cont4_penalty_max,
+                TUNABLES.cont4_penalty_mult,
+                TUNABLES.cont4_penalty_offs,
+                TUNABLES.cont4_penalty_max,
             },
             else => unreachable,
         };
@@ -575,13 +575,13 @@ pub const HistoryTable = struct {
         const err = score - corrected_static_eval;
         const weight = @min(depth, 15) + 1;
 
-        self.pawn_corrhist.update(board, err, weight * tunables.corrhist_pawn_update_weight);
-        self.major_corrhist.update(board, err, weight * tunables.corrhist_major_update_weight);
-        self.minor_corrhist.update(board, err, weight * tunables.corrhist_minor_update_weight);
-        self.white_nonpawn_corrhist.update(board, err, weight * tunables.corrhist_nonpawn_update_weight);
-        self.black_nonpawn_corrhist.update(board, err, weight * tunables.corrhist_nonpawn_update_weight);
-        self.prev_corrhist.update(board, prev, err, weight * tunables.corrhist_prev_update_weight);
-        self.followup_corrhist.update(board, followup, err, weight * tunables.corrhist_followup_update_weight);
+        self.pawn_corrhist.update(board, err, weight * TUNABLES.corrhist_pawn_update_weight);
+        self.major_corrhist.update(board, err, weight * TUNABLES.corrhist_major_update_weight);
+        self.minor_corrhist.update(board, err, weight * TUNABLES.corrhist_minor_update_weight);
+        self.white_nonpawn_corrhist.update(board, err, weight * TUNABLES.corrhist_nonpawn_update_weight);
+        self.black_nonpawn_corrhist.update(board, err, weight * TUNABLES.corrhist_nonpawn_update_weight);
+        self.prev_corrhist.update(board, prev, err, weight * TUNABLES.corrhist_prev_update_weight);
+        self.followup_corrhist.update(board, followup, err, weight * TUNABLES.corrhist_followup_update_weight);
     }
 
     pub fn summedCorrectionTerms(
@@ -645,12 +645,12 @@ pub const HistoryTable = struct {
         const prev_correction = self.prev_corrhist.read(board, prev);
         const followup_correction = self.followup_corrhist.read(board, followup);
 
-        const correction = (tunables.corrhist_pawn_weight * pawn_correction +
-            tunables.corrhist_nonpawn_weight * nonpawn_correction +
-            tunables.corrhist_prev_weight * prev_correction +
-            tunables.corrhist_followup_weight * followup_correction +
-            tunables.corrhist_major_weight * major_correction +
-            tunables.corrhist_minor_weight * minor_correction) >> 18;
+        const correction = (TUNABLES.corrhist_pawn_weight * pawn_correction +
+            TUNABLES.corrhist_nonpawn_weight * nonpawn_correction +
+            TUNABLES.corrhist_prev_weight * prev_correction +
+            TUNABLES.corrhist_followup_weight * followup_correction +
+            TUNABLES.corrhist_major_weight * major_correction +
+            TUNABLES.corrhist_minor_weight * minor_correction) >> 18;
 
         const scaled = scaleEval(board, static_eval);
 
@@ -663,7 +663,7 @@ pub const HistoryTable = struct {
     ) i16 {
         comptime var divisor = 1;
         const material = board.materialScale();
-        const material_scaled = @as(i64, eval) * (tunables.material_scaling_base + material);
+        const material_scaled = @as(i64, eval) * (TUNABLES.material_scaling_base + material);
         divisor *= 16384;
         const fifty_move_rule_scaled = material_scaled * (200 - board.halfmove);
         divisor *= 200;

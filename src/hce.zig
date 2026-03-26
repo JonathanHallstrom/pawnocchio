@@ -28,10 +28,10 @@ const Bitboard = root.Bitboard;
 const Move = root.Move;
 const evaluation = root.evaluation;
 
-const mg_value: [6]i16 = .{ 82, 337, 365, 477, 1025, 0 };
-const eg_value: [6]i16 = .{ 94, 281, 297, 512, 936, 0 };
+const MG_VALUE: [6]i16 = .{ 82, 337, 365, 477, 1025, 0 };
+const EG_VALUE: [6]i16 = .{ 94, 281, 297, 512, 936, 0 };
 
-const mg_pawn_table: [64]i16 = .{
+const MG_PAWN_TABLE: [64]i16 = .{
     0,   0,   0,   0,   0,   0,   0,  0,
     98,  134, 61,  95,  68,  126, 34, -11,
     -6,  7,   26,  31,  65,  56,  25, -20,
@@ -42,7 +42,7 @@ const mg_pawn_table: [64]i16 = .{
     0,   0,   0,   0,   0,   0,   0,  0,
 };
 
-const eg_pawn_table: [64]i16 = .{
+const EG_PAWN_TABLE: [64]i16 = .{
     0,   0,   0,   0,   0,   0,   0,   0,
     178, 173, 158, 134, 147, 132, 165, 187,
     94,  100, 85,  67,  56,  53,  82,  84,
@@ -53,7 +53,7 @@ const eg_pawn_table: [64]i16 = .{
     0,   0,   0,   0,   0,   0,   0,   0,
 };
 
-const mg_knight_table: [64]i16 = .{
+const MG_KNIGHT_TABLE: [64]i16 = .{
     -167, -89, -34, -49, 61,  -97, -15, -107,
     -73,  -41, 72,  36,  23,  62,  7,   -17,
     -47,  60,  37,  65,  84,  129, 73,  44,
@@ -64,7 +64,7 @@ const mg_knight_table: [64]i16 = .{
     -105, -21, -58, -33, -17, -28, -19, -23,
 };
 
-const eg_knight_table: [64]i16 = .{
+const EG_KNIGHT_TABLE: [64]i16 = .{
     -58, -38, -13, -28, -31, -27, -63, -99,
     -25, -8,  -25, -2,  -9,  -25, -24, -52,
     -24, -20, 10,  9,   -1,  -9,  -19, -41,
@@ -75,7 +75,7 @@ const eg_knight_table: [64]i16 = .{
     -29, -51, -23, -15, -22, -18, -50, -64,
 };
 
-const mg_bishop_table: [64]i16 = .{
+const MG_BISHOP_TABLE: [64]i16 = .{
     -29, 4,  -82, -37, -25, -42, 7,   -8,
     -26, 16, -18, -13, 30,  59,  18,  -47,
     -16, 37, 43,  40,  35,  50,  37,  -2,
@@ -86,7 +86,7 @@ const mg_bishop_table: [64]i16 = .{
     -33, -3, -14, -21, -13, -12, -39, -21,
 };
 
-const eg_bishop_table: [64]i16 = .{
+const EG_BISHOP_TABLE: [64]i16 = .{
     -14, -21, -11, -8,  -7, -9,  -17, -24,
     -8,  -4,  7,   -12, -3, -13, -4,  -14,
     2,   -8,  0,   -1,  -2, 6,   0,   4,
@@ -97,7 +97,7 @@ const eg_bishop_table: [64]i16 = .{
     -23, -9,  -23, -5,  -9, -16, -5,  -17,
 };
 
-const mg_rook_table: [64]i16 = .{
+const MG_ROOK_TABLE: [64]i16 = .{
     32,  42,  32,  51,  63, 9,  31,  43,
     27,  32,  58,  62,  80, 67, 26,  44,
     -5,  19,  26,  36,  17, 45, 61,  16,
@@ -108,7 +108,7 @@ const mg_rook_table: [64]i16 = .{
     -19, -13, 1,   17,  16, 7,  -37, -26,
 };
 
-const eg_rook_table: [64]i16 = .{
+const EG_ROOK_TABLE: [64]i16 = .{
     13, 10, 18, 15, 12, 12,  8,   5,
     11, 13, 13, 11, -3, 3,   8,   3,
     7,  7,  7,  5,  4,  -3,  -5,  -3,
@@ -119,7 +119,7 @@ const eg_rook_table: [64]i16 = .{
     -9, 2,  3,  -1, -5, -13, 4,   -20,
 };
 
-const mg_queen_table: [64]i16 = .{
+const MG_QUEEN_TABLE: [64]i16 = .{
     -28, 0,   29,  12,  59,  44,  43,  45,
     -24, -39, -5,  1,   -16, 57,  28,  54,
     -13, -17, 7,   8,   29,  56,  47,  57,
@@ -130,7 +130,7 @@ const mg_queen_table: [64]i16 = .{
     -1,  -18, -9,  10,  -15, -25, -31, -50,
 };
 
-const eg_queen_table: [64]i16 = .{
+const EG_QUEEN_TABLE: [64]i16 = .{
     -9,  22,  22,  27,  27,  19,  10,  20,
     -17, 20,  32,  41,  58,  25,  30,  0,
     -20, 6,   9,   49,  47,  35,  19,  9,
@@ -141,7 +141,7 @@ const eg_queen_table: [64]i16 = .{
     -33, -28, -22, -43, -5,  -32, -20, -41,
 };
 
-const mg_king_table: [64]i16 = .{
+const MG_KING_TABLE: [64]i16 = .{
     -65, 23,  16,  -15, -56, -34, 2,   13,
     29,  -1,  -20, -7,  -8,  -4,  -38, -29,
     -9,  24,  2,   -16, -20, 6,   22,  -22,
@@ -152,7 +152,7 @@ const mg_king_table: [64]i16 = .{
     -15, 36,  12,  -54, 8,   -28, 24,  14,
 };
 
-const eg_king_table: [64]i16 = .{
+const EG_KING_TABLE: [64]i16 = .{
     -74, -35, -18, -18, -11, 15,  4,   -17,
     -12, 17,  14,  17,  17,  38,  23,  11,
     10,  17,  23,  15,  20,  45,  44,  13,
@@ -163,59 +163,59 @@ const eg_king_table: [64]i16 = .{
     -53, -34, -21, -11, -28, -14, -24, -43,
 };
 
-const mg_pesto_table: [6][64]i16 = .{
-    mg_pawn_table,
-    mg_knight_table,
-    mg_bishop_table,
-    mg_rook_table,
-    mg_queen_table,
-    mg_king_table,
+const MG_PESTO_TABLE: [6][64]i16 = .{
+    MG_PAWN_TABLE,
+    MG_KNIGHT_TABLE,
+    MG_BISHOP_TABLE,
+    MG_ROOK_TABLE,
+    MG_QUEEN_TABLE,
+    MG_KING_TABLE,
 };
 
-const eg_pesto_table: [6][64]i16 = .{
-    eg_pawn_table,
-    eg_knight_table,
-    eg_bishop_table,
-    eg_rook_table,
-    eg_queen_table,
-    eg_king_table,
+const EG_PESTO_TABLE: [6][64]i16 = .{
+    EG_PAWN_TABLE,
+    EG_KNIGHT_TABLE,
+    EG_BISHOP_TABLE,
+    EG_ROOK_TABLE,
+    EG_QUEEN_TABLE,
+    EG_KING_TABLE,
 };
 
-const gamephaseInc: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
-const max_phase = blk: {
+const GAMEPHASE_INC: [6]u8 = .{ 0, 1, 1, 3, 6, 0 };
+const MAX_PHASE = blk: {
     @setEvalBranchQuota(1 << 30);
     break :blk computePhase(&Board.startpos());
 };
 
-const mg_table = blk: {
+const MG_TABLE = blk: {
     var res: [12][64]i16 = undefined;
     for (PieceType.all) |pt| {
         const p: usize = @intFromEnum(pt);
         for (0..64) |sq| {
-            res[2 * p + 0][sq] = mg_value[p] + mg_pesto_table[p][sq ^ 56];
-            res[2 * p + 1][sq] = -(mg_value[p] + mg_pesto_table[p][sq]);
+            res[2 * p + 0][sq] = MG_VALUE[p] + MG_PESTO_TABLE[p][sq ^ 56];
+            res[2 * p + 1][sq] = -(MG_VALUE[p] + MG_PESTO_TABLE[p][sq]);
         }
     }
     break :blk res;
 };
-const eg_table = blk: {
+const EG_TABLE = blk: {
     var res: [12][64]i16 = undefined;
     for (PieceType.all) |pt| {
         const p: usize = @intFromEnum(pt);
         for (0..64) |sq| {
-            res[2 * p + 0][sq] = eg_value[p] + eg_pesto_table[p][sq ^ 56];
-            res[2 * p + 1][sq] = -(eg_value[p] + eg_pesto_table[p][sq]);
+            res[2 * p + 0][sq] = EG_VALUE[p] + EG_PESTO_TABLE[p][sq ^ 56];
+            res[2 * p + 1][sq] = -(EG_VALUE[p] + EG_PESTO_TABLE[p][sq]);
         }
     }
     break :blk res;
 };
 
-const packed_table = blk: {
+const PACKED_TABLE = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [12][64]Packed = undefined;
     for (0..12) |ti| {
         for (0..64) |sq| {
-            res[ti][sq] = Packed.from(mg_table[ti][sq], eg_table[ti][sq]);
+            res[ti][sq] = Packed.from(MG_TABLE[ti][sq], EG_TABLE[ti][sq]);
         }
     }
     break :blk res;
@@ -323,17 +323,17 @@ const Packed = enum(i32) {
 fn computePhase(board: *const Board) u8 {
     var res: u8 = 0;
     for (0..6) |p| {
-        res += gamephaseInc[p] * @popCount(board.pieceBB(PieceType.fromInt(@intCast(p))));
+        res += GAMEPHASE_INC[p] * @popCount(board.pieceBB(PieceType.fromInt(@intCast(p))));
     }
     return res;
 }
 
 pub inline fn readPieceValue(pt: PieceType) Packed {
-    return Packed.from(mg_value[pt.toInt()], eg_value[pt.toInt()]);
+    return Packed.from(MG_VALUE[pt.toInt()], EG_VALUE[pt.toInt()]);
 }
 
 pub inline fn readPieceSquareTable(col: Colour, pt: PieceType, square: Square) Packed {
-    return packed_table[@as(usize, pt.toInt()) * 2 + col.toInt()][square.toInt()];
+    return PACKED_TABLE[@as(usize, pt.toInt()) * 2 + col.toInt()][square.toInt()];
 }
 
 pub const State = struct {
@@ -366,12 +366,12 @@ pub const State = struct {
 
     pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
         self.state = self.state.add(readPieceSquareTable(col, pt, square));
-        self.phase += gamephaseInc[pt.toInt()];
+        self.phase += GAMEPHASE_INC[pt.toInt()];
     }
 
     pub fn sub(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
         self.state = self.state.sub(readPieceSquareTable(col, pt, square));
-        self.phase -= gamephaseInc[pt.toInt()];
+        self.phase -= GAMEPHASE_INC[pt.toInt()];
     }
 
     pub fn addSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
@@ -393,10 +393,10 @@ pub const State = struct {
     }
 
     pub fn eval(self: State) i16 {
-        const mg_phase: i32 = @min(self.phase, max_phase);
-        const eg_phase = max_phase - mg_phase;
+        const mg_phase: i32 = @min(self.phase, MAX_PHASE);
+        const eg_phase = MAX_PHASE - mg_phase;
 
-        return @intCast(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), max_phase));
+        return @intCast(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), MAX_PHASE));
     }
 };
 

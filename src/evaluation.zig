@@ -21,8 +21,8 @@ const EvalMode = @import("eval_mode.zig").EvalMode;
 const root = @import("root.zig");
 
 const Board = root.Board;
-pub const eval_mode: EvalMode = std.meta.stringToEnum(EvalMode, build_options.eval).?;
-const impl = switch (eval_mode) {
+pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, build_options.eval).?;
+const impl = switch (EVAL_MODE) {
     .hce => @import("hce.zig"),
     .material => @import("material_eval.zig"),
     .nnue => root.nnue,
@@ -39,32 +39,32 @@ pub fn evalFen(fen: []const u8) !i16 {
     return evalPosition(&try Board.parseFen(fen, true));
 }
 
-pub const inf_score: i16 = 32767;
-pub const checkmate_score: i16 = 32000;
-pub const highest_non_mate_score = checkmate_score - root.Searcher.MAX_PLY - 1;
-pub const tb_win_score: i16 = 30000;
-pub const highest_non_TB_score = tb_win_score - root.Searcher.MAX_PLY - 1;
-pub const win_score: i16 = 29000;
+pub const INF_SCORE: i16 = 32767;
+pub const CHECKMATE_SCORE: i16 = 32000;
+pub const HIGHEST_NON_MATE_SCORE = CHECKMATE_SCORE - root.SEARCH_MAX_PLY - 1;
+pub const TB_WIN_SCORE: i16 = 30000;
+pub const HIGHEST_NON_TB_SCORE = TB_WIN_SCORE - root.SEARCH_MAX_PLY - 1;
+pub const WIN_SCORE: i16 = 29000;
 
 pub fn clampScore(score: anytype) i16 {
-    return @intCast(std.math.clamp(score, -(win_score - 1), win_score - 1));
+    return @intCast(std.math.clamp(score, -(WIN_SCORE - 1), WIN_SCORE - 1));
 }
 
 pub fn scoreToTt(score: i16, ply: u8) i16 {
-    if (score < -win_score) {
+    if (score < -WIN_SCORE) {
         return score - ply;
     }
-    if (score > win_score) {
+    if (score > WIN_SCORE) {
         return score + ply;
     }
     return score;
 }
 
 pub fn scoreFromTt(score: i16, ply: u8) i16 {
-    if (score < -win_score) {
+    if (score < -WIN_SCORE) {
         return score + ply;
     }
-    if (score > win_score) {
+    if (score > WIN_SCORE) {
         return score - ply;
     }
     return score;
@@ -80,30 +80,30 @@ pub fn checkTTBound(score: i16, alpha: i32, beta: i32, tp: root.ScoreType) bool 
 }
 
 pub fn matedIn(plies: u16) i16 {
-    return -checkmate_score + @as(i16, @intCast(plies));
+    return -CHECKMATE_SCORE + @as(i16, @intCast(plies));
 }
 
 pub fn tbWin(plies: u8) i16 {
-    return tb_win_score - plies;
+    return TB_WIN_SCORE - plies;
 }
 
 pub fn tbLoss(plies: u8) i16 {
-    return -tb_win_score + plies;
+    return -TB_WIN_SCORE + plies;
 }
 
 pub fn isMateScore(score: i32) bool {
-    return @abs(score) > highest_non_mate_score;
+    return @abs(score) > HIGHEST_NON_MATE_SCORE;
 }
 
 pub fn isTBScore(score: i32) bool {
-    return @abs(score) > highest_non_TB_score;
+    return @abs(score) > HIGHEST_NON_TB_SCORE;
 }
 
 pub fn formatScore(score: i16) root.BoundedArray(u8, 15) {
     var print_buf: [15]u8 = undefined;
     var res: root.BoundedArray(u8, 15) = .{};
     if (isMateScore(score)) {
-        const plies_to_mate = if (score > 0) checkmate_score - score else checkmate_score + score;
+        const plies_to_mate = if (score > 0) CHECKMATE_SCORE - score else CHECKMATE_SCORE + score;
         const moves_to_mate = @divTrunc(plies_to_mate + 1, 2);
         res.appendSliceAssumeCapacity("mate ");
         if (score < 0)

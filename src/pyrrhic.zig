@@ -23,15 +23,15 @@ const Square = root.Square;
 const ScoredMove = root.ScoredMove;
 const Bitboard = root.Bitboard;
 
-const use_tbs = root.use_tbs;
+const USE_TBS = root.USE_TBS;
 
-const c = if (use_tbs) @cImport(@cInclude("tbprobe.h")) else undefined;
-const tb_max_moves: usize = if (use_tbs) c.TB_MAX_MOVES else 0;
-const TbRootMoves = if (use_tbs) c.TbRootMoves else void;
+const c = if (USE_TBS) @cImport(@cInclude("tbprobe.h")) else undefined;
+const TB_MAX_MOVES: usize = if (USE_TBS) c.TB_MAX_MOVES else 0;
+const TbRootMoves = if (USE_TBS) c.TbRootMoves else void;
 
 var tbs_init = false;
 pub fn init(path: [*:0]const u8) error{TBInitializationFailed}!void {
-    if (!use_tbs) {
+    if (!USE_TBS) {
         return;
     }
     tbs_init = true;
@@ -41,7 +41,7 @@ pub fn init(path: [*:0]const u8) error{TBInitializationFailed}!void {
 }
 
 pub fn deinit() void {
-    if (!use_tbs) {
+    if (!USE_TBS) {
         return;
     }
 
@@ -52,7 +52,7 @@ pub fn deinit() void {
 }
 
 pub fn probeWDL(board: *const Board) ?WDL {
-    if (!use_tbs or !tbs_init) {
+    if (!USE_TBS or !tbs_init) {
         return null;
     }
     if (board.halfmove > 0 or
@@ -92,8 +92,8 @@ pub fn probeWDL(board: *const Board) ?WDL {
 pub fn probeRootDTZ(
     board: *const Board,
     has_repetition: bool,
-) ?struct { WDL, root.BoundedArray(ScoredMove, tb_max_moves) } {
-    if (!use_tbs or !tbs_init) {
+) ?struct { WDL, root.BoundedArray(ScoredMove, TB_MAX_MOVES) } {
+    if (!USE_TBS or !tbs_init) {
         return null;
     }
     if (board.castling_rights.rawCastlingAvailability() != 0 or
@@ -135,7 +135,7 @@ pub fn probeRootDTZ(
     }
 
     const tb_moves = tb_results.moves[0..tb_results.size];
-    var res: root.BoundedArray(ScoredMove, tb_max_moves) = .{};
+    var res: root.BoundedArray(ScoredMove, TB_MAX_MOVES) = .{};
     for (tb_moves) |tb_move| {
         const from = Square.fromInt(@intCast(c.PYRRHIC_MOVE_FROM(tb_move.move)));
         const to = Square.fromInt(@intCast(c.PYRRHIC_MOVE_TO(tb_move.move)));

@@ -232,21 +232,21 @@ pub fn equal(self: *const Board, other: *const Board) bool {
 }
 
 pub fn materialScale(self: *const Board) i32 {
-    const tunables = root.tunable_constants;
+    const TUNABLES = root.TUNABLE_CONSTANTS;
     @setEvalBranchQuota(1 << 30);
-    const vals: [6]i16 = if (root.tuning.do_tuning) .{
-        @intCast(tunables.material_scaling_pawn),
-        @intCast(tunables.material_scaling_knight),
-        @intCast(tunables.material_scaling_bishop),
-        @intCast(tunables.material_scaling_rook),
-        @intCast(tunables.material_scaling_queen),
+    const vals: [6]i16 = if (root.tuning.DO_TUNING) .{
+        @intCast(TUNABLES.material_scaling_pawn),
+        @intCast(TUNABLES.material_scaling_knight),
+        @intCast(TUNABLES.material_scaling_bishop),
+        @intCast(TUNABLES.material_scaling_rook),
+        @intCast(TUNABLES.material_scaling_queen),
         0,
     } else comptime .{
-        tunables.material_scaling_pawn,
-        tunables.material_scaling_knight,
-        tunables.material_scaling_bishop,
-        tunables.material_scaling_rook,
-        tunables.material_scaling_queen,
+        TUNABLES.material_scaling_pawn,
+        TUNABLES.material_scaling_knight,
+        TUNABLES.material_scaling_bishop,
+        TUNABLES.material_scaling_rook,
+        TUNABLES.material_scaling_queen,
         0,
     };
 
@@ -317,22 +317,22 @@ pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
         var raw_castling_rights: u8 = 0;
         for (castling_string) |castle_ch| {
             raw_castling_rights |= switch (castle_ch) {
-                'K' => CastlingRights.white_kingside_castle,
-                'k' => CastlingRights.black_kingside_castle,
-                'Q' => CastlingRights.white_queenside_castle,
-                'q' => CastlingRights.black_queenside_castle,
+                'K' => CastlingRights.WHITE_KINGSIDE_CASTLE,
+                'k' => CastlingRights.BLACK_KINGSIDE_CASTLE,
+                'Q' => CastlingRights.WHITE_QUEENSIDE_CASTLE,
+                'q' => CastlingRights.BLACK_QUEENSIDE_CASTLE,
                 else => blk: {
                     self.frc = true;
                     const file = File.parse(castle_ch) catch return error.InvalidCharacter;
                     const king_square, const kingside_castle, const queenside_castle, const rook_array = if (std.ascii.isUpper(castle_ch)) .{
                         white_king_square.?,
-                        CastlingRights.white_kingside_castle,
-                        CastlingRights.white_queenside_castle,
+                        CastlingRights.WHITE_KINGSIDE_CASTLE,
+                        CastlingRights.WHITE_QUEENSIDE_CASTLE,
                         &white_rooks_on_first_rank,
                     } else .{
                         black_king_square.?,
-                        CastlingRights.black_kingside_castle,
-                        CastlingRights.black_queenside_castle,
+                        CastlingRights.BLACK_KINGSIDE_CASTLE,
+                        CastlingRights.BLACK_QUEENSIDE_CASTLE,
                         &black_rooks_on_last_rank,
                     };
 
@@ -1843,7 +1843,7 @@ pub const NullEvalState = struct {
 //     }
 // };
 
-const plausible_moves = computePlausibleMoves();
+const PLAUSIBLE_MOVES = computePlausibleMoves();
 
 fn computePlausibleMoves() BoundedArray(Move, 8192) {
     @setEvalBranchQuota(1_000_000);
@@ -1919,7 +1919,7 @@ fn perft_impl(
 
     if (verify) {
         var is_legal_count: usize = 0;
-        for (plausible_moves.slice()) |m| {
+        for (PLAUSIBLE_MOVES.slice()) |m| {
             if (self.isLegal(stm, m)) is_legal_count += 1;
         }
         if (is_legal_count != movelist.vals.len) {
@@ -1928,7 +1928,7 @@ fn perft_impl(
                 movelist.vals.len,
                 is_legal_count,
             });
-            for (plausible_moves.slice()) |m| {
+            for (PLAUSIBLE_MOVES.slice()) |m| {
                 if (!self.isLegal(stm, m)) continue;
                 var found = false;
                 for (movelist.vals.slice()) |gen_move| {
@@ -1947,7 +1947,7 @@ fn perft_impl(
             }
             for (movelist.vals.slice()) |gen_move| {
                 var found = false;
-                for (plausible_moves.slice()) |m| {
+                for (PLAUSIBLE_MOVES.slice()) |m| {
                     if (gen_move == m) {
                         found = true;
                         break;

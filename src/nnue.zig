@@ -68,10 +68,10 @@ pub inline fn whichOutputBucket(board: *const Board) usize {
 var weights_file: std.fs.File = undefined;
 var mapped_weights: []align(std.heap.pageSize()) const u8 = undefined;
 var mapper: @import("MappedFile.zig") = undefined;
-const net = @embedFile("net");
-const verbatim_weights: [net.len:0]u8 align(64) = net.*;
+const NET = @embedFile("net");
+const VERBATIM_WEIGHTS: [NET.len:0]u8 align(64) = NET.*;
 
-pub var weights = @as(*const Weights, @ptrCast(&verbatim_weights));
+pub var weights = @as(*const Weights, @ptrCast(&VERBATIM_WEIGHTS));
 
 inline fn hiddenLayerWeightsVector() []const @Vector(vecSize(i16), i16) {
     return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.ft_w))[0 .. weights.ft_w.len / vecSize(i16)];

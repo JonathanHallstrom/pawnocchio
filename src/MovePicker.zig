@@ -163,7 +163,7 @@ inline fn noisyValue(
 
     res += @intFromBool(typed.move.tp() == .ep) * SEE.value(.pawn, .ordering);
     res += SEE.value(board.pieceOn(typed.move.to()) orelse .king, .ordering);
-    res = @divFloor(res * root.tunable_constants.mvv_mult, 32);
+    res = @divFloor(res * root.TUNABLE_CONSTANTS.mvv_mult, 32);
     res += histories.readNoisy(board, typed);
 
     return res;
@@ -241,8 +241,8 @@ pub fn next(
             }
             const res = TypedMove.fromBoard(board, self.prev_move, move);
             const history_score = histories.readNoisy(board, res);
-            const margin = @divTrunc(-history_score * root.tunable_constants.good_noisy_ordering_mult, 32768) +
-                root.tuning.tunable_constants.good_noisy_ordering_base;
+            const margin = @divTrunc(-history_score * root.TUNABLE_CONSTANTS.good_noisy_ordering_mult, 32768) +
+                root.tuning.TUNABLE_CONSTANTS.good_noisy_ordering_base;
             if (SEE.scoreMove(board, res.move, margin, .ordering)) {
                 return res;
             }

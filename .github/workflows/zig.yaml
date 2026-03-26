@@ -1,12 +1,6 @@
-name: Zig Test and Lint
+name: zig ci
 
-on:
-  push:
-    -paths:
-      - 'src/*'
-      - 'build.zig'
-  pull_request:
-    branches: [ "main" ]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -19,7 +13,7 @@ jobs:
       - uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.15.2
-      - run: zig build
+      - run: zig build check
   test:
     runs-on: ubuntu-latest
     steps:

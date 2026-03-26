@@ -19,9 +19,9 @@ const root = @import("root.zig");
 const attack_array_generation = @import("attack_array_generation.zig");
 const Square = root.Square;
 
-const rook_array_size = 102400;
-const bishop_array_size = 5248;
-pub const total_array_size = rook_array_size + bishop_array_size;
+const ROOK_ARRAY_SIZE = 102400;
+const BISHOP_ARRAY_SIZE = 5248;
+pub const TOTAL_ARRAY_SIZE = ROOK_ARRAY_SIZE + BISHOP_ARRAY_SIZE;
 
 pub const AttackEntry = struct {
     mask: u64,
@@ -38,7 +38,7 @@ pub const AttackEntry = struct {
     }
 };
 
-const bishop_attack_entries: [64]AttackEntry = .{
+const BISHOP_ATTACK_ENTRIES: [64]AttackEntry = .{
     .{ .mask = 18049651735527936, .magic = 571750359499009, .offs = 0, .shift = 58 },
     .{ .mask = 70506452091904, .magic = 2314869054803886088, .offs = 64, .shift = 59 },
     .{ .mask = 275415828992, .magic = 18297114782597248, .offs = 96, .shift = 59 },
@@ -104,7 +104,7 @@ const bishop_attack_entries: [64]AttackEntry = .{
     .{ .mask = 9024825867763712, .magic = 4611723436199314432, .offs = 5152, .shift = 59 },
     .{ .mask = 18049651735527936, .magic = 9385647310953906304, .offs = 5184, .shift = 58 },
 };
-const rook_attack_entries: [64]AttackEntry = .{
+const ROOK_ATTACK_ENTRIES: [64]AttackEntry = .{
     .{ .mask = 282578800148862, .magic = 6953557963173269632, .offs = 0, .shift = 52 },
     .{ .mask = 565157600297596, .magic = 2323892592363716610, .offs = 4096, .shift = 53 },
     .{ .mask = 1130315200595066, .magic = 144124061482517536, .offs = 6144, .shift = 53 },
@@ -171,23 +171,23 @@ const rook_attack_entries: [64]AttackEntry = .{
     .{ .mask = 9115426935197958144, .magic = 9232379377910562946, .offs = 98304, .shift = 52 },
 };
 
-var bishop_attacks: [bishop_array_size]u64 align(std.atomic.cache_line) = undefined;
-var rook_attacks: [rook_array_size]u64 align(std.atomic.cache_line) = undefined;
+var bishop_attacks: [BISHOP_ARRAY_SIZE]u64 align(std.atomic.cache_line) = undefined;
+var rook_attacks: [ROOK_ARRAY_SIZE]u64 align(std.atomic.cache_line) = undefined;
 
 pub fn init() void {
-    attack_array_generation.generateBishopAttackArrayInPlace(bishop_attack_entries, &bishop_attacks);
-    attack_array_generation.generateRookAttackArrayInPlace(rook_attack_entries, &rook_attacks);
+    attack_array_generation.generateBishopAttackArrayInPlace(BISHOP_ATTACK_ENTRIES, &bishop_attacks);
+    attack_array_generation.generateRookAttackArrayInPlace(ROOK_ATTACK_ENTRIES, &rook_attacks);
 }
 
 pub fn getBishopAttacks(square: Square, blockers: u64) u64 {
     if (@inComptime()) {
         return attack_array_generation.computeBishopAttacks(square, blockers);
     }
-    return (&bishop_attacks)[@intCast((&bishop_attack_entries)[square.toInt()].getBishopIndex(blockers))];
+    return (&bishop_attacks)[@intCast((&BISHOP_ATTACK_ENTRIES)[square.toInt()].getBishopIndex(blockers))];
 }
 pub fn getRookAttacks(square: Square, blockers: u64) u64 {
     if (@inComptime()) {
         return attack_array_generation.computeRookAttacks(square, blockers);
     }
-    return (&rook_attacks)[@intCast((&rook_attack_entries)[square.toInt()].getRookIndex(blockers))];
+    return (&rook_attacks)[@intCast((&ROOK_ATTACK_ENTRIES)[square.toInt()].getRookIndex(blockers))];
 }

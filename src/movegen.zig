@@ -50,13 +50,13 @@ pub const CountReceiver = struct {
     }
 };
 
-const has_vbmi2 = builtin.cpu.has(.x86, .avx512vbmi2);
+const HAS_VBMI2 = builtin.cpu.has(.x86, .avx512vbmi2);
 
 inline fn moveBits(from: u8, to: u8, flag: u16) u16 {
     return @as(u16, from) | @as(u16, to) << 6 | flag << 12;
 }
 
-const default_move_template: [64][64]u16 = blk: {
+const DEFAULT_MOVE_TEMPLATE: [64][64]u16 = blk: {
     @setEvalBranchQuota(10_000);
     var table: [64][64]u16 = undefined;
     for (0..64) |from| {
@@ -98,7 +98,7 @@ inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) v
         receiver.count += @popCount(bb);
         return;
     }
-    if (comptime has_vbmi2 and std.meta.hasFn(ReceiverType, "receiveMany")) {
+    if (comptime HAS_VBMI2 and std.meta.hasFn(ReceiverType, "receiveMany")) {
         const lo: u32 = @truncate(bb);
         const hi: u32 = @truncate(bb >> 32);
         const lo_count: usize = @popCount(lo);
@@ -118,7 +118,7 @@ inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) v
 }
 
 inline fn emitBB(from: Square, bb: u64, receiver: anytype) void {
-    emitTemplateBB(&default_move_template[from.toInt()], bb, receiver);
+    emitTemplateBB(&DEFAULT_MOVE_TEMPLATE[from.toInt()], bb, receiver);
 }
 
 inline fn emitOffsetBB(

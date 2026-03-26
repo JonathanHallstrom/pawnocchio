@@ -1,4 +1,4 @@
-pub const fens = [_][]const u8{
+pub const FENS = [_][]const u8{
     "1B6/1R4p1/1p3k1p/p7/r7/8/5P2/5K2 w - - 4 2",
     "1B6/1R4p1/1p4kp/p7/1r6/8/4KP2/8 b - - 5 2",
     "1B6/1R4p1/1p4kp/p7/1r6/8/5PK1/8 b - - 5 2",

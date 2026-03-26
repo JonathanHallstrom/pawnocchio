@@ -1,0 +1,28 @@
+name: release_builds
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build release artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: build artifacts
+        run: zig build release_builds --prefix dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release_builds
+          path: dist/bin/*
+          if-no-files-found: error

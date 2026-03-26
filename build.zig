@@ -1,10 +1,12 @@
 const std = @import("std");
 
 const build_net = @import("build/net.zig");
+const build_release = @import("build/release.zig");
 const build_tuning = @import("build/tuning.zig");
 const EvalMode = @import("src/eval_mode.zig").EvalMode;
 
-const base_version = "2.0";
+const BASE_VERSION = "2.0";
+const DEFAULT_NET_PATH = "pawnocchio-nets/networks/mixed_data_chonked5.nnue";
 
 fn gitShortHash(b: *std.Build) ?[]const u8 {
     var exit_code: u8 = undefined;
@@ -20,61 +22,109 @@ fn gitShortHash(b: *std.Build) ?[]const u8 {
     return short_sha;
 }
 
-fn defaultVersionString(b: *std.Build) []const u8 {
+fn defaultVersion(b: *std.Build) []const u8 {
     if (gitShortHash(b)) |short_sha| {
-        return b.fmt("{s}-dev-{s}", .{ base_version, short_sha });
+        return b.fmt("{s}-dev-{s}", .{ BASE_VERSION, short_sha });
     }
-    return b.fmt("{s}-dev", .{base_version});
+    return BASE_VERSION ++ "-dev";
 }
 
-pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-    const name = b.option([]const u8, "name", "change the binary name") orelse "pawnocchio";
-    const version_string = b.option([]const u8, "version_string", "set executable version string") orelse defaultVersionString(b);
-    const eval_mode = b.option(EvalMode, "eval", "which evaluator to use") orelse .nnue;
-    const default_net_path = "pawnocchio-nets/networks/mixed_data_chonked5.nnue";
+const ExecutableOptions = struct {
+    name: []const u8,
+    version: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    eval_mode: EvalMode,
+    link_mode: ?std.builtin.LinkMode = null,
+    emit_symbols: bool = false,
+    use_tbs: bool = true,
+    tools_only: bool = false,
+};
 
-    const net_override = b.option(std.Build.LazyPath, "net", "use this net");
+const Inputs = struct {
+    generated_files: *std.Build.Step.WriteFile,
+    tuning_generated_file: std.Build.LazyPath,
+    input: build_net.Input,
+};
+
+fn prepareInputs(
+    b: *std.Build,
+    transform_tool: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    eval_mode: EvalMode,
+    net_override: ?std.Build.LazyPath,
+) !Inputs {
     if (eval_mode == .hce and net_override != null) {
         std.log.err("build cannot set both -Deval=hce and -Dnet\n", .{});
         return error.IncompatibleFlags;
     }
+
     const generated_files = b.addWriteFiles();
     const tuning_generated_file = try build_tuning.prepareGeneratedTuning(b, generated_files);
-    const eval_input: build_net.EvalInput = if (eval_mode == .hce)
+    const input: build_net.Input = if (eval_mode == .hce)
         .hce
     else
         try build_net.prepareNet(
             b,
+            transform_tool,
             target.result.cpu,
-            b.allocator,
-            build_net.selectNet(b, net_override, default_net_path),
-            generated_files,
+            net_override orelse b.path(DEFAULT_NET_PATH),
         );
-    const linkage_mode = b.option(std.builtin.LinkMode, "link_mode", "set linkage mode");
-    const emit_symbols = b.option(bool, "emit_symbols", "keep debug symbols") orelse false;
-    const use_tbs = b.option(bool, "use_tbs", "enable tablebases") orelse true;
-    const minimal_executable = switch (optimize) {
+    return .{
+        .generated_files = generated_files,
+        .tuning_generated_file = tuning_generated_file,
+        .input = input,
+    };
+}
+
+fn configureArtifact(
+    b: *std.Build,
+    artifact: *std.Build.Step.Compile,
+    options: ExecutableOptions,
+    inputs: Inputs,
+) void {
+    build_net.configureArtifact(
+        b,
+        artifact,
+        build_net.addOptions(
+            b,
+            options.version,
+            options.use_tbs,
+            options.tools_only,
+            options.eval_mode,
+            inputs.input,
+        ),
+        inputs.input,
+        inputs.generated_files,
+        inputs.tuning_generated_file,
+    );
+}
+
+fn addExecutable(
+    b: *std.Build,
+    options: ExecutableOptions,
+    inputs: Inputs,
+) !*std.Build.Step.Compile {
+    const minimal_executable = switch (options.optimize) {
         .ReleaseFast, .ReleaseSmall => true,
         .Debug, .ReleaseSafe => false,
-    } and !emit_symbols;
+    } and !options.emit_symbols;
 
     const exe = b.addExecutable(.{
-        .name = name,
+        .name = options.name,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
+            .target = options.target,
+            .optimize = options.optimize,
             .omit_frame_pointer = minimal_executable,
             .strip = minimal_executable,
-            .link_libc = target.result.os.tag == .windows or use_tbs,
+            .link_libc = options.target.result.os.tag == .windows or options.use_tbs,
         }),
         .use_llvm = true,
-        .linkage = linkage_mode,
+        .linkage = options.link_mode,
     });
-    build_net.configureArtifact(b, exe, build_net.buildOptions(b, version_string, use_tbs, eval_mode, eval_input), eval_input, generated_files, tuning_generated_file);
-    if (use_tbs) {
+    configureArtifact(b, exe, options, inputs);
+    if (options.use_tbs) {
         exe.addCSourceFile(.{
             .file = b.path("src/Pyrrhic/tbprobe.c"),
             .flags = &.{
@@ -85,6 +135,62 @@ pub fn build(b: *std.Build) !void {
         });
         exe.addIncludePath(b.path("src/Pyrrhic/"));
     }
+
+    return exe;
+}
+
+fn addBuildStep(
+    b: *std.Build,
+    step_name: []const u8,
+    description: []const u8,
+    version: []const u8,
+    transform_tool: *std.Build.Step.Compile,
+    config: build_release.Config,
+    tools_only: bool,
+) !void {
+    const step = b.step(step_name, description);
+    for (config.specs) |spec| {
+        const target = try spec.resolveTarget(b);
+        const inputs = try prepareInputs(b, transform_tool, target, config.eval_mode, null);
+        const exe = try addExecutable(b, .{
+            .name = spec.name(b, version),
+            .version = version,
+            .target = target,
+            .optimize = config.optimize,
+            .eval_mode = config.eval_mode,
+            .link_mode = spec.link_mode,
+            .tools_only = tools_only or config.tools_only,
+        }, inputs);
+        const install_artifact = b.addInstallArtifact(exe, .{});
+        step.dependOn(&install_artifact.step);
+    }
+}
+
+pub fn build(b: *std.Build) !void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const name = b.option([]const u8, "name", "change the binary name") orelse "pawnocchio";
+    const version = b.option([]const u8, "version_string", "set executable version string") orelse defaultVersion(b);
+    const eval_mode = b.option(EvalMode, "eval", "which evaluator to use") orelse .nnue;
+    const net_override = b.option(std.Build.LazyPath, "net", "use this net");
+    const link_mode = b.option(std.builtin.LinkMode, "link_mode", "set linkage mode");
+    const emit_symbols = b.option(bool, "emit_symbols", "keep debug symbols") orelse false;
+    const use_tbs = b.option(bool, "use_tbs", "enable tablebases") orelse true;
+    const tools_only = b.option(bool, "tools_only", "disable UCI, datagen, bench, and genfens to minimize tool binaries") orelse false;
+    const transform_tool = build_net.addTransformTool(b);
+    const inputs = try prepareInputs(b, transform_tool, target, eval_mode, net_override);
+
+    const exe = try addExecutable(b, .{
+        .name = name,
+        .version = version,
+        .target = target,
+        .optimize = optimize,
+        .eval_mode = eval_mode,
+        .link_mode = link_mode,
+        .emit_symbols = emit_symbols,
+        .use_tbs = use_tbs,
+        .tools_only = tools_only,
+    }, inputs);
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -105,12 +211,23 @@ pub fn build(b: *std.Build) !void {
         }),
         .use_llvm = true,
     });
-    build_net.configureArtifact(b, unit_tests, build_net.buildOptions(b, version_string, false, eval_mode, eval_input), eval_input, generated_files, tuning_generated_file);
+    configureArtifact(b, unit_tests, .{
+        .name = "test",
+        .version = version,
+        .target = target,
+        .optimize = optimize,
+        .eval_mode = eval_mode,
+        .use_tbs = false,
+        .tools_only = tools_only,
+    }, inputs);
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const test_step = b.step("test", "run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 
-    const check_step = b.step("check", "Check if project compiles");
+    const check_step = b.step("check", "check if project compiles");
     check_step.dependOn(&exe.step);
+
+    try addBuildStep(b, "tool_builds", "build tool artifacts", version, transform_tool, build_release.TOOLS, tools_only);
+    try addBuildStep(b, "release_builds", "build release artifacts", version, transform_tool, build_release.RELEASE, tools_only);
 }

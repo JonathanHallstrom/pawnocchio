@@ -160,28 +160,28 @@ pub fn attackSquares(bitboard: u64, d_ranks: anytype, d_files: anytype) u64 {
     return res & ~bitboard;
 }
 
-pub const rook_d_ranks = [_]comptime_int{ 1, -1, 0, 0 };
-pub const rook_d_files = [_]comptime_int{ 0, 0, 1, -1 };
+pub const ROOK_D_RANKS = [_]comptime_int{ 1, -1, 0, 0 };
+pub const ROOK_D_FILES = [_]comptime_int{ 0, 0, 1, -1 };
 pub fn rookRelevantSquares(bitboard: u64) u64 {
-    return relevantSquares(bitboard, rook_d_ranks, rook_d_files);
+    return relevantSquares(bitboard, ROOK_D_RANKS, ROOK_D_FILES);
 }
 pub fn rookAttackSquares(bitboard: u64) u64 {
-    return attackSquares(bitboard, rook_d_ranks, rook_d_files);
+    return attackSquares(bitboard, ROOK_D_RANKS, ROOK_D_FILES);
 }
 
-pub const bishop_d_ranks = [_]comptime_int{ -1, -1, 1, 1 };
-pub const bishop_d_files = [_]comptime_int{ 1, -1, 1, -1 };
+pub const BISHOP_D_RANKS = [_]comptime_int{ -1, -1, 1, 1 };
+pub const BISHOP_D_FILES = [_]comptime_int{ 1, -1, 1, -1 };
 pub fn bishopRelevantSquares(bitboard: u64) u64 {
-    return relevantSquares(bitboard, bishop_d_ranks, bishop_d_files);
+    return relevantSquares(bitboard, BISHOP_D_RANKS, BISHOP_D_FILES);
 }
 pub fn bishopAttackSquares(bitboard: u64) u64 {
-    return attackSquares(bitboard, bishop_d_ranks, bishop_d_files);
+    return attackSquares(bitboard, BISHOP_D_RANKS, BISHOP_D_FILES);
 }
 
-pub const knight_d_ranks = [_]comptime_int{ 1, 1, -1, -1, 2, 2, -2, -2 };
-pub const knight_d_files = [_]comptime_int{ 2, -2, 2, -2, 1, -1, 1, -1 };
+pub const KNIGHT_D_RANKS = [_]comptime_int{ 1, 1, -1, -1, 2, 2, -2, -2 };
+pub const KNIGHT_D_FILES = [_]comptime_int{ 2, -2, 2, -2, 1, -1, 1, -1 };
 
-const king_moves: [64]u64 = blk: {
+const KING_MOVES: [64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64]u64 = undefined;
     for (0..64) |i| {
@@ -195,19 +195,19 @@ const king_moves: [64]u64 = blk: {
     break :blk res;
 };
 
-const knight_moves: [64]u64 = blk: {
+const KNIGHT_MOVES: [64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64]u64 = undefined;
     for (0..64) |i| {
         res[i] = 0;
-        for (knight_d_ranks, knight_d_files) |dr, df| {
+        for (KNIGHT_D_RANKS, KNIGHT_D_FILES) |dr, df| {
             res[i] |= move(1 << i, dr, df);
         }
     }
     break :blk res;
 };
 
-const pawn_attacks: [64][2]u64 = blk: {
+const PAWN_ATTACKS: [64][2]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][2]u64 = undefined;
     for (0..64) |i| {
@@ -221,7 +221,7 @@ const pawn_attacks: [64][2]u64 = blk: {
     break :blk res;
 };
 
-const bishop_attacks: [64]u64 = blk: {
+const BISHOP_ATTACKS: [64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64]u64 = undefined;
     for (0..64) |i| {
@@ -230,7 +230,7 @@ const bishop_attacks: [64]u64 = blk: {
     break :blk res;
 };
 
-const rook_attacks: [64]u64 = blk: {
+const ROOK_ATTACKS: [64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64]u64 = undefined;
     for (0..64) |i| {
@@ -239,9 +239,9 @@ const rook_attacks: [64]u64 = blk: {
     break :blk res;
 };
 
-const queen_attacks: [64]u64 = @as(@Vector(64, u64), bishop_attacks) | @as(@Vector(64, u64), rook_attacks);
+const QUEEN_ATTACKS: [64]u64 = @as(@Vector(64, u64), BISHOP_ATTACKS) | @as(@Vector(64, u64), ROOK_ATTACKS);
 
-const extending_ray_bb: [64][64]u64 = blk: {
+const EXTENDING_RAY_BB: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     @memset(std.mem.asBytes(&res), 0);
@@ -271,12 +271,12 @@ const extending_ray_bb: [64][64]u64 = blk: {
     break :blk res;
 };
 
-const rook_ray_between: [64][64]u64 = blk: {
+const ROOK_RAY_BETWEEN: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     @memset(std.mem.asBytes(&res), 0);
     for (0..64) |from| {
-        for (rook_d_ranks, rook_d_files) |d_rank, d_file| {
+        for (ROOK_D_RANKS, ROOK_D_FILES) |d_rank, d_file| {
             const reachable = ray(Square.fromInt(@intCast(from)).toBitboard(), d_rank, d_file);
             var iter = iterator(reachable);
             while (iter.next()) |to| {
@@ -288,12 +288,12 @@ const rook_ray_between: [64][64]u64 = blk: {
     break :blk res;
 };
 
-const bishop_ray_between: [64][64]u64 = blk: {
+const BISHOP_RAY_BETWEEN: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     @memset(std.mem.asBytes(&res), 0);
     for (0..64) |from| {
-        for (bishop_d_ranks, bishop_d_files) |d_rank, d_file| {
+        for (BISHOP_D_RANKS, BISHOP_D_FILES) |d_rank, d_file| {
             const reachable = ray(Square.fromInt(@intCast(from)).toBitboard(), d_rank, d_file);
             var iter = iterator(reachable);
             while (iter.next()) |to| {
@@ -305,22 +305,22 @@ const bishop_ray_between: [64][64]u64 = blk: {
     break :blk res;
 };
 
-const queen_ray_between: [64][64]u64 = blk: {
+const QUEEN_RAY_BETWEEN: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     for (0..64) |from| {
-        res[from] = @as(@Vector(64, u64), bishop_ray_between[from]) | rook_ray_between[from];
+        res[from] = @as(@Vector(64, u64), BISHOP_RAY_BETWEEN[from]) | ROOK_RAY_BETWEEN[from];
     }
     break :blk res;
 };
 
-const rook_ray_between_inclusive: [64][64]u64 = blk: {
+const ROOK_RAY_BETWEEN_INCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     @memset(std.mem.asBytes(&res), 0);
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
-        for (rook_d_ranks, rook_d_files) |d_rank, d_file| {
+        for (ROOK_D_RANKS, ROOK_D_FILES) |d_rank, d_file| {
             const reachable = ray(from.toBitboard(), d_rank, d_file) | from.toBitboard();
             var iter = iterator(reachable);
             while (iter.next()) |to| {
@@ -332,13 +332,13 @@ const rook_ray_between_inclusive: [64][64]u64 = blk: {
     break :blk res;
 };
 
-const bishop_ray_between_inclusive: [64][64]u64 = blk: {
+const BISHOP_RAY_BETWEEN_INCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     @memset(std.mem.asBytes(&res), 0);
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
-        for (bishop_d_ranks, bishop_d_files) |d_rank, d_file| {
+        for (BISHOP_D_RANKS, BISHOP_D_FILES) |d_rank, d_file| {
             const reachable = ray(from.toBitboard(), d_rank, d_file) | from.toBitboard();
             var iter = iterator(reachable);
             while (iter.next()) |to| {
@@ -350,22 +350,22 @@ const bishop_ray_between_inclusive: [64][64]u64 = blk: {
     break :blk res;
 };
 
-const queen_ray_between_inclusive: [64][64]u64 = blk: {
+const QUEEN_RAY_BETWEEN_INCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     for (0..64) |from| {
-        res[from] = @as(@Vector(64, u64), bishop_ray_between_inclusive[from]) | rook_ray_between_inclusive[from];
+        res[from] = @as(@Vector(64, u64), BISHOP_RAY_BETWEEN_INCLUSIVE[from]) | ROOK_RAY_BETWEEN_INCLUSIVE[from];
     }
     break :blk res;
 };
 
-const rook_ray_between_exclusive: [64][64]u64 = blk: {
+const ROOK_RAY_BETWEEN_EXCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     @memset(std.mem.asBytes(&res), 0);
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
-        for (rook_d_ranks, rook_d_files) |d_rank, d_file| {
+        for (ROOK_D_RANKS, ROOK_D_FILES) |d_rank, d_file| {
             const reachable = ray(from.toBitboard(), d_rank, d_file) | from.toBitboard();
             var iter = iterator(reachable);
             while (iter.next()) |to| {
@@ -377,13 +377,13 @@ const rook_ray_between_exclusive: [64][64]u64 = blk: {
     break :blk res;
 };
 
-const bishop_ray_between_exclusive: [64][64]u64 = blk: {
+const BISHOP_RAY_BETWEEN_EXCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     @memset(std.mem.asBytes(&res), 0);
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
-        for (bishop_d_ranks, bishop_d_files) |d_rank, d_file| {
+        for (BISHOP_D_RANKS, BISHOP_D_FILES) |d_rank, d_file| {
             const reachable = ray(from.toBitboard(), d_rank, d_file) | from.toBitboard();
             var iter = iterator(reachable);
             while (iter.next()) |to| {
@@ -395,20 +395,20 @@ const bishop_ray_between_exclusive: [64][64]u64 = blk: {
     break :blk res;
 };
 
-const queen_ray_between_exclusive: [64][64]u64 = blk: {
+const QUEEN_RAY_BETWEEN_EXCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     for (0..64) |from| {
-        res[from] = @as(@Vector(64, u64), bishop_ray_between_exclusive[from]) | rook_ray_between_exclusive[from];
+        res[from] = @as(@Vector(64, u64), BISHOP_RAY_BETWEEN_EXCLUSIVE[from]) | ROOK_RAY_BETWEEN_EXCLUSIVE[from];
     }
     break :blk res;
 };
 
-const check_ray_between: [64][64]u64 = blk: {
+const CHECK_RAY_BETWEEN: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
     for (0..64) |from| {
-        res[from] = queen_ray_between_inclusive[from];
+        res[from] = QUEEN_RAY_BETWEEN_INCLUSIVE[from];
         for (0..64) |to| {
             res[from][to] |= 1 << from;
             res[from][to] |= 1 << to;
@@ -423,23 +423,23 @@ fn idx(i: anytype) usize {
 }
 
 pub fn kingMoves(square: anytype) u64 {
-    return (&king_moves)[idx(square)];
+    return (&KING_MOVES)[idx(square)];
 }
 
 pub fn knightMoves(square: anytype) u64 {
-    return (&knight_moves)[idx(square)];
+    return (&KNIGHT_MOVES)[idx(square)];
 }
 
 pub inline fn knightMoveBitBoard(bb: u64) u64 {
     var res: u64 = 0;
-    inline for (knight_d_ranks, knight_d_files) |dr, df| {
+    inline for (KNIGHT_D_RANKS, KNIGHT_D_FILES) |dr, df| {
         res |= move(bb, dr, df);
     }
     return res;
 }
 
 pub fn pawnAttacks(square: anytype, color: anytype) u64 {
-    return (&(&pawn_attacks)[idx(square)])[idx(color)];
+    return (&(&PAWN_ATTACKS)[idx(square)])[idx(color)];
 }
 
 pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
@@ -448,59 +448,59 @@ pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
 }
 
 pub fn bishopAttacks(square: anytype) u64 {
-    return (&bishop_attacks)[idx(square)];
+    return (&BISHOP_ATTACKS)[idx(square)];
 }
 
 pub fn rookAttacks(square: anytype) u64 {
-    return (&rook_attacks)[idx(square)];
+    return (&ROOK_ATTACKS)[idx(square)];
 }
 
 pub fn queenAttacks(square: anytype) u64 {
-    return (&queen_attacks)[idx(square)];
+    return (&QUEEN_ATTACKS)[idx(square)];
 }
 
 pub fn extendingRayBb(from: anytype, to: anytype) u64 {
-    return (&(&extending_ray_bb)[idx(from)])[idx(to)];
+    return (&(&EXTENDING_RAY_BB)[idx(from)])[idx(to)];
 }
 
 pub fn rookRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&rook_ray_between)[idx(from)])[idx(to)];
+    return (&(&ROOK_RAY_BETWEEN)[idx(from)])[idx(to)];
 }
 
 pub fn bishopRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&bishop_ray_between)[idx(from)])[idx(to)];
+    return (&(&BISHOP_RAY_BETWEEN)[idx(from)])[idx(to)];
 }
 
 pub fn queenRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&queen_ray_between)[idx(from)])[idx(to)];
+    return (&(&QUEEN_RAY_BETWEEN)[idx(from)])[idx(to)];
 }
 
 pub fn rookRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&rook_ray_between_inclusive)[idx(from)])[idx(to)];
+    return (&(&ROOK_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
 }
 
 pub fn bishopRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&bishop_ray_between_inclusive)[idx(from)])[idx(to)];
+    return (&(&BISHOP_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
 }
 
 pub fn queenRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&queen_ray_between_inclusive)[idx(from)])[idx(to)];
+    return (&(&QUEEN_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
 }
 
 pub fn rookRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&rook_ray_between_exclusive)[idx(from)])[idx(to)];
+    return (&(&ROOK_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
 }
 
 pub fn bishopRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&bishop_ray_between_exclusive)[idx(from)])[idx(to)];
+    return (&(&BISHOP_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
 }
 
 pub fn queenRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&queen_ray_between_exclusive)[idx(from)])[idx(to)];
+    return (&(&QUEEN_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
 }
 
 pub fn checkMask(from: anytype, to: anytype) u64 {
-    return (&(&check_ray_between)[idx(from)])[idx(to)];
+    return (&(&CHECK_RAY_BETWEEN)[idx(from)])[idx(to)];
 }
 
 pub const LocIterator = struct {

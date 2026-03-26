@@ -16,11 +16,11 @@
 
 const std = @import("std");
 const cpu = @import("builtin").cpu;
-const llvm_name = cpu.model.llvm_name orelse "";
-const is_zen1 = std.mem.eql(u8, "znver1", llvm_name);
-const is_zen2 = std.mem.eql(u8, "znver2", llvm_name);
-const use_pext = std.Target.x86.featureSetHas(cpu.model.features, .bmi2) and !(is_zen1 or is_zen2);
-pub const attack_impl = if (use_pext)
+const LLVM_NAME = cpu.model.llvm_name orelse "";
+const USE_PEXT = std.Target.x86.featureSetHas(cpu.model.features, .bmi2) and
+    !std.mem.eql(u8, "znver1", LLVM_NAME) and
+    !std.mem.eql(u8, "znver2", LLVM_NAME);
+pub const attack_impl = if (USE_PEXT)
     @import("pext.zig")
 else
     @import("magics.zig");

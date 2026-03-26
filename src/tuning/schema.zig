@@ -133,7 +133,7 @@ pub inline fn factorizedInteractionCount(spec: FactorizedTunable, order: usize) 
     return choose(spec.inputs.len, order + 1);
 }
 
-pub const schema = .{
+pub const SCHEMA = .{
     .factorized_lmr = factorized(.{
         .inputs = &.{
             "pv",

@@ -123,10 +123,10 @@ pub const MarlinPackedBoard = extern struct {
 
             if (king.getFile().toInt() < sq.getFile().toInt()) {
                 white_kingside_file = sq.getFile();
-                rights_flag |= CastlingRights.white_kingside_castle;
+                rights_flag |= CastlingRights.WHITE_KINGSIDE_CASTLE;
             } else {
                 white_queenside_file = sq.getFile();
-                rights_flag |= CastlingRights.white_queenside_castle;
+                rights_flag |= CastlingRights.WHITE_QUEENSIDE_CASTLE;
             }
         }
         iter = Bitboard.iterator(black_castling_rooks);
@@ -135,10 +135,10 @@ pub const MarlinPackedBoard = extern struct {
 
             if (king.getFile().toInt() < sq.getFile().toInt()) {
                 black_kingside_file = sq.getFile();
-                rights_flag |= CastlingRights.black_kingside_castle;
+                rights_flag |= CastlingRights.BLACK_KINGSIDE_CASTLE;
             } else {
                 black_queenside_file = sq.getFile();
-                rights_flag |= CastlingRights.black_queenside_castle;
+                rights_flag |= CastlingRights.BLACK_QUEENSIDE_CASTLE;
             }
         }
 
@@ -149,10 +149,10 @@ pub const MarlinPackedBoard = extern struct {
             white_queenside_file orelse .h,
             black_queenside_file orelse .h,
         );
-        if (res.kingFor(.white) & first_last == 0 and rights_flag & (CastlingRights.white_kingside_castle | CastlingRights.white_queenside_castle) != 0) {
+        if (res.kingFor(.white) & first_last == 0 and rights_flag & (CastlingRights.WHITE_KINGSIDE_CASTLE | CastlingRights.WHITE_QUEENSIDE_CASTLE) != 0) {
             return error.KingOnWrongRankAndCanCastle;
         }
-        if (res.kingFor(.black) & first_last == 0 and rights_flag & (CastlingRights.black_kingside_castle | CastlingRights.black_queenside_castle) != 0) {
+        if (res.kingFor(.black) & first_last == 0 and rights_flag & (CastlingRights.BLACK_KINGSIDE_CASTLE | CastlingRights.BLACK_QUEENSIDE_CASTLE) != 0) {
             return error.KingOnWrongRankAndCanCastle;
         }
 

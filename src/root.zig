@@ -22,17 +22,21 @@ test {
 }
 
 comptime {
-    if (use_tbs) {
+    if (USE_TBS) {
         _ = pyrrhic;
     }
 }
-pub const use_tbs = @import("build_options").use_tbs;
+
+pub const USE_TBS = @import("build_options").use_tbs;
+pub const TOOLS_ONLY = @import("build_options").tools_only;
+pub const SEARCH_MAX_PLY: u16 = 256;
+pub const SEARCH_MAX_HALFMOVE: u8 = 100;
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 pub const pyrrhic = @import("pyrrhic.zig");
 pub const evaluation = @import("evaluation.zig");
 pub const EvalMode = @import("eval_mode.zig").EvalMode;
-pub const eval_mode: EvalMode = std.meta.stringToEnum(EvalMode, @import("build_options").eval) orelse unreachable;
-pub const nnue = if (eval_mode == .hce)
+pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, @import("build_options").eval) orelse unreachable;
+pub const nnue = if (EVAL_MODE == .hce)
     @compileError("cannot use NNUE in HCE build mode")
 else
     @import("nnue.zig");
@@ -45,15 +49,15 @@ pub const movegen = @import("movegen.zig");
 pub const attacks = @import("attacks.zig");
 pub const zobrist = @import("zobrist.zig");
 pub const PerftEPDParser = @import("PerftEPDParser.zig");
-pub const Searcher = @import("Searcher.zig");
-pub const ThreadPool = @import("ThreadPool.zig").ThreadPool;
-pub const engine = @import("engine.zig");
-pub const Limits = @import("Limits.zig");
+pub const Searcher = if (TOOLS_ONLY) void else @import("Searcher.zig");
+pub const ThreadPool = if (TOOLS_ONLY) void else @import("ThreadPool.zig").ThreadPool;
+pub const engine = if (TOOLS_ONLY) void else @import("engine.zig");
+pub const Limits = if (TOOLS_ONLY) void else @import("Limits.zig");
 pub const MovePicker = @import("MovePicker.zig");
 pub const CastlingRights = @import("CastlingRights.zig");
 pub const history = @import("history.zig");
 pub const tuning = @import("tuning.zig");
-pub const tunable_constants = tuning.tunable_constants;
+pub const TUNABLE_CONSTANTS = tuning.TUNABLE_CONSTANTS;
 pub const SEE = @import("SEE.zig");
 pub const refreshCache = @import("refresh_cache.zig").refreshCache;
 pub const viriformat = @import("viriformat.zig");
@@ -91,29 +95,31 @@ pub const Colour = enum(u8) {
     }
 };
 
-pub fn init() void {
-    const globals = struct {
-        fn initImpl() void {
-            stdout = std.fs.File.stdout();
-            stdout_writer = stdout.writerStreaming(&stdout_buf);
-            attacks.init();
-            cuckoo.init();
-            engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
-        }
-        var init_once = std.once(initImpl);
-    };
-    globals.init_once.call();
+fn initImpl() void {
+    stdout = std.fs.File.stdout();
+    stdout_writer = stdout.writerStreaming(&stdout_buf);
+    attacks.init();
+    cuckoo.init();
+    if (!TOOLS_ONLY) {
+        engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
+    }
 }
 
+var init_once = std.once(initImpl);
+
+pub fn init() void {
+    init_once.call();
+}
+
+fn deinitImpl() void {
+    pyrrhic.deinit();
+    stdout_writer.interface.flush() catch std.debug.panic("failed to flush stdout", .{});
+}
+
+var deinit_once = std.once(deinitImpl);
+
 pub fn deinit() void {
-    const globals = struct {
-        fn deinitImpl() void {
-            pyrrhic.deinit();
-            stdout_writer.interface.flush() catch std.debug.panic("failed to flush stdout", .{});
-        }
-        var deinit_once = std.once(deinitImpl);
-    };
-    globals.deinit_once.call();
+    deinit_once.call();
 }
 
 pub const Square = enum(u8) {
@@ -470,17 +476,17 @@ pub const TTEntry = extern struct {
     raw_static_eval: i16 = 0,
 
     inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
-        const depth_val = tunable_constants.ttpick_depth_weight * self.depth;
-        const age_val = tunable_constants.ttpick_age_weight * (32 + cur_age - self.flags.getAge() & 31);
-        const pv_val = tunable_constants.ttpick_pv_weight * @intFromBool(self.flags.getPV());
+        const depth_val = TUNABLE_CONSTANTS.ttpick_depth_weight * self.depth;
+        const age_val = TUNABLE_CONSTANTS.ttpick_age_weight * (32 + cur_age - self.flags.getAge() & 31);
+        const pv_val = TUNABLE_CONSTANTS.ttpick_pv_weight * @intFromBool(self.flags.getPV());
         const TYPE_VALS = [_]i32{
             -1000_000_000,
-            tunable_constants.ttpick_lower_weight,
-            tunable_constants.ttpick_upper_weight,
-            tunable_constants.ttpick_exact_weight,
+            TUNABLE_CONSTANTS.ttpick_lower_weight,
+            TUNABLE_CONSTANTS.ttpick_upper_weight,
+            TUNABLE_CONSTANTS.ttpick_exact_weight,
         };
         const type_val = (&TYPE_VALS)[@intFromEnum(self.flags.getScoreType())];
-        const move_val = tunable_constants.ttpick_move_weight * @intFromBool(!self.move.isNull());
+        const move_val = TUNABLE_CONSTANTS.ttpick_move_weight * @intFromBool(!self.move.isNull());
         // _ = engine.dbg("tt value", depth_val - age_val + pv_val + move_val);
         // _ = engine.dbg("age", (32 + cur_age - self.flags.getAge() & 31));
         return depth_val - age_val + pv_val + type_val + move_val;
@@ -519,15 +525,21 @@ pub const TTCluster = extern struct {
     }
 
     inline fn idxEqualHashEntry(noalias self: *const TTCluster, hash: u16) usize {
+        const endian = @import("builtin").cpu.arch.endian();
+
         var haystack: u64 = @bitCast(self.hashes);
-        haystack |= @as(u64, hash) << 48;
+        haystack |= if (endian == .little) @as(u64, hash) << 48 else hash;
 
         const low_bits: u64 = 0x0001000100010001;
         const high_bits: u64 = 0x8000800080008000;
         const needle = hash * low_bits;
         const zeroes = haystack ^ needle;
         const matches = zeroes -% low_bits & ~zeroes & high_bits;
-        return @ctz(matches) / 16;
+
+        return switch (endian) {
+            .little => @ctz(matches),
+            .big => @clz(matches),
+        } / 16;
     }
 
     inline fn proxy(self: *TTCluster, idx: usize) TTProxy {

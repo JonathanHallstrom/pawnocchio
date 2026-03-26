@@ -19,8 +19,8 @@ const factorized = @import("tuning/factorized.zig");
 const tuning_schema = @import("tuning/schema.zig");
 const tuning_generated = @import("tuning_generated");
 
-pub const do_tuning = false;
-pub const do_factorized_tuning = false;
+pub const DO_TUNING = false;
+pub const DO_FACTORIZED_TUNING = false;
 
 pub const Tunable = tuning_generated.Tunable;
 pub const FactorizedTunable = tuning_generated.FactorizedTunable;
@@ -35,19 +35,19 @@ pub const TunableParam = struct {
 };
 
 pub fn setMin() void {
-    if (!do_tuning) {
+    if (!DO_TUNING) {
         return;
     }
-    inline for (tunables) |tunable| {
-        @field(tunable_constants.*, tunable.name) = tunable.min;
+    inline for (TUNABLES) |tunable| {
+        @field(TUNABLE_CONSTANTS.*, tunable.name) = tunable.min;
     }
 }
 pub fn setMax() void {
-    if (!do_tuning) {
+    if (!DO_TUNING) {
         return;
     }
-    inline for (tunables) |tunable| {
-        @field(tunable_constants.*, tunable.name) = tunable.max;
+    inline for (TUNABLES) |tunable| {
+        @field(TUNABLE_CONSTANTS.*, tunable.name) = tunable.max;
     }
 }
 
@@ -66,18 +66,18 @@ pub const HistoryWeights = struct {
 
 pub inline fn quietHistoryWeights(comptime prefix: []const u8) QuietHistoryWeights {
     return .{
-        .quiet = @field(tunable_constants.*, prefix ++ "_quiet_weight"),
-        .pawn = @field(tunable_constants.*, prefix ++ "_pawn_weight"),
-        .cont1 = @field(tunable_constants.*, prefix ++ "_cont1_weight"),
-        .cont2 = @field(tunable_constants.*, prefix ++ "_cont2_weight"),
-        .cont4 = @field(tunable_constants.*, prefix ++ "_cont4_weight"),
+        .quiet = @field(TUNABLE_CONSTANTS.*, prefix ++ "_quiet_weight"),
+        .pawn = @field(TUNABLE_CONSTANTS.*, prefix ++ "_pawn_weight"),
+        .cont1 = @field(TUNABLE_CONSTANTS.*, prefix ++ "_cont1_weight"),
+        .cont2 = @field(TUNABLE_CONSTANTS.*, prefix ++ "_cont2_weight"),
+        .cont4 = @field(TUNABLE_CONSTANTS.*, prefix ++ "_cont4_weight"),
     };
 }
 
 pub inline fn historyWeights(comptime prefix: []const u8) HistoryWeights {
     return .{
         .q = quietHistoryWeights(prefix),
-        .n = @field(tunable_constants.*, prefix ++ "_noisy_weight"),
+        .n = @field(TUNABLE_CONSTANTS.*, prefix ++ "_noisy_weight"),
     };
 }
 
@@ -97,20 +97,20 @@ pub inline fn histN(terms: anytype, weight: i32) i32 {
 }
 
 pub const TunableValues = tuning_generated.TunableValues;
-pub const tunable_defaults: TunableValues = tuning_generated.tunable_defaults;
-pub const tunables = tuning_generated.tunables;
+pub const TUNABLE_DEFAULTS: TunableValues = tuning_generated.tunable_defaults;
+pub const TUNABLES = tuning_generated.tunables;
 
-const tunable_constants_storage = if (do_tuning) struct {
-    pub var value: TunableValues = tunable_defaults;
+const TUNABLE_CONSTANTS_STORAGE = if (DO_TUNING) struct {
+    pub var value: TunableValues = TUNABLE_DEFAULTS;
 } else struct {
-    pub const value: TunableValues = tunable_defaults;
+    pub const value: TunableValues = TUNABLE_DEFAULTS;
 };
 
-pub const tunable_constants = &tunable_constants_storage.value;
+pub const TUNABLE_CONSTANTS = &TUNABLE_CONSTANTS_STORAGE.value;
 
-pub const factorized_lmr = factorized.Family(.{
-    .enabled = do_factorized_tuning,
-    .spec = tuning_schema.schema.factorized_lmr.Factorized,
+pub const FACTORIZED_LMR = factorized.Family(.{
+    .enabled = DO_FACTORIZED_TUNING,
+    .spec = tuning_schema.SCHEMA.factorized_lmr.Factorized,
     .defaults = tuning_generated.factorized_lmr_defaults,
     .tunables = tuning_generated.factorized_lmr_tunables,
 });
@@ -120,42 +120,42 @@ pub fn forEachTunable(
     ctx: *Context,
     comptime visit: fn (*Context, TunableParam) void,
 ) void {
-    inline for (tunables) |tunable| {
+    inline for (TUNABLES) |tunable| {
         visit(ctx, .{
             .name = tunable.name,
             .default = tunable.default,
             .min = tunable.min,
             .max = tunable.max,
             .c_end = tunable.c_end,
-            .current = @field(tunable_constants.*, tunable.name),
+            .current = @field(TUNABLE_CONSTANTS.*, tunable.name),
         });
     }
 
-    if (factorized_lmr.enabled) {
-        inline for (factorized_lmr.tunables) |tunable| {
+    if (FACTORIZED_LMR.enabled) {
+        inline for (FACTORIZED_LMR.tunables) |tunable| {
             visit(ctx, .{
                 .name = tunable.name,
                 .default = tunable.default,
                 .min = tunable.min,
                 .max = tunable.max,
                 .c_end = tunable.c_end,
-                .current = factorized_lmr.get(tunable.order, tunable.index),
+                .current = FACTORIZED_LMR.get(tunable.order, tunable.index),
             });
         }
     }
 }
 
 pub fn trySetTunable(option_name: []const u8, value: i32) bool {
-    if (do_tuning) {
-        inline for (tunables) |tunable| {
+    if (DO_TUNING) {
+        inline for (TUNABLES) |tunable| {
             if (std.ascii.eqlIgnoreCase(tunable.name, option_name)) {
-                @field(tunable_constants.*, tunable.name) = value;
+                @field(TUNABLE_CONSTANTS.*, tunable.name) = value;
                 return true;
             }
         }
     }
 
-    if (factorized_lmr.trySet(option_name, value)) {
+    if (FACTORIZED_LMR.trySet(option_name, value)) {
         return true;
     }
 
