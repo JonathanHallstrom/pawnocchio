@@ -4,11 +4,12 @@ on:
   push:
     branches: [ "dev" ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: build tool artifacts
     runs-on: ubuntu-latest
-    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,11 +20,14 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: build artifacts
-        run: zig build tool_builds --prefix dist
+      - run: zig build tool_builds --prefix dist
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tool_builds
-          path: dist/bin/*
-          if-no-files-found: error
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete tool-dev-builds --yes --cleanup-tag || true
+          gh release create tool-dev-builds \
+            --target "${GITHUB_SHA}" \
+            --title "tool dev builds" \
+            --prerelease \
+            dist/bin/*

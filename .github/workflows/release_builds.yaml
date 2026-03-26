@@ -3,11 +3,12 @@ name: release_builds
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: build release artifacts
     runs-on: ubuntu-latest
-    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,11 +19,14 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: build artifacts
-        run: zig build release_builds --prefix dist
+      - run: zig build release_builds --prefix dist
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release_builds
-          path: dist/bin/*
-          if-no-files-found: error
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete pre-release-builds --yes --cleanup-tag || true
+          gh release create pre-release-builds \
+            --target "${GITHUB_SHA}" \
+            --title "pre release builds" \
+            --prerelease \
+            dist/bin/*
