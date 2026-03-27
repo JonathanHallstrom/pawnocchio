@@ -471,6 +471,7 @@ pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
     const fullmove = try std.fmt.parseInt(u32, fullmove_clock_str, 10);
     if (!permissive and fullmove == 0)
         return error.InvalidFullMove;
+    self.fullmove = fullmove;
     self.plies = fullmove * 2 + self.stm.toInt();
     self.resetHash();
     self.updateMasks(self.stm);
