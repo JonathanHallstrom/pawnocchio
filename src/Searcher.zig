@@ -1018,7 +1018,7 @@ fn search(
     const lmp_base = TUNABLES.lmp_standard_base;
     const lmp_linear_mult = if (improving) TUNABLES.lmp_improving_linear_mult else TUNABLES.lmp_standard_linear_mult;
     const lmp_quadratic_mult = if (improving) TUNABLES.lmp_improving_quadratic_mult else TUNABLES.lmp_standard_quadratic_mult;
-    const lmp_base_numerator = lmp_base +
+    const lmp_base_margin = lmp_base +
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth;
     while (mp.next(
@@ -1087,7 +1087,7 @@ fn search(
             base_lmr -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
             var lmr_depth: i32 = (depth << 10) - base_lmr;
             const lmp_margin = @divTrunc(
-                lmp_base_numerator +
+                lmp_base_margin +
                     getFactorised(tuning.FACTORIZED_LMP, 7, .{
                         improving,
                         direct_check,
