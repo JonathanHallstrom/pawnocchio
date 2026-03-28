@@ -55,7 +55,7 @@ castling_rights: CastlingRights = CastlingRights.init(),
 pinned: [2]u64 = @splat(0),
 // pinner: [2]u64 = @splat(0),
 checkers: u64 = 0,
-checking_squares: [5]u64 = @splat(0),
+checking_squares: [6]u64 = @splat(0),
 threats: [2]u64 = @splat(0),
 threats_by: [2][PieceType.all.len]u64 = @splat(@splat(0)),
 lesser_threats: [2]u64 = @splat(0),
@@ -121,7 +121,7 @@ fn pinnedPtrFor(self: *Board, col: Colour) *u64 {
 }
 
 pub inline fn checkingSquaresFor(self: *const Board, pt: PieceType) u64 {
-    return self.checking_squares[pt.toInt()];
+    return (&self.checking_squares)[pt.toInt()];
 }
 
 pub inline fn pawnsFor(self: *const Board, col: Colour) u64 {
@@ -1054,9 +1054,13 @@ fn destPiece(noalias self: *const Board, move: Move) PieceType {
 
 pub inline fn isDirectCheck(noalias self: *const Board, move: Move) bool {
     const piece = self.destPiece(move);
-    if (piece == .king) return false;
+    var res = self.checkingSquaresFor(piece) & move.to().toBitboard() != 0;
 
-    return self.checkingSquaresFor(piece) & move.to().toBitboard() != 0;
+    if (piece == .king) {
+        res = false;
+    }
+
+    return res;
 }
 
 pub inline fn discoveredCheck(noalias self: *const Board, move: Move) bool {

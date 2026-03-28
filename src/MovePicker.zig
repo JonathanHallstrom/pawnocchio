@@ -176,22 +176,43 @@ inline fn quietValue(
     typed: TypedMove,
     danger_squares: *const [6]u64,
 ) i32 {
+    const from_danger_bonus = [6]i32{
+        root.TUNABLE_CONSTANTS.ord_from_danger_pawn_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_knight_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_bishop_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_rook_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_queen_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_king_bonus,
+    };
+    const to_danger_penalty = [6]i32{
+        root.TUNABLE_CONSTANTS.ord_to_danger_pawn_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_knight_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_bishop_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_rook_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_queen_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_king_penalty,
+    };
+
     const terms = histories.readMoveTerms(board, typed, conthist_tables, true);
     var res = tuning.histQ(terms, tuning.quietHistoryWeights("ord"));
+    const piece_idx = typed.tp.toInt();
 
     if (board.isDirectCheck(typed.move)) {
-        res += 5000;
+        @branchHint(.unpredictable);
+        res += root.TUNABLE_CONSTANTS.ord_direct_check_bonus;
     }
 
-    const danger = danger_squares[typed.tp.toInt()];
+    const danger = danger_squares[piece_idx];
+    const danger_bonus = (&from_danger_bonus)[piece_idx];
+    const danger_penalty = (&to_danger_penalty)[piece_idx];
     if (root.Bitboard.contains(danger, typed.move.from())) {
         @branchHint(.unpredictable);
-        res += @max(2, typed.tp.toInt()) * @as(i32, 2000);
+        res += danger_bonus;
     }
 
     if (root.Bitboard.contains(danger, typed.move.to())) {
         @branchHint(.unpredictable);
-        res -= @max(2, typed.tp.toInt()) * @as(i32, 1000);
+        res -= danger_penalty;
     }
 
     return res;

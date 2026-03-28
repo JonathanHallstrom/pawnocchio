@@ -102,7 +102,7 @@ pub fn pdep(src: u64, mask: u64) u64 {
 }
 
 pub fn contains(bitboard: u64, square: Square) bool {
-    return bitboard >> @intCast(square.toInt()) & 1 != 0;
+    return bitboard & square.toBitboard() != 0;
 }
 
 pub fn rayArray(d_rank: anytype, d_file: anytype) [64]u64 {
