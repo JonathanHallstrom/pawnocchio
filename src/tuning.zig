@@ -20,7 +20,7 @@ const tuning_schema = @import("tuning/schema.zig");
 const tuning_generated = @import("tuning_generated");
 
 pub const DO_TUNING = false;
-pub const DO_FACTORIZED_TUNING = true;
+pub const DO_FACTORIZED_TUNING = false;
 
 pub const Tunable = tuning_generated.Tunable;
 pub const FactorizedTunable = tuning_generated.FactorizedTunable;
