@@ -114,6 +114,12 @@ pub const FACTORIZED_LMR = factorized.Family(.{
     .defaults = tuning_generated.factorized_lmr_defaults,
     .tunables = tuning_generated.factorized_lmr_tunables,
 });
+pub const FACTORIZED_LMP = factorized.Family(.{
+    .enabled = DO_FACTORIZED_TUNING,
+    .spec = tuning_schema.SCHEMA.factorized_lmp.Factorized,
+    .defaults = tuning_generated.factorized_lmp_defaults,
+    .tunables = tuning_generated.factorized_lmp_tunables,
+});
 
 pub fn forEachTunable(
     comptime Context: type,
@@ -143,6 +149,19 @@ pub fn forEachTunable(
             });
         }
     }
+
+    if (FACTORIZED_LMP.enabled) {
+        inline for (FACTORIZED_LMP.tunables) |tunable| {
+            visit(ctx, .{
+                .name = tunable.name,
+                .default = tunable.default,
+                .min = tunable.min,
+                .max = tunable.max,
+                .c_end = tunable.c_end,
+                .current = FACTORIZED_LMP.get(tunable.order, tunable.index),
+            });
+        }
+    }
 }
 
 pub fn trySetTunable(option_name: []const u8, value: i32) bool {
@@ -156,6 +175,10 @@ pub fn trySetTunable(option_name: []const u8, value: i32) bool {
     }
 
     if (FACTORIZED_LMR.trySet(option_name, value)) {
+        return true;
+    }
+
+    if (FACTORIZED_LMP.trySet(option_name, value)) {
         return true;
     }
 

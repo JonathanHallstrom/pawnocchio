@@ -371,3 +371,5 @@ factorized_lmr_quiet_givescheck_root, 415
 factorized_lmr_quiet_givescheck_2failhighs, 233
 factorized_lmr_quiet_root_2failhighs, -143
 factorized_lmr_givescheck_root_2failhighs, 219
+factorized_lmp_improving, 664
+factorized_lmp_directcheck, 1024

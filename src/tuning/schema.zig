@@ -151,6 +151,21 @@ pub const SCHEMA = .{
         .max = 2048,
         .c_end = 128,
     }),
+    .factorized_lmp = factorized(.{
+        .inputs = &.{
+            "improving",
+            "directcheck",
+            "noisy",
+            "goodhistory",
+            "ttpv",
+            "cutnode",
+            "ttmove",
+        },
+        .max_order = 3,
+        .min = -4096,
+        .max = 4096,
+        .c_end = 256,
+    }),
 
     .quiet_bonus_mult = scalar(.{}),
     .quiet_bonus_offs = scalar(.{}),
