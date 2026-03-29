@@ -22,7 +22,7 @@ pub const Weights = extern struct {
     ft_b: [L1_SIZE]i16 align(ALIGNMENT),
     l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 align(ALIGNMENT),
     l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]i32 align(ALIGNMENT),
-    l2w: [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32 align(ALIGNMENT),
+    l2w: [OUTPUT_BUCKET_COUNT][3 * L3_SIZE * L2_SIZE]i32 align(ALIGNMENT),
     l2b: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
     l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
     l3b: [OUTPUT_BUCKET_COUNT]i32 align(ALIGNMENT),
@@ -35,11 +35,11 @@ pub const Weights = extern struct {
         return @ptrCast(&self.l1w);
     }
 
-    fn l2wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32 {
+    fn l2wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][3 * L3_SIZE * L2_SIZE]i32 {
         return @ptrCast(&self.l2w);
     }
 
-    fn l2wDisk(self: *Weights) *align(64) [2 * L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
+    fn l2wDisk(self: *Weights) *align(64) [3 * L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
         return @ptrCast(&self.l2w);
     }
 
@@ -242,7 +242,7 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
         const l2w_inf = net.l2wInference();
 
         for (0..OUTPUT_BUCKET_COUNT) |ob| {
-            for (0..2 * L2_SIZE) |i| {
+            for (0..3 * L2_SIZE) |i| {
                 for (0..L3_SIZE) |j| {
                     l2w_inf[ob][i * L3_SIZE + j] = l2w_disk[i][ob][j];
                 }
