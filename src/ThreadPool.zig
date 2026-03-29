@@ -19,6 +19,8 @@ const root = @import("root.zig");
 const Searcher = root.Searcher;
 const TTCluster = root.TTCluster;
 const evaluation = root.evaluation;
+const numa = @import("numa.zig");
+const nnue = if (evaluation.eval_mode == .nnue) @import("nnue.zig") else void;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
@@ -40,20 +42,6 @@ const ThreadAction = enum {
     reset,
     exit,
 };
-
-fn pinCurrentThread(cpu: usize) !void {
-    if (@import("builtin").os.tag == .linux) {
-        var set: std.os.linux.cpu_set_t = std.mem.zeroes(std.os.linux.cpu_set_t);
-
-        const word_bits = @bitSizeOf(usize);
-        const idx = cpu / word_bits;
-        const bit = cpu % word_bits;
-
-        set[idx] |= (@as(usize, 1) << @intCast(bit));
-
-        try std.os.linux.sched_setaffinity(0, &set);
-    }
-}
 
 const Thread = struct {
     mutex: std.Thread.Mutex = .{},
@@ -84,6 +72,10 @@ const Thread = struct {
     }
 
     fn loop(self: *Thread) void {
+        numa.bindCurrentThread(self.idx) catch |err| {
+            std.log.debug("failed to bind search thread {} to NUMA node: {}", .{ self.idx, err });
+        };
+
         while (true) {
             self.mutex.lock();
             while (self.action == .sleep) {
@@ -99,10 +91,14 @@ const Thread = struct {
                     self.searcher.startSearch(self.search_params, self.search_main, self.search_quiet);
                 },
                 .reset => {
-                    // pinCurrentThread(self.idx) catch {};
                     @memset(std.mem.asBytes(self.searcher), 0);
-                    if (root.evaluation.EVAL_MODE == .nnue)
-                        self.searcher.refresh_cache.initInPlace();
+                    if (root.evaluation.EVAL_MODE == .nnue) {
+                        const weights = if (root.numa.enabled) nnue.weightsForNode(numa.nodeForThread(self.idx)) else nnue.weightsForNode(0);
+                        if (root.numa.enabled) {
+                            self.searcher.nnue_weights = weights;
+                        }
+                        self.searcher.refresh_cache.initInPlace(weights);
+                    }
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
                     if (self.reset_tt_slice.len > 0) {
@@ -187,17 +183,12 @@ pub const ThreadPool = struct {
             searcher = @ptrCast(ptr);
             try adviseHugePages(ptr);
         }
-        @memset(std.mem.asBytes(searcher), 0);
-        if (evaluation.EVAL_MODE == .nnue) {
-            searcher.refresh_cache.initInPlace();
-        }
-        searcher.histories.reset();
-        searcher.tt = self.tt;
-
         const thread = try Thread.init(self.allocator, searcher, self.threads.items.len);
         thread.tt = self.tt;
         try self.threads.append(self.allocator, thread);
         try self.searchers.append(self.allocator, searcher);
+        thread.wake(.reset);
+        thread.blockUntilSleep();
     }
 
     pub fn removeThread(self: *ThreadPool) void {

@@ -22,14 +22,26 @@ const root = @import("root.zig");
 
 const Board = root.Board;
 pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, build_options.eval).?;
+pub const eval_mode: EvalMode = EVAL_MODE;
 const impl = switch (EVAL_MODE) {
     .hce => @import("hce.zig"),
     .material => @import("material_eval.zig"),
     .nnue => root.nnue,
 };
 
+pub const Context = switch (EVAL_MODE) {
+    .nnue => struct {
+        weights: *const root.nnue.Weights,
+        refresh_cache: *root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT),
+    },
+    inline else => struct {},
+};
+
 pub const State = impl.State;
-pub const evaluate = impl.evaluate;
+
+pub inline fn evaluate(comptime stm: root.Colour, board: *const Board, state: *State, ctx: Context) i16 {
+    return impl.evaluate(stm, board, state, ctx);
+}
 
 pub fn evalPosition(board: *const Board) i16 {
     return impl.evalPosition(board);

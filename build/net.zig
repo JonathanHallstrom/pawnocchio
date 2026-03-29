@@ -49,6 +49,7 @@ pub fn addOptions(
     b: *std.Build,
     version: []const u8,
     use_tbs: bool,
+    use_numa: bool,
     tools_only: bool,
     eval_mode: EvalMode,
     input: Input,
@@ -56,6 +57,7 @@ pub fn addOptions(
     const options = b.addOptions();
     options.addOption([]const u8, "version_string", version);
     options.addOption(bool, "use_tbs", use_tbs);
+    options.addOption(bool, "use_numa", use_numa);
     options.addOption(bool, "tools_only", tools_only);
     options.addOption([]const u8, "eval", @tagName(eval_mode));
     options.addOption([]const u8, "eval_identifier", switch (input) {

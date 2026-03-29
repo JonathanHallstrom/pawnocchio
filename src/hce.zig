@@ -360,7 +360,7 @@ pub const State = struct {
         self.* = init(board);
     }
 
-    pub fn update(self: *State, other: *const State, _: *const Board, _: anytype) void {
+    pub fn update(self: *State, other: *const State, _: *const Board) void {
         self.* = other.*;
     }
 

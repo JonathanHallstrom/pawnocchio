@@ -344,9 +344,10 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and root.evaluation.EVAL_MODE == .nnue) {
                     const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
+                    const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
-                    cache.initInPlace();
-                    var acc = root.evaluation.State.init(&board);
+                    cache.initInPlace(weights);
+                    var acc = root.nnue.Accumulator.init(&board, weights);
 
                     var timer = std.time.Timer.start() catch unreachable;
                     const iterations = 100_000_000;
@@ -366,7 +367,10 @@ pub fn main() !void {
                                 } else {
                                     acc.addSub(stm, .pawn, from, stm, .pawn, to);
                                 }
-                                res +%= acc.forward(stm, &board, &cache);
+                                res +%= acc.forward(stm, &board, .{
+                                    .weights = weights,
+                                    .refresh_cache = &cache,
+                                });
                                 std.mem.doNotOptimizeAway(res);
                             }
                         },
@@ -378,9 +382,10 @@ pub fn main() !void {
                 if (std.ascii.eqlIgnoreCase(command_part, "refreshbench") and root.evaluation.EVAL_MODE == .nnue) {
                     const refresh_fens = @import("refresh_fens.zig").FENS;
                     const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
+                    const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
-                    cache.initInPlace();
-                    var acc = root.nnue.Accumulator.default();
+                    cache.initInPlace(weights);
+                    var acc = root.nnue.Accumulator.default(weights);
 
                     var boards = try allocator.alloc(root.Board, refresh_fens.len);
                     defer allocator.free(boards);
@@ -393,7 +398,7 @@ pub fn main() !void {
                     var res: i16 = 0;
                     for (0..iterations) |i| {
                         const b = &boards[i % boards.len];
-                        cache.refresh(.white, b, acc.accFor(.white));
+                        cache.refresh(weights, .white, b, acc.accFor(.white));
                         res +%= acc.accFor(.white)[0];
                         std.mem.doNotOptimizeAway(res);
                     }

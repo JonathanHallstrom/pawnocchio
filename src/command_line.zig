@@ -1020,11 +1020,12 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     const viriformat = root.viriformat;
     const nnue = root.nnue;
     const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT);
+    const weights = nnue.weightsForNode(0);
     var rc: RefreshCache = undefined;
-    rc.initInPlace();
+    rc.initInPlace(weights);
 
     var acc: nnue.Accumulator = undefined;
-    acc.initInPlace(&Board.startpos());
+    acc.initInPlace(&Board.startpos(), weights);
 
     var timer = try std.time.Timer.start();
     while (!br.atEnd()) {
@@ -1067,15 +1068,21 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
 
             const move = viri_move.toMove(&board);
 
-            rc.refresh(.white, &board, &acc.white);
-            rc.refresh(.black, &board, &acc.black);
+            rc.refresh(weights, .white, &board, &acc.white);
+            rc.refresh(weights, .black, &board, &acc.black);
             acc.pending_parent = false;
             acc.dirty_piece = .clean;
             acc.board_ref = &board;
 
             const eval = switch (board.stm) {
-                .white => acc.forward(.white, &board, &rc),
-                .black => -acc.forward(.black, &board, &rc),
+                .white => acc.forward(.white, &board, .{
+                    .weights = weights,
+                    .refresh_cache = &rc,
+                }),
+                .black => -acc.forward(.black, &board, .{
+                    .weights = weights,
+                    .refresh_cache = &rc,
+                }),
             };
 
             board.makeMoveSimple(move);

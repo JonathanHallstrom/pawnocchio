@@ -39,7 +39,7 @@ const NNCacheEntry = struct {
     pieces: [6]u64,
     sides: [2]u64,
 
-    fn refresh(noalias self: *NNCacheEntry, comptime stm: Colour, board: *const Board, noalias acc: [*]i16, mirror: nnue.MirroringType) void {
+    fn refresh(noalias self: *NNCacheEntry, weights: *const nnue.Weights, comptime stm: Colour, board: *const Board, noalias acc: [*]i16, mirror: nnue.MirroringType) void {
         const us_king = Square.fromBitboard(board.kingFor(stm));
         var adds: [64]usize = undefined;
         var num_adds: usize = 0;
@@ -71,31 +71,31 @@ const NNCacheEntry = struct {
         while (num_adds >= 4) : (num_adds -= 4) {
             for (0..nnue.L1_SIZE) |i| {
                 self.accumulator[i] +=
-                    (&nnue.weights.ft_w)[adds[num_adds - 4] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[adds[num_adds - 3] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[adds[num_adds - 2] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[adds[num_adds - 1] * nnue.L1_SIZE + i];
+                    (&weights.ft_w)[adds[num_adds - 4] * nnue.L1_SIZE + i] +
+                    (&weights.ft_w)[adds[num_adds - 3] * nnue.L1_SIZE + i] +
+                    (&weights.ft_w)[adds[num_adds - 2] * nnue.L1_SIZE + i] +
+                    (&weights.ft_w)[adds[num_adds - 1] * nnue.L1_SIZE + i];
             }
         }
         while (num_adds >= 1) : (num_adds -= 1) {
             for (0..nnue.L1_SIZE) |i| {
                 self.accumulator[i] +=
-                    (&nnue.weights.ft_w)[adds[num_adds - 1] * nnue.L1_SIZE + i];
+                    (&weights.ft_w)[adds[num_adds - 1] * nnue.L1_SIZE + i];
             }
         }
         while (num_subs >= 4) : (num_subs -= 4) {
             for (0..nnue.L1_SIZE) |i| {
                 self.accumulator[i] -=
-                    (&nnue.weights.ft_w)[subs[num_subs - 4] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[subs[num_subs - 3] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[subs[num_subs - 2] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
+                    (&weights.ft_w)[subs[num_subs - 4] * nnue.L1_SIZE + i] +
+                    (&weights.ft_w)[subs[num_subs - 3] * nnue.L1_SIZE + i] +
+                    (&weights.ft_w)[subs[num_subs - 2] * nnue.L1_SIZE + i] +
+                    (&weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
             }
         }
         while (num_subs >= 1) : (num_subs -= 1) {
             for (0..nnue.L1_SIZE) |i| {
                 self.accumulator[i] -=
-                    (&nnue.weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
+                    (&weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
             }
         }
         self.pieces = board.pieceBBs().*;
@@ -111,12 +111,12 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
 
         data: if (empty) void else [2][@as(usize, 1) + @intFromBool(mirrored)][bucket_count]NNCacheEntry,
 
-        pub fn initInPlace(self: *Self) void {
+        pub fn initInPlace(self: *Self, weights: *const nnue.Weights) void {
             if (empty) return;
             for (&self.data) |*stm| {
                 for (stm) |*subarray| {
                     for (subarray) |*e| {
-                        @memcpy(&e.accumulator, &nnue.weights.ft_b);
+                        @memcpy(&e.accumulator, &weights.ft_b);
                         @memset(&e.pieces, 0);
                         @memset(&e.sides, 0);
                     }
@@ -124,13 +124,13 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             }
         }
 
-        pub inline fn refresh(noalias self: *Self, comptime stm: Colour, board: *const Board, acc: [*]i16) void {
+        pub inline fn refresh(noalias self: *Self, weights: *const nnue.Weights, comptime stm: Colour, board: *const Board, acc: [*]i16) void {
             if (empty) return;
             const bucket = nnue.whichInputBucket(stm, Square.fromBitboard(board.kingFor(stm)));
             var mirror: nnue.MirroringType = undefined;
             mirror.write(Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4);
             const mirror_idx = if (mirrored) @intFromBool(mirror.read()) else 0;
-            return (&self.data)[stm.toInt()][mirror_idx][bucket].refresh(stm, board, acc, mirror);
+            return (&self.data)[stm.toInt()][mirror_idx][bucket].refresh(weights, stm, board, acc, mirror);
         }
     };
 }

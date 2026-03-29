@@ -35,11 +35,10 @@ pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 pub const pyrrhic = @import("pyrrhic.zig");
 pub const evaluation = @import("evaluation.zig");
 pub const EvalMode = @import("eval_mode.zig").EvalMode;
+pub const numa = @import("numa.zig");
 pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, @import("build_options").eval) orelse unreachable;
-pub const nnue = if (EVAL_MODE == .hce)
-    @compileError("cannot use NNUE in HCE build mode")
-else
-    @import("nnue.zig");
+pub const eval_mode: EvalMode = EVAL_MODE;
+pub const nnue = if (EVAL_MODE == .nnue) @import("nnue.zig") else void;
 pub const Bitboard = @import("Bitboard.zig");
 pub const cuckoo = @import("cuckoo.zig");
 pub const Board = @import("Board.zig");
@@ -100,6 +99,10 @@ fn initImpl() void {
     stdout_writer = stdout.writerStreaming(&stdout_buf);
     attacks.init();
     cuckoo.init();
+    numa.init() catch |e| std.debug.panic("Fatal: couldn't initialize NUMA support, error: {}\n", .{e});
+    if (EVAL_MODE == .nnue) {
+        nnue.init() catch |e| std.debug.panic("Fatal: couldn't initialize NNUE state, error: {}\n", .{e});
+    }
     if (!TOOLS_ONLY) {
         engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
     }
@@ -113,6 +116,10 @@ pub fn init() void {
 
 fn deinitImpl() void {
     pyrrhic.deinit();
+    if (EVAL_MODE == .nnue) {
+        nnue.deinit();
+    }
+    numa.deinit();
     stdout_writer.interface.flush() catch std.debug.panic("failed to flush stdout", .{});
 }
 
