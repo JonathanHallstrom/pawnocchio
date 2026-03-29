@@ -1090,9 +1090,9 @@ fn search(
 
         if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
             const lmr_history_mult: i64 = if (is_quiet) TUNABLES.lmr_quiet_history_mult else TUNABLES.lmr_noisy_history_mult;
-            var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
-            base_lmr -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
-            var lmr_depth: i32 = (depth << 10) - base_lmr;
+            var reduction = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
+            reduction -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
+            var lmr_depth: i32 = (depth << 10) - reduction;
             const lmp_margin = @divTrunc(lmp_base_margin, 1024) + @as(i32, @intFromBool(direct_check));
             std.debug.assert(lmp_margin > 0);
 
