@@ -135,6 +135,7 @@ winning_root_moves: BoundedArray(Move, 256),
 refresh_cache: if (evaluation.EVAL_MODE == .nnue) root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT) else void,
 nnue_weights: if (stores_numa_weights) *const nnue.Weights else void,
 histories: history.HistoryTable,
+correction_histories: *history.CorrectionHistoryTable,
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -588,7 +589,7 @@ fn qsearch(
     var static_eval = corrected_static_eval;
     if (!is_in_check) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        correction, corrected_static_eval = self.histories.correct(
+        correction, corrected_static_eval = self.correction_histories.correct(
             board,
             cur.move,
             cur.prev,
@@ -842,7 +843,7 @@ fn search(
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
         raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
-        correction, corrected_static_eval = self.histories.correct(
+        correction, corrected_static_eval = self.correction_histories.correct(
             board,
             cur.move,
             cur.prev,
@@ -907,7 +908,7 @@ fn search(
     {
         // reverse futility pruning (rfp)
         if (eval >= beta - TUNABLES.rfp_min_margin) {
-            const corrplexity = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
+            const corrplexity = self.correction_histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             const opponent_has_easy_capture = board.occupancyFor(stm) & (&board.lesser_threats)[stm.flipped().toInt()] != 0;
             const conditional_margin =
                 TUNABLES.rfp_improving_margin * @intFromBool(improving) +
@@ -1265,7 +1266,7 @@ fn search(
                 self.node_counts[move.from().toInt()][move.to().toInt()] += self.nodes - node_count_before;
             };
 
-            const corrhists_squared = self.histories.squaredCorrectionTerms(board, cur.move, cur.prev);
+            const corrhists_squared = self.correction_histories.squaredCorrectionTerms(board, cur.move, cur.prev);
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
@@ -1463,7 +1464,7 @@ fn search(
             if (corrected_static_eval != best_score and
                 evaluation.checkTTBound(best_score, corrected_static_eval, corrected_static_eval, score_type))
             {
-                self.histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, depth);
+                self.correction_histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, depth);
             }
         }
     }
@@ -1619,7 +1620,7 @@ fn initSearchStack(self: *Searcher, params: Params) void {
         entry.move_is_noisy = board_before.isNoisy(move);
 
         const raw_static_eval = evaluation.evalPosition(board_after);
-        _, const corrected_static_eval = self.histories.correct(
+        _, const corrected_static_eval = self.correction_histories.correct(
             board_after,
             move_typed,
             prev_typed,
@@ -1939,11 +1940,15 @@ fn buildHistory(
     };
 }
 
+var test_correction_histories: history.CorrectionHistoryTable = std.mem.zeroes(history.CorrectionHistoryTable);
+
 fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
     searcher.* = undefined;
     searcher.is_ready = false;
     searcher.ensureInvariants();
     searcher.histories = std.mem.zeroes(history.HistoryTable);
+    @memset(std.mem.asBytes(&test_correction_histories), 0);
+    searcher.correction_histories = &test_correction_histories;
     const positions = hist.positions.slice();
     searcher.initSearchStack(.{
         .board = positions[positions.len - 1],

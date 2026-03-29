@@ -18,6 +18,7 @@ const std = @import("std");
 const root = @import("root.zig");
 const Searcher = root.Searcher;
 const TTCluster = root.TTCluster;
+const history = root.history;
 const evaluation = root.evaluation;
 const numa = @import("numa.zig");
 const nnue = if (evaluation.eval_mode == .nnue) @import("nnue.zig") else void;
@@ -43,6 +44,56 @@ const ThreadAction = enum {
     exit,
 };
 
+const CorrHistStore = struct {
+    single: ?*history.CorrectionHistoryTable = null,
+    per_node: numa.PerNode(history.CorrectionHistoryTable) = .{},
+
+    fn init(allocator: std.mem.Allocator) !CorrHistStore {
+        var self: CorrHistStore = .{};
+        if (root.numa.enabled) {
+            try self.per_node.allocUndefinedToAll();
+            for (self.per_node.items.items) |ptr| {
+                ptr.* = std.mem.zeroes(history.CorrectionHistoryTable);
+            }
+        } else {
+            const ptr = try allocator.create(history.CorrectionHistoryTable);
+            ptr.* = std.mem.zeroes(history.CorrectionHistoryTable);
+            self.single = ptr;
+        }
+
+        return self;
+    }
+
+    fn deinit(self: *CorrHistStore, allocator: std.mem.Allocator) void {
+        if (self.single) |ptr| {
+            allocator.destroy(ptr);
+        }
+        self.single = null;
+        self.per_node.deinit();
+    }
+
+    fn get(self: *CorrHistStore, thread_idx: usize) *history.CorrectionHistoryTable {
+        if (root.numa.enabled) {
+            return self.per_node.get(numa.nodeForThread(thread_idx)) orelse unreachable;
+        }
+
+        return self.single orelse unreachable;
+    }
+
+    fn reset(self: *CorrHistStore) void {
+        if (root.numa.enabled) {
+            for (self.per_node.items.items) |ptr| {
+                ptr.reset();
+            }
+            return;
+        }
+
+        if (self.single) |ptr| {
+            ptr.reset();
+        }
+    }
+};
+
 const Thread = struct {
     mutex: std.Thread.Mutex = .{},
     cond: std.Thread.Condition = .{},
@@ -59,6 +110,7 @@ const Thread = struct {
 
     reset_tt_slice: []TTCluster = &.{},
     idx: usize,
+    correction_histories: *history.CorrectionHistoryTable = undefined,
 
     pub fn init(allocator: std.mem.Allocator, searcher: *Searcher, idx: usize) !*Thread {
         const self = try allocator.create(Thread);
@@ -92,6 +144,7 @@ const Thread = struct {
                 },
                 .reset => {
                     @memset(std.mem.asBytes(self.searcher), 0);
+                    self.searcher.correction_histories = self.correction_histories;
                     if (root.evaluation.EVAL_MODE == .nnue) {
                         const weights = if (root.numa.enabled) nnue.weightsForNode(numa.nodeForThread(self.idx)) else nnue.weightsForNode(0);
                         if (root.numa.enabled) {
@@ -150,11 +203,13 @@ pub const ThreadPool = struct {
     threads: std.ArrayListUnmanaged(*Thread) = .{},
     searchers: std.ArrayListUnmanaged(*Searcher) = .{},
     tt: []align(std.atomic.cache_line) TTCluster = &.{},
+    corrhists: CorrHistStore = .{},
     allocator: std.mem.Allocator,
     stop_searching: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
-    pub fn init(allocator: std.mem.Allocator) ThreadPool {
+    pub fn init(allocator: std.mem.Allocator) !ThreadPool {
         return .{
+            .corrhists = try CorrHistStore.init(allocator),
             .allocator = allocator,
         };
     }
@@ -163,6 +218,7 @@ pub const ThreadPool = struct {
         self.abort();
         self.threads.deinit(self.allocator);
         self.searchers.deinit(self.allocator);
+        self.corrhists.deinit(self.allocator);
         if (self.tt.len > 0) {
             self.allocator.free(self.tt);
         }
@@ -185,6 +241,7 @@ pub const ThreadPool = struct {
         }
         const thread = try Thread.init(self.allocator, searcher, self.threads.items.len);
         thread.tt = self.tt;
+        thread.correction_histories = self.corrhists.get(self.threads.items.len);
         try self.threads.append(self.allocator, thread);
         try self.searchers.append(self.allocator, searcher);
         thread.wake(.reset);
@@ -215,11 +272,13 @@ pub const ThreadPool = struct {
         while (self.threads.items.len > count) {
             self.removeThread();
         }
-        for (self.searchers.items) |s| {
+        for (self.searchers.items, 0..) |s, i| {
             s.tt = self.tt;
+            s.correction_histories = self.corrhists.get(i);
         }
-        for (self.threads.items) |t| {
+        for (self.threads.items, 0..) |t, i| {
             t.tt = self.tt;
+            t.correction_histories = self.corrhists.get(i);
         }
     }
 
@@ -243,6 +302,7 @@ pub const ThreadPool = struct {
     }
 
     pub fn reset(self: *ThreadPool) void {
+        self.corrhists.reset();
         const num_threads = self.threads.items.len;
         if (num_threads == 0) {
             if (self.tt.len > 0) {
@@ -259,6 +319,10 @@ pub const ThreadPool = struct {
             t.wake(.reset);
         }
         self.blockUntilReady();
+    }
+
+    pub fn correctionHistoriesForThread(self: *ThreadPool, thread_idx: usize) *history.CorrectionHistoryTable {
+        return self.corrhists.get(thread_idx);
     }
 
     pub fn startSearch(self: *ThreadPool, params: Searcher.Params, quiet: bool) void {

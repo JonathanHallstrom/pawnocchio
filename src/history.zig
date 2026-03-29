@@ -408,7 +408,7 @@ fn HashCorrhist(
         }
 
         inline fn read(self: *const Self, board: *const Board) i64 {
-            return self.entry(board).val;
+            return self.entry(board).read();
         }
     };
 }
@@ -433,15 +433,11 @@ const MoveCorrhist = struct {
     }
 
     inline fn read(self: *const MoveCorrhist, board: *const Board, move: TypedMove) i64 {
-        return self.entry(board, move).val;
+        return self.entry(board, move).read();
     }
 };
 
-pub const HistoryTable = struct {
-    quiet: QuietHistory,
-    pawn: PawnHistory,
-    noisy: NoisyHistory,
-    countermove: ContHistory,
+pub const CorrectionHistoryTable = struct {
     pawn_corrhist: HashCorrhist("pawn_hash", CORRHIST_SIZE, .{}),
     major_corrhist: HashCorrhist("major_hash", CORRHIST_SIZE, .{}),
     minor_corrhist: HashCorrhist("minor_hash", CORRHIST_SIZE, .{}),
@@ -450,11 +446,7 @@ pub const HistoryTable = struct {
     prev_corrhist: MoveCorrhist,
     followup_corrhist: MoveCorrhist,
 
-    pub fn reset(self: *HistoryTable) void {
-        self.quiet.reset();
-        self.pawn.reset();
-        self.noisy.reset();
-        self.countermove.reset();
+    pub fn reset(self: *CorrectionHistoryTable) void {
         self.pawn_corrhist.reset();
         self.major_corrhist.reset();
         self.minor_corrhist.reset();
@@ -462,6 +454,115 @@ pub const HistoryTable = struct {
         self.black_nonpawn_corrhist.reset();
         self.prev_corrhist.reset();
         self.followup_corrhist.reset();
+    }
+
+    pub fn updateCorrection(
+        self: *CorrectionHistoryTable,
+        board: *const Board,
+        prev: TypedMove,
+        followup: TypedMove,
+        corrected_static_eval: i32,
+        score: i32,
+        depth: i32,
+    ) void {
+        const err = score - corrected_static_eval;
+        const weight = @min(depth, 15) + 1;
+
+        self.pawn_corrhist.update(board, err, weight * TUNABLES.corrhist_pawn_update_weight);
+        self.major_corrhist.update(board, err, weight * TUNABLES.corrhist_major_update_weight);
+        self.minor_corrhist.update(board, err, weight * TUNABLES.corrhist_minor_update_weight);
+        self.white_nonpawn_corrhist.update(board, err, weight * TUNABLES.corrhist_nonpawn_update_weight);
+        self.black_nonpawn_corrhist.update(board, err, weight * TUNABLES.corrhist_nonpawn_update_weight);
+        self.prev_corrhist.update(board, prev, err, weight * TUNABLES.corrhist_prev_update_weight);
+        self.followup_corrhist.update(board, followup, err, weight * TUNABLES.corrhist_followup_update_weight);
+    }
+
+    pub fn summedCorrectionTerms(
+        self: *const CorrectionHistoryTable,
+        board: *const Board,
+        prev: TypedMove,
+        followup: TypedMove,
+    ) i64 {
+        const pawn_correction = self.pawn_corrhist.read(board);
+        const major_correction = self.major_corrhist.read(board);
+        const minor_correction = self.minor_corrhist.read(board);
+        const white_nonpawn_correction = self.white_nonpawn_corrhist.read(board);
+        const black_nonpawn_correction = self.black_nonpawn_corrhist.read(board);
+        const prev_correction = self.prev_corrhist.read(board, prev);
+        const followup_correction = self.followup_corrhist.read(board, followup);
+
+        return @intCast(@abs(pawn_correction) +
+            @abs(white_nonpawn_correction) +
+            @abs(black_nonpawn_correction) +
+            @abs(prev_correction) +
+            @abs(followup_correction) +
+            @abs(major_correction) +
+            @abs(minor_correction));
+    }
+
+    pub fn squaredCorrectionTerms(
+        self: *const CorrectionHistoryTable,
+        board: *const Board,
+        prev: TypedMove,
+        followup: TypedMove,
+    ) i64 {
+        const pawn_correction = self.pawn_corrhist.read(board);
+        const major_correction = self.major_corrhist.read(board);
+        const minor_correction = self.minor_corrhist.read(board);
+        const white_nonpawn_correction = self.white_nonpawn_corrhist.read(board);
+        const black_nonpawn_correction = self.black_nonpawn_corrhist.read(board);
+        const prev_correction = self.prev_corrhist.read(board, prev);
+        const followup_correction = self.followup_corrhist.read(board, followup);
+
+        return pawn_correction * pawn_correction +
+            white_nonpawn_correction * white_nonpawn_correction +
+            black_nonpawn_correction * black_nonpawn_correction +
+            prev_correction * prev_correction +
+            followup_correction * followup_correction +
+            major_correction * major_correction +
+            minor_correction * minor_correction;
+    }
+
+    pub fn correct(
+        self: *const CorrectionHistoryTable,
+        board: *const Board,
+        prev: TypedMove,
+        followup: TypedMove,
+        static_eval: i16,
+    ) struct { i16, i16 } {
+        const pawn_correction = self.pawn_corrhist.read(board);
+        const major_correction = self.major_corrhist.read(board);
+        const minor_correction = self.minor_corrhist.read(board);
+        const white_nonpawn_correction = self.white_nonpawn_corrhist.read(board);
+        const black_nonpawn_correction = self.black_nonpawn_corrhist.read(board);
+        const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction;
+        const prev_correction = self.prev_corrhist.read(board, prev);
+        const followup_correction = self.followup_corrhist.read(board, followup);
+
+        const correction = (TUNABLES.corrhist_pawn_weight * pawn_correction +
+            TUNABLES.corrhist_nonpawn_weight * nonpawn_correction +
+            TUNABLES.corrhist_prev_weight * prev_correction +
+            TUNABLES.corrhist_followup_weight * followup_correction +
+            TUNABLES.corrhist_major_weight * major_correction +
+            TUNABLES.corrhist_minor_weight * minor_correction) >> 18;
+
+        const scaled = HistoryTable.scaleEval(board, static_eval);
+
+        return .{ @intCast(correction), evaluation.clampScore(scaled + correction) };
+    }
+};
+
+pub const HistoryTable = struct {
+    quiet: QuietHistory,
+    pawn: PawnHistory,
+    noisy: NoisyHistory,
+    countermove: ContHistory,
+
+    pub fn reset(self: *HistoryTable) void {
+        self.quiet.reset();
+        self.pawn.reset();
+        self.noisy.reset();
+        self.countermove.reset();
     }
 
     pub fn age(self: *HistoryTable) void {
@@ -563,100 +664,6 @@ pub const HistoryTable = struct {
         self.noisy.update(board, typed, depth, is_bonus, extra);
     }
 
-    pub fn updateCorrection(
-        self: *HistoryTable,
-        board: *const Board,
-        prev: TypedMove,
-        followup: TypedMove,
-        corrected_static_eval: i32,
-        score: i32,
-        depth: i32,
-    ) void {
-        const err = score - corrected_static_eval;
-        const weight = @min(depth, 15) + 1;
-
-        self.pawn_corrhist.update(board, err, weight * TUNABLES.corrhist_pawn_update_weight);
-        self.major_corrhist.update(board, err, weight * TUNABLES.corrhist_major_update_weight);
-        self.minor_corrhist.update(board, err, weight * TUNABLES.corrhist_minor_update_weight);
-        self.white_nonpawn_corrhist.update(board, err, weight * TUNABLES.corrhist_nonpawn_update_weight);
-        self.black_nonpawn_corrhist.update(board, err, weight * TUNABLES.corrhist_nonpawn_update_weight);
-        self.prev_corrhist.update(board, prev, err, weight * TUNABLES.corrhist_prev_update_weight);
-        self.followup_corrhist.update(board, followup, err, weight * TUNABLES.corrhist_followup_update_weight);
-    }
-
-    pub fn summedCorrectionTerms(
-        self: *const HistoryTable,
-        board: *const Board,
-        prev: TypedMove,
-        followup: TypedMove,
-    ) i64 {
-        const pawn_correction = self.pawn_corrhist.read(board);
-        const major_correction = self.major_corrhist.read(board);
-        const minor_correction = self.minor_corrhist.read(board);
-        const white_nonpawn_correction = self.white_nonpawn_corrhist.read(board);
-        const black_nonpawn_correction = self.black_nonpawn_corrhist.read(board);
-        const prev_correction = self.prev_corrhist.read(board, prev);
-        const followup_correction = self.followup_corrhist.read(board, followup);
-
-        return @intCast(@abs(pawn_correction) +
-            @abs(white_nonpawn_correction) +
-            @abs(black_nonpawn_correction) +
-            @abs(prev_correction) +
-            @abs(followup_correction) +
-            @abs(major_correction) +
-            @abs(minor_correction));
-    }
-    pub fn squaredCorrectionTerms(
-        self: *const HistoryTable,
-        board: *const Board,
-        prev: TypedMove,
-        followup: TypedMove,
-    ) i64 {
-        const pawn_correction = self.pawn_corrhist.read(board);
-        const major_correction = self.major_corrhist.read(board);
-        const minor_correction = self.minor_corrhist.read(board);
-        const white_nonpawn_correction = self.white_nonpawn_corrhist.read(board);
-        const black_nonpawn_correction = self.black_nonpawn_corrhist.read(board);
-        const prev_correction = self.prev_corrhist.read(board, prev);
-        const followup_correction = self.followup_corrhist.read(board, followup);
-
-        return pawn_correction * pawn_correction +
-            white_nonpawn_correction * white_nonpawn_correction +
-            black_nonpawn_correction * black_nonpawn_correction +
-            prev_correction * prev_correction +
-            followup_correction * followup_correction +
-            major_correction * major_correction +
-            minor_correction * minor_correction;
-    }
-
-    pub fn correct(
-        self: *const HistoryTable,
-        board: *const Board,
-        prev: TypedMove,
-        followup: TypedMove,
-        static_eval: i16,
-    ) struct { i16, i16 } {
-        const pawn_correction = self.pawn_corrhist.read(board);
-        const major_correction = self.major_corrhist.read(board);
-        const minor_correction = self.minor_corrhist.read(board);
-        const white_nonpawn_correction = self.white_nonpawn_corrhist.read(board);
-        const black_nonpawn_correction = self.black_nonpawn_corrhist.read(board);
-        const nonpawn_correction = white_nonpawn_correction + black_nonpawn_correction;
-        const prev_correction = self.prev_corrhist.read(board, prev);
-        const followup_correction = self.followup_corrhist.read(board, followup);
-
-        const correction = (TUNABLES.corrhist_pawn_weight * pawn_correction +
-            TUNABLES.corrhist_nonpawn_weight * nonpawn_correction +
-            TUNABLES.corrhist_prev_weight * prev_correction +
-            TUNABLES.corrhist_followup_weight * followup_correction +
-            TUNABLES.corrhist_major_weight * major_correction +
-            TUNABLES.corrhist_minor_weight * minor_correction) >> 18;
-
-        const scaled = scaleEval(board, static_eval);
-
-        return .{ @intCast(correction), evaluation.clampScore(scaled + correction) };
-    }
-
     pub fn scaleEval(
         board: *const Board,
         eval: i16,
@@ -672,24 +679,34 @@ pub const HistoryTable = struct {
     }
 };
 
-fn gravityUpdateCont(entry: *i16, total: i64, adjustment: anytype) void {
+inline fn gravityImpl(current_value: i32, total: i64, adjustment: anytype) i16 {
     const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));
     const magnitude: i32 = @abs(clamped);
-    const current_value: i32 = entry.*;
-    entry.* = @intCast(std.math.clamp(current_value + clamped - ((magnitude * total) >> SHIFT), -MAX_HISTORY, MAX_HISTORY));
+    return @intCast(std.math.clamp(
+        current_value + clamped - ((magnitude * total) >> SHIFT),
+        -MAX_HISTORY,
+        MAX_HISTORY,
+    ));
+}
+
+fn gravityUpdateCont(entry: *i16, total: i64, adjustment: anytype) void {
+    entry.* = gravityImpl(entry.*, total, adjustment);
 }
 
 fn gravityUpdate(entry: *i16, adjustment: anytype) void {
-    const clamped: i16 = @intCast(std.math.clamp(adjustment, -MAX_HISTORY, MAX_HISTORY));
-    const magnitude: i32 = @abs(clamped);
-    const current_value: i32 = entry.*;
-    entry.* = @intCast(current_value + clamped - ((magnitude * current_value) >> SHIFT));
+    entry.* = gravityImpl(entry.*, entry.*, adjustment);
 }
 
 const CorrhistEntry = struct {
-    val: i16 = 0,
+    val: std.atomic.Value(i16) = .init(0),
 
     fn update(self: *CorrhistEntry, err: i32, weight: i32) void {
-        gravityUpdate(&self.val, std.math.clamp(@divTrunc(err * weight, 1024), -16000, 16000));
+        const adjustment = std.math.clamp(@divTrunc(err * weight, 1024), -16000, 16000);
+        const current_value: i32 = self.val.load(.monotonic);
+        self.val.store(gravityImpl(current_value, current_value, adjustment), .monotonic);
+    }
+
+    fn read(self: *const CorrhistEntry) i64 {
+        return self.val.load(.monotonic);
     }
 };
