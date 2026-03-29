@@ -1298,7 +1298,8 @@ fn search(
                 }
 
                 const raw_reduced_depth = depth + extension - (reduction >> 10);
-                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth) + @intFromBool(is_pv);
+                const lmr_extension = @intFromBool(num_legal <= 3);
+                const reduced_depth = std.math.clamp(raw_reduced_depth, 1, new_depth + lmr_extension) + @intFromBool(is_pv);
                 self.stackEntry(0).reduction =
                     if (raw_reduced_depth == reduced_depth)
                         reduction

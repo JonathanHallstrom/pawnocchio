@@ -147,8 +147,8 @@ pub const SCHEMA = .{
             "2failhighs",
         },
         .max_order = 3,
-        .min = -2048,
-        .max = 2048,
+        .min = -4096,
+        .max = 4096,
         .c_end = 128,
     }),
 
