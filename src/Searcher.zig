@@ -512,13 +512,13 @@ fn precomputeFactorized(comptime N: usize, comptime weights: anytype) type {
     };
 }
 
-inline fn getFactorisedLmr(comptime N: usize, params: [N]bool) i16 {
+inline fn getFactorised(comptime Family: type, comptime N: usize, params: [N]bool) i16 {
     if (tuning.DO_FACTORIZED_TUNING) {
-        return convolve(N, params, tuning.FACTORIZED_LMR.values.*);
+        return convolve(N, params, Family.values.*);
     } else {
         return precomputeFactorized(
-            tuning.FACTORIZED_LMR.input_count,
-            tuning.FACTORIZED_LMR.values.*,
+            Family.input_count,
+            Family.values.*,
         ).query(params);
     }
 }
@@ -1025,10 +1025,9 @@ fn search(
     const lmp_base = if (improving) TUNABLES.lmp_improving_base else TUNABLES.lmp_standard_base;
     const lmp_linear_mult = if (improving) TUNABLES.lmp_improving_linear_mult else TUNABLES.lmp_standard_linear_mult;
     const lmp_quadratic_mult = if (improving) TUNABLES.lmp_improving_quadratic_mult else TUNABLES.lmp_standard_quadratic_mult;
-    const lmp_margin = @divTrunc(lmp_base +
+    const lmp_base_margin = lmp_base +
         lmp_linear_mult * depth +
-        lmp_quadratic_mult * depth * depth, 1024);
-    std.debug.assert(lmp_margin > 0);
+        lmp_quadratic_mult * depth * depth;
     while (mp.next(
         stm,
         &self.histories,
@@ -1061,6 +1060,7 @@ fn search(
             continue;
         }
         const is_quiet = board.isQuiet(move);
+        const direct_check = board.isDirectCheck(move);
         if (std.debug.runtime_safety and
             (mp.stage == .good_noisies or mp.stage == .bad_noisies))
         {
@@ -1093,9 +1093,11 @@ fn search(
             var base_lmr = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             base_lmr -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
             var lmr_depth: i32 = (depth << 10) - base_lmr;
+            const lmp_margin = @divTrunc(lmp_base_margin, 1024) + @as(i32, @intFromBool(direct_check));
+            std.debug.assert(lmp_margin > 0);
 
             if (!is_pv and
-                num_searched >= lmp_margin + @as(i32, if (board.isDirectCheck(move)) 1 else 0))
+                num_searched >= lmp_margin)
             {
                 mp.skip_quiets = true;
                 if (is_quiet) {
@@ -1275,7 +1277,7 @@ fn search(
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * lmr_hist_score >> 13);
                 reduction -= @intCast(TUNABLES.lmr_corrhist_mult * corrhists_squared >> 32);
-                reduction += getFactorisedLmr(9, .{
+                reduction += getFactorised(tuning.FACTORIZED_LMR, 9, .{
                     is_pv,
                     cutnode,
                     improving,
