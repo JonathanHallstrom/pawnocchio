@@ -118,7 +118,7 @@ pub fn resetDebugStats() void {
 }
 
 pub fn init() !void {
-    thread_pool = ThreadPool.init(std.heap.page_allocator);
+    thread_pool = try ThreadPool.init(std.heap.page_allocator);
     try thread_pool.setTTSize(16);
     try thread_pool.setThreadCount(1);
     debug_stats = .init(std.heap.page_allocator); // yes its inefficient no i don't care
@@ -212,6 +212,7 @@ fn datagenWorker(
     const old_tt = searcher.tt;
     defer searcher.tt = old_tt;
     @memset(std.mem.asBytes(searcher), 0);
+    searcher.correction_histories = thread_pool.correctionHistoriesForThread(i);
     if (root.eval_mode == .nnue) {
         const weights = if (root.numa.enabled) nnue.weightsForNode(numa.nodeForThread(i)) else nnue.weightsForNode(0);
         if (root.numa.enabled) {
