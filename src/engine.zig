@@ -29,34 +29,88 @@ pub var thread_pool: ThreadPool = undefined;
 
 pub var debug_stats_lock: std.Thread.Mutex = .{};
 pub var debug_stats: std.StringHashMap(debug_stats_mod.Scalar) = .init(std.heap.page_allocator);
+pub var debug_bool_stats: std.StringHashMap(debug_stats_mod.BoolStat) = .init(std.heap.page_allocator);
+pub var debug_corr_stats: std.StringHashMap(debug_stats_mod.Correlation) = .init(std.heap.page_allocator);
 pub var debug_range_stats: std.StringHashMap(debug_stats_mod.Range) = .init(std.heap.page_allocator);
 pub var debug_rng: std.Random.DefaultPrng = undefined;
 
+fn castDebugValue(value: anytype) i64 {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .int, .comptime_int => @as(i64, @intCast(value)),
+        .bool => @intFromBool(value),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(value))})),
+    };
+}
+
+fn castDebugInt(comptime label: []const u8, value: anytype) i64 {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .int, .comptime_int => @as(i64, @intCast(value)),
+        else => @compileError(std.fmt.comptimePrint("unsupported {s} type {s}", .{ label, @typeName(@TypeOf(value)) })),
+    };
+}
+
+fn castDebugFloat(value: anytype) f64 {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .int, .comptime_int => @floatFromInt(value),
+        .float, .comptime_float => @as(f64, value),
+        .bool => @floatFromInt(@intFromBool(value)),
+        else => @compileError(std.fmt.comptimePrint("unsupported correlation type {s}", .{@typeName(@TypeOf(value))})),
+    };
+}
+
+fn fillDebugCorrValues(comptime expected_len: usize, values: anytype, out: *[expected_len]f64) void {
+    switch (@typeInfo(@TypeOf(values))) {
+        .pointer => |pointer| switch (pointer.size) {
+            .one => fillDebugCorrValues(expected_len, values.*, out),
+            .slice => {
+                std.debug.assert(values.len == expected_len);
+                for (values, 0..) |value, i| {
+                    out[i] = castDebugFloat(value);
+                }
+            },
+            else => @compileError("dbgCorr values pointer must be one-item or slice"),
+        },
+        .array => |array| {
+            comptime {
+                std.debug.assert(array.len == expected_len);
+            }
+            for (values, 0..) |value, i| {
+                out[i] = castDebugFloat(value);
+            }
+        },
+        .@"struct" => |struct_info| {
+            if (!struct_info.is_tuple) {
+                @compileError("dbgCorr values must be a tuple, array, or pointer to either");
+            }
+            comptime {
+                std.debug.assert(struct_info.fields.len == expected_len);
+            }
+            inline for (struct_info.fields, 0..) |field, i| {
+                out[i] = castDebugFloat(@field(values, field.name));
+            }
+        },
+        else => @compileError("dbgCorr values must be a tuple, array, or pointer to either"),
+    }
+}
+
 pub fn dbg(name: []const u8, x: anytype) @TypeOf(x) {
     switch (@typeInfo(@TypeOf(x))) {
-        .int => dbgImpl(name, x),
-        .bool => dbgImpl(name, @intFromBool(x)),
+        .int, .comptime_int => dbgImpl(name, @as(i64, @intCast(x))),
+        .bool => dbgBoolImpl(name, x),
         else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(x))})),
     }
     return x;
 }
 
 pub fn dbgRange(name: []const u8, index: anytype, x: anytype, granularity: anytype) @TypeOf(x) {
-    const index_i64 = switch (@typeInfo(@TypeOf(index))) {
-        .int, .comptime_int => @as(i64, @intCast(index)),
-        else => @compileError(std.fmt.comptimePrint("unsupported index type {s}", .{@typeName(@TypeOf(index))})),
-    };
-    const granularity_i64 = switch (@typeInfo(@TypeOf(granularity))) {
-        .int, .comptime_int => @as(i64, @intCast(granularity)),
-        else => @compileError(std.fmt.comptimePrint("unsupported granularity type {s}", .{@typeName(@TypeOf(granularity))})),
-    };
-
-    switch (@typeInfo(@TypeOf(x))) {
-        .int => dbgRangeImpl(name, index_i64, x, granularity_i64),
-        .bool => dbgRangeImpl(name, index_i64, @intFromBool(x), granularity_i64),
-        else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(x))})),
-    }
+    dbgRangeImpl(name, castDebugInt("index", index), castDebugValue(x), castDebugInt("granularity", granularity));
     return x;
+}
+
+pub fn dbgCorr(name: []const u8, comptime names: []const []const u8, values: anytype) void {
+    var normalized_values: [names.len]f64 = undefined;
+    fillDebugCorrValues(names.len, values, &normalized_values);
+    dbgCorrImpl(name, names, &normalized_values);
 }
 
 fn dbgImpl(name: []const u8, value: i64) void {
@@ -69,6 +123,32 @@ fn dbgImpl(name: []const u8, value: i64) void {
         gp.key_ptr.* = std.heap.page_allocator.dupe(u8, name) catch @panic("OOM");
     }
     gp.value_ptr.add(value, debug_rng.random());
+}
+
+fn dbgBoolImpl(name: []const u8, value: bool) void {
+    debug_stats_lock.lock();
+    defer debug_stats_lock.unlock();
+
+    const gp = debug_bool_stats.getOrPut(name) catch unreachable;
+    if (!gp.found_existing) {
+        gp.value_ptr.* = .{};
+        gp.key_ptr.* = std.heap.page_allocator.dupe(u8, name) catch @panic("OOM");
+    }
+    gp.value_ptr.add(value);
+}
+
+fn dbgCorrImpl(name: []const u8, comptime names: []const []const u8, values: []const f64) void {
+    debug_stats_lock.lock();
+    defer debug_stats_lock.unlock();
+
+    const gp = debug_corr_stats.getOrPut(name) catch unreachable;
+    if (!gp.found_existing) {
+        gp.value_ptr.* = debug_stats_mod.Correlation.init(std.heap.page_allocator, names);
+        gp.key_ptr.* = std.heap.page_allocator.dupe(u8, name) catch @panic("OOM");
+    } else {
+        gp.value_ptr.assertNames(names);
+    }
+    gp.value_ptr.add(values);
 }
 
 fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void {
@@ -84,7 +164,7 @@ fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void
     } else {
         std.debug.assert(gp.value_ptr.granularity == granularity);
     }
-    gp.value_ptr.add(index, value, debug_rng.random());
+    gp.value_ptr.add(index, value);
 }
 
 pub fn printDebugStats() void {
@@ -92,6 +172,18 @@ pub fn printDebugStats() void {
 
     var iter = debug_stats.iterator();
     while (iter.next()) |entry| {
+        writer.print("{s}\n", .{entry.key_ptr.*}) catch unreachable;
+        entry.value_ptr.format(writer) catch unreachable;
+    }
+
+    var bool_iter = debug_bool_stats.iterator();
+    while (bool_iter.next()) |entry| {
+        writer.print("{s} (bool)\n", .{entry.key_ptr.*}) catch unreachable;
+        entry.value_ptr.format(writer) catch unreachable;
+    }
+
+    var corr_iter = debug_corr_stats.iterator();
+    while (corr_iter.next()) |entry| {
         writer.print("{s}\n", .{entry.key_ptr.*}) catch unreachable;
         entry.value_ptr.format(writer) catch unreachable;
     }
@@ -111,6 +203,16 @@ pub fn resetDebugStats() void {
         e.reset();
     }
 
+    var bool_iter = debug_bool_stats.valueIterator();
+    while (bool_iter.next()) |e| {
+        e.reset();
+    }
+
+    var corr_iter = debug_corr_stats.valueIterator();
+    while (corr_iter.next()) |e| {
+        e.reset();
+    }
+
     var range_iter = debug_range_stats.valueIterator();
     while (range_iter.next()) |e| {
         e.reset();
@@ -122,6 +224,8 @@ pub fn init() !void {
     try thread_pool.setTTSize(16);
     try thread_pool.setThreadCount(1);
     debug_stats = .init(std.heap.page_allocator); // yes its inefficient no i don't care
+    debug_bool_stats = .init(std.heap.page_allocator);
+    debug_corr_stats = .init(std.heap.page_allocator);
     debug_range_stats = .init(std.heap.page_allocator);
     debug_rng.seed(@bitCast(std.time.microTimestamp()));
 }
@@ -129,6 +233,12 @@ pub fn init() !void {
 pub fn deinit() void {
     thread_pool.deinit();
     printDebugStats();
+
+    var debug_values = debug_stats.valueIterator();
+    while (debug_values.next()) |value| {
+        value.deinit();
+    }
+
     var keys = debug_stats.keyIterator();
 
     while (keys.next()) |key| {
@@ -136,6 +246,30 @@ pub fn deinit() void {
     }
 
     debug_stats.deinit();
+
+    var bool_values = debug_bool_stats.valueIterator();
+    while (bool_values.next()) |value| {
+        value.deinit();
+    }
+
+    var bool_keys = debug_bool_stats.keyIterator();
+    while (bool_keys.next()) |key| {
+        std.heap.page_allocator.free(key.*);
+    }
+
+    debug_bool_stats.deinit();
+
+    var corr_values = debug_corr_stats.valueIterator();
+    while (corr_values.next()) |value| {
+        value.deinit();
+    }
+
+    var corr_keys = debug_corr_stats.keyIterator();
+    while (corr_keys.next()) |key| {
+        std.heap.page_allocator.free(key.*);
+    }
+
+    debug_corr_stats.deinit();
 
     var range_values = debug_range_stats.valueIterator();
     while (range_values.next()) |value| {
