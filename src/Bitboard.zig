@@ -54,6 +54,112 @@ pub inline fn move(bitboard: u64, d_rank: anytype, d_file: anytype) u64 {
     return res;
 }
 
+const A_FILE: u64 = 0x0101010101010101;
+const B_FILE: u64 = A_FILE << 1;
+const G_FILE: u64 = A_FILE << 6;
+const H_FILE: u64 = A_FILE << 7;
+const RANK_1: u64 = 0xff;
+const RANK_2: u64 = RANK_1 << 8;
+const RANK_7: u64 = RANK_1 << 48;
+const RANK_8: u64 = RANK_1 << 56;
+
+pub fn knightMoveBitBoardSetwise(knights: u64) u64 {
+    const SHIFTS: @Vector(8, u6) = .{
+        6,
+        15,
+        17,
+        10,
+        64 - 6,
+        64 - 15,
+        64 - 17,
+        64 - 10,
+    };
+    const MASKS: @Vector(8, u64) = .{
+        A_FILE | B_FILE | RANK_8,
+        A_FILE | RANK_7 | RANK_8,
+        H_FILE | RANK_7 | RANK_8,
+        G_FILE | H_FILE | RANK_8,
+        G_FILE | H_FILE | RANK_1,
+        H_FILE | RANK_1 | RANK_2,
+        A_FILE | RANK_1 | RANK_2,
+        A_FILE | B_FILE | RANK_1,
+    };
+    return @reduce(.Or, rotl(@as(@Vector(8, u64), @splat(knights)) & ~MASKS, SHIFTS));
+}
+
+pub const SetwiseSliderAttacks = struct {
+    orthogonal: u64,
+    diagonal: u64,
+};
+
+fn rotl(x: @Vector(8, u64), shifts: @Vector(8, u6)) @Vector(8, u64) {
+    return (x << shifts) | (x >> (@as(@Vector(8, u6), @splat(0)) -% shifts));
+}
+
+fn sliderRotate(n: anytype) @Vector(8, u6) {
+    return .{
+        64 - 7 * n,
+        64 - 9 * n,
+        7 * n,
+        9 * n,
+        n,
+        64 - 8 * n,
+        64 - n,
+        8 * n,
+    };
+}
+
+pub fn sliderAttackBitBoardsSetwise(orthogonal: u64, diagonal: u64, blockers: u64) SetwiseSliderAttacks {
+    const ONES = std.math.maxInt(u64);
+    const DIAGONAL_LANES: @Vector(8, u64) = .{
+        ONES,
+        ONES,
+        ONES,
+        ONES,
+        0,
+        0,
+        0,
+        0,
+    };
+    const ORTHOGONAL_LANES: @Vector(8, u64) = ~DIAGONAL_LANES;
+
+    var generated: @Vector(8, u64) = .{
+        diagonal,
+        diagonal,
+        diagonal,
+        diagonal,
+        orthogonal,
+        orthogonal,
+        orthogonal,
+        orthogonal,
+    };
+    const EDGE_MASK: @Vector(8, u64) = .{
+        A_FILE | RANK_8,
+        H_FILE | RANK_8,
+        H_FILE | RANK_1,
+        A_FILE | RANK_1,
+        A_FILE,
+        RANK_8,
+        H_FILE,
+        RANK_1,
+    };
+    var masked_blockers = @as(@Vector(8, u64), @splat(blockers)) | EDGE_MASK;
+
+    generated |= ~masked_blockers & rotl(generated, sliderRotate(1));
+    masked_blockers |= rotl(masked_blockers, sliderRotate(1));
+
+    generated |= ~masked_blockers & rotl(generated, sliderRotate(2));
+    masked_blockers |= rotl(masked_blockers, sliderRotate(2));
+
+    generated |= ~masked_blockers & rotl(generated, sliderRotate(4));
+    generated = ~EDGE_MASK & rotl(generated, sliderRotate(1));
+
+    return .{
+        .orthogonal = @reduce(.Or, generated & ORTHOGONAL_LANES),
+        .diagonal = @reduce(.Or, generated & DIAGONAL_LANES),
+    };
+}
+
 pub fn fileBB(file: root.File) u64 {
     const first_file = std.math.maxInt(u64) / std.math.maxInt(u8);
     return first_file << @intCast(file.toInt());
