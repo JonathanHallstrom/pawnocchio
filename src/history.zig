@@ -246,6 +246,12 @@ pub const NoisyHistory = struct {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
+    fn age(self: *NoisyHistory) void {
+        for (&self.vals) |*e| {
+            e.* = @intCast(@divTrunc(@as(i32, e.*) * 3, 4));
+        }
+    }
+
     inline fn entry(
         self: anytype,
         board: *const Board,
@@ -567,6 +573,7 @@ pub const HistoryTable = struct {
 
     pub fn age(self: *HistoryTable) void {
         self.quiet.age();
+        self.noisy.age();
     }
 
     pub fn getConthistTables(
