@@ -900,9 +900,10 @@ pub fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, 
 pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     const occ = self.occupancy() ^ self.kingFor(col.flipped());
     const pawn_threats = Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
-    const knight_threats = Bitboard.knightMoveBitBoard(self.knightsFor(col));
-    var bishop_threats: u64 = 0;
-    var rook_threats: u64 = 0;
+    const knight_threats = Bitboard.knightMoveBitBoardSetwise(self.knightsFor(col));
+    const slider_threats = Bitboard.sliderAttackBitBoardsSetwise(self.rooksFor(col), self.bishopsFor(col), occ);
+    const rook_threats = slider_threats[0];
+    const bishop_threats = slider_threats[1];
     var queen_threats: u64 = 0;
     const king_threats = Bitboard.kingMoves(Square.fromBitboard(self.kingFor(col)));
     var lesser_threatened: u64 = 0;
@@ -910,27 +911,17 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     // threatened now has all pieces attacked by pawns
     // so knights and bishops would be worth more
     lesser_threatened |= (self.knights() | self.bishops()) & pawn_threats;
-    var iter = Bitboard.iterator(self.bishopsFor(col));
-    while (iter.next()) |sq| {
-        bishop_threats |= attacks.bishopAttacks(sq, occ);
-    }
 
     // threatened now has all pieces attacked by pawns or by knights or bishops
     // so rooks are worth more than the attacking pieces
     const minor_threats = pawn_threats | knight_threats | bishop_threats;
     lesser_threatened |= self.rooks() & minor_threats;
 
-    iter = Bitboard.iterator(self.rooksFor(col));
-    while (iter.next()) |sq| {
-        rook_threats |= attacks.rookAttacks(sq, occ);
-    }
-
     // threatened now has all pieces attacked by pawns or by knights or bishops or rooks
     // so queens are worth more than the attacking pieces
     const major_threats = minor_threats | rook_threats;
     lesser_threatened |= self.queens() & major_threats;
-
-    iter = Bitboard.iterator(self.queensFor(col));
+    var iter = Bitboard.iterator(self.queensFor(col));
     while (iter.next()) |sq| {
         queen_threats |= attacks.bishopAttacks(sq, occ) | attacks.rookAttacks(sq, occ);
     }
