@@ -317,8 +317,8 @@ fn handleHelp(version: []const u8, threads: usize) void {
         \\  vftotxt --input <INPUT.vf> [<INPUT.vf> (positional)]
         \\      convert viriformat binary file to <FEN> | <SCORE> | <WDL>
         \\
-        \\  sanitise --input <INPUT.vf> [<INPUT.vf> (positional)] [--print-errors] [--allow-overwrite] [--output <OUTPUT>]
-        \\      sanitise a viriformat file. default output: <INPUT>_sanitised
+        \\  sanitise --input <INPUT.vf> [<INPUT.vf> (positional)] [--print-errors] [--check-only] [--allow-overwrite] [--output <OUTPUT>]
+        \\      sanitise a viriformat file. default output: <INPUT>_sanitised unless --check-only is used
         \\
         \\  analyse --input <INPUT.vf> [<INPUT.vf> (positional)] [--approximate] [--tb-path <TB_PATH>] [--allow-overwrite]
         \\      analyze a dataset file
@@ -1107,6 +1107,7 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
         struct {
             input: []const u8,
             @"print-errors": bool = false,
+            @"check-only": bool = false,
             @"allow-overwrite": bool = false,
             output: ?[]const u8 = null,
             @"sp-stalemate-fix": bool = false,
@@ -1124,32 +1125,45 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
     var input_file = try openInputFile(input);
     defer input_file.close();
 
-    var name_writer = std.Io.Writer.Allocating.init(allocator);
-    defer name_writer.deinit();
-
-    try name_writer.writer.print("{s}_sanitised", .{input});
-    const output = parsed.output orelse name_writer.written();
-
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
-
     const mapped = try @import("MappedFile.zig").init(input_file);
     defer mapped.deinit();
 
-    var output_buf: [4096]u8 = undefined;
-    var bw = output_file.writer(&output_buf);
+    const missing_null_terminator =
+        mapped.data.len < 4 or
+        !std.mem.eql(u8, mapped.data[mapped.data.len - 4 ..], &[4]u8{ 0, 0, 0, 0 });
+    if (parsed.@"print-errors" and missing_null_terminator) {
+        std.debug.print("warning: file does not end with null terminator\n", .{});
+    }
 
-    try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(
+    var output_file: ?std.fs.File = null;
+    defer if (output_file) |*file| file.close();
+
+    var name_writer: ?std.Io.Writer.Allocating = null;
+    defer if (name_writer) |*writer| writer.deinit();
+
+    var output_buf: [4096]u8 = undefined;
+    var output_writer: ?std.fs.File.Writer = null;
+    if (!parsed.@"check-only") {
+        name_writer = std.Io.Writer.Allocating.init(allocator);
+        try name_writer.?.writer.print("{s}_sanitised", .{input});
+        const output = parsed.output orelse name_writer.?.written();
+
+        output_file = try createOutputFile(output, parsed.@"allow-overwrite");
+        output_writer = output_file.?.writer(&output_buf);
+    }
+
+    const skipped = try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(
         mapped.data,
-        &bw.interface,
+        if (output_writer) |*writer| &writer.interface else null,
         allocator,
         .{
             .print_errors = parsed.@"print-errors",
             .sp_stalemate_fix = parsed.@"sp-stalemate-fix",
         },
     );
-
-    try bw.interface.flush();
+    if (parsed.@"check-only" and (skipped > 0 or missing_null_terminator)) {
+        std.process.exit(1);
+    }
 }
 
 fn runBench(bench_depth: i32) !void {

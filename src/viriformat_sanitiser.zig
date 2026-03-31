@@ -275,10 +275,10 @@ pub const Config = struct {
 
 pub fn sanitiseBufferToFile(
     input: []const u8,
-    output: *std.Io.Writer,
+    output: ?*std.Io.Writer,
     allocator: std.mem.Allocator,
     config: Config,
-) !void {
+) !usize {
     var game: Game = .from(.startpos(), allocator);
     defer game.moves.deinit();
 
@@ -318,8 +318,13 @@ pub fn sanitiseBufferToFile(
         };
         i += bytes_used;
         parsed += 1;
-        try game.serializeInto(output);
+        if (output) |writer| {
+            try game.serializeInto(writer);
+        }
     }
-    try output.flush();
+    if (output) |writer| {
+        try writer.flush();
+    }
     std.debug.print("\nparsed {} games and skipped {} bytes\n", .{ parsed, skipped });
+    return skipped;
 }
