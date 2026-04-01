@@ -646,6 +646,7 @@ fn qsearch(
     )) |typed| {
         const move = typed.move;
         std.debug.assert(!move.isNull());
+        if (mp.stage == .quiets and num_searched > 0 and !board.isDirectCheck(move)) continue;
         self.prefetch(board, move);
 
         if (std.debug.runtime_safety and
