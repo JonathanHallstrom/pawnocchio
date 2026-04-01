@@ -1232,6 +1232,10 @@ fn search(
                     if (s_score < s_beta - triple_ext_margin) {
                         extension += 1;
                     }
+
+                    if (depth <= 15) {
+                        depth += 1;
+                    }
                 }
             } else if (s_beta >= beta) {
                 return @intCast(s_beta);
