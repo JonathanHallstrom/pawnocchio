@@ -1233,7 +1233,7 @@ fn search(
                         extension += 1;
                     }
 
-                    if (depth <= 15) {
+                    if (!is_pv and depth <= 15) {
                         depth += 1;
                     }
                 }
