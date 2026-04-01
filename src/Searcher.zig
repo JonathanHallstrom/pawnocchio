@@ -581,6 +581,7 @@ fn qsearch(
 
         return tt_score;
     }
+    const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or tt_entry.flags.getPV();
 
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
@@ -638,6 +639,10 @@ fn qsearch(
         &self.histories,
         conthist_tables,
         board,
+        !is_pv and
+            has_tt_move and
+            tt_entry.flags.getScoreType().givesLowerBound() and
+            board.isQuiet(tt_entry.move),
     )) |typed| {
         const move = typed.move;
         std.debug.assert(!move.isNull());
@@ -1033,6 +1038,7 @@ fn search(
         &self.histories,
         conthist_tables,
         board,
+        false,
     )) |typed| {
         const move = typed.move;
         if (move == cur.excluded) {

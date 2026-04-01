@@ -226,11 +226,13 @@ pub fn next(
     noalias histories: *const Historytable,
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
+    force_quiets: bool,
 ) ?TypedMove {
+    const skip_quiets = self.skip_quiets and !force_quiets;
     return sw: switch (self.stage) {
         .tt => {
             @branchHint(.unpredictable);
-            if (self.skip_quiets and board.isQuiet(self.ttmove)) {
+            if (skip_quiets and board.isQuiet(self.ttmove)) {
                 continue :sw .generate_noisies;
             }
             self.stage = .generate_noisies;
@@ -275,7 +277,7 @@ pub fn next(
             continue :sw .good_noisies;
         },
         .generate_quiets => {
-            if (self.skip_quiets) {
+            if (skip_quiets) {
                 return null;
             }
             self.first = self.movelist.vals.len;
@@ -310,7 +312,7 @@ pub fn next(
             continue :sw .quiets;
         },
         .quiets => {
-            if (self.first == self.last or self.skip_quiets) {
+            if (self.first == self.last or skip_quiets) {
                 continue :sw .bad_noisy_prep;
             }
             const move = self.movelist.vals.slice()[self.findBest()];
