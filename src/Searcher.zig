@@ -618,14 +618,18 @@ fn qsearch(
     var best_score = static_eval;
     var best_move = Move.init();
     var score_type: ScoreType = .upper;
+    const force_quiets = !is_pv and
+        has_tt_move and
+        tt_entry.flags.getScoreType().givesLowerBound() and
+        board.isQuiet(tt_entry.move);
     var mp = MovePicker.initQs(
         &cur.movelist,
         &cur.scores,
         tt_entry.move,
         cur.move.move,
-        board.checkers == 0,
     );
     defer mp.deinit();
+    var skip_quiets: bool = board.checkers == 0 and !force_quiets;
     var num_searched: u8 = 0;
 
     const futility = static_eval + TUNABLES.qs_futility_margin;
@@ -639,10 +643,7 @@ fn qsearch(
         &self.histories,
         conthist_tables,
         board,
-        !is_pv and
-            has_tt_move and
-            tt_entry.flags.getScoreType().givesLowerBound() and
-            board.isQuiet(tt_entry.move),
+        skip_quiets,
     )) |typed| {
         const move = typed.move;
         std.debug.assert(!move.isNull());
@@ -693,7 +694,7 @@ fn qsearch(
         if (score > best_score) {
             best_score = score;
             if (score > evaluation.matedIn(MAX_PLY)) {
-                mp.skip_quiets = true;
+                skip_quiets = true;
             }
         }
 
@@ -1033,12 +1034,13 @@ fn search(
     const lmp_base_margin = lmp_base +
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth;
+    var skip_quiets: bool = false;
     while (mp.next(
         stm,
         &self.histories,
         conthist_tables,
         board,
-        false,
+        skip_quiets,
     )) |typed| {
         const move = typed.move;
         if (move == cur.excluded) {
@@ -1105,7 +1107,7 @@ fn search(
             if (!is_pv and
                 num_searched >= lmp_margin)
             {
-                mp.skip_quiets = true;
+                skip_quiets = true;
                 if (is_quiet) {
                     continue;
                 }
@@ -1115,7 +1117,7 @@ fn search(
                 if (lmr_depth <= TUNABLES.history_pruning_depth_limit and
                     hp_hist_score < depth * TUNABLES.history_pruning_mult + TUNABLES.history_pruning_offs)
                 {
-                    mp.skip_quiets = true;
+                    skip_quiets = true;
                     continue;
                 }
 
@@ -1140,7 +1142,7 @@ fn search(
                     if (!evaluation.isTBScore(best_score)) {
                         best_score = @intCast(@max(best_score, futility_value));
                     }
-                    mp.skip_quiets = true;
+                    skip_quiets = true;
                     continue;
                 }
             } else {

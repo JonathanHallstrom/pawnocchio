@@ -38,7 +38,6 @@ scores: [*]i32,
 first: usize,
 last: usize,
 stage: Stage,
-skip_quiets: bool,
 ttmove: Move,
 prev_move: Move,
 last_bad_noisy: usize = 0,
@@ -74,7 +73,6 @@ pub fn init(
         .first = 0,
         .last = 0,
         .stage = stage,
-        .skip_quiets = false,
         .ttmove = ttmove_,
         .prev_move = prev_move_,
     };
@@ -85,7 +83,6 @@ pub fn initQs(
     scores_: [*]i32,
     ttmove_: Move,
     prev_move_: Move,
-    skip_quiets: bool,
 ) MovePicker {
     movelist_.vals.len = 0;
     var stage: Stage = undefined;
@@ -101,7 +98,6 @@ pub fn initQs(
         .first = 0,
         .last = 0,
         .stage = stage,
-        .skip_quiets = skip_quiets,
         .ttmove = ttmove_,
         .prev_move = prev_move_,
     };
@@ -226,9 +222,8 @@ pub fn next(
     noalias histories: *const Historytable,
     conthist_tables: history.ConthistTables,
     noalias board: *const Board,
-    force_quiets: bool,
+    skip_quiets: bool,
 ) ?TypedMove {
-    const skip_quiets = self.skip_quiets and !force_quiets;
     return sw: switch (self.stage) {
         .tt => {
             @branchHint(.unpredictable);
