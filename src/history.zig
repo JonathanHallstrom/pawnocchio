@@ -94,7 +94,7 @@ pub const TypedMove = struct {
 };
 
 pub const MAX_HISTORY: i16 = 1 << 14;
-const CORRHIST_SIZE = 16384;
+const CORRHIST_SIZE = 32768;
 const MAX_CORRHIST = 256 * 32;
 const SHIFT = @ctz(MAX_HISTORY);
 pub const CONTHIST_OFFSETS = [_]comptime_int{
