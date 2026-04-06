@@ -1107,7 +1107,8 @@ fn search(
             }
 
             if (is_quiet) {
-                if (lmr_depth <= TUNABLES.history_pruning_depth_limit and
+                if (!direct_check and
+                    lmr_depth <= TUNABLES.history_pruning_depth_limit and
                     hp_hist_score < depth * TUNABLES.history_pruning_mult + TUNABLES.history_pruning_offs)
                 {
                     mp.skip_quiets = true;
