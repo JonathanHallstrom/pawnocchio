@@ -1470,6 +1470,10 @@ fn search(
                 self.correction_histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, best_score, depth);
             }
         }
+
+        if (score_type == .upper and !is_in_check and !cur.move_is_noisy and !cur.move.move.isNull()) {
+            self.histories.updateQuiet(&prev.board, cur.move, depth, true, 0);
+        }
     }
 
     return best_score;
