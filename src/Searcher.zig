@@ -901,6 +901,16 @@ fn search(
         depth += 1;
     }
 
+    if (!tt_pv and
+        eval != evaluation.INF_SCORE and prev_eval != evaluation.INF_SCORE and
+        !is_singular_search and
+        depth >= 2 and
+        cur.reduction > 0 and
+        @as(i32, eval) + prev_eval > 50)
+    {
+        depth -= 1;
+    }
+
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
         !evaluation.isMateScore(beta) and
