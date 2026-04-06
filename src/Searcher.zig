@@ -797,7 +797,14 @@ fn search(
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
-                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType()) and board.halfmove < 98) {
+                const tt_type = tt_entry.flags.getScoreType();
+                const allow_cutoff = switch (tt_type) {
+                    .exact => true,
+                    .upper => tt_score <= alpha and (!cutnode or depth > 5),
+                    .lower => tt_score >= beta and (cutnode or depth > 5),
+                    .none => false,
+                };
+                if (allow_cutoff and board.halfmove < 98) {
                     var score = tt_score;
                     if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
                         score = lerp(i16, 10, TUNABLES.tt_fail_medium, tt_score, beta);
