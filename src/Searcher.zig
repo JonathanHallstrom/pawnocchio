@@ -797,7 +797,10 @@ fn search(
     if (tt_hit) {
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
-                if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType()) and board.halfmove < 98) {
+                if ((cutnode or tt_score <= alpha) and
+                    evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType()) and
+                    board.halfmove < 98)
+                {
                     var score = tt_score;
                     if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
                         score = lerp(i16, 10, TUNABLES.tt_fail_medium, tt_score, beta);
