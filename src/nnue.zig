@@ -74,11 +74,15 @@ var mapper: @import("MappedFile.zig") = undefined;
 const net = @embedFile("net");
 const verbatim_backing: [net.len:0]u8 align(64) = net.*;
 
-pub const verbatim_weights = @as(*const Weights, @ptrCast(&verbatim_backing));
+pub var verbatim_weights = @as(*const Weights, @ptrCast(&verbatim_backing));
 var weights_by_node: numa.PerNode(Weights) = .{};
 
 inline fn hiddenLayerWeightsVector(weights: *const Weights) []const @Vector(vecSize(i16), i16) {
     return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.ft_w))[0 .. weights.ft_w.len / vecSize(i16)];
+}
+
+pub export fn setWeights(w: *const Weights) void {
+    verbatim_weights = w;
 }
 
 pub fn init() !void {

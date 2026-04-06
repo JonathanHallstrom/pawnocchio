@@ -148,13 +148,3 @@ pub fn checkRootTime(
     }
     return false;
 }
-
-pub fn shouldPrintInfoInAspiration(self: *Limits) bool {
-    const cur_time = self.timer.read();
-    const elapsed_since_print = cur_time -| self.last_aspiration_print;
-    if (elapsed_since_print > std.time.ns_per_s) {
-        self.last_aspiration_print = cur_time;
-        return true;
-    }
-    return false;
-}

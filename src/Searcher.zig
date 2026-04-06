@@ -193,6 +193,7 @@ inline fn evalContext(self: *Searcher) evaluation.Context {
     return switch (evaluation.eval_mode) {
         .nnue => .{
             .weights = if (stores_numa_weights) self.nnue_weights else nnue.verbatim_weights,
+
             .refresh_cache = &self.refresh_cache,
         },
         inline else => .{},
@@ -1794,9 +1795,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     failhigh_reduction = @min(failhigh_reduction + TUNABLES.failhigh_add, TUNABLES.failhigh_max);
                     if (should_print) {
                         if (self.root_move) |root_move| {
-                            if (self.limits.shouldPrintInfoInAspiration()) {
-                                self.writeInfo(score, depth, .lower, root_move);
-                            }
+                            self.writeInfo(score, depth, .lower, root_move);
                         }
                     }
                 } else if (score <= aspiration_lower) {
@@ -1805,9 +1804,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     failhigh_reduction = failhigh_reduction * TUNABLES.failhigh_mult >> 10;
                     if (should_print) {
                         if (self.root_move) |root_move| {
-                            if (self.limits.shouldPrintInfoInAspiration()) {
-                                self.writeInfo(score, depth, .upper, root_move);
-                            }
+                            self.writeInfo(score, depth, .upper, root_move);
                         }
                     }
                 } else {

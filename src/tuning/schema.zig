@@ -64,8 +64,41 @@ pub const ScalarTunable = struct {
     }
 };
 
+pub const Literal = struct {
+    name: []const u8,
+    negated: bool = false,
+};
+
+pub const Constraint = struct {
+    lhs: Literal,
+    rhs: Literal,
+};
+
+fn asLiteral(value: anytype) Literal {
+    const T = @TypeOf(value);
+    return switch (T) {
+        Literal => value,
+        else => switch (@typeInfo(T)) {
+            .pointer, .array => .{ .name = value },
+            else => @compileError("expected a string-like value, Literal, or *const Literal"),
+        },
+    };
+}
+
+pub fn not(comptime name: []const u8) Literal {
+    return .{ .name = name, .negated = true };
+}
+
+pub fn implies(lhs: anytype, rhs: anytype) Constraint {
+    return .{
+        .lhs = asLiteral(lhs),
+        .rhs = asLiteral(rhs),
+    };
+}
+
 pub const FactorizedTunable = struct {
     inputs: []const []const u8,
+    constraints: []const Constraint = &.{},
     max_order: usize,
     min: i32,
     max: i32,
@@ -121,6 +154,15 @@ pub fn factorizedOrderFieldName(comptime order: usize) [:0]const u8 {
     return name[0..name.len :0];
 }
 
+pub fn factorizedInputIndex(spec: FactorizedTunable, name: []const u8) usize {
+    for (spec.inputs, 0..) |input, i| {
+        if (std.mem.eql(u8, input, name)) {
+            return i;
+        }
+    }
+    std.debug.panic("unknown factorized input '{s}'", .{name});
+}
+
 fn choose(n: usize, k: usize) usize {
     var result: usize = 1;
     for (0..@min(k, n - k)) |i| {
@@ -145,6 +187,12 @@ pub const SCHEMA = .{
             "givescheck",
             "root",
             "2failhighs",
+        },
+        .constraints = &.{
+            implies("pv", "ttpv"),
+            implies("pv", not("cutnode")),
+            implies("cutnode", not("pv")),
+            implies("root", "pv"),
         },
         .max_order = 3,
         .min = -2048,

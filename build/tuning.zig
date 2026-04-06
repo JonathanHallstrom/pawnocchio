@@ -81,7 +81,7 @@ fn FactorizedResolvedType(comptime Value: type) type {
     } });
 }
 
-fn factorizedNameMaxLen(comptime family_name: []const u8, comptime spec: tuning_schema.FactorizedTunable) usize {
+fn interactionNameMaxLen(comptime family_name: []const u8, comptime spec: tuning_schema.FactorizedTunable) usize {
     comptime var len = family_name.len;
     inline for (spec.inputs) |input| {
         len += 1 + input.len;
@@ -89,7 +89,84 @@ fn factorizedNameMaxLen(comptime family_name: []const u8, comptime spec: tuning_
     return len;
 }
 
-fn writeFactorizedParamNameRec(
+const Mask = u16;
+const Assignment = struct {
+    true_mask: Mask,
+    false_mask: Mask,
+};
+
+fn literalMask(comptime spec: tuning_schema.FactorizedTunable, comptime literal: tuning_schema.Literal) Mask {
+    return @as(Mask, 1) << @intCast(tuning_schema.factorizedInputIndex(spec, literal.name));
+}
+
+fn literalHolds(
+    comptime spec: tuning_schema.FactorizedTunable,
+    comptime literal: tuning_schema.Literal,
+    assignment: Assignment,
+) bool {
+    const mask = literalMask(spec, literal);
+    return if (literal.negated) assignment.false_mask & mask != 0 else assignment.true_mask & mask != 0;
+}
+
+fn assertLiteral(
+    comptime spec: tuning_schema.FactorizedTunable,
+    comptime literal: tuning_schema.Literal,
+    assignment: *Assignment,
+) bool {
+    const mask = literalMask(spec, literal);
+    const conflict = if (literal.negated) &assignment.true_mask else &assignment.false_mask;
+    const target = if (literal.negated) &assignment.false_mask else &assignment.true_mask;
+    if (conflict.* & mask != 0) return false;
+    target.* |= mask;
+    return true;
+}
+
+fn propagate(comptime spec: tuning_schema.FactorizedTunable, source_mask: Mask) ?Assignment {
+    var assignment: Assignment = .{
+        .true_mask = source_mask,
+        .false_mask = 0,
+    };
+    while (true) {
+        const before = assignment;
+        inline for (spec.constraints) |constraint| {
+            if (!literalHolds(spec, constraint.lhs, assignment)) {
+                continue;
+            }
+            if (!assertLiteral(spec, constraint.rhs, &assignment)) {
+                return null;
+            }
+        }
+        if (std.meta.eql(assignment, before)) {
+            return assignment;
+        }
+    }
+}
+
+fn minimalMask(comptime spec: tuning_schema.FactorizedTunable, comptime source_mask: Mask) ?Mask {
+    _ = propagate(spec, source_mask) orelse return null;
+
+    var minimal = source_mask;
+    while (true) {
+        const before = minimal;
+        inline for (0..spec.inputs.len) |input_idx| {
+            const bit = @as(Mask, 1) << @intCast(input_idx);
+            if (minimal & bit == 0) {
+                continue;
+            }
+
+            const reduced = minimal & ~bit;
+            const assignment = propagate(spec, reduced) orelse continue;
+            if (assignment.true_mask & bit != 0) {
+                minimal = reduced;
+            }
+        }
+        if (minimal == before) {
+            return minimal;
+        }
+    }
+}
+
+fn writeInteractionNameRec(
     buf: []u8,
     len: *usize,
     spec: tuning_schema.FactorizedTunable,
@@ -107,13 +184,11 @@ fn writeFactorizedParamNameRec(
 
     for (start..spec.inputs.len - choose_count + 1) |i| {
         const before = len.*;
-        if (before != 0) {
-            buf[len.*] = '_';
-            len.* += 1;
-        }
+        buf[len.*] = '_';
+        len.* += 1;
         @memcpy(buf[len.* .. len.* + spec.inputs[i].len], spec.inputs[i]);
         len.* += spec.inputs[i].len;
-        if (writeFactorizedParamNameRec(buf, len, spec, choose_count - 1, i + 1, target_index)) {
+        if (writeInteractionNameRec(buf, len, spec, choose_count - 1, i + 1, target_index)) {
             return true;
         }
         len.* = before;
@@ -122,7 +197,82 @@ fn writeFactorizedParamNameRec(
     return false;
 }
 
-fn factorizedParamNameInto(
+fn writeInteractionMaskRec(
+    spec: tuning_schema.FactorizedTunable,
+    choose_count: usize,
+    start: usize,
+    target_index: *usize,
+    mask: *Mask,
+) bool {
+    if (choose_count == 0) {
+        if (target_index.* == 0) {
+            return true;
+        }
+        target_index.* -= 1;
+        return false;
+    }
+
+    for (start..spec.inputs.len - choose_count + 1) |i| {
+        const before = mask.*;
+        mask.* |= @as(Mask, 1) << @intCast(i);
+        if (writeInteractionMaskRec(spec, choose_count - 1, i + 1, target_index, mask)) {
+            return true;
+        }
+        mask.* = before;
+    }
+
+    return false;
+}
+
+fn interactionMask(
+    comptime spec: tuning_schema.FactorizedTunable,
+    comptime order: usize,
+    comptime index: usize,
+) Mask {
+    var mask: Mask = 0;
+    var remaining_index = index;
+    if (!writeInteractionMaskRec(spec, order + 1, 0, &remaining_index, &mask)) {
+        @panic("invalid factorized interaction index");
+    }
+    return mask;
+}
+
+const InteractionSlot = struct {
+    order: usize,
+    index: usize,
+};
+
+fn slotForMask(comptime spec: tuning_schema.FactorizedTunable, comptime target_mask: Mask) InteractionSlot {
+    const order: usize = @popCount(target_mask) - 1;
+    const count = comptime tuning_schema.factorizedInteractionCount(spec, order);
+    inline for (0..count) |index| {
+        if (interactionMask(spec, order, index) == target_mask) {
+            return .{ .order = order, .index = index };
+        }
+    }
+    @panic("missing factorized interaction mask");
+}
+
+fn canonicalSlot(
+    comptime spec: tuning_schema.FactorizedTunable,
+    comptime order: usize,
+    comptime index: usize,
+) ?InteractionSlot {
+    const source_mask = interactionMask(spec, order, index);
+    const canonical_mask = minimalMask(spec, source_mask) orelse return null;
+    return slotForMask(spec, canonical_mask);
+}
+
+fn isCanonical(
+    comptime spec: tuning_schema.FactorizedTunable,
+    comptime order: usize,
+    comptime index: usize,
+) bool {
+    const slot = canonicalSlot(spec, order, index) orelse return false;
+    return slot.order == order and slot.index == index;
+}
+
+fn interactionNameInto(
     buf: []u8,
     comptime family_name: []const u8,
     comptime spec: tuning_schema.FactorizedTunable,
@@ -132,7 +282,7 @@ fn factorizedParamNameInto(
     @memcpy(buf[0..family_name.len], family_name);
     var len = family_name.len;
     var remaining_index = index;
-    if (!writeFactorizedParamNameRec(buf, &len, spec, order + 1, 0, &remaining_index)) {
+    if (!writeInteractionNameRec(buf, &len, spec, order + 1, 0, &remaining_index)) {
         @panic("invalid factorized interaction index");
     }
     return buf[0..len];
@@ -164,8 +314,8 @@ fn trySetFactorizedValue(resolved: *ResolvedFactorizedTunables, line_name: []con
                 inline for (0..spec.max_order) |order| {
                     const count = comptime tuning_schema.factorizedInteractionCount(spec, order);
                     inline for (0..count) |index| {
-                        var name_buf: [factorizedNameMaxLen(field.name, spec)]u8 = undefined;
-                        const name = factorizedParamNameInto(&name_buf, field.name, spec, order, index);
+                        var name_buf: [interactionNameMaxLen(field.name, spec)]u8 = undefined;
+                        const name = interactionNameInto(&name_buf, field.name, spec, order, index);
                         if (std.ascii.eqlIgnoreCase(name, line_name)) {
                             getFactorizedFamilyValuePtr(&@field(resolved.*, field.name), order, index).* = value;
                             return true;
@@ -180,6 +330,36 @@ fn trySetFactorizedValue(resolved: *ResolvedFactorizedTunables, line_name: []con
     return false;
 }
 
+fn normalizeFactorizedFamily(
+    comptime spec: tuning_schema.FactorizedTunable,
+    raw_family: FactorizedFamilyValues(spec, i32),
+) FactorizedFamilyValues(spec, i32) {
+    var normalized = initFactorizedFamilyValues(spec, i32, 0);
+    inline for (0..spec.max_order) |order| {
+        const count = comptime tuning_schema.factorizedInteractionCount(spec, order);
+        inline for (0..count) |index| {
+            if (comptime canonicalSlot(spec, order, index)) |canonical_loc| {
+                getFactorizedFamilyValuePtr(&normalized, canonical_loc.order, canonical_loc.index).* +=
+                    getFactorizedFamilyValuePtr(&raw_family, order, index).*;
+            }
+        }
+    }
+    return normalized;
+}
+
+fn normalizeResolvedFactorizedTunables(raw_resolved: ResolvedFactorizedTunables) ResolvedFactorizedTunables {
+    var normalized: ResolvedFactorizedTunables = undefined;
+    inline for (std.meta.fields(TuningSchema)) |field| {
+        switch (@field(tuning_schema.SCHEMA, field.name)) {
+            .Factorized => |spec| {
+                @field(normalized, field.name) = normalizeFactorizedFamily(spec, @field(raw_resolved, field.name));
+            },
+            else => {},
+        }
+    }
+    return normalized;
+}
+
 fn resolveTuning(params_text: []const u8) !ResolvedTuning {
     @setEvalBranchQuota(1 << 24);
     var resolved = ResolvedTunables.initUndefined();
@@ -189,7 +369,7 @@ fn resolveTuning(params_text: []const u8) !ResolvedTuning {
             @field(tuning_schema.SCHEMA, field.name),
         );
     }
-    var resolved_factorized = initResolvedFactorizedTunables();
+    var raw_factorized = initResolvedFactorizedTunables();
 
     var lines = std.mem.tokenizeScalar(u8, params_text, '\n');
     while (lines.next()) |line_raw| {
@@ -212,7 +392,7 @@ fn resolveTuning(params_text: []const u8) !ResolvedTuning {
                 .Factorized => {},
             }
         }
-        if (!trySetFactorizedValue(&resolved_factorized, line_name, value)) {
+        if (!trySetFactorizedValue(&raw_factorized, line_name, value)) {
             std.log.err("unknown tuning param '{s}' in defaults.txt", .{line_name});
             return error.UnknownTuningParam;
         }
@@ -232,7 +412,7 @@ fn resolveTuning(params_text: []const u8) !ResolvedTuning {
     }
     return .{
         .tunables = resolved,
-        .factorized = resolved_factorized,
+        .factorized = normalizeResolvedFactorizedTunables(raw_factorized),
     };
 }
 
@@ -298,11 +478,12 @@ fn emitGeneratedFactorizedTunables(
                 inline for (0..spec.max_order) |order| {
                     const count = comptime tuning_schema.factorizedInteractionCount(spec, order);
                     inline for (0..count) |index| {
-                        var name_buf: [factorizedNameMaxLen(field.name, spec)]u8 = undefined;
+                        if (comptime !isCanonical(spec, order, index)) continue;
+                        var name_buf: [interactionNameMaxLen(field.name, spec)]u8 = undefined;
                         try writer.print(
                             "    .{{ .name = \"{s}\", .default = {}, .min = {}, .max = {}, .c_end = {d}, .order = {}, .index = {} }},\n",
                             .{
-                                factorizedParamNameInto(&name_buf, field.name, spec, order, index),
+                                interactionNameInto(&name_buf, field.name, spec, order, index),
                                 getFactorizedFamilyValuePtr(&family, order, index).*,
                                 spec.min,
                                 spec.max,

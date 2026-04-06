@@ -53,11 +53,11 @@ const CorrHistStore = struct {
         if (root.numa.enabled) {
             try self.per_node.allocUndefinedToAll();
             for (self.per_node.items.items) |ptr| {
-                ptr.* = std.mem.zeroes(history.CorrectionHistoryTable);
+                ptr.reset();
             }
         } else {
             const ptr = try allocator.create(history.CorrectionHistoryTable);
-            ptr.* = std.mem.zeroes(history.CorrectionHistoryTable);
+            ptr.reset();
             self.single = ptr;
         }
 
