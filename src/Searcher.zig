@@ -956,12 +956,16 @@ fn search(
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
 
+        const tt_excludes_fail_high =
+            tt_hit and tt_entry.flags.getScoreType() == .upper and tt_score < beta;
+
         // null move pruning (nmp)
         if (depth >= 4 and
             eval >= beta + TUNABLES.nmp_margin_base - TUNABLES.nmp_margin_mult * depth and
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull() and
+            !tt_excludes_fail_high and
             cutnode)
         {
             self.prefetch(board, Move.init());
