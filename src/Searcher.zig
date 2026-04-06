@@ -955,6 +955,12 @@ fn search(
         }
 
         const non_pk = board.occupancyFor(stm) & ~(board.pawns() | board.kings());
+        const tt_move_gains_mat =
+            tt_hit and
+            tt_entry.flags.getScoreType().givesLowerBound() and
+            !tt_entry.move.isNull() and
+            board.isNoisy(tt_entry.move) and
+            SEE.value(board.pieceOn(tt_entry.move.to()) orelse .pawn, .pruning) >= SEE.value(.knight, .pruning);
 
         // null move pruning (nmp)
         if (depth >= 4 and
@@ -962,6 +968,7 @@ fn search(
             non_pk != 0 and
             self.ply >= self.min_nmp_ply and
             !cur.move.move.isNull() and
+            !tt_move_gains_mat and
             cutnode)
         {
             self.prefetch(board, Move.init());
