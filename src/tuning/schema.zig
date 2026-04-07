@@ -266,7 +266,6 @@ pub const SCHEMA = .{
     .ord_to_danger_bishop_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
     .ord_to_danger_rook_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
     .ord_to_danger_queen_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
-    .ord_to_danger_king_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
 
     .rfp_hist_quiet_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
     .rfp_hist_pawn_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),

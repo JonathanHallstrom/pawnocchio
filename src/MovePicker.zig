@@ -190,7 +190,7 @@ inline fn quietValue(
         root.TUNABLE_CONSTANTS.ord_to_danger_bishop_penalty,
         root.TUNABLE_CONSTANTS.ord_to_danger_rook_penalty,
         root.TUNABLE_CONSTANTS.ord_to_danger_queen_penalty,
-        root.TUNABLE_CONSTANTS.ord_to_danger_king_penalty,
+        0,
     };
 
     const terms = histories.readMoveTerms(board, typed, conthist_tables, true);
@@ -279,6 +279,9 @@ pub fn next(
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
 
+            const all_threats = (&board.threats)[stm.flipped().toInt()];
+            const defended = (&board.threats)[stm.toInt()];
+            const undefended_threats = all_threats & ~defended;
             const pawn = board.threatsBy(stm.flipped(), .pawn);
             const knight = board.threatsBy(stm.flipped(), .knight);
             const bishop = board.threatsBy(stm.flipped(), .bishop);
@@ -287,12 +290,12 @@ pub fn next(
             const minor = pawn | knight | bishop;
             const major = minor | rook;
             const danger_squares: [6]u64 = .{
-                0,
+                undefended_threats,
                 pawn,
                 pawn,
                 minor,
                 major,
-                0,
+                all_threats,
             };
             for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
                 self.scores[self.first + i] = quietValue(
