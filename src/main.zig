@@ -36,14 +36,18 @@ fn writeSpsaInputs() void {
     var ctx: u8 = 0;
     root.tuning.forEachTunable(u8, &ctx, struct {
         fn call(_: *u8, param: root.tuning.TunableParam) void {
+            const desired_c = param.c_end;
+            const actual_c = @max(0.5, desired_c);
+            const r_end = 0.002 * (actual_c / desired_c);
             write(
-                "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, 0.002\n",
+                "{s}, int, {d:.1}, {d:.1}, {d:.1}, {d}, {d:.6}\n",
                 .{
                     param.name,
                     @as(f64, @floatFromInt(param.default)),
                     @as(f64, @floatFromInt(param.min)),
                     @as(f64, @floatFromInt(param.max)),
                     param.c_end,
+                    r_end,
                 },
             );
         }

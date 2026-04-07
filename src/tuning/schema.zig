@@ -60,7 +60,7 @@ pub const ScalarTunable = struct {
             return m;
         }
         const range: f64 = @floatFromInt(self.getMax() - self.getMin());
-        return @max(0.5, range / 20.0);
+        return range / 20.0;
     }
 };
 
