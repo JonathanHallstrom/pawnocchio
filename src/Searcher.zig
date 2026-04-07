@@ -982,6 +982,9 @@ fn search(
 
             if (nmp_score >= beta) {
                 if (depth <= 15 or self.min_nmp_ply != 0) {
+                    if (nmp_score > corrected_static_eval) {
+                        self.correction_histories.updateCorrection(board, cur.move, cur.prev, corrected_static_eval, nmp_score, nmp_reduction);
+                    }
                     return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
                 }
 
