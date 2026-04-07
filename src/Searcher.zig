@@ -223,6 +223,7 @@ pub const StackEntry = struct {
     usable_moves: u8,
     reduction: i32,
     history_score: i32,
+    tt_pv: bool,
 
     pub fn init(
         self: *StackEntry,
@@ -243,6 +244,7 @@ pub const StackEntry = struct {
         self.usable_moves = usable_moves_;
         self.reduction = 0;
         self.history_score = 0;
+        self.tt_pv = false;
     }
 
     pub fn reset(self: *StackEntry) void {
@@ -583,6 +585,7 @@ fn qsearch(
         return tt_score;
     }
     const tt_pv = is_pv or tt_entry.flags.getPV();
+    cur.tt_pv = tt_pv;
 
     var raw_static_eval: i16 = evaluation.matedIn(self.ply);
     var corrected_static_eval = raw_static_eval;
@@ -827,6 +830,7 @@ fn search(
 
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
     const tt_pv = is_pv or (tt_hit and tt_entry.flags.getPV());
+    cur.tt_pv = tt_pv;
 
     // internal iterative reduction (iir)
     if (depth >= 4 + (if (is_pv) 4 else 0) and
@@ -1450,8 +1454,9 @@ fn search(
         if (score_type == .upper and has_tt_move) {
             best_move = tt_entry.move;
         }
+        const write_tt_pv = tt_pv or (!is_root and score_type == .upper and num_searched > 2 and prev.tt_pv);
         self.writeTT(
-            tt_pv,
+            write_tt_pv,
             tt_hash,
             best_move,
             best_score,
