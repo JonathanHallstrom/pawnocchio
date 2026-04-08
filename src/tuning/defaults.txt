@@ -198,10 +198,6 @@ material_scaling_knight, 359
 material_scaling_bishop, 505
 material_scaling_rook, 298
 material_scaling_queen, 1015
-optimism_root_mult, 154
-optimism_root_offs, 194
-optimism_eval_base, 67050
-optimism_eval_material_mult, 54
 rfp_fail_medium, 114
 tt_fail_medium, 0
 qs_tt_fail_medium, 70
