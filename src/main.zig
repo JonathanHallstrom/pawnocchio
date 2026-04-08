@@ -108,6 +108,7 @@ pub fn main() !void {
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
+    var contempt: i16 = 0;
     var minimal: bool = false;
     var normalize: bool = true;
     var softnodes: bool = false;
@@ -140,6 +141,7 @@ pub fn main() !void {
             write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
             write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
+            write("option name Contempt type spin default 0 min -10000 max 10000\n", .{});
             write("option name UCI_Chess960 type check default false\n", .{});
             write("option name MinDepth type spin default 0 min 0 max 255\n", .{});
             write("option name SyzygyPath type string default <empty>\n", .{});
@@ -199,6 +201,13 @@ pub fn main() !void {
             if (std.ascii.eqlIgnoreCase("MinDepth", option_name)) {
                 min_depth = std.fmt.parseInt(u8, value, 10) catch {
                     writeLog("invalid depth: '{s}'\n", .{value});
+                    continue;
+                };
+            }
+
+            if (std.ascii.eqlIgnoreCase("Contempt", option_name)) {
+                contempt = std.fmt.parseInt(i16, value, 10) catch {
+                    writeLog("invalid contempt: '{s}'\n", .{value});
                     continue;
                 };
             }
@@ -631,6 +640,7 @@ pub fn main() !void {
                     .previous_positions = recent_positions,
                     .previous_moves = recent_moves,
                     .syzygy_depth = syzygy_depth,
+                    .contempt = contempt,
                     .normalize = normalize,
                     .minimal = minimal,
                 },

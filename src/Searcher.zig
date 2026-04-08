@@ -51,6 +51,7 @@ pub const Params = struct {
     previous_moves: BoundedArray(Move, 200),
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
+    contempt: i16,
     normalize: bool,
     minimal: bool,
 };
@@ -127,6 +128,7 @@ is_main_thread: bool = true,
 seldepth: u8,
 ttage: u5 = 0,
 syzygy_depth: u8 = 1,
+contempt: i16 = 0,
 normalize: bool = false,
 minimal: bool = false,
 tbhits: u64 = 0,
@@ -301,8 +303,7 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
 }
 
 fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
-    // TODO: actually make it configurable
-    const contempt: i32 = 0;
+    const contempt: i32 = self.contempt;
     return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
 }
 
@@ -1669,6 +1670,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.stop.store(false, .release);
     const board = params.board;
     self.previous_position_hashes.len = 0;
+    self.contempt = params.contempt;
     self.normalize = params.normalize;
     self.minimal = params.minimal;
     var num_repetitions: u8 = 0;
@@ -1954,6 +1956,7 @@ fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
         .limits = Limits.initFixedDepth(1),
         .previous_positions = hist.positions,
         .previous_moves = hist.played_moves,
+        .contempt = 0,
         .normalize = false,
         .minimal = false,
     });

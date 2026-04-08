@@ -1279,6 +1279,7 @@ fn runBench(bench_depth: i32) !void {
                 .limits = root.Limits.initFixedDepth(bench_depth),
                 .previous_positions = .{},
                 .previous_moves = .{},
+                .contempt = 0,
                 .normalize = false,
                 .minimal = false,
             },
