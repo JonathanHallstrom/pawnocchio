@@ -349,6 +349,10 @@ pub const SCHEMA = .{
     .nmp_base = scalar(.{}),
     .nmp_mult = scalar(.{}),
 
+    .probcut_margin = scalar(.{}),
+    .probcut_improving_margin = scalar(.{}),
+    .probcut_see_mult = scalar(.{}),
+
     .fp_depth_limit = scalar(.{}),
     .fp_base = scalar(.{}),
     .fp_mult = scalar(.{}),
