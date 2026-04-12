@@ -145,6 +145,7 @@ inline fn ttIndex(self: *const Searcher, hash: u64) usize {
 
 pub fn writeTT(
     self: *Searcher,
+    comptime stm: Colour,
     tt_pv: bool,
     hash: u64,
     move: Move,
@@ -152,6 +153,7 @@ pub fn writeTT(
     score_type: ScoreType,
     depth: i32,
     raw_static_eval: i16,
+    board: *const Board,
 ) void {
     const entry = self.tt[self.ttIndex(hash)].write(TTCluster.compress(hash), self.ttage);
 
@@ -166,7 +168,10 @@ pub fn writeTT(
 
     var move_to_write = move;
     if (move.isNull()) {
-        move_to_write = entry.entry.move;
+        const entry_Move = entry.entry.move;
+        if (board.isLegal(stm, entry_Move)) {
+            move_to_write = entry_Move;
+        }
     }
 
     entry.write(
@@ -181,10 +186,11 @@ pub fn writeTT(
     );
 }
 
-fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
+fn rawEval(self: *Searcher, comptime stm: Colour, board: *const Board) i16 {
     const hash = self.stackEntry(0).board.getHashWithHalfmove();
     const eval = evaluate(stm, &self.stackEntry(0).board, self.evalState(0), self.evalContext());
     self.writeTT(
+        stm,
         false,
         hash,
         Move.init(),
@@ -192,6 +198,7 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
         .none,
         0,
         eval,
+        board,
     );
     return eval;
 }
@@ -595,7 +602,7 @@ fn qsearch(
     var correction: i16 = 0;
     var static_eval = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
+        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm, board);
         correction, corrected_static_eval = self.correction_histories.correct(
             board,
             cur.move,
@@ -717,6 +724,7 @@ fn qsearch(
     }
 
     self.writeTT(
+        stm,
         tt_pv,
         tt_hash,
         best_move,
@@ -724,6 +732,7 @@ fn qsearch(
         score_type,
         0,
         raw_static_eval,
+        board,
     );
     return best_score;
 }
@@ -770,7 +779,7 @@ fn search(
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
     if (self.ply >= MAX_PLY - 1) {
-        return if (is_in_check) 0 else self.rawEval(stm);
+        return if (is_in_check) 0 else self.rawEval(stm, board);
     }
 
     if (!is_root) {
@@ -825,7 +834,17 @@ fn search(
                 .draw => .{ .exact, self.drawScore(stm) },
             };
             if (evaluation.checkTTBound(score, alpha, beta, tp)) {
-                self.writeTT(is_pv or (tt_hit and tt_entry.flags.getPV()), tt_hash, Move.init(), score, tp, depth, evaluation.matedIn(self.ply));
+                self.writeTT(
+                    stm,
+                    is_pv or (tt_hit and tt_entry.flags.getPV()),
+                    tt_hash,
+                    Move.init(),
+                    score,
+                    tp,
+                    depth,
+                    evaluation.matedIn(self.ply),
+                    board,
+                );
                 return score;
             }
         }
@@ -849,7 +868,7 @@ fn search(
     var correction: i16 = 0;
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
+        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm, board);
         correction, corrected_static_eval = self.correction_histories.correct(
             board,
             cur.move,
@@ -1454,6 +1473,7 @@ fn search(
 
     if (!is_singular_search) {
         self.writeTT(
+            stm,
             tt_pv,
             tt_hash,
             best_move,
@@ -1461,6 +1481,7 @@ fn search(
             score_type,
             depth,
             raw_static_eval,
+            board,
         );
 
         if (!is_in_check and (best_score <= alpha_original or
