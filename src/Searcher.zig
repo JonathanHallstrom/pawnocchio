@@ -164,6 +164,11 @@ pub fn writeTT(
         return;
     }
 
+    var move_to_write = move;
+    if (move.isNull()) {
+        move_to_write = entry.entry.move;
+    }
+
     entry.write(
         .{
             .score = evaluation.scoreToTt(score, self.ply),
@@ -1448,9 +1453,6 @@ fn search(
     }
 
     if (!is_singular_search) {
-        if (score_type == .upper and has_tt_move) {
-            best_move = tt_entry.move;
-        }
         self.writeTT(
             tt_pv,
             tt_hash,
