@@ -173,7 +173,7 @@ pub fn writeTT(
         .{
             .score = evaluation.scoreToTt(score, self.ply),
             .flags = .init(score_type, tt_pv, self.ttage),
-            .move = move,
+            .move = move_to_write,
             .depth = @intCast(@max(0, depth)),
             .raw_static_eval = raw_static_eval,
         },
