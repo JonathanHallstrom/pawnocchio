@@ -360,7 +360,14 @@ pub fn main() !void {
                     const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
                     cache.initInPlace(weights);
-                    var acc = root.nnue.Accumulator.init(&board, weights);
+                    var accumulator_stack = root.nnue.accumulatorStack(1);
+                    var acc: root.nnue.State = undefined;
+                    const ctx: root.evaluation.Context = .{
+                        .weights = weights,
+                        .refresh_cache = &cache,
+                        .accumulator_stack = &accumulator_stack,
+                    };
+                    acc.initInPlace(&board, weights, ctx);
 
                     var timer = std.time.Timer.start() catch unreachable;
                     const iterations = 100_000_000;
@@ -380,10 +387,7 @@ pub fn main() !void {
                                 } else {
                                     acc.addSub(stm, .pawn, from, stm, .pawn, to);
                                 }
-                                res +%= acc.forward(stm, &board, .{
-                                    .weights = weights,
-                                    .refresh_cache = &cache,
-                                });
+                                res +%= acc.forward(stm, &board, ctx);
                                 std.mem.doNotOptimizeAway(res);
                             }
                         },
@@ -398,8 +402,6 @@ pub fn main() !void {
                     const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
                     cache.initInPlace(weights);
-                    var acc = root.nnue.Accumulator.default(weights);
-
                     var boards = try allocator.alloc(root.Board, refresh_fens.len);
                     defer allocator.free(boards);
                     for (refresh_fens, 0..) |fen, i| {
@@ -411,8 +413,8 @@ pub fn main() !void {
                     var res: i16 = 0;
                     for (0..iterations) |i| {
                         const b = &boards[i % boards.len];
-                        cache.refresh(weights, .white, b, acc.accFor(.white));
-                        res +%= acc.accFor(.white)[0];
+                        const acc = cache.refresh(weights, .white, b);
+                        res +%= acc.ptr.data[0];
                         std.mem.doNotOptimizeAway(res);
                     }
                     const elapsed_ns = timer.read();

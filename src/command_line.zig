@@ -1024,8 +1024,14 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     var rc: RefreshCache = undefined;
     rc.initInPlace(weights);
 
-    var acc: nnue.Accumulator = undefined;
-    acc.initInPlace(&Board.startpos(), weights);
+    var acc: nnue.State = undefined;
+    var accumulator_stack = root.nnue.accumulatorStack(1);
+    const ctx: root.evaluation.Context = .{
+        .weights = weights,
+        .refresh_cache = &rc,
+        .accumulator_stack = &accumulator_stack,
+    };
+    acc.initInPlace(&Board.startpos(), weights, ctx);
 
     var timer = try std.time.Timer.start();
     while (!br.atEnd()) {
@@ -1068,21 +1074,13 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
 
             const move = viri_move.toMove(&board);
 
-            rc.refresh(weights, .white, &board, &acc.white);
-            rc.refresh(weights, .black, &board, &acc.black);
-            acc.pending_parent = false;
-            acc.dirty_piece = .clean;
-            acc.board_ref = &board;
+            acc.refreshHalf(weights, &rc, .white, &board);
+            acc.refreshHalf(weights, &rc, .black, &board);
+            acc.markClean(&board);
 
             const eval = switch (board.stm) {
-                .white => acc.forward(.white, &board, .{
-                    .weights = weights,
-                    .refresh_cache = &rc,
-                }),
-                .black => -acc.forward(.black, &board, .{
-                    .weights = weights,
-                    .refresh_cache = &rc,
-                }),
+                .white => acc.forward(.white, &board, ctx),
+                .black => -acc.forward(.black, &board, ctx),
             };
 
             board.makeMoveSimple(move);
