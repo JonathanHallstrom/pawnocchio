@@ -135,6 +135,7 @@ tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
 refresh_cache: if (evaluation.EVAL_MODE == .nnue) root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT) else void,
+accumulator_stack: if (evaluation.EVAL_MODE == .nnue) root.nnue.AccumulatorStack(MAX_PLY) else void,
 nnue_weights: if (stores_numa_weights) *const nnue.Weights else void,
 histories: history.HistoryTable,
 correction_histories: *history.CorrectionHistoryTable,
@@ -195,8 +196,8 @@ inline fn evalContext(self: *Searcher) evaluation.Context {
     return switch (evaluation.eval_mode) {
         .nnue => .{
             .weights = if (stores_numa_weights) self.nnue_weights else nnue.verbatim_weights,
-
             .refresh_cache = &self.refresh_cache,
+            .accumulator_stack = &self.accumulator_stack.data,
         },
         inline else => .{},
     };
@@ -1692,7 +1693,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
 
     self.initSearchStack(params);
     switch (evaluation.eval_mode) {
-        .nnue => self.evalStateRoot()[0].initInPlace(&board, if (stores_numa_weights) self.nnue_weights else nnue.weightsForNode(0)),
+        .nnue => self.evalStateRoot()[0].initInPlace(&board, if (stores_numa_weights) self.nnue_weights else nnue.weightsForNode(0), self.evalContext()),
         inline else => self.evalStateRoot()[0].initInPlace(&board),
     }
     self.histories.age();
@@ -1967,7 +1968,7 @@ fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
                 searcher.nnue_weights = weights;
             }
             searcher.refresh_cache.initInPlace(weights);
-            searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1], weights);
+            searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1], weights, searcher.evalContext());
         },
         inline else => searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1]),
     }
