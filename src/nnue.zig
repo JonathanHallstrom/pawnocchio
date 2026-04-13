@@ -64,13 +64,11 @@ pub const Accumulator = struct {
 };
 
 pub fn AccumulatorStack(comptime N: usize) type {
-    return struct {
-        data: [N][2]Accumulator = undefined,
-    };
+    return [N][2]Accumulator;
 }
 
 pub fn accumulatorStack(comptime N: usize) AccumulatorStack(N) {
-    return .{};
+    return undefined;
 }
 
 pub const AccumulatorHalf = struct {
@@ -968,7 +966,7 @@ pub fn evalPosition(board: *const Board) i16 {
     const ctx: evaluation.Context = .{
         .weights = weights,
         .refresh_cache = &cache,
-        .accumulator_stack = &accumulator_stack.data,
+        .accumulator_stack = &accumulator_stack,
     };
     acc.initInPlace(board, weights, ctx);
     switch (board.stm) {

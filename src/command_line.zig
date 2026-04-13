@@ -1029,7 +1029,7 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     const ctx: root.evaluation.Context = .{
         .weights = weights,
         .refresh_cache = &rc,
-        .accumulator_stack = &accumulator_stack.data,
+        .accumulator_stack = &accumulator_stack,
     };
     acc.initInPlace(&Board.startpos(), weights, ctx);
 

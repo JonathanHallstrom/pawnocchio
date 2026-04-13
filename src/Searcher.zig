@@ -197,7 +197,7 @@ inline fn evalContext(self: *Searcher) evaluation.Context {
         .nnue => .{
             .weights = if (stores_numa_weights) self.nnue_weights else nnue.verbatim_weights,
             .refresh_cache = &self.refresh_cache,
-            .accumulator_stack = &self.accumulator_stack.data,
+            .accumulator_stack = &self.accumulator_stack,
         },
         inline else => .{},
     };

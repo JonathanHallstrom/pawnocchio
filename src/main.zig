@@ -365,7 +365,7 @@ pub fn main() !void {
                     const ctx: root.evaluation.Context = .{
                         .weights = weights,
                         .refresh_cache = &cache,
-                        .accumulator_stack = &accumulator_stack.data,
+                        .accumulator_stack = &accumulator_stack,
                     };
                     acc.initInPlace(&board, weights, ctx);
 
