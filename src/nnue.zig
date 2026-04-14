@@ -52,6 +52,32 @@ pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
 }
 
+const AccumulatorVec = @Vector(vecSize(i16), i16);
+const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / vecSize(i16);
+
+pub const Accumulator = struct {
+    data: [L1_SIZE]i16 align(64),
+
+    inline fn vecs(self: anytype) root.inheritConstness(@TypeOf(self), *align(64) [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec) {
+        return @ptrCast(&self.data);
+    }
+};
+
+pub fn AccumulatorStack(comptime N: usize) type {
+    return [N][2]Accumulator;
+}
+
+pub fn accumulatorStack(comptime N: usize) AccumulatorStack(N) {
+    return undefined;
+}
+
+pub const AccumulatorHalf = struct {
+    pub const Generation = u64;
+
+    ptr: *const Accumulator,
+    generation: Generation = 0,
+};
+
 const build_options = @import("build_options");
 const use_numa = build_options.use_numa and builtin.os.tag == .linux and builtin.link_libc;
 
@@ -179,9 +205,10 @@ fn vecIdx(comptime perspective: Colour, comptime side: Colour, king_sq: Square, 
     return idx(perspective, side, king_sq, tp, sq, mirror) * L1_SIZE / vecSize(i16);
 }
 
-pub const Accumulator = struct {
-    white: [L1_SIZE]i16 align(std.atomic.cache_line),
-    black: [L1_SIZE]i16 align(std.atomic.cache_line),
+pub const State = struct {
+    white: AccumulatorHalf,
+    black: AccumulatorHalf,
+    ply: u16,
 
     dirty_piece: DirtyPiece,
     pending_parent: bool,
@@ -190,10 +217,11 @@ pub const Accumulator = struct {
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
 
-    pub inline fn default(weights: *const Weights) Accumulator {
+    pub inline fn default(weights: *const Weights) State {
         return .{
-            .white = weights.ft_b,
-            .black = weights.ft_b,
+            .white = .{ .ptr = @ptrCast(&weights.ft_b) },
+            .black = .{ .ptr = @ptrCast(&weights.ft_b) },
+            .ply = 0,
             .white_mirrored = .{},
             .black_mirrored = .{},
             .dirty_piece = .clean,
@@ -202,12 +230,8 @@ pub const Accumulator = struct {
         };
     }
 
-    pub inline fn accFor(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *align(std.atomic.cache_line) [L1_SIZE]i16) {
-        return if (col == .white) &self.white else &self.black;
-    }
-
-    inline fn vecAccFor(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *[L1_SIZE / vecSize(i16)]@Vector(vecSize(i16), i16)) {
-        return @ptrCast(if (col == .white) &self.white else &self.black);
+    inline fn vecAccFor(self: anytype, col: Colour) *align(64) const [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec {
+        return (if (col == .white) self.white.ptr else self.black.ptr).vecs();
     }
 
     inline fn mirrorFor(self: anytype, col: Colour) MirroringType {
@@ -218,20 +242,19 @@ pub const Accumulator = struct {
         return if (col == .white) &self.white_mirrored else &self.black_mirrored;
     }
 
-    pub fn setMirrored(self: *Accumulator, board: *const Board) void {
+    fn setMirrored(self: *State, board: *const Board) void {
         self.white_mirrored.write(Square.fromBitboard(board.kingFor(.white)).getFile().toInt() >= 4);
         self.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
     }
 
     pub fn initInPlace(
-        self: *Accumulator,
+        self: *State,
         board: *const Board,
         weights: *const Weights,
+        ctx: evaluation.Context,
     ) void {
         self.* = default(weights);
         self.setMirrored(board);
-        self.dirty_piece = .clean;
-        self.pending_parent = false;
         self.board_ref = board;
 
         const white_king_sq = Square.fromBitboard(board.kingFor(.white));
@@ -240,103 +263,148 @@ pub const Accumulator = struct {
             {
                 var iter = Bitboard.iterator(board.pieceFor(.white, tp));
                 while (iter.next()) |sq| {
-                    self.doAddCopy(self, weights, .white, .white, white_king_sq, tp, sq);
-                    self.doAddCopy(self, weights, .black, .white, black_king_sq, tp, sq);
+                    self.writeFeature(weights, .white, .white, white_king_sq, tp, sq, ctx);
+                    self.writeFeature(weights, .black, .white, black_king_sq, tp, sq, ctx);
                 }
             }
             {
                 var iter = Bitboard.iterator(board.pieceFor(.black, tp));
                 while (iter.next()) |sq| {
-                    self.doAddCopy(self, weights, .white, .black, white_king_sq, tp, sq);
-                    self.doAddCopy(self, weights, .black, .black, black_king_sq, tp, sq);
+                    self.writeFeature(weights, .white, .black, white_king_sq, tp, sq, ctx);
+                    self.writeFeature(weights, .black, .black, black_king_sq, tp, sq, ctx);
                 }
             }
         }
     }
 
     pub fn update(
-        noalias self: *Accumulator,
-        other: *Accumulator,
+        noalias self: *State,
+        other: *State,
         board: *const Board,
     ) void {
-        std.debug.assert(@intFromPtr(other) + @sizeOf(Accumulator) == @intFromPtr(self));
+        std.debug.assert(@intFromPtr(other) + @sizeOf(State) == @intFromPtr(self));
+        self.ply = other.ply + 1;
         self.pending_parent = true;
         self.board_ref = board;
         self.dirty_piece = .clean;
     }
 
-    fn resolvePending(noalias self: *Accumulator, ctx: anytype) void {
+    fn resolvePending(noalias self: *State, comptime stm: Colour, ctx: evaluation.Context) bool {
         if (!self.pending_parent) {
-            return;
+            return false;
         }
-        const parent: *Accumulator = @ptrFromInt(@intFromPtr(self) - @sizeOf(Accumulator));
-        parent.resolvePending(ctx);
+        const parent: *State = @ptrFromInt(@intFromPtr(self) - @sizeOf(State));
+        const parent_fresh = parent.resolvePending(stm.flipped(), ctx);
         const board = self.board_ref orelse unreachable;
-        switch (board.stm) {
-            inline else => |stm| {
-                self.applyUpdate(.copy, parent, stm.flipped(), board, ctx);
-            },
-        }
+        std.debug.assert(board.stm == stm);
+        const fresh = self.applyDirty(.copy, parent, parent_fresh, stm.flipped(), board, ctx);
         self.pending_parent = false;
+        return fresh;
     }
 
-    pub fn init(board: *const Board, weights: *const Weights) Accumulator {
+    inline fn refreshStale(self: *State, weights: *const Weights, refresh_cache: anytype) void {
+        if (self.white.generation != 0 and self.white.generation != refresh_cache.currentGeneration(.white)) {
+            const board = self.board_ref orelse unreachable;
+            self.refreshHalf(weights, refresh_cache, .white, board);
+        }
+        if (self.black.generation != 0 and self.black.generation != refresh_cache.currentGeneration(.black)) {
+            const board = self.board_ref orelse unreachable;
+            self.refreshHalf(weights, refresh_cache, .black, board);
+        }
+    }
+
+    pub fn init(board: *const Board, weights: *const Weights, ctx: evaluation.Context) State {
         var acc = default(weights);
-        acc.initInPlace(board, weights);
+        acc.initInPlace(board, weights, ctx);
         return acc;
     }
 
-    inline fn doCopy(self: *Accumulator, other: *const Accumulator, comptime acc: Colour) void {
-        for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i];
-        }
+    inline fn buffer(self: *State, col: Colour, ctx: evaluation.Context) *Accumulator {
+        return &ctx.accumulator_stack[self.ply][col.toInt()];
     }
 
-    inline fn doAddCopy(self: *Accumulator, other: *const Accumulator, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square) void {
+    inline fn half(self: anytype, comptime acc: Colour) root.inheritConstness(@TypeOf(self), *AccumulatorHalf) {
+        return if (acc == .white) &self.white else &self.black;
+    }
+
+    inline fn setHalf(self: *State, comptime acc: Colour, ptr: *const Accumulator) void {
+        self.half(acc).* = .{ .ptr = ptr };
+    }
+
+    pub inline fn refreshHalf(self: *State, weights: *const Weights, refresh_cache: anytype, comptime acc: Colour, board: *const Board) void {
+        self.mirrorPtrFor(acc).write(Square.fromBitboard(board.kingFor(acc)).getFile().toInt() >= 4);
+        const refreshed = refresh_cache.refresh(weights, acc, board);
+        self.half(acc).* = refreshed;
+    }
+
+    pub inline fn markClean(self: *State, board: *const Board) void {
+        self.pending_parent = false;
+        self.dirty_piece = .clean;
+        self.board_ref = board;
+    }
+
+    inline fn writeFeature(self: *State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square, ctx: evaluation.Context) void {
         const add_idx = vecIdx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
 
-        for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
+        const other_vec = self.vecAccFor(acc);
+        const self_buf = self.buffer(acc, ctx);
+        const self_vec = self_buf.vecs();
+        for (0..ACCUMULATOR_VECTOR_COUNT) |i| {
+            self_vec[i] = other_vec[i] +
                 hiddenLayerWeightsVector(weights)[add_idx + i];
         }
+        self.setHalf(acc, self_buf);
     }
 
-    inline fn doAddSubCopy(self: *Accumulator, other: *const Accumulator, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square) void {
+    inline fn writeMove(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, ctx: evaluation.Context) void {
         const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
         const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
 
-        for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
+        const other_vec = other.vecAccFor(acc);
+        const self_buf = self.buffer(acc, ctx);
+        const self_vec = self_buf.vecs();
+        for (0..ACCUMULATOR_VECTOR_COUNT) |i| {
+            self_vec[i] = other_vec[i] +
                 hiddenLayerWeightsVector(weights)[add_idx + i] -
                 hiddenLayerWeightsVector(weights)[sub_idx + i];
         }
+        self.setHalf(acc, self_buf);
     }
 
-    inline fn doAddSubSubCopy(self: *Accumulator, other: *const Accumulator, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square) void {
+    inline fn writeCapture(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square, ctx: evaluation.Context) void {
         const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
         const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
         const opp_sub_idx = vecIdx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
-        for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
+
+        const other_vec = other.vecAccFor(acc);
+        const self_buf = self.buffer(acc, ctx);
+        const self_vec = self_buf.vecs();
+        for (0..ACCUMULATOR_VECTOR_COUNT) |i| {
+            self_vec[i] = other_vec[i] +
                 hiddenLayerWeightsVector(weights)[add_idx + i] -
                 hiddenLayerWeightsVector(weights)[sub_idx + i] -
                 hiddenLayerWeightsVector(weights)[opp_sub_idx + i];
         }
+        self.setHalf(acc, self_buf);
     }
 
-    inline fn doAddAddSubSubCopy(self: *Accumulator, other: *const Accumulator, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square) void {
+    inline fn writeCastle(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square, ctx: evaluation.Context) void {
         const add1_idx = vecIdx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
         const sub1_idx = vecIdx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
         const add2_idx = vecIdx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
         const sub2_idx = vecIdx(acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc));
 
-        for (0..L1_SIZE / vecSize(i16)) |i| {
-            self.vecAccFor(acc)[i] = other.vecAccFor(acc)[i] +
+        const other_vec = other.vecAccFor(acc);
+        const self_buf = self.buffer(acc, ctx);
+        const self_vec = self_buf.vecs();
+        for (0..ACCUMULATOR_VECTOR_COUNT) |i| {
+            self_vec[i] = other_vec[i] +
                 hiddenLayerWeightsVector(weights)[add1_idx + i] -
                 hiddenLayerWeightsVector(weights)[sub1_idx + i] +
                 hiddenLayerWeightsVector(weights)[add2_idx + i] -
                 hiddenLayerWeightsVector(weights)[sub2_idx + i];
         }
+        self.setHalf(acc, self_buf);
     }
 
     fn needsRefresh(stm: Colour, from: Square, to: Square) bool {
@@ -346,14 +414,15 @@ pub const Accumulator = struct {
         return whichInputBucket(stm, from) != whichInputBucket(stm, to);
     }
 
-    fn applyUpdate(
-        noalias self: *Accumulator,
+    fn applyDirty(
+        noalias self: *State,
         comptime mode: enum { copy, inplace },
-        noalias other: if (mode == .inplace) @TypeOf(null) else *const Accumulator,
+        noalias other: if (mode == .inplace) @TypeOf(null) else *State,
+        parent_fresh: if (mode == .inplace) void else bool,
         comptime stm: Colour,
         board: *const Board,
-        ctx: anytype,
-    ) void {
+        ctx: evaluation.Context,
+    ) bool {
         const weights = ctx.weights;
         const refresh_cache = ctx.refresh_cache;
         if (mode == .copy) {
@@ -362,48 +431,55 @@ pub const Accumulator = struct {
         }
         if (self.dirty_piece.isClean()) {
             if (mode == .copy) {
-                self.doCopy(other, .white);
-                self.doCopy(other, .black);
+                self.white = other.white;
+                self.black = other.black;
+                return parent_fresh;
             }
-            return;
+            return false;
         }
         defer self.dirty_piece.clear();
+        if (mode == .copy) {
+            other.refreshStale(weights, refresh_cache);
+        } else {
+            self.refreshStale(weights, refresh_cache);
+        }
         const copy = if (mode == .inplace) self else other;
         const us_king_sq = Square.fromBitboard(board.kingFor(stm));
         const them_king_sq = Square.fromBitboard(board.kingFor(stm.flipped()));
         switch (self.dirty_piece) {
             .clean => unreachable,
             .add_sub => |state| {
-                self.doAddSubCopy(copy, weights, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq);
+                self.writeMove(copy, weights, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq, ctx);
                 if (state.add.pt == .king and needsRefresh(stm, state.add.sq, state.sub.sq)) {
                     @branchHint(.unlikely);
                     self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    refresh_cache.refresh(weights, stm, board, self.accFor(stm));
+                    self.refreshHalf(weights, refresh_cache, stm, board);
                 } else {
-                    self.doAddSubCopy(copy, weights, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq);
+                    self.writeMove(copy, weights, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq, ctx);
                 }
             },
             .add_sub_sub => |state| {
-                self.doAddSubSubCopy(copy, weights, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                self.writeCapture(copy, weights, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq, ctx);
                 if (state.add.pt == .king and needsRefresh(stm, state.add.sq, state.sub1.sq)) {
                     @branchHint(.unlikely);
                     self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    refresh_cache.refresh(weights, stm, board, self.accFor(stm));
+                    self.refreshHalf(weights, refresh_cache, stm, board);
                 } else {
-                    self.doAddSubSubCopy(copy, weights, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                    self.writeCapture(copy, weights, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq, ctx);
                 }
             },
             .add_add_sub_sub => |state| {
-                self.doAddAddSubSubCopy(copy, weights, stm.flipped(), stm, them_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                self.writeCastle(copy, weights, stm.flipped(), stm, them_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq, ctx);
                 if (needsRefresh(stm, state.add1.sq, state.sub1.sq)) {
                     @branchHint(.unlikely);
                     self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    refresh_cache.refresh(weights, stm, board, self.accFor(stm));
+                    self.refreshHalf(weights, refresh_cache, stm, board);
                 } else {
-                    self.doAddAddSubSubCopy(copy, weights, stm, stm, us_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq);
+                    self.writeCastle(copy, weights, stm, stm, us_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq, ctx);
                 }
             },
         }
+        return true;
     }
 
     pub fn addSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
@@ -442,15 +518,20 @@ pub const Accumulator = struct {
         } };
     }
 
-    pub fn forward(noalias self: *Accumulator, comptime stm: Colour, board: *const Board, ctx: anytype) i16 {
+    pub fn forward(noalias self: *State, comptime stm: Colour, board: *const Board, ctx: evaluation.Context) i16 {
         const weights = ctx.weights;
-        self.resolvePending(ctx);
+        var fresh = self.resolvePending(stm, ctx);
         if (!self.dirty_piece.isClean()) {
-            self.applyUpdate(.inplace, null, stm.flipped(), board, ctx);
+            fresh = self.applyDirty(.inplace, null, {}, stm.flipped(), board, ctx);
         }
         std.debug.assert(board.stm == stm);
-        const stm_acc = self.accFor(stm);
-        const ntm_acc = self.accFor(stm.flipped());
+        if (!fresh) {
+            self.refreshStale(weights, ctx.refresh_cache);
+        }
+
+        const stm_acc = if (stm == .white) self.white.ptr else self.black.ptr;
+        const ntm_acc = if (stm == .white) self.black.ptr else self.white.ptr;
+
         const i8Vec = @as(type, @Vector(vecSize(i8), i8));
         const i16Vec = @as(type, @Vector(vecSize(i16), i16));
         const i32Vec = @as(type, @Vector(vecSize(i32), i32));
@@ -736,15 +817,15 @@ pub const Accumulator = struct {
             const LO: i16Vec = @splat(0);
             const HI: i16Vec = @splat(arch.Q0);
             while (i < L1_SIZE / 2) : (i += items_per_iter) {
-                var s1: i16Vec = stm_acc[i..][0..vecSize(i16)].*;
-                var s2: i16Vec = stm_acc[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
-                var s3: i16Vec = stm_acc[i + vecSize(i16) ..][0..vecSize(i16)].*;
-                var s4: i16Vec = stm_acc[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+                var s1: i16Vec = stm_acc.data[i..][0..vecSize(i16)].*;
+                var s2: i16Vec = stm_acc.data[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+                var s3: i16Vec = stm_acc.data[i + vecSize(i16) ..][0..vecSize(i16)].*;
+                var s4: i16Vec = stm_acc.data[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
 
-                var n1: i16Vec = ntm_acc[i..][0..vecSize(i16)].*;
-                var n2: i16Vec = ntm_acc[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
-                var n3: i16Vec = ntm_acc[i + vecSize(i16) ..][0..vecSize(i16)].*;
-                var n4: i16Vec = ntm_acc[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+                var n1: i16Vec = ntm_acc.data[i..][0..vecSize(i16)].*;
+                var n2: i16Vec = ntm_acc.data[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+                var n3: i16Vec = ntm_acc.data[i + vecSize(i16) ..][0..vecSize(i16)].*;
+                var n4: i16Vec = ntm_acc.data[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
 
                 s1 = std.math.clamp(s1, LO, HI);
                 s2 = @min(s2, HI);
@@ -871,9 +952,7 @@ pub const Accumulator = struct {
     }
 };
 
-pub const State = Accumulator;
-
-pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State, ctx: anytype) i16 {
+pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State, ctx: evaluation.Context) i16 {
     return eval_state.forward(stm, board, ctx);
 }
 
@@ -882,13 +961,17 @@ pub fn evalPosition(board: *const Board) i16 {
     const weights = weightsForNode(0);
     var cache: RefreshCache = undefined;
     cache.initInPlace(weights);
-    var acc = Accumulator.init(board, weights);
+    var accumulator_stack = accumulatorStack(1);
+    var acc: State = State.default(weights);
+    const ctx: evaluation.Context = .{
+        .weights = weights,
+        .refresh_cache = &cache,
+        .accumulator_stack = &accumulator_stack,
+    };
+    acc.initInPlace(board, weights, ctx);
     switch (board.stm) {
         inline else => |stm| {
-            return acc.forward(stm, board, .{
-                .weights = weights,
-                .refresh_cache = &cache,
-            });
+            return acc.forward(stm, board, ctx);
         },
     }
 }

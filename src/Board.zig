@@ -1036,7 +1036,7 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     self.ep_target = null;
     self.halfmove += 1;
     self.stm = stm.flipped();
-    self.updateMasks(stm.flipped());
+    self.updateKingThreats(stm.flipped());
 }
 
 fn destPiece(noalias self: *const Board, move: Move) PieceType {

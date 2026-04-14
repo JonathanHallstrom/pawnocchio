@@ -407,6 +407,7 @@ fn datagenWorker(
                     .needs_full_reset = false,
                     .previous_positions = previous_positions,
                     .previous_moves = previous_moves,
+                    .contempt = 0,
                     .normalize = false,
                     .minimal = false,
                 },

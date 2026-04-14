@@ -33,6 +33,7 @@ pub const Context = switch (EVAL_MODE) {
     .nnue => struct {
         weights: *const root.nnue.Weights,
         refresh_cache: *root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT),
+        accumulator_stack: [][2]root.nnue.Accumulator,
     },
     inline else => struct {},
 };
