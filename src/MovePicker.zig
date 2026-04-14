@@ -42,7 +42,6 @@ skip_quiets: bool,
 ttmove: Move,
 prev_move: Move,
 last_bad_noisy: usize = 0,
-probcut_threshold: ?i32,
 
 pub const Stage = enum {
     tt,
@@ -78,7 +77,6 @@ pub fn init(
         .skip_quiets = false,
         .ttmove = ttmove_,
         .prev_move = prev_move_,
-        .probcut_threshold = null,
     };
 }
 
@@ -106,29 +104,6 @@ pub fn initQs(
         .skip_quiets = skip_quiets,
         .ttmove = ttmove_,
         .prev_move = prev_move_,
-        .probcut_threshold = null,
-    };
-}
-
-pub fn initProbcut(
-    movelist_: *MoveReceiver,
-    scores_: [*]i32,
-    ttmove_: Move,
-    prev_move_: Move,
-    threshold: i32,
-) MovePicker {
-    movelist_.vals.len = 0;
-    const stage: Stage = if (ttmove_.isNull()) .generate_noisies else .tt;
-    return .{
-        .movelist = movelist_,
-        .scores = scores_,
-        .first = 0,
-        .last = 0,
-        .stage = stage,
-        .skip_quiets = true,
-        .ttmove = ttmove_,
-        .prev_move = prev_move_,
-        .probcut_threshold = threshold,
     };
 }
 
@@ -284,13 +259,6 @@ pub fn next(
                 continue :sw .good_noisies;
             }
             const res = TypedMove.fromBoard(board, self.prev_move, move);
-            if (self.probcut_threshold) |threshold| {
-                if (SEE.scoreMove(board, res.move, threshold, .pruning)) {
-                    return res;
-                }
-                continue :sw .good_noisies;
-            }
-
             const history_score = histories.readNoisy(board, res);
             const margin = @divTrunc(-history_score * root.TUNABLE_CONSTANTS.good_noisy_ordering_mult, 32768) +
                 root.tuning.TUNABLE_CONSTANTS.good_noisy_ordering_base;

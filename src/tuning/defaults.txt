@@ -129,9 +129,6 @@ nmp_margin_base, 309
 nmp_margin_mult, 21
 nmp_base, 73960
 nmp_mult, 1243
-probcut_margin, 251
-probcut_improving_margin, 64
-probcut_see_mult, 1080
 fp_depth_limit, 8861
 fp_base, 227
 fp_mult, 81
