@@ -1312,6 +1312,8 @@ fn search(
                         extension += 1;
                     }
                 }
+            } else if (s_score > tt_score) {
+                tt_entry.move = Move.init();
             } else if (s_beta >= beta) {
                 return @intCast(s_beta);
             } else if (cutnode) {
