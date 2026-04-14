@@ -266,7 +266,6 @@ pub const SCHEMA = .{
     .ord_to_danger_bishop_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
     .ord_to_danger_rook_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
     .ord_to_danger_queen_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
-    .ord_to_danger_king_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
 
     .rfp_hist_quiet_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
     .rfp_hist_pawn_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
@@ -350,6 +349,10 @@ pub const SCHEMA = .{
     .nmp_base = scalar(.{}),
     .nmp_mult = scalar(.{}),
 
+    .probcut_margin = scalar(.{}),
+    .probcut_improving_margin = scalar(.{}),
+    .probcut_see_mult = scalar(.{}),
+
     .fp_depth_limit = scalar(.{}),
     .fp_base = scalar(.{}),
     .fp_mult = scalar(.{}),
@@ -361,12 +364,12 @@ pub const SCHEMA = .{
     .bnfp_depth_limit = scalar(.{}),
     .bnfp_base = scalar(.{}),
     .bnfp_mult = scalar(.{}),
-    .bnfp_captured = scalar(.{ .default = 1024 }),
+    .bnfp_captured = scalar(.{}),
 
     .see_quiet_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 20 }),
     .see_noisy_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 5 }),
     .see_quiet_pruning_mult = scalar(.{ .c_end = 5 }),
-    .see_noisy_pruning_mult = scalar(.{ .min = -10, .max = 10, .c_end = 5 }),
+    .see_noisy_pruning_mult = scalar(.{ .c_end = 5 }),
     .see_quiet_pruning_quad = scalar(.{}),
     .see_noisy_pruning_quad = scalar(.{}),
     .see_pv_offs = scalar(.{}),
@@ -377,15 +380,15 @@ pub const SCHEMA = .{
     .razoring_easy_capture = scalar(.{ .min = -1024, .max = 1024, .c_end = 10 }),
 
     .history_pruning_depth_limit = scalar(.{}),
-    .history_pruning_offs = scalar(.{ .min = -2048, .max = 1024, .c_end = 128 }),
-    .history_pruning_mult = scalar(.{ .min = -7382, .max = 9, .c_end = 294 }),
+    .history_pruning_offs = scalar(.{}),
+    .history_pruning_mult = scalar(.{}),
 
     .noisy_history_pruning_depth_limit = scalar(.{}),
-    .noisy_history_pruning_offs = scalar(.{ .min = -2048, .max = 1024, .c_end = 128 }),
+    .noisy_history_pruning_offs = scalar(.{}),
     .noisy_history_pruning_mult = scalar(.{}),
 
-    .qs_futility_margin = scalar(.{ .min = -10, .max = 305, .c_end = 11 }),
-    .qs_hp_margin = scalar(.{ .min = -6000, .max = 0, .c_end = 400 }),
+    .qs_futility_margin = scalar(.{}),
+    .qs_hp_margin = scalar(.{}),
     .qs_see_threshold = scalar(.{}),
     .qs_alpha_eval_diff_mult = scalar(.{ .default = 128, .min = -1024, .max = 1024, .c_end = 64 }),
 
@@ -431,10 +434,6 @@ pub const SCHEMA = .{
     .material_scaling_bishop = scalar(.{}),
     .material_scaling_rook = scalar(.{}),
     .material_scaling_queen = scalar(.{}),
-    .optimism_root_mult = scalar(.{}),
-    .optimism_root_offs = scalar(.{}),
-    .optimism_eval_base = scalar(.{}),
-    .optimism_eval_material_mult = scalar(.{}),
 
     .rfp_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .tt_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
@@ -446,12 +445,12 @@ pub const SCHEMA = .{
 
     .eval_stab_margin = scalar(.{ .min = 1, .c_end = 0.5 }),
     .eval_stab_base = scalar(.{ .min = 10, .c_end = 30 }),
-    .eval_stab_offs = scalar(.{ .min = 10, .c_end = 1 }),
+    .eval_stab_offs = scalar(.{ .min = 10, .c_end = 2.5 }),
     .eval_stab_lim = scalar(.{ .min = 10, .c_end = 20 }),
     .move_stab_base = scalar(.{ .min = 10, .c_end = 30 }),
-    .move_stab_offs = scalar(.{ .min = 10, .c_end = 1 }),
+    .move_stab_offs = scalar(.{ .min = 10, .c_end = 2.5 }),
     .move_stab_lim = scalar(.{ .min = 10, .c_end = 20 }),
-    .soft_limit_base = scalar(.{ .min = 10, .c_end = 1 }),
+    .soft_limit_base = scalar(.{ .min = 10, .c_end = 2.5 }),
     .soft_limit_incr = scalar(.{ .min = 10, .c_end = 15 }),
     .hard_limit_phase_mult = scalar(.{ .min = 10, .c_end = 3 }),
     .hard_limit_base = scalar(.{ .min = 10, .c_end = 5 }),

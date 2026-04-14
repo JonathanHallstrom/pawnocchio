@@ -42,6 +42,7 @@ skip_quiets: bool,
 ttmove: Move,
 prev_move: Move,
 last_bad_noisy: usize = 0,
+probcut_threshold: ?i32,
 
 pub const Stage = enum {
     tt,
@@ -77,6 +78,7 @@ pub fn init(
         .skip_quiets = false,
         .ttmove = ttmove_,
         .prev_move = prev_move_,
+        .probcut_threshold = null,
     };
 }
 
@@ -104,6 +106,29 @@ pub fn initQs(
         .skip_quiets = skip_quiets,
         .ttmove = ttmove_,
         .prev_move = prev_move_,
+        .probcut_threshold = null,
+    };
+}
+
+pub fn initProbcut(
+    movelist_: *MoveReceiver,
+    scores_: [*]i32,
+    ttmove_: Move,
+    prev_move_: Move,
+    threshold: i32,
+) MovePicker {
+    movelist_.vals.len = 0;
+    const stage: Stage = if (ttmove_.isNull()) .generate_noisies else .tt;
+    return .{
+        .movelist = movelist_,
+        .scores = scores_,
+        .first = 0,
+        .last = 0,
+        .stage = stage,
+        .skip_quiets = true,
+        .ttmove = ttmove_,
+        .prev_move = prev_move_,
+        .probcut_threshold = threshold,
     };
 }
 
@@ -190,7 +215,7 @@ inline fn quietValue(
         root.TUNABLE_CONSTANTS.ord_to_danger_bishop_penalty,
         root.TUNABLE_CONSTANTS.ord_to_danger_rook_penalty,
         root.TUNABLE_CONSTANTS.ord_to_danger_queen_penalty,
-        root.TUNABLE_CONSTANTS.ord_to_danger_king_penalty,
+        0,
     };
 
     const terms = histories.readMoveTerms(board, typed, conthist_tables, true);
@@ -259,6 +284,13 @@ pub fn next(
                 continue :sw .good_noisies;
             }
             const res = TypedMove.fromBoard(board, self.prev_move, move);
+            if (self.probcut_threshold) |threshold| {
+                if (SEE.scoreMove(board, res.move, threshold, .pruning)) {
+                    return res;
+                }
+                continue :sw .good_noisies;
+            }
+
             const history_score = histories.readNoisy(board, res);
             const margin = @divTrunc(-history_score * root.TUNABLE_CONSTANTS.good_noisy_ordering_mult, 32768) +
                 root.tuning.TUNABLE_CONSTANTS.good_noisy_ordering_base;
@@ -279,6 +311,9 @@ pub fn next(
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
 
+            const all_threats = (&board.threats)[stm.flipped().toInt()];
+            const defended = (&board.threats)[stm.toInt()];
+            const undefended_threats = all_threats & ~defended;
             const pawn = board.threatsBy(stm.flipped(), .pawn);
             const knight = board.threatsBy(stm.flipped(), .knight);
             const bishop = board.threatsBy(stm.flipped(), .bishop);
@@ -287,12 +322,12 @@ pub fn next(
             const minor = pawn | knight | bishop;
             const major = minor | rook;
             const danger_squares: [6]u64 = .{
-                0,
+                undefended_threats,
                 pawn,
                 pawn,
                 minor,
                 major,
-                0,
+                all_threats,
             };
             for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
                 self.scores[self.first + i] = quietValue(
