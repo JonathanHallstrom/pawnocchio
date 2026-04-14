@@ -210,6 +210,7 @@ fn osNodeId(node_idx: usize) usize {
 }
 
 pub fn bindCurrentThread(thread_idx: usize) !void {
+    if (comptime !enabled) return;
     if (!isActive()) return;
     try std.os.linux.sched_setaffinity(0, &cpu_masks.items[nodeForThread(thread_idx)]);
 }
