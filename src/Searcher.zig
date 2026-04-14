@@ -1402,6 +1402,7 @@ fn search(
                     const do_deeper_search = s > best_score + (TUNABLES.lmr_dodeeper_margin + TUNABLES.lmr_dodeeper_mult * new_depth >> 10);
                     const do_shallower_search = s < best_score + (TUNABLES.lmr_doshallower_margin + TUNABLES.lmr_doshallower_mult * new_depth >> 10);
 
+                    new_depth += @intFromBool(s > best_score + 500);
                     new_depth += @intFromBool(do_deeper_search);
                     new_depth -= @intFromBool(do_shallower_search);
 
