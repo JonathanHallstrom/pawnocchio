@@ -340,6 +340,7 @@ pub const SCHEMA = .{
     .lmr_ttpv_score = scalar(.{}),
     .lmr_dodeeper_margin = scalar(.{}),
     .lmr_dodeeper_mult = scalar(.{}),
+    .lmr_do_even_deeper_margin = scalar(.{}),
     .lmr_doshallower_margin = scalar(.{}),
     .lmr_doshallower_mult = scalar(.{}),
 

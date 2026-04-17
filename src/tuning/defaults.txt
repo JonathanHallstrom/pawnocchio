@@ -122,6 +122,7 @@ lmr_ttpv_depth, 508
 lmr_ttpv_score, 520
 lmr_dodeeper_margin, 57223
 lmr_dodeeper_mult, 2018
+lmr_do_even_deeper_margin, 500
 lmr_doshallower_margin, 1168
 lmr_doshallower_mult, 1185
 hindsight_ext_margin, 3038
