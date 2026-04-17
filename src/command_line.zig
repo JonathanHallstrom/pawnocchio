@@ -1280,6 +1280,7 @@ fn runBench(bench_depth: i32) !void {
                 .contempt = 0,
                 .normalize = false,
                 .minimal = false,
+                .show_wdl = false,
             },
             .quiet = true,
         });

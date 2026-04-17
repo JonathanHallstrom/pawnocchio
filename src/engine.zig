@@ -410,6 +410,7 @@ fn datagenWorker(
                     .contempt = 0,
                     .normalize = false,
                     .minimal = false,
+                    .show_wdl = false,
                 },
                 false,
                 true,

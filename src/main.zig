@@ -113,6 +113,7 @@ pub fn main() !void {
     var normalize: bool = true;
     var softnodes: bool = false;
     var weird_tcs: bool = false;
+    var show_wdl: bool = false;
     loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
@@ -150,6 +151,7 @@ pub fn main() !void {
             write("option name Minimal type check default false\n", .{});
             write("option name SoftNodes type check default false\n", .{});
             write("option name EnableWeirdTCs type check default false\n", .{});
+            write("option name UCI_ShowWDL type check default false\n", .{});
             if (root.tuning.DO_TUNING or root.tuning.DO_FACTORIZED_TUNING) {
                 writeTuningOptions();
             }
@@ -258,6 +260,14 @@ pub fn main() !void {
                 }
                 if (std.ascii.eqlIgnoreCase("false", value)) {
                     weird_tcs = false;
+                }
+            }
+            if (std.ascii.eqlIgnoreCase("UCI_ShowWDL", option_name)) {
+                if (std.ascii.eqlIgnoreCase("true", value)) {
+                    show_wdl = true;
+                }
+                if (std.ascii.eqlIgnoreCase("false", value)) {
+                    show_wdl = false;
                 }
             }
 
@@ -645,6 +655,7 @@ pub fn main() !void {
                     .contempt = contempt,
                     .normalize = normalize,
                     .minimal = minimal,
+                    .show_wdl = show_wdl,
                 },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
