@@ -207,6 +207,7 @@ tt_fail_medium, 11
 qs_tt_fail_medium, 18
 standpat_fail_medium, 225
 qs_fail_medium, 514
+probcut_fail_medium, 512
 nodetm_base, 1406
 nodetm_mult, 1172
 eval_stab_margin, 23
