@@ -315,12 +315,12 @@ fn defaultValueText(comptime value: anytype) []const u8 {
 
 fn enumTagList(comptime T: type) []const u8 {
     const fields = @typeInfo(T).@"enum".fields;
-    var result = ComptimeArrayList([]const u8){};
+    var result = ComptimeArrayList(u8){};
     inline for (fields, 0..) |field, i| {
         if (i != 0) {
-            result.append("|");
+            result.append('|');
         }
-        result.append(field.name);
+        result.appendSlice(field.name);
     }
     return result.items;
 }
