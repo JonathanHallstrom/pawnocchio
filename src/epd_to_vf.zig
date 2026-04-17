@@ -19,7 +19,7 @@ const std = @import("std");
 const root = @import("root.zig");
 const Board = root.Board;
 const viriformat = root.viriformat;
-const Game = viriformat.Game;
+const Game = viriformat.GameRecord;
 const File = root.File;
 const Rank = root.Rank;
 const Square = root.Square;
@@ -79,7 +79,7 @@ pub fn convert(
 ) !void {
     var position_count: u64 = 0;
     var timer = try std.time.Timer.start();
-    var game: viriformat.Game = .from(Board{}, allocator);
+    var game: viriformat.GameRecord = .from(Board{}, allocator);
     var board: Board = .{};
     var num_broken_games: u64 = 0;
     var num_okay_games: u64 = 0;

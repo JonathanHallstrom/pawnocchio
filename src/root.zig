@@ -59,7 +59,11 @@ pub const tuning = @import("tuning.zig");
 pub const TUNABLE_CONSTANTS = tuning.TUNABLE_CONSTANTS;
 pub const SEE = @import("SEE.zig");
 pub const refreshCache = @import("refresh_cache.zig").refreshCache;
+pub const dataformat = @import("dataformat.zig");
 pub const viriformat = @import("viriformat.zig");
+pub const pgn = @import("pgn.zig");
+pub const dynamic_reader = @import("dynamic_reader.zig");
+pub const owning_reader = @import("owning_reader.zig");
 pub const wdl = @import("wdl.zig");
 
 const assert = std.debug.assert;

@@ -248,7 +248,7 @@ pub fn handle(allocator: std.mem.Allocator, version: []const u8) !bool {
                 },
                 .pgntovf => handlePgnToVf(&args, allocator),
                 .epdtovf => handleEpdToVf(&args, allocator),
-                .vftotxt => handleVfToTxt(&args),
+                .vftotxt => handleVfToTxt(&args, allocator),
                 .analyse => handleAnalyse(&args, allocator),
                 .@"relabel-tb" => handleRelabelTb(&args, allocator),
                 .@"relabel-chonker" => handleRelabelChonker(&args, allocator),
@@ -525,7 +525,7 @@ fn handleEpdToVf(args: anytype, allocator: std.mem.Allocator) !void {
     );
 }
 
-fn handleVfToTxt(args: anytype) !void {
+fn handleVfToTxt(args: anytype, allocator: std.mem.Allocator) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -543,19 +543,9 @@ fn handleVfToTxt(args: anytype) !void {
     var buf: [4096]u8 = undefined;
     var br = file.reader(&buf);
 
-    const viriformat = root.viriformat;
-    while (!br.atEnd()) {
-        var marlin_board: viriformat.MarlinPackedBoard = undefined;
-        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
-            if (e == error.EndOfStream) {
-                break;
-            } else {
-                return e;
-            }
-        };
-
-        var board = try marlin_board.toBoard();
-        const wdl = @as(f64, @floatFromInt(marlin_board.wdl)) / 2.0;
+    var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
+    while (try reader.next()) |game| {
+        const wdl = @as(f64, @floatFromInt(@intFromEnum(game.outcome))) / 2.0;
         const sigmoid = struct {
             fn impl(score: i16) f64 {
                 const f: f64 = @floatFromInt(score);
@@ -564,43 +554,18 @@ fn handleVfToTxt(args: anytype) !void {
             }
         }.impl;
 
-        // var chosen_board: Board = undefined;
-        // var chosen_eval: i16 = undefined;
-
-        for (0..std.math.maxInt(usize)) |_| {
-            var move_eval_pair: viriformat.MoveEvalPair = undefined;
-            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
-                if (e == error.EndOfStream) {
-                    break;
-                } else {
-                    return e;
-                }
-            };
-            const viri_move = move_eval_pair.move;
-
-            if (viri_move.data == 0) {
-                break;
-            }
-
-            const move = viri_move.toMove(&board);
-
-            switch (board.stm) {
-                inline else => |stm| {
-                    board.makeMove(stm, move, Board.NullEvalState{});
-                },
-            }
+        var it = game.iter();
+        while (try it.next()) |ply| {
+            const board = ply.board;
+            board.makeMoveSimple(ply.move);
+            const eval = ply.whiteEval().?;
 
             if (parsed.@"sigmoid-scores") {
-                write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(move_eval_pair.eval.toNative()), wdl });
+                write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(eval), wdl });
             } else {
-                write("{s} | {d:.10} | {d}\n", .{ board.toFen().slice(), move_eval_pair.eval.toNative(), wdl });
+                write("{s} | {d} | {d}\n", .{ board.toFen().slice(), eval, wdl });
             }
-            // if (rng.random().int(u32) % (i + 1) == 0) {
-            //     chosen_board = board;
-            //     chosen_eval = move_eval_pair.eval.toNative();
-            // }
         }
-        // write("{s} | {d:.10} | {d:.1}\n", .{ chosen_board.toFen().slice(), sigmoid(chosen_eval), wdl });
     }
 }
 
@@ -610,13 +575,16 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         struct {
             input: []const u8,
             approximate: bool = false,
+            verbose: bool = false,
             @"tb-path": ?[]const u8 = null,
             @"allow-overwrite": bool = false,
+            format: root.dataformat.FileFormat = .viriformat,
         },
         .{ .allow_implied = true },
         "analyse",
     );
     const input = parsed.input;
+    const verbose = parsed.verbose;
     if (!parsed.@"allow-overwrite") {
         if (std.fs.cwd().access("score_distribution.txt", .{})) {
             writeLog("refusing to overwrite existing file 'score_distribution.txt' (pass --allow-overwrite)\n", .{});
@@ -662,7 +630,7 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
     var wins: u64 = 0;
     var draws: u64 = 0;
     var losses: u64 = 0;
-    var tb_results = std.mem.zeroes([3][3]u64);
+    var tb_results = std.mem.zeroes(std.EnumArray(root.WDL, std.EnumArray(root.WDL, u64)));
     var king_pos: [64]u64 = .{0} ** 64;
     var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
     defer zobrist_set.deinit();
@@ -680,19 +648,11 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
     var approximator = if (approximate) try @import("HyperLogLog.zig").init(20, allocator) else undefined;
     defer if (approximate) approximator.deinit(allocator);
 
-    const viriformat = root.viriformat;
-    while (!br.atEnd()) {
-        var marlin_board: viriformat.MarlinPackedBoard = undefined;
-        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
-            if (e == error.EndOfStream) {
-                break;
-            } else {
-                return e;
-            }
-        };
-
+    var ply_reader = try root.owning_reader.OwningReader.init(parsed.format, &br.interface, allocator);
+    defer ply_reader.deinit();
+    while (try (&ply_reader).next()) |game| {
         game_count += 1;
-        switch (marlin_board.wdl) {
+        switch (@intFromEnum(game.outcome)) {
             0 => losses += 1,
             1 => draws += 1,
             2 => wins += 1,
@@ -701,47 +661,26 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
 
         if (game_count % 16384 == 0) {
             const unique_count = if (approximate) approximator.count() else zobrist_set.count();
+            const file_pos = try file.getPos();
             write("\rprogress: {}% average exit so far: {d:.2} unique positions: {}/{} ({}%)", .{
-                @as(u128, br.logicalPos() * 100) / @max(@as(u64, 1), stat.size),
+                @as(u128, file_pos * 100) / @max(@as(u64, 1), stat.size),
                 @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
                 unique_count,
                 position_count,
                 @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
             });
         }
-        var board = try marlin_board.toBoard();
         var had_tb_win = false;
         var had_tb_draw = false;
         var had_tb_loss = false;
-        for (0..std.math.maxInt(usize)) |move_idx| {
-            var move_eval_pair: viriformat.MoveEvalPair = undefined;
-            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
-                if (e == error.EndOfStream) {
-                    break;
-                } else {
-                    return e;
-                }
-            };
-            const viri_move = move_eval_pair.move;
-
+        var board = game.initial_board.*;
+        for (game.moves, 0..) |ply, move_idx| {
             if (move_idx == 0) {
-                const exit = if (board.stm == .white) move_eval_pair.eval.toNative() else -@as(i32, move_eval_pair.eval.toNative());
-
-                sum_exits += exit;
+                if (ply.stmEval(board.stm)) |ev| {
+                    sum_exits += ev;
+                }
             }
 
-            if (viri_move.data == 0) {
-                break;
-            }
-
-            const move = viri_move.toMove(&board);
-
-            switch (board.stm) {
-                inline else => |stm| {
-                    @setEvalBranchQuota(1 << 30);
-                    board.makeMove(stm, move, Board.NullEvalState{});
-                },
-            }
             var king: root.Square = .fromBitboard(board.kingFor(board.stm));
             if (board.stm == .black) {
                 king = king.flipRank();
@@ -768,41 +707,46 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
                     piece_counts[col.toInt()].getPtr(pt)[count] += 1;
                 }
             }
-            score_counts[@intCast(@as(isize, move_eval_pair.eval.toNative()) - std.math.minInt(i16))] += 1;
+            if (ply.whiteEval()) |ev| {
+                score_counts[@intCast(@as(isize, ev) - std.math.minInt(i16))] += 1;
+            }
             if (approximate) {
                 approximator.add(board.hash);
             } else {
                 try zobrist_set.put(board.hash, void{});
             }
             position_count += 1;
+            board.makeMoveSimple(ply.move);
         }
         if (had_tb_loss)
-            tb_results[marlin_board.wdl][0] += 1;
+            tb_results.getPtr(game.outcome).getPtr(.loss).* += 1;
         if (had_tb_draw)
-            tb_results[marlin_board.wdl][1] += 1;
+            tb_results.getPtr(game.outcome).getPtr(.draw).* += 1;
         if (had_tb_win)
-            tb_results[marlin_board.wdl][2] += 1;
+            tb_results.getPtr(game.outcome).getPtr(.win).* += 1;
     }
 
     const unique_count = if (approximate) approximator.count() else zobrist_set.count();
 
     var total_tb: u64 = 0;
-    for (tb_results) |tb_arr| for (tb_arr) |tb_count| {
-        total_tb += tb_count;
-    };
-    const incorrect_tb = total_tb - (tb_results[0][0] + tb_results[1][1] + tb_results[2][2]);
+    inline for (std.meta.fields(root.WDL)) |game_field| {
+        inline for (std.meta.fields(root.WDL)) |tb_field| {
+            total_tb += tb_results.get(@field(root.WDL, game_field.name)).get(@field(root.WDL, tb_field.name));
+        }
+    }
+    const correct_tb =
+        tb_results.get(.loss).get(.loss) +
+        tb_results.get(.draw).get(.draw) +
+        tb_results.get(.win).get(.win);
+    const incorrect_tb = total_tb - correct_tb;
+    const positions_per_game = @as(f64, @floatFromInt(position_count)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count)));
     write(
         \\
         \\games: {}
         \\positions: {}
+        \\positions/game: {d:.2}
         \\average exit: {d:.2}
         \\unique positions: {}/{} ({}%)
-        \\piece count distribution: {f}
-        \\phase distribution: {f}
-        \\white piece distribution: {f}
-        \\black piece distribution: {f}
-        \\king pos distribution: {f}
-        \\tb results: {f}
         \\games whose outcome do not match TBs: {d:.2}%
         \\wins: {} ({}%)
         \\draws: {} ({}%)
@@ -811,19 +755,15 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         \\{f}
         \\king bucket distr (mirrored):
         \\{f}
+        \\
     , .{
         game_count,
         position_count,
+        positions_per_game,
         @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
         unique_count,
         position_count,
         @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
-        formatValue(total_piece_counts),
-        formatValue(phase_counts),
-        formatEnumArray(PieceType, piece_counts[Colour.white.toInt()]),
-        formatEnumArray(PieceType, piece_counts[Colour.black.toInt()]),
-        formatArrayNewline(@as([8][8]u64, @bitCast(king_pos))),
-        formatArrayNewline(tb_results),
         @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb))),
         wins,
         100 * wins / @max(@as(u64, 1), game_count),
@@ -834,6 +774,26 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         formatPositionCounts(false, king_pos),
         formatPositionCounts(true, king_pos),
     });
+
+    if (verbose) {
+        write(
+            \\
+            \\piece count distribution: {f}
+            \\phase distribution: {f}
+            \\white piece distribution: {f}
+            \\black piece distribution: {f}
+            \\king pos distribution: {f}
+            \\tb results: {f}
+            \\
+        , .{
+            formatValue(total_piece_counts),
+            formatValue(phase_counts),
+            formatEnumArray(PieceType, piece_counts[Colour.white.toInt()]),
+            formatEnumArray(PieceType, piece_counts[Colour.black.toInt()]),
+            formatArrayNewline(@as([8][8]u64, @bitCast(king_pos))),
+            formatWdlMatrix(tb_results),
+        });
+    }
 
     write("writing score distribution to 'score_distribution.txt'\n", .{});
     var score_distr_file = try createOutputFile("score_distribution.txt", parsed.@"allow-overwrite");
@@ -888,17 +848,8 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
     var position_count: u64 = 0;
     var incorrect_wdl_count: u64 = 0;
 
-    const viriformat = root.viriformat;
-    while (!br.atEnd()) {
-        var marlin_board: viriformat.MarlinPackedBoard = undefined;
-        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
-            if (e == error.EndOfStream) {
-                break;
-            } else {
-                return e;
-            }
-        };
-
+    var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
+    while (try reader.next()) |game| {
         game_count += 1;
 
         if (game_count % 16384 == 0) {
@@ -906,51 +857,34 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
                 @as(u128, br.logicalPos() * 100) / stat.size,
             });
         }
-        var board = try marlin_board.toBoard();
-        var game = viriformat.Game.from(board, allocator);
-        game.initial_position = marlin_board;
-        defer game.moves.deinit();
+
+        var record = root.viriformat.GameRecord.from(game.board, allocator);
+        defer record.deinit();
+
         var skipping = false;
         var final_correct_wdl_idx: ?usize = null;
-        for (0..std.math.maxInt(usize)) |move_idx| {
-            var move_eval_pair: viriformat.MoveEvalPair = undefined;
-            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
-                if (e == error.EndOfStream) {
-                    break;
-                } else {
-                    return e;
-                }
-            };
-            const viri_move = move_eval_pair.move;
-
-            if (viri_move.data == 0) {
-                break;
-            }
-
-            const move = viri_move.toMove(&board);
-            if (!skipping) {
-                try game.addMove(move, move_eval_pair.eval.toNative());
-            }
-
-            switch (board.stm) {
-                inline else => |stm| {
-                    @setEvalBranchQuota(1 << 30);
-                    board.makeMove(stm, move, Board.NullEvalState{});
-                },
-            }
+        var it = game.iter();
+        var move_idx: usize = 0;
+        while (try it.next()) |ply| : (move_idx += 1) {
+            const eval = ply.whiteEval().?;
 
             if (!skipping) {
-                if (root.pyrrhic.probeWDL(&board)) |res| {
+                try record.addMove(ply.move, eval);
+
+                var board = ply.board;
+                board.makeMoveSimple(ply.move);
+
+                if (root.pyrrhic.probeWDL(board)) |res| {
                     const white_relative_result = if (board.stm == .black) res.flipped() else res;
-                    const game_result: root.WDL = @enumFromInt(marlin_board.wdl);
+                    const game_result = game.outcome;
                     if (white_relative_result != game_result) {
                         if (final_correct_wdl_idx) |final_corr_idx| {
-                            while (game.moves.items.len > final_corr_idx + 1) {
-                                _ = game.moves.pop();
+                            while (record.moves.items.len > final_corr_idx + 1) {
+                                _ = record.moves.pop();
                             }
                         } else {
                             incorrect_wdl_count += 1;
-                            game.setOutCome(white_relative_result);
+                            record.setOutCome(white_relative_result);
                         }
                         skipping = true;
                     } else {
@@ -961,7 +895,7 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
             position_count += 1;
         }
         if (!skipping) {
-            try game.serializeInto(&bw.interface);
+            try record.serializeInto(&bw.interface);
         }
     }
     try bw.interface.flush();
@@ -1017,7 +951,8 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     var game_count: u64 = 0;
     var position_count: u64 = 0;
 
-    const viriformat = root.viriformat;
+    var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
+
     const nnue = root.nnue;
     const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT);
     const weights = nnue.weightsForNode(0);
@@ -1034,16 +969,7 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     acc.initInPlace(&Board.startpos(), weights, ctx);
 
     var timer = try std.time.Timer.start();
-    while (!br.atEnd()) {
-        var marlin_board: viriformat.MarlinPackedBoard = undefined;
-        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
-            if (e == error.EndOfStream) {
-                break;
-            } else {
-                return e;
-            }
-        };
-
+    while (try reader.next()) |game| {
         game_count += 1;
 
         if (position_count % 16384 == 0) {
@@ -1052,43 +978,27 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
                 position_count * 1000_000_000 / timer.read(),
             });
         }
-        var board = try marlin_board.toBoard();
-        var game = viriformat.Game.from(board, allocator);
-        game.initial_position = marlin_board;
-        defer game.moves.deinit();
 
-        for (0..std.math.maxInt(usize)) |_| {
-            var move_eval_pair: viriformat.MoveEvalPair = undefined;
-            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
-                if (e == error.EndOfStream) {
-                    break;
-                } else {
-                    return e;
-                }
-            };
-            const viri_move = move_eval_pair.move;
+        var record = root.viriformat.GameRecord.from(game.board, allocator);
+        defer record.deinit();
 
-            if (viri_move.data == 0) {
-                break;
-            }
-
-            const move = viri_move.toMove(&board);
-
-            acc.refreshHalf(weights, &rc, .white, &board);
-            acc.refreshHalf(weights, &rc, .black, &board);
-            acc.markClean(&board);
+        var it = game.iter();
+        while (try it.next()) |ply| {
+            const board = ply.board;
+            acc.refreshHalf(weights, &rc, .white, board);
+            acc.refreshHalf(weights, &rc, .black, board);
+            acc.markClean(board);
 
             const eval = switch (board.stm) {
-                .white => acc.forward(.white, &board, ctx),
-                .black => -acc.forward(.black, &board, ctx),
+                .white => acc.forward(.white, board, ctx),
+                .black => -acc.forward(.black, board, ctx),
             };
 
-            board.makeMoveSimple(move);
-            try game.addMove(move, eval);
+            try record.addMove(ply.move, eval);
 
             position_count += 1;
         }
-        try game.serializeInto(&bw.interface);
+        try record.serializeInto(&bw.interface);
     }
     try bw.interface.flush();
 
@@ -1318,6 +1228,36 @@ fn formatEnumArray(
     return .{ .table = table };
 }
 
+fn WdlMatrixFormatter() type {
+    return struct {
+        table: std.EnumArray(root.WDL, std.EnumArray(root.WDL, u64)),
+
+        pub fn format(
+            self: @This(),
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            try writer.writeAll("{\n");
+            inline for (std.meta.fields(root.WDL)) |game_field| {
+                const outcome: root.WDL = @field(root.WDL, game_field.name);
+                const row = self.table.get(outcome);
+                try writer.print("\t{s}: [", .{game_field.name});
+                inline for (std.meta.fields(root.WDL), 0..) |tb_field, i| {
+                    if (i != 0) try writer.writeAll(", ");
+                    try writer.print("{}", .{row.get(@field(root.WDL, tb_field.name))});
+                }
+                try writer.writeAll("],\n");
+            }
+            try writer.writeAll("}");
+        }
+    };
+}
+
+fn formatWdlMatrix(
+    table: std.EnumArray(root.WDL, std.EnumArray(root.WDL, u64)),
+) WdlMatrixFormatter() {
+    return .{ .table = table };
+}
+
 fn PositionCountsFormatter(comptime mirrored: bool) type {
     return struct {
         table: [64]u64,
@@ -1381,6 +1321,16 @@ fn formatArray(
     return .{ .table = table };
 }
 
+fn isEnumArray(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct" => @hasDecl(T, "Key") and
+            @hasDecl(T, "Value") and
+            @hasDecl(T, "get") and
+            @hasField(T, "values"),
+        else => false,
+    };
+}
+
 fn ValueFormatter(comptime T: type) type {
     return struct {
         value: T,
@@ -1389,6 +1339,11 @@ fn ValueFormatter(comptime T: type) type {
             self: @This(),
             writer: *std.Io.Writer,
         ) std.Io.Writer.Error!void {
+            if (comptime isEnumArray(T)) {
+                try writer.print("{f}", .{formatEnumArray(T.Key, self.value)});
+                return;
+            }
+
             switch (@typeInfo(T)) {
                 .array => try writer.print("{f}", .{formatArray(self.value)}),
                 else => try writer.print("{any}", .{self.value}),
