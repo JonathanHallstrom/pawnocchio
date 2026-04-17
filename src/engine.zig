@@ -390,7 +390,7 @@ fn datagenWorker(
             previous_moves.append(move) catch @panic("failed to append move");
             previous_positions.append(board) catch @panic("failed to append position");
         }
-        var game: viriformat.Game = viriformat.Game.from(board, fba.allocator());
+        var game: viriformat.GameRecord = viriformat.GameRecord.from(board, fba.allocator());
         var num_adj_win: u8 = 0;
         var num_adj_draw: u8 = 0;
         var num_adj_loss: u8 = 0;
@@ -410,6 +410,7 @@ fn datagenWorker(
                     .contempt = 0,
                     .normalize = false,
                     .minimal = false,
+                    .show_wdl = false,
                 },
                 false,
                 true,

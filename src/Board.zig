@@ -1432,21 +1432,34 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
         return null;
     }
     var san_move = san_move_inp;
-    switch (san_move[san_move.len - 1]) {
-        '+', '#' => san_move.len -= 1,
-        else => {},
+    if (san_move.len == 0) return null;
+
+    while (san_move.len > 0) {
+        switch (san_move[san_move.len - 1]) {
+            '+', '#', '!', '?' => san_move.len -= 1,
+            else => break,
+        }
     }
+
+    if (san_move.len < 2) return null;
+
     const promo_type = switch (san_move[san_move.len - 1]) {
         '1'...'8' => null,
         else => |p| blk: {
-            san_move.len -= 2;
-            break :blk PieceType.fromAsciiLetter(p);
+            if (san_move.len < 3) return null;
+            const pt = PieceType.fromAsciiLetter(p);
+            if (pt == .king or pt == .pawn) return null;
+            san_move.len -= 1;
+            if (san_move[san_move.len - 1] == '=') {
+                san_move.len -= 1;
+            }
+            break :blk pt;
         },
     };
 
     const destination = Square.fromRankFile(
-        Rank.parse(san_move[san_move.len - 1]) catch unreachable,
-        File.parse(san_move[san_move.len - 2]) catch unreachable,
+        Rank.parse(san_move[san_move.len - 1]) catch return null,
+        File.parse(san_move[san_move.len - 2]) catch return null,
     );
 
     const tp: PieceType = switch (san_move[0]) {
@@ -1456,7 +1469,7 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
         'R' => .rook,
         'Q' => .queen,
         'K' => .king,
-        else => unreachable,
+        else => return null,
     };
 
     var is_capture: bool = false;
@@ -1707,6 +1720,12 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
         .queen => attacks.bishopAttacks(from, self.occupancy()) | attacks.rookAttacks(from, self.occupancy()),
         .king => unreachable,
     } != 0;
+}
+
+pub fn isLegalSimple(self: *const Board, move: Move) bool {
+    return switch (self.stm) {
+        inline else => |stm| self.isLegal(stm, move),
+    };
 }
 
 pub inline fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove: bool) u64 {

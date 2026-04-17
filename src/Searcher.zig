@@ -54,6 +54,7 @@ pub const Params = struct {
     contempt: i16,
     normalize: bool,
     minimal: bool,
+    show_wdl: bool,
 };
 
 const EvalPair = struct {
@@ -131,6 +132,7 @@ syzygy_depth: u8 = 1,
 contempt: i16 = 0,
 normalize: bool = false,
 minimal: bool = false,
+show_wdl: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
@@ -1402,6 +1404,7 @@ fn search(
                     const do_deeper_search = s > best_score + (TUNABLES.lmr_dodeeper_margin + TUNABLES.lmr_dodeeper_mult * new_depth >> 10);
                     const do_shallower_search = s < best_score + (TUNABLES.lmr_doshallower_margin + TUNABLES.lmr_doshallower_mult * new_depth >> 10);
 
+                    new_depth += @intFromBool(s > best_score + TUNABLES.lmr_do_even_deeper_margin);
                     new_depth += @intFromBool(do_deeper_search);
                     new_depth -= @intFromBool(do_shallower_search);
 
@@ -1604,10 +1607,19 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
     }
 
     const normalized_score = if (self.normalize and evaluation.EVAL_MODE == .nnue) root.wdl.normalize(score, root_board.classicalMaterial()) else score;
-    write("info depth {} seldepth {} score {s}{s} nodes {} nps {} hashfull {} tbhits {} time {} pv {s}\n", .{
+
+    var wdl_buf: [16]u8 = undefined;
+    var wdl_writer = std.Io.Writer.fixed(&wdl_buf);
+    if (self.show_wdl) {
+        const w, const d, const l = root.wdl.wdlModel(score, root_board.classicalMaterial());
+        wdl_writer.print(" wdl {} {} {}", .{ w, d, l }) catch unreachable;
+    }
+
+    write("info depth {} seldepth {} score {s}{s}{s} nodes {} nps {} hashfull {} tbhits {} time {} pv {s}\n", .{
         depth,
         self.seldepth,
         evaluation.formatScore(normalized_score).slice(),
+        wdl_writer.buffered(),
         type_str,
         nodes,
         @as(u128, nodes) * std.time.ns_per_s / elapsed,
@@ -1750,6 +1762,7 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.contempt = params.contempt;
     self.normalize = params.normalize;
     self.minimal = params.minimal;
+    self.show_wdl = params.show_wdl;
     var num_repetitions: u8 = 0;
     for (params.previous_positions.slice()) |previous_position| {
         const previous_hash = previous_position.hash;
@@ -2036,6 +2049,7 @@ fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
         .contempt = 0,
         .normalize = false,
         .minimal = false,
+        .show_wdl = false,
     });
     switch (evaluation.eval_mode) {
         .nnue => {

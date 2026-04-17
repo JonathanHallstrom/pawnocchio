@@ -19,16 +19,40 @@ const std = @import("std");
 const root = @import("root.zig");
 
 pub fn wdlParams(material: anytype) struct { f64, f64 } {
-    const x: f64 = @floatFromInt(@max(10, material));
-    // p_a = ((-51.918 * x / 58 + 145.188) * x / 58 + -166.615) * x / 58 + 281.596
-    // p_b = ((-24.717 * x / 58 + 82.930) * x / 58 + -33.492) * x / 58 + 52.864
-    //     constexpr double as[] = {-51.91819866, 145.18809272, -166.61481017, 281.59570002};
-    //     constexpr double bs[] = {-24.71724508, 82.92975519, -33.49186286, 52.86407201};
-    //
-    const p_a = ((-51.918 * x / 58 + 145.188) * x / 58 + -166.615) * x / 58 + 281.596;
-    const p_b = ((-24.717 * x / 58 + 82.930) * x / 58 + -33.492) * x / 58 + 52.864;
+    const x: f64 = @floatFromInt(material);
+
+    // p_a = ((-5.273 * x / 58 + -3.581) * x / 58 + 2.813) * x / 58 + 284.631
+    // p_b = ((49.231 * x / 58 + -69.854) * x / 58 + 48.236) * x / 58 + 41.310
+    //     constexpr double as[] = {-5.27254245, -3.58054810, 2.81336795, 284.63146557};
+    //     constexpr double bs[] = {49.23056003, -69.85434163, 48.23555930, 41.30969488};
+
+    const p_a = ((-5.273 * x / 58 + -3.581) * x / 58 + 2.813) * x / 58 + 284.631;
+    const p_b = ((49.231 * x / 58 + -69.854) * x / 58 + 48.236) * x / 58 + 41.310;
 
     return .{ p_a, p_b };
+}
+
+// std::pair<i32, i32> wdlModel(Score povScore, i32 material) {
+//     const auto [a, b] = wdlParams(material);
+//
+//     const auto x = static_cast<f64>(povScore);
+//
+//     return {
+//         static_cast<i32>(std::round(1000.0 / (1.0 + std::exp((a - x) / b)))),
+//         static_cast<i32>(std::round(1000.0 / (1.0 + std::exp((a + x) / b))))
+//     };
+// }
+
+pub fn wdlModel(score: i16, material: anytype) struct { i32, i32, i32 } {
+    const a, const b = wdlParams(material);
+
+    const x: f64 = @floatFromInt(score);
+
+    const w: i32 = @intFromFloat(@round(1000 / (1 + @exp((a - x) / b))));
+    const l: i32 = @intFromFloat(@round(1000 / (1 + @exp((a + x) / b))));
+    const d = 1000 - w - l;
+
+    return .{ w, d, l };
 }
 
 pub fn normalize(score: i16, material: anytype) i16 {
@@ -37,6 +61,5 @@ pub fn normalize(score: i16, material: anytype) i16 {
     }
     const a, _ = wdlParams(material);
     const scoref: f64 = @floatFromInt(score);
-    const fudge = 0.965847119;
-    return @intFromFloat(std.math.round(100 * fudge * scoref / a));
+    return @intFromFloat(std.math.round(100 * scoref / a));
 }
