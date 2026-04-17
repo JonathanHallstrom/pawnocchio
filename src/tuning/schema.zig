@@ -441,6 +441,7 @@ pub const SCHEMA = .{
     .qs_tt_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .standpat_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .qs_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
+    .probcut_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .nodetm_base = scalar(.{ .min = 1024, .c_end = 40 }),
     .nodetm_mult = scalar(.{ .min = 10, .c_end = 25 }),
 

@@ -1077,7 +1077,7 @@ fn search(
                 if (score >= probcut_beta) {
                     self.writeTT(tt_pv, tt_hash, move, score, .lower, probcut_depth + 1, raw_static_eval);
                     if (!evaluation.isMateScore(score)) {
-                        return evaluation.clampScore(lerp(i32, 10, 512, score, beta));
+                        return evaluation.clampScore(lerp(i32, 10, TUNABLES.probcut_fail_medium, score, beta));
                     }
                 }
             }
