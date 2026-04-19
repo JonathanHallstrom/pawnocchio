@@ -186,7 +186,7 @@ fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
         false,
         hash,
         Move.init(),
-        0,
+        evaluation.INF_SCORE,
         .none,
         0,
         eval,
@@ -1843,6 +1843,22 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
     _ = self.search_id.fetchAdd(1, .seq_cst);
 
     var previous_score: i32 = 0;
+
+    {
+        const tt_entry, const tt_hit = self.readTT(params.board.hash);
+
+        if (tt_hit and
+            tt_entry.flags.getScoreType() != .none and
+            tt_entry.score != evaluation.INF_SCORE)
+        {
+            previous_score = tt_entry.score;
+        } else switch (params.board.stm) {
+            inline else => |stm| {
+                previous_score = self.rawEval(stm);
+            },
+        }
+    }
+
     var previous_move: ?Move = null;
     var completed_depth: i32 = 0;
     self.eval_stability = 0;
@@ -1853,9 +1869,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         const depth: i32 = @intCast(d);
         self.limits.root_depth = depth;
         var quantized_window: i64 = TUNABLES.aspiration_initial + (average_score * TUNABLES.aspiration_score_mult >> 14);
-        if (d == 1) {
-            quantized_window = @as(i32, evaluation.INF_SCORE) << 10;
-        }
         var aspiration_lower: i32 = @intCast(@max(previous_score - (quantized_window >> 10), -evaluation.INF_SCORE));
         var aspiration_upper: i32 = @intCast(@min(previous_score + (quantized_window >> 10), evaluation.INF_SCORE));
         var failhigh_reduction: i32 = 0;
@@ -1900,8 +1913,10 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                         }
                     }
                 } else {
-                    self.full_width_score = score;
-                    self.full_width_score_normalized = root.wdl.normalize(score, self.searchStackRoot()[0].board.classicalMaterial());
+                    const stabilised_score = if (@abs(score) < 2) 0 else score;
+
+                    self.full_width_score = stabilised_score;
+                    self.full_width_score_normalized = root.wdl.normalize(stabilised_score, self.searchStackRoot()[0].board.classicalMaterial());
                     break;
                 }
             },
