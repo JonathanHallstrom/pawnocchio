@@ -63,6 +63,22 @@ fn printTuningSchema() void {
     }.call);
 }
 
+fn parseUCIBool(value: []const u8) ?bool {
+    if (std.ascii.eqlIgnoreCase(value, "true")) {
+        return true;
+    }
+
+    if (std.ascii.eqlIgnoreCase(value, "false")) {
+        return false;
+    }
+
+    if (std.fmt.parseInt(isize, value, 10)) |int| {
+        return int == 1;
+    } else |_| {}
+
+    return null;
+}
+
 pub fn main() !void {
     root.init();
     defer root.deinit();
@@ -215,39 +231,19 @@ pub fn main() !void {
             }
 
             if (std.ascii.eqlIgnoreCase("UCI_Chess960", option_name)) {
-                if (std.ascii.eqlIgnoreCase("true", value)) {
-                    board.frc = true;
-                }
-                if (std.ascii.eqlIgnoreCase("false", value)) {
-                    board.frc = false;
-                }
+                if (parseUCIBool(value)) |b| board.frc = b;
             }
 
             if (std.ascii.eqlIgnoreCase("NormalizeEval", option_name)) {
-                if (std.ascii.eqlIgnoreCase("true", value)) {
-                    normalize = true;
-                }
-                if (std.ascii.eqlIgnoreCase("false", value)) {
-                    normalize = false;
-                }
+                if (parseUCIBool(value)) |b| normalize = b;
             }
 
             if (std.ascii.eqlIgnoreCase("Minimal", option_name)) {
-                if (std.ascii.eqlIgnoreCase("true", value)) {
-                    minimal = true;
-                }
-                if (std.ascii.eqlIgnoreCase("false", value)) {
-                    minimal = false;
-                }
+                if (parseUCIBool(value)) |b| minimal = b;
             }
 
             if (std.ascii.eqlIgnoreCase("SoftNodes", option_name)) {
-                if (std.ascii.eqlIgnoreCase("true", value)) {
-                    softnodes = true;
-                }
-                if (std.ascii.eqlIgnoreCase("false", value)) {
-                    softnodes = false;
-                }
+                if (parseUCIBool(value)) |b| softnodes = b;
             }
 
             if (std.ascii.eqlIgnoreCase("SetMin", option_name)) {
@@ -255,20 +251,10 @@ pub fn main() !void {
             }
 
             if (std.ascii.eqlIgnoreCase("EnableWeirdTCs", option_name)) {
-                if (std.ascii.eqlIgnoreCase("true", value)) {
-                    weird_tcs = true;
-                }
-                if (std.ascii.eqlIgnoreCase("false", value)) {
-                    weird_tcs = false;
-                }
+                if (parseUCIBool(value)) |b| weird_tcs = b;
             }
-            if (std.ascii.eqlIgnoreCase("UCI_ShowWDL", option_name)) {
-                if (std.ascii.eqlIgnoreCase("true", value)) {
-                    show_wdl = true;
-                }
-                if (std.ascii.eqlIgnoreCase("false", value)) {
-                    show_wdl = false;
-                }
+            if (std.ascii.eqlIgnoreCase("UCI_ShowWDL", option_name) or std.ascii.eqlIgnoreCase("wdl", option_name)) {
+                if (parseUCIBool(value)) |b| show_wdl = b;
             }
 
             if (std.ascii.eqlIgnoreCase("SetMax", option_name)) {
