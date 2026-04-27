@@ -272,7 +272,11 @@ pub const ThreadPool = struct {
         while (self.threads.items.len > count) {
             self.removeThread();
         }
+        const age = self.searchers.items[0].ttage;
+        const id = self.searchers.items[0].search_id;
         for (self.searchers.items, 0..) |s, i| {
+            s.ttage = age;
+            s.search_id = id;
             s.tt = self.tt;
             s.correction_histories = self.corrhists.get(i);
         }

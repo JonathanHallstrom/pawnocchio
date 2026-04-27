@@ -205,6 +205,10 @@ pub fn main() !void {
                     writeLog("invalid hash size: '{s}'\n", .{value});
                     continue;
                 };
+                if (size == 0) {
+                    writeLog("must have at least 1mb of hash\n", .{});
+                    continue;
+                }
                 try root.engine.setTTSize(size);
             }
 
@@ -213,6 +217,10 @@ pub fn main() !void {
                     writeLog("invalid thread count: '{s}'\n", .{value});
                     continue;
                 };
+                if (count == 0) {
+                    writeLog("must have at least one thread\n", .{});
+                    continue;
+                }
                 try root.engine.setThreadCount(count);
             }
 
