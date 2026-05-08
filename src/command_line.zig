@@ -747,7 +747,22 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         \\positions/game: {d:.2}
         \\average exit: {d:.2}
         \\unique positions: {}/{} ({}%)
-        \\games whose outcome do not match TBs: {d:.2}%
+    , .{
+        game_count,
+        position_count,
+        positions_per_game,
+        @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
+        unique_count,
+        position_count,
+        @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
+    });
+
+    if (use_tbs) {
+        write("\ngames whose outcome do not match TBs: {d:.2}%", .{@as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb)))});
+    }
+
+    write(
+        \\
         \\wins: {} ({}%)
         \\draws: {} ({}%)
         \\losses: {} ({}%)
@@ -757,14 +772,6 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         \\{f}
         \\
     , .{
-        game_count,
-        position_count,
-        positions_per_game,
-        @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
-        unique_count,
-        position_count,
-        @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
-        @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb))),
         wins,
         100 * wins / @max(@as(u64, 1), game_count),
         draws,
@@ -783,16 +790,17 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
             \\white piece distribution: {f}
             \\black piece distribution: {f}
             \\king pos distribution: {f}
-            \\tb results: {f}
-            \\
         , .{
             formatValue(total_piece_counts),
             formatValue(phase_counts),
             formatEnumArray(PieceType, piece_counts[Colour.white.toInt()]),
             formatEnumArray(PieceType, piece_counts[Colour.black.toInt()]),
             formatArrayNewline(@as([8][8]u64, @bitCast(king_pos))),
-            formatWdlMatrix(tb_results),
         });
+        if (use_tbs) {
+            write("\ntb results: {f}", .{formatWdlMatrix(tb_results)});
+        }
+        write("\n", .{});
     }
 
     write("writing score distribution to 'score_distribution.txt'\n", .{});
