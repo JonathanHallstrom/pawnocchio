@@ -27,44 +27,25 @@ const Move = root.Move;
 
 const arch = @import("nnue_arch.zig");
 const numa = @import("numa.zig");
+const simd = @import("simd.zig");
 
-pub const Weights = arch.Weights;
-pub const HORIZONTAL_MIRRORING = arch.HORIZONTAL_MIRRORING;
-pub const INPUT_BUCKET_COUNT = arch.INPUT_BUCKET_COUNT;
-pub const OUTPUT_BUCKET_COUNT = arch.OUTPUT_BUCKET_COUNT;
-pub const INPUT_SIZE = arch.INPUT_SIZE;
-pub const L1_SIZE = arch.L1_SIZE;
-pub const L2_SIZE = arch.L2_SIZE;
-pub const L3_SIZE = arch.L3_SIZE;
-pub const SCALE = arch.SCALE;
-pub const Q = arch.Q;
-pub const Q0 = arch.Q0;
-pub const Q1 = arch.Q1;
-pub const Q_BITS = std.math.log2_int_ceil(u32, Q);
-pub const Q0_BITS = std.math.log2_int_ceil(u32, Q0);
-pub const Q1_BITS = std.math.log2_int_ceil(u32, Q1);
-pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
-
-pub const TARGET = arch.target(@import("builtin").cpu);
-pub const VEC_BYTES = arch.VEC_BYTES;
-pub const vecSize = arch.vecSize;
-pub const AccumulatorVec = arch.AccumulatorVec;
-pub const ACCUMULATOR_VECTOR_COUNT = arch.ACCUMULATOR_VECTOR_COUNT;
-pub const RawAccumulator = arch.RawAccumulator;
+const Q_BITS: comptime_int = std.math.log2_int_ceil(u32, arch.Q);
+const Q0_BITS: comptime_int = std.math.log2_int_ceil(u32, arch.Q0);
+const Q1_BITS: comptime_int = std.math.log2_int_ceil(u32, arch.Q1);
 
 pub const Accumulator = struct {
-    data: [L1_SIZE]i16 align(64),
+    data: [arch.L1_SIZE]i16 align(64),
 
-    pub inline fn vecs(self: anytype) root.inheritConstness(@TypeOf(self), *align(64) RawAccumulator) {
+    pub inline fn vecs(self: anytype) root.inheritConstness(@TypeOf(self), *align(64) arch.RawAccumulator) {
         return @ptrCast(&self.data);
     }
 
     inline fn addSubManyImpl(dest: *Accumulator, src: *const Accumulator, adds: anytype, subs: anytype) void {
-        var i: usize = 0;
+        const UNROLL = comptime @max(1, 4 / (adds.len + subs.len));
 
-        const UNROLL = 1;
-        while (i + UNROLL <= ACCUMULATOR_VECTOR_COUNT) : (i += UNROLL) {
-            var vals: [UNROLL]AccumulatorVec = undefined;
+        var i: usize = 0;
+        while (i + UNROLL <= arch.ACCUMULATOR_VECTOR_COUNT) : (i += UNROLL) {
+            var vals: [UNROLL]arch.AccumulatorVec = undefined;
             inline for (0..UNROLL) |j| {
                 vals[j] = src.vecs()[i + j];
             }
@@ -81,11 +62,10 @@ pub const Accumulator = struct {
             inline for (0..UNROLL) |j| {
                 dest.vecs()[i + j] = vals[j];
             }
-            std.mem.doNotOptimizeAway(i);
         }
 
-        while (i + 1 <= ACCUMULATOR_VECTOR_COUNT) : (i += 1) {
-            var vals: AccumulatorVec = src.vecs()[i];
+        while (i + 1 <= arch.ACCUMULATOR_VECTOR_COUNT) : (i += 1) {
+            var vals: arch.AccumulatorVec = src.vecs()[i];
 
             inline for (adds) |a| {
                 vals += a[i];
@@ -117,7 +97,7 @@ pub const Accumulator = struct {
 
     pub inline fn add(
         self: *Accumulator,
-        weights: *const RawAccumulator,
+        weights: *const arch.RawAccumulator,
     ) void {
         self.addSubMany(.{weights}, .{});
     }
@@ -125,14 +105,14 @@ pub const Accumulator = struct {
     pub inline fn copyAdd(
         self: *Accumulator,
         noalias src: *const Accumulator,
-        weights: *const RawAccumulator,
+        weights: *const arch.RawAccumulator,
     ) void {
         self.copyAddSubMany(src, .{weights}, .{});
     }
 
     pub inline fn sub(
         self: *Accumulator,
-        weights: *const RawAccumulator,
+        weights: *const arch.RawAccumulator,
     ) void {
         self.addSubMany(.{}, .{weights});
     }
@@ -140,7 +120,7 @@ pub const Accumulator = struct {
     pub inline fn addMany(
         self: *Accumulator,
         comptime N: usize,
-        adds: [N]*const RawAccumulator,
+        adds: [N]*const arch.RawAccumulator,
     ) void {
         self.addSubMany(adds, .{});
     }
@@ -148,7 +128,7 @@ pub const Accumulator = struct {
     pub inline fn subMany(
         self: *Accumulator,
         comptime N: usize,
-        subs: [N]*const RawAccumulator,
+        subs: [N]*const arch.RawAccumulator,
     ) void {
         self.addSubMany(.{}, subs);
     }
@@ -172,23 +152,13 @@ pub const AccumulatorHalf = struct {
 const build_options = @import("build_options");
 const use_numa = build_options.use_numa and builtin.os.tag == .linux and builtin.link_libc;
 
-pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
-    return @min(INPUT_BUCKET_COUNT - 1, INPUT_BUCKET_LAYOUT[(if (stm == .white) king_square else king_square.flipRank()).toInt()]);
-}
-
-pub inline fn whichOutputBucket(board: *const Board) usize {
-    const max_piece_count = 32;
-    const divisor = (max_piece_count + OUTPUT_BUCKET_COUNT - 1) / OUTPUT_BUCKET_COUNT;
-    return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.occupancy()) - 2) / divisor);
-}
-
 const net = @embedFile("net");
 const verbatim_backing: [net.len:0]u8 align(64) = net.*;
 
-pub var verbatim_weights: *const Weights = @ptrCast(&verbatim_backing);
-var weights_by_node: numa.PerNode(Weights) = .{};
+pub var verbatim_weights: *const arch.Weights = @ptrCast(&verbatim_backing);
+var weights_by_node: numa.PerNode(arch.Weights) = .{};
 
-pub export fn setWeights(w: *const Weights) void {
+pub export fn setWeights(w: *const arch.Weights) void {
     verbatim_weights = w;
 }
 
@@ -208,7 +178,7 @@ pub fn deinit() void {
     weights_by_node.deinit();
 }
 
-pub fn weightsForNode(node: usize) *const Weights {
+pub fn weightsForNode(node: usize) *const arch.Weights {
     if (!use_numa) {
         return verbatim_weights;
     }
@@ -217,42 +187,73 @@ pub fn weightsForNode(node: usize) *const Weights {
     return weights_by_node.getConst(node) orelse unreachable;
 }
 
-const SquarePieceType = struct {
-    sq: Square,
-    pt: PieceType,
-};
-
 const DirtyPiece = union(enum) {
     clean,
-    add_sub: struct {
-        add: SquarePieceType,
-        sub: SquarePieceType,
+    // extern so that from and to are always in the same place so theres no branch needed to get them
+    move: extern struct {
+        to: PSQTFeature,
+        from: PSQTFeature,
     },
-    add_sub_sub: struct {
-        add: SquarePieceType,
-        sub1: SquarePieceType,
-        sub2: SquarePieceType,
+    capture: extern struct {
+        to: PSQTFeature,
+        from: PSQTFeature,
+        captured: PSQTFeature,
     },
-    add_add_sub_sub: struct {
-        add1: SquarePieceType,
-        add2: SquarePieceType,
-        sub1: SquarePieceType,
-        sub2: SquarePieceType,
+    castle: extern struct {
+        to: PSQTFeature,
+        from: PSQTFeature,
+        rook_to: PSQTFeature,
+        rook_from: PSQTFeature,
     },
+
+    pub fn initMove(to_feat: PSQTFeature, from_feat: PSQTFeature) DirtyPiece {
+        return .{ .move = .{
+            .to = to_feat,
+            .from = from_feat,
+        } };
+    }
+
+    pub fn initCapture(to_feat: PSQTFeature, from_feat: PSQTFeature, captured: PSQTFeature) DirtyPiece {
+        return .{ .capture = .{
+            .to = to_feat,
+            .from = from_feat,
+            .captured = captured,
+        } };
+    }
+
+    pub fn initCastle(king_to: PSQTFeature, rook_to: PSQTFeature, king_from: PSQTFeature, rook_from: PSQTFeature) DirtyPiece {
+        return .{ .castle = .{
+            .to = king_to,
+            .from = king_from,
+            .rook_to = rook_to,
+            .rook_from = rook_from,
+        } };
+    }
 
     inline fn clear(self: *DirtyPiece) void {
         self.* = .clean;
     }
 
     inline fn isClean(self: DirtyPiece) bool {
+        return self == .clean;
+    }
+
+    inline fn to(self: DirtyPiece) PSQTFeature {
         return switch (self) {
-            .clean => true,
-            else => false,
+            .clean => unreachable,
+            inline else => |d| d.to,
+        };
+    }
+
+    inline fn from(self: DirtyPiece) PSQTFeature {
+        return switch (self) {
+            .clean => unreachable,
+            inline else => |d| d.from,
         };
     }
 };
 
-pub const MirroringType = if (HORIZONTAL_MIRRORING) struct {
+pub const MirroringType = if (arch.HORIZONTAL_MIRRORING) struct {
     data: bool = false,
 
     pub fn read(self: anytype) bool {
@@ -276,20 +277,23 @@ pub const MirroringType = if (HORIZONTAL_MIRRORING) struct {
     pub fn flip(_: anytype) void {}
 };
 
+const FeatureKind = root.FeatureKind;
+const PSQTFeature = root.PSQTFeature;
+
 pub inline fn feature(
-    weights: *const Weights,
+    weights: *const arch.Weights,
     perspective: Colour,
-    side: Colour,
     king_sq: Square,
-    tp: PieceType,
-    sq_inp: Square,
+    comptime kind: FeatureKind,
+    f: PSQTFeature,
     mirror: MirroringType,
-) *const RawAccumulator {
-    const bucket = whichInputBucket(perspective, king_sq);
+) *const arch.RawAccumulator {
+    _ = kind;
+    const bucket = arch.whichInputBucket(perspective, king_sq);
 
-    const side_idx: usize = if (perspective == side) 0 else 1;
+    const side_idx: usize = if (perspective == f.col()) 0 else 1;
 
-    var sq = sq_inp;
+    var sq = f.square();
     if (perspective == .black) {
         @branchHint(.unpredictable);
         sq = sq.flipRank();
@@ -299,7 +303,7 @@ pub inline fn feature(
         sq = sq.flipFile();
     }
 
-    return &weights.ft_w[bucket][side_idx][tp.toInt()][sq.toInt()];
+    return &weights.ft_w[bucket][side_idx][f.piece().toInt()][sq.toInt()];
 }
 
 pub const State = struct {
@@ -314,7 +318,7 @@ pub const State = struct {
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
 
-    pub inline fn default(weights: *const Weights) State {
+    pub inline fn default(weights: *const arch.Weights) State {
         return .{
             .white = .{ .ptr = @ptrCast(&weights.ft_b) },
             .black = .{ .ptr = @ptrCast(&weights.ft_b) },
@@ -327,7 +331,7 @@ pub const State = struct {
         };
     }
 
-    inline fn vecAccFor(self: anytype, col: Colour) *align(64) const RawAccumulator {
+    inline fn vecAccFor(self: anytype, col: Colour) *align(64) const arch.RawAccumulator {
         return (if (col == .white) self.white.ptr else self.black.ptr).vecs();
     }
 
@@ -347,7 +351,7 @@ pub const State = struct {
     pub fn initInPlace(
         self: *State,
         board: *const Board,
-        weights: *const Weights,
+        weights: *const arch.Weights,
         ctx: evaluation.Context,
     ) void {
         self.* = default(weights);
@@ -360,15 +364,15 @@ pub const State = struct {
             {
                 var iter = Bitboard.iterator(board.pieceFor(.white, tp));
                 while (iter.next()) |sq| {
-                    self.writeFeature(weights, .white, .white, white_king_sq, tp, sq, ctx);
-                    self.writeFeature(weights, .black, .white, black_king_sq, tp, sq, ctx);
+                    self.writeFeature(.white, white_king_sq, .init(.white, tp, sq), ctx);
+                    self.writeFeature(.black, black_king_sq, .init(.white, tp, sq), ctx);
                 }
             }
             {
                 var iter = Bitboard.iterator(board.pieceFor(.black, tp));
                 while (iter.next()) |sq| {
-                    self.writeFeature(weights, .white, .black, white_king_sq, tp, sq, ctx);
-                    self.writeFeature(weights, .black, .black, black_king_sq, tp, sq, ctx);
+                    self.writeFeature(.white, white_king_sq, .init(.black, tp, sq), ctx);
+                    self.writeFeature(.black, black_king_sq, .init(.black, tp, sq), ctx);
                 }
             }
         }
@@ -383,10 +387,10 @@ pub const State = struct {
         self.ply = other.ply + 1;
         self.pending_parent = true;
         self.board_ref = board;
-        self.dirty_piece = .clean;
+        self.dirty_piece.clear();
     }
 
-    fn resolvePending(noalias self: *State, comptime stm: Colour, ctx: evaluation.Context) bool {
+    fn resolvePending(noalias self: *State, stm: Colour, ctx: evaluation.Context) bool {
         if (!self.pending_parent) {
             return false;
         }
@@ -399,18 +403,18 @@ pub const State = struct {
         return fresh;
     }
 
-    inline fn refreshStale(self: *State, weights: *const Weights, refresh_cache: anytype) void {
-        if (self.white.generation != 0 and self.white.generation != refresh_cache.currentGeneration(.white)) {
+    inline fn refreshStale(self: *State, ctx: evaluation.Context) void {
+        if (self.white.generation != 0 and self.white.generation != ctx.refresh_cache.currentGeneration(.white)) {
             const board = self.board_ref orelse unreachable;
-            self.refreshHalf(weights, refresh_cache, .white, board);
+            self.refreshHalf(ctx, .white, board);
         }
-        if (self.black.generation != 0 and self.black.generation != refresh_cache.currentGeneration(.black)) {
+        if (self.black.generation != 0 and self.black.generation != ctx.refresh_cache.currentGeneration(.black)) {
             const board = self.board_ref orelse unreachable;
-            self.refreshHalf(weights, refresh_cache, .black, board);
+            self.refreshHalf(ctx, .black, board);
         }
     }
 
-    pub fn init(board: *const Board, weights: *const Weights, ctx: evaluation.Context) State {
+    pub fn init(board: *const Board, weights: *const arch.Weights, ctx: evaluation.Context) State {
         var acc = default(weights);
         acc.initInPlace(board, weights, ctx);
         return acc;
@@ -420,94 +424,51 @@ pub const State = struct {
         return &ctx.accumulator_stack[self.ply][col.toInt()];
     }
 
-    inline fn half(self: anytype, comptime acc: Colour) root.inheritConstness(@TypeOf(self), *AccumulatorHalf) {
+    inline fn half(self: anytype, acc: Colour) root.inheritConstness(@TypeOf(self), *AccumulatorHalf) {
         return if (acc == .white) &self.white else &self.black;
     }
 
-    inline fn setHalf(self: *State, comptime acc: Colour, ptr: *const Accumulator) void {
+    inline fn setHalf(self: *State, acc: Colour, ptr: *const Accumulator) void {
         self.half(acc).* = .{ .ptr = ptr };
     }
 
-    pub inline fn refreshHalf(self: *State, weights: *const Weights, refresh_cache: anytype, comptime acc: Colour, board: *const Board) void {
+    pub fn refreshHalf(self: *State, ctx: evaluation.Context, acc: Colour, board: *const Board) void {
         self.mirrorPtrFor(acc).write(Square.fromBitboard(board.kingFor(acc)).getFile().toInt() >= 4);
-        const refreshed = refresh_cache.refresh(weights, acc, board);
+        const refreshed = ctx.refresh_cache.refresh(ctx.weights, acc, board);
         self.half(acc).* = refreshed;
     }
 
     pub inline fn markClean(self: *State, board: *const Board) void {
         self.pending_parent = false;
-        self.dirty_piece = .clean;
+        self.dirty_piece.clear();
         self.board_ref = board;
     }
 
-    inline fn writeFeature(self: *State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square, ctx: evaluation.Context) void {
+    inline fn writeFeature(self: *State, acc: Colour, king_sq: Square, piece: PSQTFeature, ctx: evaluation.Context) void {
         const self_buf = self.buffer(acc, ctx);
         self_buf.copyAdd(
             self.half(acc).ptr,
-            feature(weights, acc, side, king_sq, tp, sq, self.mirrorFor(acc)),
+            feature(ctx.weights, acc, king_sq, .psqt, piece, self.mirrorFor(acc)),
         );
         self.setHalf(acc, self_buf);
     }
 
-    inline fn writeMove(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, ctx: evaluation.Context) void {
-        const self_buf = self.buffer(acc, ctx);
-        self_buf.copyAddSubMany(
-            other.half(acc).ptr,
-            .{feature(weights, acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc))},
-            .{feature(weights, acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc))},
-        );
-        self.setHalf(acc, self_buf);
-    }
-
-    inline fn writeCapture(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square, ctx: evaluation.Context) void {
-        const self_buf = self.buffer(acc, ctx);
-        self_buf.copyAddSubMany(
-            other.half(acc).ptr,
-            .{
-                feature(weights, acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc)),
-            },
-            .{
-                feature(weights, acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc)),
-                feature(weights, acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc)),
-            },
-        );
-        self.setHalf(acc, self_buf);
-    }
-
-    inline fn writeCastle(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square, ctx: evaluation.Context) void {
-        const self_buf = self.buffer(acc, ctx);
-        self_buf.copyAddSubMany(
-            other.half(acc).ptr,
-            .{
-                feature(weights, acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc)),
-                feature(weights, acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc)),
-            },
-            .{
-                feature(weights, acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc)),
-                feature(weights, acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc)),
-            },
-        );
-        self.setHalf(acc, self_buf);
-    }
-
-    fn needsRefresh(stm: Colour, from: Square, to: Square) bool {
-        if (HORIZONTAL_MIRRORING and (from.getFile().toInt() >= 4) != (to.getFile().toInt() >= 4)) {
+    inline fn needsRefresh(stm: Colour, from: Square, to: Square) bool {
+        if (arch.HORIZONTAL_MIRRORING and (from.getFile().toInt() >= 4) != (to.getFile().toInt() >= 4)) {
             return true;
         }
-        return whichInputBucket(stm, from) != whichInputBucket(stm, to);
+        return arch.whichInputBucket(stm, from) != arch.whichInputBucket(stm, to);
     }
 
-    fn applyDirty(
+    inline fn applyDirty(
         noalias self: *State,
         comptime mode: enum { copy, inplace },
         noalias other: if (mode == .inplace) @TypeOf(null) else *State,
         parent_fresh: if (mode == .inplace) void else bool,
-        comptime stm: Colour,
+        stm: Colour,
         board: *const Board,
         ctx: evaluation.Context,
     ) bool {
-        const weights = ctx.weights;
-        const refresh_cache = ctx.refresh_cache;
         if (mode == .copy) {
             self.white_mirrored = other.white_mirrored;
             self.black_mirrored = other.black_mirrored;
@@ -520,395 +481,124 @@ pub const State = struct {
             }
             return false;
         }
-        defer self.dirty_piece.clear();
-        if (mode == .copy) {
-            other.refreshStale(weights, refresh_cache);
-        } else {
-            self.refreshStale(weights, refresh_cache);
-        }
-        const copy = if (mode == .inplace) self else other;
-        const us_king_sq = Square.fromBitboard(board.kingFor(stm));
-        const them_king_sq = Square.fromBitboard(board.kingFor(stm.flipped()));
-        switch (self.dirty_piece) {
-            .clean => unreachable,
-            .add_sub => |state| {
-                self.writeMove(copy, weights, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq, ctx);
-                if (state.add.pt == .king and needsRefresh(stm, state.add.sq, state.sub.sq)) {
-                    @branchHint(.unlikely);
-                    self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    self.refreshHalf(weights, refresh_cache, stm, board);
-                } else {
-                    self.writeMove(copy, weights, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub.pt, state.sub.sq, ctx);
-                }
-            },
-            .add_sub_sub => |state| {
-                self.writeCapture(copy, weights, stm.flipped(), stm, them_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq, ctx);
-                if (state.add.pt == .king and needsRefresh(stm, state.add.sq, state.sub1.sq)) {
-                    @branchHint(.unlikely);
-                    self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    self.refreshHalf(weights, refresh_cache, stm, board);
-                } else {
-                    self.writeCapture(copy, weights, stm, stm, us_king_sq, state.add.pt, state.add.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq, ctx);
-                }
-            },
-            .add_add_sub_sub => |state| {
-                self.writeCastle(copy, weights, stm.flipped(), stm, them_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq, ctx);
-                if (needsRefresh(stm, state.add1.sq, state.sub1.sq)) {
-                    @branchHint(.unlikely);
-                    self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-                    self.refreshHalf(weights, refresh_cache, stm, board);
-                } else {
-                    self.writeCastle(copy, weights, stm, stm, us_king_sq, state.add1.pt, state.add1.sq, state.add2.pt, state.add2.sq, state.sub1.pt, state.sub1.sq, state.sub2.pt, state.sub2.sq, ctx);
-                }
-            },
-        }
+        const copy: *State = if (mode == .inplace) self else other;
+        self.applyDirtyImpl(copy, stm, board, ctx);
         return true;
     }
 
-    pub fn addSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
-        _ = add_col;
-        _ = sub_col;
-        std.debug.assert(self.dirty_piece.isClean());
-        self.dirty_piece = .{ .add_sub = .{
-            .add = .{ .pt = add_pt, .sq = add_square },
-            .sub = .{ .pt = sub_pt, .sq = sub_square },
-        } };
-    }
-
-    pub fn addSubSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
-        _ = add_col;
-        _ = sub1_col;
-        _ = sub2_col;
-        std.debug.assert(self.dirty_piece.isClean());
-        self.dirty_piece = .{ .add_sub_sub = .{
-            .add = .{ .pt = add_pt, .sq = add_square },
-            .sub1 = .{ .pt = sub1_pt, .sq = sub1_square },
-            .sub2 = .{ .pt = sub2_pt, .sq = sub2_square },
-        } };
-    }
-
-    pub fn addAddSubSub(self: *State, comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
-        _ = add1_col;
-        _ = add2_col;
-        _ = sub1_col;
-        _ = sub2_col;
-        std.debug.assert(self.dirty_piece.isClean());
-        self.dirty_piece = .{ .add_add_sub_sub = .{
-            .add1 = .{ .pt = add1_pt, .sq = add1_square },
-            .add2 = .{ .pt = add2_pt, .sq = add2_square },
-            .sub1 = .{ .pt = sub1_pt, .sq = sub1_square },
-            .sub2 = .{ .pt = sub2_pt, .sq = sub2_square },
-        } };
-    }
-
-    pub fn forward(noalias self: *State, comptime stm: Colour, board: *const Board, ctx: evaluation.Context) i16 {
+    inline fn updateHalf(self: *State, copy: *State, acc: Colour, king_sq: Square, dirty: DirtyPiece, ctx: evaluation.Context) void {
+        const mir = self.mirrorFor(acc);
+        const buf = self.buffer(acc, ctx);
+        const src = copy.half(acc).ptr;
         const weights = ctx.weights;
-        var fresh = self.resolvePending(stm, ctx);
+
+        switch (dirty) {
+            .move => |state| buf.copyAddSubMany(
+                src,
+                .{feature(weights, acc, king_sq, .psqt, state.to, mir)},
+                .{feature(weights, acc, king_sq, .psqt, state.from, mir)},
+            ),
+            .capture => |state| buf.copyAddSubMany(
+                src,
+                .{feature(weights, acc, king_sq, .psqt, state.to, mir)},
+                .{
+                    feature(weights, acc, king_sq, .psqt, state.from, mir),
+                    feature(weights, acc, king_sq, .psqt, state.captured, mir),
+                },
+            ),
+            .castle => |state| buf.copyAddSubMany(
+                src,
+                .{
+                    feature(weights, acc, king_sq, .psqt, state.to, mir),
+                    feature(weights, acc, king_sq, .psqt, state.rook_to, mir),
+                },
+                .{
+                    feature(weights, acc, king_sq, .psqt, state.from, mir),
+                    feature(weights, acc, king_sq, .psqt, state.rook_from, mir),
+                },
+            ),
+            .clean => unreachable,
+        }
+        self.setHalf(acc, buf);
+    }
+
+    fn applyDirtyImpl(
+        noalias self: *State,
+        copy: *State,
+        stm: Colour,
+        board: *const Board,
+        ctx: evaluation.Context,
+    ) void {
+        const dirty = self.dirty_piece;
+        defer self.dirty_piece.clear();
+
+        copy.refreshStale(ctx);
+
+        const them = stm.flipped();
+        const them_king_sq = Square.fromBitboard(board.kingFor(them));
+        self.updateHalf(copy, them, them_king_sq, dirty, ctx);
+
+        const to_feat = dirty.to();
+        const from_feat = dirty.from();
+
+        const us_king_sq = Square.fromBitboard(board.kingFor(stm));
+        if (to_feat.piece() == .king and needsRefresh(stm, to_feat.square(), from_feat.square())) {
+            @branchHint(.unlikely);
+            self.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
+            self.refreshHalf(ctx, stm, board);
+        } else {
+            self.updateHalf(copy, stm, us_king_sq, dirty, ctx);
+        }
+    }
+
+    pub fn addSub(self: *State, add: PSQTFeature, sub: PSQTFeature) void {
+        std.debug.assert(self.dirty_piece.isClean());
+        self.dirty_piece = .initMove(add, sub);
+    }
+
+    pub fn addSubSub(self: *State, add: PSQTFeature, sub1: PSQTFeature, sub2: PSQTFeature) void {
+        std.debug.assert(self.dirty_piece.isClean());
+        self.dirty_piece = .initCapture(add, sub1, sub2);
+    }
+
+    pub fn addAddSubSub(self: *State, add1: PSQTFeature, add2: PSQTFeature, sub1: PSQTFeature, sub2: PSQTFeature) void {
+        std.debug.assert(self.dirty_piece.isClean());
+        self.dirty_piece = .initCastle(add1, add2, sub1, sub2);
+    }
+
+    pub fn forward(noalias self: *State, board: *const Board, ctx: evaluation.Context) i16 {
+        const stm = board.stm;
+        const weights: *const arch.Weights = ctx.weights;
+        var fresh: bool = self.resolvePending(stm, ctx);
         if (!self.dirty_piece.isClean()) {
             fresh = self.applyDirty(.inplace, null, {}, stm.flipped(), board, ctx);
         }
-        std.debug.assert(board.stm == stm);
         if (!fresh) {
-            self.refreshStale(weights, ctx.refresh_cache);
+            self.refreshStale(ctx);
         }
 
-        const stm_acc = if (stm == .white) self.white.ptr else self.black.ptr;
-        const ntm_acc = if (stm == .white) self.black.ptr else self.white.ptr;
+        const stm_acc: *const Accumulator = if (stm == .white) self.white.ptr else self.black.ptr;
+        const ntm_acc: *const Accumulator = if (stm == .white) self.black.ptr else self.white.ptr;
 
-        const i8Vec = @as(type, @Vector(vecSize(i8), i8));
-        const i16Vec = @as(type, @Vector(vecSize(i16), i16));
-        const i32Vec = @as(type, @Vector(vecSize(i32), i32));
-        const u8Vec = @as(type, @Vector(vecSize(u8), u8));
-
-        const c = struct {
-            fn maddubs(u: u8Vec, i: i8Vec) i16Vec {
-                switch (TARGET) {
-                    .avx512vnni, .avx512, .avx2 => return asm ("vpmaddubsw %[i], %[u], %[ret]"
-                        : [ret] "=x" (-> i16Vec),
-                        : [u] "x" (u),
-                          [i] "x" (i),
-                    ),
-                    .ssse3 => return asm ("pmaddubsw %[i], %[u]"
-                        : [ret] "=x" (-> i16Vec),
-                        : [u] "0" (u),
-                          [i] "x" (i),
-                    ),
-                    .aarch64 => {
-                        // Widen u8 to u16 (unsigned)
-                        const u_lo: @Vector(8, u16) = asm (
-                            \\ushll %[ret].8h, %[v].8b, #0
-                            : [ret] "=w" (-> @Vector(8, u16)),
-                            : [v] "w" (u),
-                        );
-                        const u_hi: @Vector(8, u16) = asm (
-                            \\ushll2 %[ret].8h, %[v].16b, #0
-                            : [ret] "=w" (-> @Vector(8, u16)),
-                            : [v] "w" (u),
-                        );
-                        // Widen i8 to i16 (signed)
-                        const i_lo: @Vector(8, i16) = asm (
-                            \\sshll %[ret].8h, %[v].8b, #0
-                            : [ret] "=w" (-> @Vector(8, i16)),
-                            : [v] "w" (i),
-                        );
-                        const i_hi: @Vector(8, i16) = asm (
-                            \\sshll2 %[ret].8h, %[v].16b, #0
-                            : [ret] "=w" (-> @Vector(8, i16)),
-                            : [v] "w" (i),
-                        );
-                        // Multiply: reinterpret u16 as i16 for mul instruction; products fit in i16
-                        const prod_lo: @Vector(8, i16) = @as(@Vector(8, i16), @bitCast(u_lo)) * i_lo;
-                        const prod_hi: @Vector(8, i16) = @as(@Vector(8, i16), @bitCast(u_hi)) * i_hi;
-                        // Pairwise add adjacent i16 pairs -> 8 x i16
-                        return asm (
-                            \\addp %[ret].8h, %[lo].8h, %[hi].8h
-                            : [ret] "=w" (-> i16Vec),
-                            : [lo] "w" (prod_lo),
-                              [hi] "w" (prod_hi),
-                        );
-                    },
-                    .sse2, .fallback => {
-                        const u_parts = std.simd.deinterlace(2, u);
-                        const i_parts = std.simd.deinterlace(2, i);
-
-                        const products_even =
-                            @as(i16Vec, u_parts[0]) *
-                            @as(i16Vec, i_parts[0]);
-                        const products_odd =
-                            @as(i16Vec, u_parts[1]) *
-                            @as(i16Vec, i_parts[1]);
-
-                        return products_even +| products_odd;
-                    },
-                }
-            }
-
-            fn maddwd(a: i16Vec, b: i16Vec) i32Vec {
-                switch (TARGET) {
-                    .avx512vnni, .avx512, .avx2 => return asm ("vpmaddwd %[b], %[a], %[ret]"
-                        : [ret] "=x" (-> i32Vec),
-                        : [a] "x" (a),
-                          [b] "x" (b),
-                    ),
-                    .ssse3, .sse2 => return asm ("pmaddwd %[b], %[a]"
-                        : [ret] "=x" (-> i32Vec),
-                        : [a] "0" (a),
-                          [b] "x" (b),
-                    ),
-                    .aarch64 => {
-                        // vmull_s16(low, low) + vmull_high_s16(full, full) then pairwise add
-                        // Equivalent to vpmaddwd: multiply pairs of i16 and add adjacent products to i32
-                        const lo: @Vector(4, i32) = asm (
-                            \\smull %[ret].4s, %[a].4h, %[b].4h
-                            : [ret] "=w" (-> @Vector(4, i32)),
-                            : [a] "w" (a),
-                              [b] "w" (b),
-                        );
-                        const hi: @Vector(4, i32) = asm (
-                            \\smull2 %[ret].4s, %[a].8h, %[b].8h
-                            : [ret] "=w" (-> @Vector(4, i32)),
-                            : [a] "w" (a),
-                              [b] "w" (b),
-                        );
-                        return asm (
-                            \\addp %[ret].4s, %[lo].4s, %[hi].4s
-                            : [ret] "=w" (-> i32Vec),
-                            : [lo] "w" (lo),
-                              [hi] "w" (hi),
-                        );
-                    },
-                    .fallback => {
-                        const u_parts = std.simd.deinterlace(2, a);
-                        const i_parts = std.simd.deinterlace(2, b);
-
-                        const products_even =
-                            @as(i32Vec, u_parts[0]) *
-                            @as(i32Vec, i_parts[0]);
-                        const products_odd =
-                            @as(i32Vec, u_parts[1]) *
-                            @as(i32Vec, i_parts[1]);
-
-                        return products_even + products_odd;
-                    },
-                }
-            }
-
-            fn mulhi(a: i16Vec, b: i16Vec) i16Vec {
-                switch (TARGET) {
-                    .avx512vnni, .avx512, .avx2 => return asm ("vpmulhw %[b], %[a], %[ret]"
-                        : [ret] "=x" (-> i16Vec),
-                        : [a] "x" (a),
-                          [b] "x" (b),
-                    ),
-                    .ssse3, .sse2 => return asm ("pmulhw %[b], %[a]"
-                        : [ret] "=x" (-> i16Vec),
-                        : [a] "0" (a),
-                          [b] "x" (b),
-                    ),
-                    .aarch64 => {
-                        // smull -> multiply low 4 i16 pairs, widening to 4 i32
-                        const lo: @Vector(4, i32) = asm (
-                            \\smull %[ret].4s, %[a].4h, %[b].4h
-                            : [ret] "=w" (-> @Vector(4, i32)),
-                            : [a] "w" (a),
-                              [b] "w" (b),
-                        );
-                        // smull2 -> multiply high 4 i16 pairs, widening to 4 i32
-                        const hi: @Vector(4, i32) = asm (
-                            \\smull2 %[ret].4s, %[a].8h, %[b].8h
-                            : [ret] "=w" (-> @Vector(4, i32)),
-                            : [a] "w" (a),
-                              [b] "w" (b),
-                        );
-                        const lo_as_i16: i16Vec = @bitCast(lo);
-                        const hi_as_i16: i16Vec = @bitCast(hi);
-                        // uzp2 -> extract high 16 bits from each i32 lane and combine back to 8 i16
-                        return asm (
-                            \\uzp2 %[ret].8h, %[lo].8h, %[hi].8h
-                            : [ret] "=w" (-> i16Vec),
-                            : [lo] "w" (lo_as_i16),
-                              [hi] "w" (hi_as_i16),
-                        );
-                    },
-                    .fallback => {
-                        const WideVec = @Vector(vecSize(i16), i32);
-                        const products: WideVec =
-                            @as(WideVec, @intCast(a)) * @as(WideVec, @intCast(b));
-                        return @as(i16Vec, @intCast(products >> @as(WideVec, @splat(16))));
-                    },
-                }
-            }
-
-            fn packus(a: i16Vec, b: i16Vec) u8Vec {
-                switch (TARGET) {
-                    .avx512vnni, .avx512, .avx2 => return asm ("vpackuswb %[b], %[a], %[ret]"
-                        : [ret] "=x" (-> u8Vec),
-                        : [a] "x" (a),
-                          [b] "x" (b),
-                    ),
-                    .aarch64 => {
-                        // NEON: vqmovun_s16 (saturating move unsigned narrow)
-                        // packus(a, b) packs two i16 vecs into one u8 vec with unsigned saturation
-                        // x86 vpackuswb packs a in low half, b in high half
-                        const lo: @Vector(8, u8) = asm (
-                            \\sqxtun %[ret].8b, %[v].8h
-                            : [ret] "=w" (-> @Vector(8, u8)),
-                            : [v] "w" (a),
-                        );
-                        const result: u8Vec = asm (
-                            \\sqxtun2 %[ret].16b, %[v].8h
-                            : [ret] "=w" (-> u8Vec),
-                            : [v] "w" (b),
-                              [_] "0" (lo),
-                        );
-                        return result;
-                    },
-                    .ssse3, .sse2 => return asm ("packuswb %[b], %[a]"
-                        : [ret] "=x" (-> u8Vec),
-                        : [a] "0" (a),
-                          [b] "x" (b),
-                    ),
-                    .fallback => {
-                        const LO: i16Vec = @splat(0);
-                        const a_packed: @Vector(vecSize(i16), u8) = @intCast(@max(a, LO));
-                        const b_packed: @Vector(vecSize(i16), u8) = @intCast(@max(b, LO));
-                        const halves: [2]@Vector(vecSize(i16), u8) = .{ a_packed, b_packed };
-                        return @bitCast(halves);
-                    },
-                }
-            }
-
-            fn dpbusd(sum: i32Vec, u: u8Vec, i: i8Vec) i32Vec {
-                switch (TARGET) {
-                    .avx512vnni => {
-                        var s = sum;
-                        asm ("vpdpbusd %[i], %[u], %[s]"
-                            : [s] "+x" (s),
-                            : [u] "x" (u),
-                              [i] "x" (i),
-                        );
-                        return s;
-                    },
-                    .avx512, .avx2, .ssse3, .sse2, .fallback => {
-                        const partial_sums = maddubs(u, i);
-
-                        const ones: i16Vec = @splat(1);
-                        const dot_products = maddwd(partial_sums, ones);
-                        return sum + dot_products;
-                    },
-                    .aarch64 => {
-                        // Re-interpret u8 as i8
-                        const u_i8: i8Vec = @bitCast(u);
-
-                        // smull: signed multiply low 8 bytes -> 8 x i16
-                        const lo: @Vector(8, i16) = asm (
-                            \\smull %[ret].8h, %[u].8b, %[i].8b
-                            : [ret] "=w" (-> @Vector(8, i16)),
-                            : [u] "w" (u_i8),
-                              [i] "w" (i),
-                        );
-
-                        // smull2: signed multiply high 8 bytes -> 8 x i16
-                        const hi: @Vector(8, i16) = asm (
-                            \\smull2 %[ret].8h, %[u].16b, %[i].16b
-                            : [ret] "=w" (-> @Vector(8, i16)),
-                            : [u] "w" (u_i8),
-                              [i] "w" (i),
-                        );
-
-                        // addp: pairwise add i16 pairs
-                        const pairwise: @Vector(8, i16) = asm (
-                            \\addp %[ret].8h, %[lo].8h, %[hi].8h
-                            : [ret] "=w" (-> @Vector(8, i16)),
-                            : [lo] "w" (lo),
-                              [hi] "w" (hi),
-                        );
-
-                        // sadalp: pairwise add-accumulate i16 into i32
-                        return asm (
-                            \\sadalp %[s].4s, %[p].8h
-                            : [s] "=w" (-> i32Vec),
-                            : [p] "w" (pairwise),
-                              [_] "0" (sum),
-                        );
-                    },
-                }
-            }
-
-            fn dpbusdx2(sum: i32Vec, u_1: u8Vec, i_1: i8Vec, u_2: u8Vec, i_2: i8Vec) i32Vec {
-                switch (TARGET) {
-                    .avx512vnni => return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2),
-                    .avx512, .avx2, .aarch64, .ssse3, .sse2, .fallback => {
-                        const partial_sums_1 = maddubs(u_1, i_1);
-                        const partial_sums_2 = maddubs(u_2, i_2);
-
-                        const ones: i16Vec = @splat(1);
-                        const dot_products = maddwd(partial_sums_1 + partial_sums_2, ones);
-
-                        return sum + dot_products;
-                    },
-                }
-            }
-        };
-        const output_bucket = whichOutputBucket(board);
+        const output_bucket: usize = arch.whichOutputBucket(board);
 
         // in Q0² / 2⁹
-        var activated_ft: [L1_SIZE]u8 align(64) = undefined;
+        var activated_ft: [arch.L1_SIZE]u8 align(64) = undefined;
         {
-            const items_per_iter = vecSize(i16) * 2;
+            const items_per_iter: usize = simd.vecSize(i16) * 2;
             var i: usize = 0;
-            const LO: i16Vec = @splat(0);
-            const HI: i16Vec = @splat(arch.Q0);
-            while (i < L1_SIZE / 2) : (i += items_per_iter) {
-                var s1: i16Vec = stm_acc.data[i..][0..vecSize(i16)].*;
-                var s2: i16Vec = stm_acc.data[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
-                var s3: i16Vec = stm_acc.data[i + vecSize(i16) ..][0..vecSize(i16)].*;
-                var s4: i16Vec = stm_acc.data[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+            const LO: simd.vector(i16) = @splat(0);
+            const HI: simd.vector(i16) = @splat(arch.Q0);
+            while (i < arch.L1_SIZE / 2) : (i += items_per_iter) {
+                var s1: simd.vector(i16) = stm_acc.data[i..][0..simd.vecSize(i16)].*;
+                var s2: simd.vector(i16) = stm_acc.data[i + arch.L1_SIZE / 2 ..][0..simd.vecSize(i16)].*;
+                var s3: simd.vector(i16) = stm_acc.data[i + simd.vecSize(i16) ..][0..simd.vecSize(i16)].*;
+                var s4: simd.vector(i16) = stm_acc.data[i + simd.vecSize(i16) + arch.L1_SIZE / 2 ..][0..simd.vecSize(i16)].*;
 
-                var n1: i16Vec = ntm_acc.data[i..][0..vecSize(i16)].*;
-                var n2: i16Vec = ntm_acc.data[i + L1_SIZE / 2 ..][0..vecSize(i16)].*;
-                var n3: i16Vec = ntm_acc.data[i + vecSize(i16) ..][0..vecSize(i16)].*;
-                var n4: i16Vec = ntm_acc.data[i + vecSize(i16) + L1_SIZE / 2 ..][0..vecSize(i16)].*;
+                var n1: simd.vector(i16) = ntm_acc.data[i..][0..simd.vecSize(i16)].*;
+                var n2: simd.vector(i16) = ntm_acc.data[i + arch.L1_SIZE / 2 ..][0..simd.vecSize(i16)].*;
+                var n3: simd.vector(i16) = ntm_acc.data[i + simd.vecSize(i16) ..][0..simd.vecSize(i16)].*;
+                var n4: simd.vector(i16) = ntm_acc.data[i + simd.vecSize(i16) + arch.L1_SIZE / 2 ..][0..simd.vecSize(i16)].*;
 
                 s1 = std.math.clamp(s1, LO, HI);
                 s2 = @min(s2, HI);
@@ -920,127 +610,133 @@ pub const State = struct {
                 n3 = std.math.clamp(n3, LO, HI);
                 n4 = @min(n4, HI);
 
-                const sp1 = c.mulhi(s1 << @splat(7), s2);
-                const sp2 = c.mulhi(s3 << @splat(7), s4);
+                const sp1: simd.vector(i16) = simd.mulhiShift(s1, s2, 7);
+                const sp2: simd.vector(i16) = simd.mulhiShift(s3, s4, 7);
 
-                const np1 = c.mulhi(n1 << @splat(7), n2);
-                const np2 = c.mulhi(n3 << @splat(7), n4);
+                const np1: simd.vector(i16) = simd.mulhiShift(n1, n2, 7);
+                const np2: simd.vector(i16) = simd.mulhiShift(n3, n4, 7);
 
-                const p1: u8Vec = c.packus(sp1, sp2);
-                const p2: u8Vec = c.packus(np1, np2);
+                const p1: simd.vector(u8) = simd.packus(sp1, sp2);
+                const p2: simd.vector(u8) = simd.packus(np1, np2);
 
-                @as(*u8Vec, @ptrCast(@alignCast(activated_ft[i..].ptr))).* = p1;
-                @as(*u8Vec, @ptrCast(@alignCast(activated_ft[i + L1_SIZE / 2 ..].ptr))).* = p2;
+                activated_ft[i..][0..simd.vecSize(u8)].* = p1;
+                activated_ft[i + arch.L1_SIZE / 2 ..][0..simd.vecSize(u8)].* = p2;
             }
         }
 
         const L2_UNROLL = 4;
         // in Q0² / 2⁹ * Q1
-        var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
+        var l1_intermediate: [arch.L2_SIZE / simd.vecSize(i32)][L2_UNROLL]simd.vector(i32) = @splat(@splat(@splat(0)));
         {
             const w: [*]const i8 = &weights.l1w[output_bucket];
             const ft_i32: [*]i32 = @ptrCast(&activated_ft);
 
-            const nonzero_indices, const num_nonzero_indices = @import("sparse.zig").findNonZeroIndices(&activated_ft);
+            const nonzero_indices: [arch.L1_SIZE / 4]u16, const num_nonzero_indices: usize = @import("sparse.zig").findNonZeroIndices(&activated_ft);
 
             var i_outer: usize = 0;
 
             while (i_outer + 2 * L2_UNROLL <= num_nonzero_indices) : (i_outer += 2 * L2_UNROLL) {
-                for (0..L2_SIZE / vecSize(i32)) |j| {
+                for (0..arch.L2_SIZE / simd.vecSize(i32)) |j| {
                     for (0..L2_UNROLL) |i_inner| {
-                        const i_1 = nonzero_indices[i_outer + 2 * i_inner];
-                        const i_2 = nonzero_indices[i_outer + 2 * i_inner + 1];
-                        const ft_vec_1: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i_1])));
-                        const ft_vec_2: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i_2])));
-                        l1_intermediate[j][i_inner] = c.dpbusdx2(
+                        const i_1: u16 = nonzero_indices[i_outer + 2 * i_inner];
+                        const i_2: u16 = nonzero_indices[i_outer + 2 * i_inner + 1];
+                        const ft_vec_1: simd.vector(u8) = @bitCast(@as(simd.vector(i32), @splat(ft_i32[i_1])));
+                        const ft_vec_2: simd.vector(u8) = @bitCast(@as(simd.vector(i32), @splat(ft_i32[i_2])));
+                        l1_intermediate[j][i_inner] = simd.dpbusdx2(
                             l1_intermediate[j][i_inner],
                             ft_vec_1,
-                            w[i_1 * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
+                            w[i_1 * arch.L2_SIZE * 4 + j * simd.vecSize(i8) ..][0..simd.vecSize(i8)].*,
                             ft_vec_2,
-                            w[i_2 * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
+                            w[i_2 * arch.L2_SIZE * 4 + j * simd.vecSize(i8) ..][0..simd.vecSize(i8)].*,
                         );
                     }
                 }
             }
             while (i_outer < num_nonzero_indices) : (i_outer += 1) {
                 const i = nonzero_indices[i_outer];
-                const ft_vec: u8Vec = @bitCast(@as(i32Vec, @splat(ft_i32[i])));
+                const ft_vec: simd.vector(u8) = @bitCast(@as(simd.vector(i32), @splat(ft_i32[i])));
 
-                for (0..L2_SIZE / vecSize(i32)) |j| {
-                    l1_intermediate[j][0] = c.dpbusd(
+                for (0..arch.L2_SIZE / simd.vecSize(i32)) |j| {
+                    l1_intermediate[j][0] = simd.dpbusd(
                         l1_intermediate[j][0],
                         ft_vec,
-                        w[i * L2_SIZE * 4 + j * vecSize(i8) ..][0..vecSize(i8)].*,
+                        w[i * arch.L2_SIZE * 4 + j * simd.vecSize(i8) ..][0..simd.vecSize(i8)].*,
                     );
                 }
             }
         }
 
-        // in Q²
-        var l1_out_vec: [2 * L2_SIZE / vecSize(i32)]i32Vec = undefined;
+        // in arch.Q²
+        var l1_out_vec: [2 * arch.L2_SIZE / simd.vecSize(i32)]simd.vector(i32) = undefined;
         {
-            const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&weights.l1b[output_bucket]));
-            const SHIFT = comptime Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
-            const LO: i32Vec = @splat(0);
-            const HI: i32Vec = @splat(Q);
-            const HI2: i32Vec = @splat(Q * Q);
-            for (0..L2_SIZE / vecSize(i32)) |i| {
-                const biases: i32Vec = l1_bias_vec[i];
+            const l1_bias_vec: [*]const simd.vector(i32) = @ptrCast(@alignCast(&weights.l1b[output_bucket]));
 
-                var intermediate: i32Vec = @splat(0);
+            const EXPLICIT_MULHI_SHIFT_UP = 7;
+            const IMPLIED_MULHI_SHIFT_DOWN = 16;
+            const MULHI_SHIFT = EXPLICIT_MULHI_SHIFT_UP - IMPLIED_MULHI_SHIFT_DOWN;
+
+            const SHIFT = Q0_BITS * 2 + MULHI_SHIFT + Q1_BITS - Q_BITS;
+            const LO: simd.vector(i32) = @splat(0);
+            const HI: simd.vector(i32) = @splat(arch.Q);
+            const HI2: simd.vector(i32) = @splat(arch.Q * arch.Q);
+            for (0..arch.L2_SIZE / simd.vecSize(i32)) |i| {
+                const biases: simd.vector(i32) = l1_bias_vec[i];
+
+                var intermediate: simd.vector(i32) = @splat(0);
                 for (l1_intermediate[i]) |e| {
                     intermediate += e;
                 }
 
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const shifted = intermediate + biases >> @splat(SHIFT);
+                const biased = intermediate + biases;
+                const shifted = biased >> @splat(SHIFT);
 
-                const crelu = std.math.clamp(shifted, LO, HI) << @splat(Q_BITS);
-                const csrelu = std.math.clamp(shifted * shifted, LO, HI2);
+                const crelu: simd.vector(i32) = std.math.clamp(biased, LO, HI << @splat(SHIFT)) >> @splat(SHIFT - Q_BITS);
+                const csrelu: simd.vector(i32) = std.math.clamp(shifted * shifted, LO, HI2);
 
                 l1_out_vec[i] = crelu;
-                l1_out_vec[i + L2_SIZE / vecSize(i32)] = csrelu;
+                l1_out_vec[i + arch.L2_SIZE / simd.vecSize(i32)] = csrelu;
             }
         }
 
-        // in Q³
-        var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast(weights.l2b[output_bucket]);
+        // in arch.Q³
+        var l2_intermediate: [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @bitCast(weights.l2b[output_bucket]);
         {
-            const l1_out: *const [2 * L2_SIZE]i32 = @ptrCast(&l1_out_vec);
-            const l2_weight_vec: *const [2 * L2_SIZE][L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&weights.l2w[output_bucket]));
-            for (0..L2_SIZE * 2) |i| {
-                const l1_vec: i32Vec = @splat(l1_out[i]);
-                for (0..L3_SIZE / vecSize(i32)) |j| {
+            const l1_out: *const [2 * arch.L2_SIZE]i32 = @ptrCast(&l1_out_vec);
+            const l2_weight_vec: *const [2 * arch.L2_SIZE][arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @ptrCast(@alignCast(&weights.l2w[output_bucket]));
+            for (0..arch.L2_SIZE * 2) |i| {
+                const l1_vec: simd.vector(i32) = @splat(l1_out[i]);
+                for (0..arch.L3_SIZE / simd.vecSize(i32)) |j| {
                     l2_intermediate[j] += l1_vec * l2_weight_vec[i][j];
                 }
             }
         }
 
-        // in Q⁴
-        var l3_sum: i32Vec = @splat(0);
+        // in arch.Q⁴
+        var l3_sum: simd.vector(i32) = @splat(0);
         {
-            const l3_weight_vec: *const [L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&weights.l3w[output_bucket]));
-            const LO: i32Vec = @splat(0);
-            const HI3: i32Vec = @splat(Q * Q * Q);
-            for (0..L3_SIZE / vecSize(i32)) |i| {
-                const activated = std.math.clamp(l2_intermediate[i], LO, HI3);
+            const l3_weight_vec: *const [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @ptrCast(@alignCast(&weights.l3w[output_bucket]));
+            const LO: simd.vector(i32) = @splat(0);
+            const HI3: simd.vector(i32) = @splat(arch.Q * arch.Q * arch.Q);
+            for (0..arch.L3_SIZE / simd.vecSize(i32)) |i| {
+                const activated: simd.vector(i32) = std.math.clamp(l2_intermediate[i], LO, HI3);
                 l3_sum += activated * l3_weight_vec[i];
             }
         }
 
-        const bias = weights.l3b[output_bucket];
-        const scaled = (@reduce(.Add, l3_sum) + bias) * SCALE;
+        const bias: i32 = weights.l3b[output_bucket];
+        const scaled: i64 = (@reduce(.Add, l3_sum) + bias) * arch.SCALE;
 
         return evaluation.clampScore(@divTrunc(scaled, arch.Q * arch.Q * arch.Q * arch.Q));
     }
 };
 
-pub fn evaluate(comptime stm: Colour, board: *const Board, eval_state: *State, ctx: evaluation.Context) i16 {
-    return eval_state.forward(stm, board, ctx);
+pub fn evaluate(board: *const Board, eval_state: *State, ctx: evaluation.Context) i16 {
+    return eval_state.forward(board, ctx);
 }
 
 pub fn evalPosition(board: *const Board) i16 {
-    const RefreshCache = @import("refresh_cache.zig").refreshCache(HORIZONTAL_MIRRORING, INPUT_BUCKET_COUNT);
+    const RefreshCache = @import("refresh_cache.zig").refreshCache(arch.HORIZONTAL_MIRRORING, arch.INPUT_BUCKET_COUNT);
     const weights = weightsForNode(0);
     var cache: RefreshCache = undefined;
     cache.initInPlace(weights);
@@ -1052,9 +748,5 @@ pub fn evalPosition(board: *const Board) i16 {
         .accumulator_stack = &accumulator_stack,
     };
     acc.initInPlace(board, weights, ctx);
-    switch (board.stm) {
-        inline else => |stm| {
-            return acc.forward(stm, board, ctx);
-        },
-    }
+    return acc.forward(board, ctx);
 }

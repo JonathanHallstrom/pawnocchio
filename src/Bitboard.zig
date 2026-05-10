@@ -206,6 +206,14 @@ pub fn contains(bitboard: u64, square: Square) bool {
     return bitboard & square.toBitboard() != 0;
 }
 
+pub inline fn containsAny(bitboard: u64, squares: anytype) bool {
+    var res = false;
+    inline for (squares) |square| {
+        res = res or contains(bitboard, square);
+    }
+    return res;
+}
+
 pub fn rayArray(d_rank: anytype, d_file: anytype) [64]u64 {
     @setEvalBranchQuota(1 << 30);
     var res: [64]u64 = undefined;

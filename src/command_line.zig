@@ -17,6 +17,7 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const root = @import("root.zig");
+const nnue_arch = @import("nnue_arch.zig");
 const arg_parser = @import("arg_parser.zig");
 const edit_distance = @import("edit_distance.zig");
 const write = root.write;
@@ -741,7 +742,22 @@ fn handleAnalyse(allocator: std.mem.Allocator, args: anytype, threads: usize) !v
         \\positions/game: {d:.2}
         \\average exit: {d:.2}
         \\unique positions: {}/{} ({}%)
-        \\games whose outcome do not match TBs: {d:.2}%
+    , .{
+        game_count,
+        position_count,
+        positions_per_game,
+        @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
+        unique_count,
+        position_count,
+        @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
+    });
+
+    if (use_tbs) {
+        write("\ngames whose outcome do not match TBs: {d:.2}%", .{@as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb)))});
+    }
+
+    write(
+        \\
         \\wins: {} ({}%)
         \\draws: {} ({}%)
         \\losses: {} ({}%)
@@ -751,14 +767,6 @@ fn handleAnalyse(allocator: std.mem.Allocator, args: anytype, threads: usize) !v
         \\{f}
         \\
     , .{
-        game_count,
-        position_count,
-        positions_per_game,
-        @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
-        unique_count,
-        position_count,
-        @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
-        @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb))),
         wins,
         100 * wins / @max(@as(u64, 1), game_count),
         draws,
@@ -777,16 +785,17 @@ fn handleAnalyse(allocator: std.mem.Allocator, args: anytype, threads: usize) !v
             \\white piece distribution: {f}
             \\black piece distribution: {f}
             \\king pos distribution: {f}
-            \\tb results: {f}
-            \\
         , .{
             formatValue(total_piece_counts),
             formatValue(phase_counts),
             formatEnumArray(PieceType, piece_counts[Colour.white.toInt()]),
             formatEnumArray(PieceType, piece_counts[Colour.black.toInt()]),
             formatArrayNewline(@as([8][8]u64, @bitCast(king_pos))),
-            formatWdlMatrix(tb_results),
         });
+        if (use_tbs) {
+            write("\ntb results: {f}", .{formatWdlMatrix(tb_results)});
+        }
+        write("\n", .{});
     }
 
     write("writing score distribution to 'score_distribution.txt'\n", .{});
@@ -948,7 +957,7 @@ fn handleRelabelChonker(allocator: std.mem.Allocator, args: anytype) !void {
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
 
     const nnue = root.nnue;
-    const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT);
+    const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
     const weights = nnue.weightsForNode(0);
     var rc: RefreshCache = undefined;
     rc.initInPlace(weights);
@@ -981,14 +990,12 @@ fn handleRelabelChonker(allocator: std.mem.Allocator, args: anytype) !void {
         var it = game.iter();
         while (try it.next()) |ply| {
             const board = ply.board;
-            acc.refreshHalf(weights, &rc, .white, board);
-            acc.refreshHalf(weights, &rc, .black, board);
+            acc.refreshHalf(ctx, .white, board);
+            acc.refreshHalf(ctx, .black, board);
             acc.markClean(board);
 
-            const eval = switch (board.stm) {
-                .white => acc.forward(.white, board, ctx),
-                .black => -acc.forward(.black, board, ctx),
-            };
+            const stm_eval = acc.forward(board, ctx);
+            const eval = if (board.stm == .white) stm_eval else -stm_eval;
 
             try record.addMove(ply.move, eval);
 

@@ -39,6 +39,7 @@ pub const numa = @import("numa.zig");
 pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, @import("build_options").eval) orelse unreachable;
 pub const eval_mode: EvalMode = EVAL_MODE;
 pub const nnue = if (EVAL_MODE == .nnue) @import("nnue.zig") else void;
+pub const simd = @import("simd.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const cuckoo = @import("cuckoo.zig");
 pub const Board = @import("Board.zig");
@@ -65,6 +66,9 @@ pub const pgn = @import("pgn.zig");
 pub const dynamic_reader = @import("dynamic_reader.zig");
 pub const owning_reader = @import("owning_reader.zig");
 pub const wdl = @import("wdl.zig");
+pub const input_features = @import("input_features.zig");
+pub const PSQTFeature = input_features.PSQTFeature;
+pub const FeatureKind = input_features.FeatureKind;
 
 const assert = std.debug.assert;
 

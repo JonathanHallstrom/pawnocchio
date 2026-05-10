@@ -85,7 +85,7 @@ pub const ScoredPlyReader = struct {
                     },
                     else => |c| {
                         if (std.ascii.isWhitespace(c)) {
-                            self.cursor = 1;
+                            self.cursor += 1;
                             continue;
                         }
                     },

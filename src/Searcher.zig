@@ -17,7 +17,9 @@
 const std = @import("std");
 
 const root = @import("root.zig");
+const nnue_arch = @import("nnue_arch.zig");
 
+const simd = root.simd;
 const BoundedArray = root.BoundedArray;
 const evaluation = root.evaluation;
 const nnue = if (evaluation.eval_mode == .nnue) root.nnue else void;
@@ -107,7 +109,7 @@ const STACK_PADDING = history.CONTHIST_OFFSETS[history.NUM_CONTHISTS - 1];
 search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
 is_ready: bool align(std.atomic.cache_line) = false,
 nodes: u64 align(std.atomic.cache_line),
-hashes: [MAX_PLY]u64,
+hashes: [MAX_PLY + 8]u64,
 eval_states: [MAX_PLY]evaluation.State,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: ?Move,
@@ -136,9 +138,9 @@ show_wdl: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
-refresh_cache: if (evaluation.EVAL_MODE == .nnue) root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT) else void,
+refresh_cache: if (evaluation.EVAL_MODE == .nnue) root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT) else void,
 accumulator_stack: if (evaluation.EVAL_MODE == .nnue) root.nnue.AccumulatorStack(MAX_PLY) else void,
-nnue_weights: if (stores_numa_weights) *const nnue.Weights else void,
+nnue_weights: if (stores_numa_weights) *const nnue_arch.Weights else void,
 histories: history.HistoryTable,
 correction_histories: *history.CorrectionHistoryTable,
 
@@ -179,9 +181,9 @@ pub fn writeTT(
     );
 }
 
-fn rawEval(self: *Searcher, comptime stm: Colour) i16 {
+fn rawEval(self: *Searcher) i16 {
     const hash = self.stackEntry(0).board.getHashWithHalfmove();
-    const eval = evaluate(stm, &self.stackEntry(0).board, self.evalState(0), self.evalContext());
+    const eval = evaluate(&self.stackEntry(0).board, self.evalState(0), self.evalContext());
     self.writeTT(
         false,
         hash,
@@ -365,25 +367,32 @@ fn unmakeNullMove(self: *Searcher, comptime stm: Colour) void {
 
 fn isRepetition(self: *Searcher, board: *const Board) bool {
     const hash = board.hash;
-    const amt = @min(self.ply, board.halfmove);
-    const haystack = self.hashes[self.ply - amt .. self.ply];
-    var res = false;
-    for (haystack) |e| {
-        if (e == hash) {
-            @branchHint(.unpredictable);
-            res = true;
+    const hash_vec: simd.vector(u64) = @splat(hash);
+
+    const amt: usize = @min(self.ply, board.halfmove);
+
+    const N = simd.vecSize(u64);
+
+    var iter: simd.IndexedChunkIter(u64, N) =
+        .init(self.hashes[self.ply - amt .. self.ply]);
+
+    var found: @Vector(N, bool) = @splat(false);
+    while (true) {
+        found |= iter.maskedChunkUnchecked().select(~hash_vec) == hash_vec;
+        if (iter.isEmpty()) {
+            break;
         }
     }
-    for (self.previous_position_hashes.slice()) |e| {
-        if (e == hash) {
-            @branchHint(.unpredictable);
-            res = true;
+
+    iter = .init(self.previous_position_hashes.slice());
+    while (true) {
+        found |= iter.maskedChunkUnchecked().select(~hash_vec) == hash_vec;
+        if (iter.isEmpty()) {
+            break;
         }
-        // prevent this loop from being unrolled
-        // there will only ever be a few values
-        std.mem.doNotOptimizeAway(e);
     }
-    return res;
+
+    return @reduce(.Or, found);
 }
 
 fn hasUpcomingRepetition(self: *Searcher) bool {
@@ -554,7 +563,8 @@ fn qsearch(
         return 0;
     }
     const cur: *StackEntry = self.stackEntry(0);
-    const board = &cur.board;
+    const board: *const Board = &cur.board;
+    std.debug.assert(board.stm == stm);
     if (!is_root) {
         if (alpha < 0 and self.hasUpcomingRepetition()) {
             alpha = self.drawScore(stm);
@@ -593,7 +603,7 @@ fn qsearch(
     var correction: i16 = 0;
     var static_eval = corrected_static_eval;
     if (!is_in_check) {
-        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
+        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval();
         correction, corrected_static_eval = self.correction_histories.correct(
             board,
             cur.move,
@@ -748,7 +758,7 @@ fn search(
 
     const cur: *StackEntry = self.stackEntry(0);
     const prev: *StackEntry = self.stackEntry(-1);
-    const board: *Board = &cur.board;
+    const board: *const Board = &cur.board;
     const is_in_check = board.checkers != 0;
     if (depth <= 0 and !is_in_check) {
         return self.qsearch(is_root, is_pv, stm, alpha, beta);
@@ -768,7 +778,7 @@ fn search(
         self.seldepth = @max(self.seldepth, self.ply + 1);
     }
     if (self.ply >= MAX_PLY - 1) {
-        return if (is_in_check) 0 else self.rawEval(stm);
+        return if (is_in_check) 0 else self.rawEval();
     }
 
     if (!is_root) {
@@ -847,7 +857,7 @@ fn search(
     var correction: i16 = 0;
     var is_tt_corrected_eval = false;
     if (!is_in_check and !is_singular_search) {
-        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval(stm);
+        raw_static_eval = if (tt_hit and !evaluation.isMateScore(tt_entry.raw_static_eval)) tt_entry.raw_static_eval else self.rawEval();
         correction, corrected_static_eval = self.correction_histories.correct(
             board,
             cur.move,
@@ -1852,10 +1862,8 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
             tt_entry.score != evaluation.INF_SCORE)
         {
             previous_score = tt_entry.score;
-        } else switch (params.board.stm) {
-            inline else => |stm| {
-                previous_score = self.rawEval(stm);
-            },
+        } else {
+            previous_score = self.rawEval();
         }
     }
 

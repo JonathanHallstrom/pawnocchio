@@ -14,26 +14,32 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-/// debugging purposes only
-const std = @import("std");
-
 const root = @import("root.zig");
 
-const Board = root.Board;
-const PieceType = root.PieceType;
-pub const State = Board.NullEvalState;
+pub const FeatureKind = enum {
+    psqt,
+};
 
-pub fn evalPosition(board: *const Board) i16 {
-    return evaluate(board, undefined, undefined);
-}
+pub const PSQTFeature = extern struct {
+    c: root.ColouredPieceType,
+    s: root.Square,
 
-pub inline fn evaluate(board: *const Board, _: anytype, _: anytype) i16 {
-    var res: i16 = 0;
-    for (PieceType.all, [_]i16{ 100, 300, 300, 500, 900, 0 }) |pt, value| {
-        res += value * @popCount(board.pieceFor(.white, pt));
-        res -= value * @popCount(board.pieceFor(.black, pt));
+    pub fn col(self: PSQTFeature) root.Colour {
+        return self.c.toColour();
     }
-    res = if (board.stm == .white) res else -res;
-    res += @intCast(board.hash & 63);
-    return res;
-}
+
+    pub fn piece(self: PSQTFeature) root.PieceType {
+        return self.c.toPieceType();
+    }
+
+    pub fn square(self: PSQTFeature) root.Square {
+        return self.s;
+    }
+
+    pub fn init(c: root.Colour, p: root.PieceType, s: root.Square) PSQTFeature {
+        return .{
+            .c = .fromPieceType(p, c),
+            .s = s,
+        };
+    }
+};

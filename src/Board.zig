@@ -22,6 +22,7 @@ const root = @import("root.zig");
 const BoundedArray = root.BoundedArray;
 const Colour = root.Colour;
 const File = root.File;
+const PSQTFeature = root.PSQTFeature;
 const Rank = root.Rank;
 const Square = root.Square;
 const Bitboard = root.Bitboard;
@@ -834,7 +835,10 @@ pub fn movePiece(self: *Board, comptime col: Colour, pt: PieceType, from: Square
     self.zobristPiece(col, pt, to);
     self.mailbox[from.toInt()] = MAILBOX_EMPTY;
     self.mailbox[to.toInt()] = mailboxValue(pt, col);
-    eval_state.addSub(col, pt, to, col, pt, from);
+    eval_state.addSub(
+        .init(col, pt, to),
+        .init(col, pt, from),
+    );
 }
 
 pub fn movePiecePromo(self: *Board, comptime col: Colour, promo_pt: PieceType, from: Square, to: Square, eval_state: anytype) void {
@@ -846,7 +850,10 @@ pub fn movePiecePromo(self: *Board, comptime col: Colour, promo_pt: PieceType, f
     self.zobristPiece(col, promo_pt, to);
     self.mailbox[from.toInt()] = MAILBOX_EMPTY;
     self.mailbox[to.toInt()] = mailboxValue(promo_pt, col);
-    eval_state.addSub(col, promo_pt, to, col, .pawn, from);
+    eval_state.addSub(
+        .init(col, promo_pt, to),
+        .init(col, .pawn, from),
+    );
 }
 
 pub fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType, from: Square, to: Square, captured_pt: PieceType, captured_square: Square, eval_state: anytype) void {
@@ -861,7 +868,11 @@ pub fn movePieceCapture(self: *Board, comptime col: Colour, pt: PieceType, from:
     self.mailbox[from.toInt()] = MAILBOX_EMPTY;
     self.mailbox[captured_square.toInt()] = MAILBOX_EMPTY;
     self.mailbox[to.toInt()] = mailboxValue(pt, col);
-    eval_state.addSubSub(col, pt, to, col, pt, from, col.flipped(), captured_pt, captured_square);
+    eval_state.addSubSub(
+        .init(col, pt, to),
+        .init(col, pt, from),
+        .init(col.flipped(), captured_pt, captured_square),
+    );
 }
 
 pub fn movePiecePromoCapture(self: *Board, comptime col: Colour, promo_pt: PieceType, from: Square, to: Square, captured_pt: PieceType, captured_square: Square, eval_state: anytype) void {
@@ -877,7 +888,11 @@ pub fn movePiecePromoCapture(self: *Board, comptime col: Colour, promo_pt: Piece
     self.mailbox[from.toInt()] = MAILBOX_EMPTY;
     self.mailbox[captured_square.toInt()] = MAILBOX_EMPTY;
     self.mailbox[to.toInt()] = mailboxValue(promo_pt, col);
-    eval_state.addSubSub(col, promo_pt, to, col, .pawn, from, col.flipped(), captured_pt, captured_square);
+    eval_state.addSubSub(
+        .init(col, promo_pt, to),
+        .init(col, .pawn, from),
+        .init(col.flipped(), captured_pt, captured_square),
+    );
 }
 
 pub fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, king_to: Square, rook_from: Square, rook_to: Square, eval_state: anytype) void {
@@ -894,7 +909,12 @@ pub fn movePieceCastling(self: *Board, comptime col: Colour, king_from: Square, 
     self.mailbox[rook_from.toInt()] = MAILBOX_EMPTY;
     self.mailbox[king_to.toInt()] = mailboxValue(.king, col);
     self.mailbox[rook_to.toInt()] = mailboxValue(.rook, col);
-    eval_state.addAddSubSub(col, .king, king_to, col, .rook, rook_to, col, .king, king_from, col, .rook, rook_from);
+    eval_state.addAddSubSub(
+        .init(col, .king, king_to),
+        .init(col, .rook, rook_to),
+        .init(col, .king, king_from),
+        .init(col, .rook, rook_from),
+    );
 }
 
 pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
@@ -1794,44 +1814,11 @@ pub const NullEvalState = struct {
         _ = square;
     }
 
-    pub inline fn addSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
-        _ = self;
-        _ = add_col;
-        _ = add_pt;
-        _ = add_square;
-        _ = sub_col;
-        _ = sub_pt;
-        _ = sub_square;
-    }
+    pub inline fn addSub(_: @This(), _: PSQTFeature, _: PSQTFeature) void {}
 
-    pub inline fn addSubSub(self: @This(), comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
-        _ = self;
-        _ = add_col;
-        _ = add_pt;
-        _ = add_square;
-        _ = sub1_col;
-        _ = sub1_pt;
-        _ = sub1_square;
-        _ = sub2_col;
-        _ = sub2_pt;
-        _ = sub2_square;
-    }
+    pub inline fn addSubSub(_: @This(), _: PSQTFeature, _: PSQTFeature, _: PSQTFeature) void {}
 
-    pub inline fn addAddSubSub(self: @This(), comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
-        _ = self;
-        _ = add1_col;
-        _ = add1_pt;
-        _ = add1_square;
-        _ = add2_col;
-        _ = add2_pt;
-        _ = add2_square;
-        _ = sub1_col;
-        _ = sub1_pt;
-        _ = sub1_square;
-        _ = sub2_col;
-        _ = sub2_pt;
-        _ = sub2_square;
-    }
+    pub inline fn addAddSubSub(_: @This(), _: PSQTFeature, _: PSQTFeature, _: PSQTFeature, _: PSQTFeature) void {}
 };
 
 // const HashPair = struct {

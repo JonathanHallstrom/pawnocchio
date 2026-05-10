@@ -17,11 +17,7 @@
 const std = @import("std");
 
 fn formatStatValue(writer: *std.Io.Writer, value: f64) std.Io.Writer.Error!void {
-    if (value == @round(value)) {
-        try writer.print("{d:.0}", .{value});
-    } else {
-        try writer.print("{d:.4}", .{value});
-    }
+    try writer.print("{d:.4}", .{value});
 }
 
 fn formatNamedStat(writer: *std.Io.Writer, label: []const u8, value: f64) std.Io.Writer.Error!void {

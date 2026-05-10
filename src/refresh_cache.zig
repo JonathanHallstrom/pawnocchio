@@ -21,17 +21,18 @@ const PieceType = root.PieceType;
 const Bitboard = root.Bitboard;
 const Colour = root.Colour;
 const nnue = root.nnue;
+const nnue_arch = @import("nnue_arch.zig");
 
 const NNCacheEntry = struct {
     accumulator: nnue.Accumulator,
     pieces: [6]u64,
     sides: [2]u64,
 
-    fn refresh(noalias self: *NNCacheEntry, weights: *const nnue.Weights, comptime stm: Colour, board: *const Board, mirror: nnue.MirroringType) *const nnue.Accumulator {
+    fn refresh(noalias self: *NNCacheEntry, weights: *const nnue_arch.Weights, stm: Colour, board: *const Board, mirror: nnue.MirroringType) *const nnue.Accumulator {
         const us_king = Square.fromBitboard(board.kingFor(stm));
-        var adds: [64]*const nnue.RawAccumulator = undefined;
+        var adds: [32]*const nnue_arch.RawAccumulator = undefined;
         var num_adds: usize = 0;
-        var subs: [64]*const nnue.RawAccumulator = undefined;
+        var subs: [32]*const nnue_arch.RawAccumulator = undefined;
         var num_subs: usize = 0;
         for (PieceType.all) |pt| {
             inline for ([2]Colour{ .white, .black }) |col| {
@@ -41,14 +42,14 @@ const NNCacheEntry = struct {
                 {
                     var iter = Bitboard.iterator(current & ~cached);
                     while (iter.next()) |sq| {
-                        adds[num_adds] = nnue.feature(weights, stm, col, us_king, pt, sq, mirror);
+                        adds[num_adds] = nnue.feature(weights, stm, us_king, .psqt, .init(col, pt, sq), mirror);
                         num_adds += 1;
                     }
                 }
                 {
                     var iter = Bitboard.iterator(~current & cached);
                     while (iter.next()) |sq| {
-                        subs[num_subs] = nnue.feature(weights, stm, col, us_king, pt, sq, mirror);
+                        subs[num_subs] = nnue.feature(weights, stm, us_king, .psqt, .init(col, pt, sq), mirror);
                         num_subs += 1;
                     }
                 }
@@ -90,7 +91,7 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
         data: if (empty) void else [2][@as(usize, 1) + @intFromBool(mirrored)][bucket_count]NNCacheEntry,
         generation: [2]nnue.AccumulatorHalf.Generation,
 
-        pub fn initInPlace(self: *Self, weights: *const nnue.Weights) void {
+        pub fn initInPlace(self: *Self, weights: *const nnue_arch.Weights) void {
             self.generation = .{ 0, 0 };
             if (empty) return;
             for (&self.data) |*stm| {
@@ -104,10 +105,10 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             }
         }
 
-        pub inline fn refresh(noalias self: *Self, weights: *const nnue.Weights, comptime stm: Colour, board: *const Board) nnue.AccumulatorHalf {
+        pub inline fn refresh(noalias self: *Self, weights: *const nnue_arch.Weights, stm: Colour, board: *const Board) nnue.AccumulatorHalf {
             if (empty) unreachable;
             self.generation[stm.toInt()] += 1;
-            const bucket = nnue.whichInputBucket(stm, Square.fromBitboard(board.kingFor(stm)));
+            const bucket = nnue_arch.whichInputBucket(stm, Square.fromBitboard(board.kingFor(stm)));
             var mirror: nnue.MirroringType = undefined;
             mirror.write(Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4);
             const mirror_idx = if (mirrored) @intFromBool(mirror.read()) else 0;
@@ -117,7 +118,7 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             };
         }
 
-        pub inline fn currentGeneration(self: *const Self, comptime stm: Colour) nnue.AccumulatorHalf.Generation {
+        pub inline fn currentGeneration(self: *const Self, stm: Colour) nnue.AccumulatorHalf.Generation {
             return self.generation[stm.toInt()];
         }
     };

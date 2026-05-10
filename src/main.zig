@@ -17,6 +17,7 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const root = @import("root.zig");
+const nnue_arch = @import("nnue_arch.zig");
 const command_line = @import("command_line.zig");
 const write = root.write;
 const writeLog = std.debug.print;
@@ -359,7 +360,7 @@ pub fn main(init: std.process.Init) !void {
                     continue :loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and root.evaluation.EVAL_MODE == .nnue) {
-                    const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
+                    const RC = root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
                     const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
                     cache.initInPlace(weights);
@@ -375,25 +376,22 @@ pub fn main(init: std.process.Init) !void {
                     const start_time = std.Io.Timestamp.now(init.io, .awake);
                     const iterations = 100_000_000;
                     var res: i16 = 0;
-                    switch (board.stm) {
-                        inline else => |stm| {
-                            const rank_from: u3 = if (stm == .white) 1 else 6;
-                            const rank_to: u3 = if (stm == .white) 3 else 4;
-                            for (0..iterations) |i| {
-                                const file: u3 = @intCast(i % 8);
-                                const is_back = (i / 8) % 2 == 1;
-                                const from = root.Square.fromRankFile(rank_from, file);
-                                const to = root.Square.fromRankFile(rank_to, file);
+                    const stm = board.stm;
+                    const rank_from: u3 = if (stm == .white) 1 else 6;
+                    const rank_to: u3 = if (stm == .white) 3 else 4;
+                    for (0..iterations) |i| {
+                        const file: u3 = @intCast(i % 8);
+                        const is_back = (i / 8) % 2 == 1;
+                        const from = root.Square.fromRankFile(rank_from, file);
+                        const to = root.Square.fromRankFile(rank_to, file);
 
-                                if (!is_back) {
-                                    acc.addSub(stm, .pawn, to, stm, .pawn, from);
-                                } else {
-                                    acc.addSub(stm, .pawn, from, stm, .pawn, to);
-                                }
-                                res +%= acc.forward(stm, &board, ctx);
-                                std.mem.doNotOptimizeAway(res);
-                            }
-                        },
+                        if (!is_back) {
+                            acc.addSub(.init(stm, .pawn, to), .init(stm, .pawn, from));
+                        } else {
+                            acc.addSub(.init(stm, .pawn, from), .init(stm, .pawn, to));
+                        }
+                        res +%= acc.forward(&board, ctx);
+                        std.mem.doNotOptimizeAway(res);
                     }
                     const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
                     write("evals: {} in {} ({} eps) res: {}\n", .{ iterations, elapsed_ns, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
@@ -401,7 +399,7 @@ pub fn main(init: std.process.Init) !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "refreshbench") and root.evaluation.EVAL_MODE == .nnue) {
                     const refresh_fens = @import("refresh_fens.zig").FENS;
-                    const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
+                    const RC = root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
                     const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
                     cache.initInPlace(weights);

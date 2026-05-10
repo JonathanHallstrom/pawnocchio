@@ -17,6 +17,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const root = @import("root.zig");
+const simd = @import("simd.zig");
 
 const BoundedArray = root.BoundedArray;
 const Board = root.Board;
@@ -84,14 +85,6 @@ fn offsetMoveTemplate(comptime from_rank_delta: i8, comptime from_file_delta: i8
     return table;
 }
 
-fn vpcompressw(src: @Vector(32, u16), mask: u32) @Vector(32, u16) {
-    return asm ("vpcompressw %[src], %[ret] {%[mask]} {z}"
-        : [ret] "=x" (-> @Vector(32, u16)),
-        : [src] "x" (src),
-          [mask] "{k1}" (mask),
-    );
-}
-
 inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) void {
     const ReceiverType = @TypeOf(receiver.*);
     if (ReceiverType == CountReceiver) {
@@ -104,10 +97,10 @@ inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) v
         const lo_count: usize = @popCount(lo);
         const hi_count: usize = @popCount(hi);
         if (lo_count != 0) {
-            receiver.receiveMany(vpcompressw(template[0..32].*, lo), lo_count);
+            receiver.receiveMany(simd.vpcompressw(template[0..32].*, lo), lo_count);
         }
         if (hi_count != 0) {
-            receiver.receiveMany(vpcompressw(template[32..64].*, hi), hi_count);
+            receiver.receiveMany(simd.vpcompressw(template[32..64].*, hi), hi_count);
         }
     } else {
         var it = Bitboard.iterator(bb);

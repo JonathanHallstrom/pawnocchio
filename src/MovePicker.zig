@@ -17,6 +17,7 @@
 const std = @import("std");
 
 const root = @import("root.zig");
+const simd = root.simd;
 
 const Move = root.Move;
 const Board = root.Board;
@@ -144,41 +145,27 @@ fn packScores(comptime N: usize, scores: @Vector(N, i32), indices: @Vector(N, i3
     return scores << @splat(8) | indices;
 }
 
-fn selectPrefix(n: usize, x: anytype, fill: @TypeOf(x)) @TypeOf(x) {
-    const V = @TypeOf(x);
-    const Vi = @typeInfo(V).vector;
-    const T = Vi.child;
-    const N = Vi.len;
-    const zero: std.meta.Int(.unsigned, N) = 0;
-    const mask = ~(~zero << @intCast(n));
-    const predicate: @Vector(N, bool) = @bitCast(mask);
-    return @select(T, predicate, x, fill);
-}
-
-fn findBest(noalias self: *MovePicker) usize {
+noinline fn findBest(noalias self: *MovePicker) usize {
     const moves = self.movelist.vals.slice()[self.first..self.last];
     const len = self.last - self.first;
     const scores = self.scores[self.first..];
 
-    var i: usize = 0;
     var best: i32 = std.math.minInt(i32);
 
     if (std.simd.suggestVectorLength(i32)) |UNROLL| {
         var best_vec: @Vector(UNROLL, i32) = @splat(std.math.minInt(i32));
-        var indices = std.simd.iota(i32, UNROLL);
-
-        while (i + UNROLL < len) : ({
-            i += UNROLL;
-            indices += @splat(UNROLL);
-        }) {
-            @branchHint(.unlikely);
-            best_vec = @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices));
+        var iter = simd.indexedChunkIter(i32, UNROLL, scores[0..len]);
+        while (iter.fullChunk()) |c| {
+            best_vec = @max(best_vec, packScores(UNROLL, c.data, c.indices));
         }
-        const limit_vec: @Vector(UNROLL, i32) = @splat(@intCast(len));
-        best_vec = @select(i32, indices < limit_vec, @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices)), best_vec);
-
+        {
+            var c = iter.tail();
+            c.data = packScores(UNROLL, c.data, c.indices);
+            best_vec = @max(best_vec, c.select(best_vec));
+        }
         best = @reduce(.Max, best_vec) & 0xff;
     } else {
+        var i: usize = 0;
         while (i < len) : (i += 1) {
             best = @max(best, packScore(scores[i], i));
         }

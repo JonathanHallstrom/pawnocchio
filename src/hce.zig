@@ -364,32 +364,32 @@ pub const State = struct {
         self.* = other.*;
     }
 
-    pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
+    pub fn add(self: *State, col: Colour, pt: PieceType, square: Square) void {
         self.state = self.state.add(readPieceSquareTable(col, pt, square));
         self.phase += GAMEPHASE_INC[pt.toInt()];
     }
 
-    pub fn sub(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
+    pub fn sub(self: *State, col: Colour, pt: PieceType, square: Square) void {
         self.state = self.state.sub(readPieceSquareTable(col, pt, square));
         self.phase -= GAMEPHASE_INC[pt.toInt()];
     }
 
-    pub fn addSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
-        self.add(add_col, add_pt, add_square);
-        self.sub(sub_col, sub_pt, sub_square);
+    pub fn addSub(self: *State, a: root.PSQTFeature, s: root.PSQTFeature) void {
+        self.add(a.col(), a.piece(), a.square());
+        self.sub(s.col(), s.piece(), s.square());
     }
 
-    pub fn addSubSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
-        self.add(add_col, add_pt, add_square);
-        self.sub(sub1_col, sub1_pt, sub1_square);
-        self.sub(sub2_col, sub2_pt, sub2_square);
+    pub fn addSubSub(self: *State, a: root.PSQTFeature, s1: root.PSQTFeature, s2: root.PSQTFeature) void {
+        self.add(a.col(), a.piece(), a.square());
+        self.sub(s1.col(), s1.piece(), s1.square());
+        self.sub(s2.col(), s2.piece(), s2.square());
     }
 
-    pub fn addAddSubSub(self: *State, comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
-        self.add(add1_col, add1_pt, add1_square);
-        self.add(add2_col, add2_pt, add2_square);
-        self.sub(sub1_col, sub1_pt, sub1_square);
-        self.sub(sub2_col, sub2_pt, sub2_square);
+    pub fn addAddSubSub(self: *State, a1: root.PSQTFeature, a2: root.PSQTFeature, s1: root.PSQTFeature, s2: root.PSQTFeature) void {
+        self.add(a1.col(), a1.piece(), a1.square());
+        self.add(a2.col(), a2.piece(), a2.square());
+        self.sub(s1.col(), s1.piece(), s1.square());
+        self.sub(s2.col(), s2.piece(), s2.square());
     }
 
     pub fn eval(self: State) i16 {
@@ -400,9 +400,9 @@ pub const State = struct {
     }
 };
 
-pub fn evaluate(comptime stm: Colour, _: *const Board, state: *State, _: anytype) i16 {
+pub fn evaluate(board: *const Board, state: *State, _: anytype) i16 {
     var res = evaluation.clampScore(state.eval());
-    if (stm == .black) res = -res;
+    if (board.stm == .black) res = -res;
     return res;
 }
 

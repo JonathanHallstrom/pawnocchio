@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 const std = @import("std");
 const builtin = @import("builtin");
+const root = @import("root.zig");
 
 const ALIGNMENT = 64;
 pub const Weights = extern struct {
@@ -99,18 +100,6 @@ pub fn target(cpu: std.Target.Cpu) Target {
         return .sse2;
     }
     return .fallback;
-}
-
-pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
-    return switch (target(cpu)) {
-        .avx512vnni => 64,
-        .avx512 => 64,
-        .avx2 => 32,
-        .aarch64 => 16,
-        .ssse3 => 16,
-        .sse2 => 16,
-        .fallback => if (cpu.arch.endian() != .little) 4 else std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
-    };
 }
 
 const LONGEST_PERMUTE_LEN = 8;
@@ -266,12 +255,8 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
     }
 }
 
-pub const VEC_BYTES = vecBytes(@import("builtin").cpu);
-pub fn vecSize(comptime T: type) comptime_int {
-    return VEC_BYTES / @sizeOf(T);
-}
-pub const AccumulatorVec = @Vector(vecSize(i16), i16);
-pub const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / vecSize(i16);
+pub const AccumulatorVec = @Vector(@import("simd.zig").vecSize(i16), i16);
+pub const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / @import("simd.zig").vecSize(i16);
 pub const RawAccumulator = [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec;
 
 pub const HORIZONTAL_MIRRORING = true;
@@ -295,3 +280,12 @@ pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     14, 14, 15, 15, 15, 15, 14, 14,
     14, 14, 15, 15, 15, 15, 14, 14,
 };
+
+pub inline fn whichInputBucket(stm: root.Colour, king_square: root.Square) usize {
+    return @min(INPUT_BUCKET_COUNT - 1, INPUT_BUCKET_LAYOUT[(if (stm == .white) king_square else king_square.flipRank()).toInt()]);
+}
+
+pub inline fn whichOutputBucket(board: *const root.Board) usize {
+    const divisor = (32 + OUTPUT_BUCKET_COUNT - 1) / OUTPUT_BUCKET_COUNT;
+    return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.occupancy()) - 2) / divisor);
+}

@@ -19,6 +19,7 @@ const build_options = @import("build_options");
 const EvalMode = @import("eval_mode.zig").EvalMode;
 
 const root = @import("root.zig");
+const nnue_arch = @import("nnue_arch.zig");
 
 const Board = root.Board;
 pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, build_options.eval).?;
@@ -31,8 +32,8 @@ const impl = switch (EVAL_MODE) {
 
 pub const Context = switch (EVAL_MODE) {
     .nnue => struct {
-        weights: *const root.nnue.Weights,
-        refresh_cache: *root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT),
+        weights: *const nnue_arch.Weights,
+        refresh_cache: *root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT),
         accumulator_stack: [][2]root.nnue.Accumulator,
     },
     inline else => struct {},
@@ -40,8 +41,8 @@ pub const Context = switch (EVAL_MODE) {
 
 pub const State = impl.State;
 
-pub inline fn evaluate(comptime stm: root.Colour, board: *const Board, state: *State, ctx: Context) i16 {
-    return impl.evaluate(stm, board, state, ctx);
+pub inline fn evaluate(board: *const Board, state: *State, ctx: Context) i16 {
+    return impl.evaluate(board, state, ctx);
 }
 
 pub fn evalPosition(board: *const Board) i16 {
