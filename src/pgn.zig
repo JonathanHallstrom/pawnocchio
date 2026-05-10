@@ -85,7 +85,7 @@ pub const ScoredPlyReader = struct {
                     },
                     else => |c| {
                         if (std.ascii.isWhitespace(c)) {
-                            self.cursor += 1;
+                            self.cursor = 1;
                             continue;
                         }
                     },
@@ -105,7 +105,7 @@ pub const ScoredPlyReader = struct {
 
                 var eval: ?i16 = null;
                 const after_move = self.text[self.cursor..];
-                const trimmed_after = std.mem.trimLeft(u8, after_move, &std.ascii.whitespace);
+                const trimmed_after = std.mem.trimStart(u8, after_move, &std.ascii.whitespace);
                 if (std.mem.startsWith(u8, trimmed_after, "{")) {
                     if (std.mem.indexOfScalar(u8, trimmed_after, '}')) |end_brace| {
                         const comment = trimmed_after[1..end_brace];
@@ -205,7 +205,7 @@ pub const ScoredPlyReader = struct {
 const TERMINATION_MARKERS = [_][]const u8{ "1-0", "0-1", "1/2-1/2" };
 
 fn isGameTerminationMarker(text: []const u8) bool {
-    const trimmed = std.mem.trimRight(u8, text, &std.ascii.whitespace);
+    const trimmed = std.mem.trimEnd(u8, text, &std.ascii.whitespace);
     inline for (TERMINATION_MARKERS) |marker| {
         if (std.mem.endsWith(u8, trimmed, marker)) {
             const prefix = trimmed[0 .. trimmed.len - marker.len];
@@ -218,7 +218,7 @@ fn isGameTerminationMarker(text: []const u8) bool {
 }
 
 fn isStartOfGameTerminationMarker(text: []const u8) bool {
-    const trimmed = std.mem.trimLeft(u8, text, &std.ascii.whitespace);
+    const trimmed = std.mem.trimStart(u8, text, &std.ascii.whitespace);
     inline for (TERMINATION_MARKERS) |marker| {
         if (std.mem.startsWith(u8, trimmed, marker)) {
             return true;
@@ -364,8 +364,8 @@ pub fn scoredPlyReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) Sco
     return .{
         .reader = reader,
         .allocator = allocator,
-        .buffer = .{},
-        .move_buffer = .{},
+        .buffer = .empty,
+        .move_buffer = .empty,
         .initial_board = undefined,
     };
 }

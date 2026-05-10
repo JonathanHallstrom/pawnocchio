@@ -65,20 +65,20 @@ pub fn clampScore(score: anytype) i16 {
 
 pub fn scoreToTt(score: i16, ply: u8) i16 {
     if (score < -WIN_SCORE) {
-        return score - ply;
+        return score -% @as(i16, @intCast(ply));
     }
     if (score > WIN_SCORE) {
-        return score + ply;
+        return score +% @as(i16, @intCast(ply));
     }
     return score;
 }
 
 pub fn scoreFromTt(score: i16, ply: u8) i16 {
     if (score < -WIN_SCORE) {
-        return score + ply;
+        return score +% @as(i16, @intCast(ply));
     }
     if (score > WIN_SCORE) {
-        return score - ply;
+        return score -% @as(i16, @intCast(ply));
     }
     return score;
 }

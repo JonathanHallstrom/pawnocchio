@@ -29,6 +29,8 @@ const c = if (USE_TBS) @cImport(@cInclude("tbprobe.h")) else undefined;
 const TB_MAX_MOVES: usize = if (USE_TBS) c.TB_MAX_MOVES else 0;
 const TbRootMoves = if (USE_TBS) c.TbRootMoves else void;
 
+pub var PROBE_LIMIT: u8 = 6;
+
 var tbs_init = false;
 pub fn init(path: [*:0]const u8) error{TBInitializationFailed}!void {
     if (!USE_TBS) {

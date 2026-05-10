@@ -14,7 +14,7 @@ fn gitShortHash(b: *std.Build) ?[]const u8 {
         &[_][]const u8{ "git", "-C", build_root_path, "rev-parse", "--short=7", "HEAD" }
     else
         &[_][]const u8{ "git", "rev-parse", "--short=7", "HEAD" };
-    const stdout = b.runAllowFail(argv, &exit_code, .Ignore) catch return null;
+    const stdout = b.runAllowFail(argv, &exit_code, .ignore) catch return null;
     const short_sha = std.mem.trim(u8, stdout, &std.ascii.whitespace);
     if (short_sha.len == 0) {
         return null;
@@ -130,15 +130,14 @@ fn addExecutable(
         exe.root_module.linkSystemLibrary("numa", .{});
     }
     if (options.use_tbs) {
-        exe.addCSourceFile(.{
+        exe.root_module.addCSourceFile(.{
             .file = b.path("src/Pyrrhic/tbprobe.c"),
             .flags = &.{
-                "-fno-sanitize=undefined",
                 "-O3",
             },
             .language = .c,
         });
-        exe.addIncludePath(b.path("src/Pyrrhic/"));
+        exe.root_module.addIncludePath(b.path("src/Pyrrhic/"));
     }
 
     return exe;

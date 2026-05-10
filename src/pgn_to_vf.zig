@@ -23,13 +23,13 @@ const pgn = root.pgn;
 const GameRecord = viriformat.GameRecord;
 
 pub fn convert(
+    allocator: std.mem.Allocator,
     input: *std.Io.Reader,
     output: *std.Io.Writer,
     skip_broken_games: bool,
-    allocator: std.mem.Allocator,
 ) !void {
     var position_count: u64 = 0;
-    var timer = try std.time.Timer.start();
+    const start_time = std.Io.Timestamp.now(root.io, .awake);
     var num_broken_games: u64 = 0;
     var num_okay_games: u64 = 0;
 
@@ -68,7 +68,8 @@ pub fn convert(
         }
     }
 
-    const elapsed = timer.read();
+    const now = std.Io.Timestamp.now(root.io, .awake);
+    const elapsed = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
 
     try output.flush();
     std.debug.print(
@@ -76,7 +77,7 @@ pub fn convert(
         \\parsed games: {}
         \\total games: {}
         \\total positions: {}
-        \\time taken: {D}
+        \\time taken: {}ns
         \\positions/s: {}
         \\
     , .{
@@ -85,6 +86,6 @@ pub fn convert(
         num_broken_games + num_okay_games,
         position_count,
         elapsed,
-        position_count * @as(u128, std.time.ns_per_s) / elapsed,
+        position_count * @as(u128, std.time.ns_per_s) / @max(1, elapsed),
     });
 }

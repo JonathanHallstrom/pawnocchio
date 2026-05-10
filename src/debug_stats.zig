@@ -488,7 +488,7 @@ pub const Correlation = struct {
     }
 
     fn formatTopCorrelations(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        var correlations: std.ArrayListUnmanaged(struct { f64, usize, usize }) = .{};
+        var correlations: std.ArrayListUnmanaged(struct { f64, usize, usize }) = .empty;
         defer correlations.deinit(self.allocator);
 
         for (0..self.names.len) |i| {
@@ -583,7 +583,7 @@ fn formatPrecisePercentiles(
 }
 
 const ScalarValidation = if (SCALAR_VALIDATION) struct {
-    samples: std.ArrayListUnmanaged(i64) = .{},
+    samples: std.ArrayListUnmanaged(i64) = .empty,
 
     const Self = @This();
 

@@ -27,7 +27,7 @@ const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
 pub var thread_pool: ThreadPool = undefined;
 
-pub var debug_stats_lock: std.Thread.Mutex = .{};
+pub var debug_stats_lock: std.Io.Mutex = .init;
 pub var debug_stats: std.StringHashMap(debug_stats_mod.Scalar) = .init(std.heap.page_allocator);
 pub var debug_bool_stats: std.StringHashMap(debug_stats_mod.BoolStat) = .init(std.heap.page_allocator);
 pub var debug_corr_stats: std.StringHashMap(debug_stats_mod.Correlation) = .init(std.heap.page_allocator);
@@ -114,8 +114,8 @@ pub fn dbgCorr(name: []const u8, comptime names: []const []const u8, values: any
 }
 
 fn dbgImpl(name: []const u8, value: i64) void {
-    debug_stats_lock.lock();
-    defer debug_stats_lock.unlock();
+    debug_stats_lock.lockUncancelable(root.io);
+    defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_stats.getOrPut(name) catch unreachable;
     if (!gp.found_existing) {
@@ -126,8 +126,8 @@ fn dbgImpl(name: []const u8, value: i64) void {
 }
 
 fn dbgBoolImpl(name: []const u8, value: bool) void {
-    debug_stats_lock.lock();
-    defer debug_stats_lock.unlock();
+    debug_stats_lock.lockUncancelable(root.io);
+    defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_bool_stats.getOrPut(name) catch unreachable;
     if (!gp.found_existing) {
@@ -138,8 +138,8 @@ fn dbgBoolImpl(name: []const u8, value: bool) void {
 }
 
 fn dbgCorrImpl(name: []const u8, comptime names: []const []const u8, values: []const f64) void {
-    debug_stats_lock.lock();
-    defer debug_stats_lock.unlock();
+    debug_stats_lock.lockUncancelable(root.io);
+    defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_corr_stats.getOrPut(name) catch unreachable;
     if (!gp.found_existing) {
@@ -154,8 +154,8 @@ fn dbgCorrImpl(name: []const u8, comptime names: []const []const u8, values: []c
 fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void {
     std.debug.assert(granularity > 0);
 
-    debug_stats_lock.lock();
-    defer debug_stats_lock.unlock();
+    debug_stats_lock.lockUncancelable(root.io);
+    defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_range_stats.getOrPut(name) catch unreachable;
     if (!gp.found_existing) {
@@ -168,7 +168,7 @@ fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void
 }
 
 pub fn printDebugStats() void {
-    var writer = &root.stdout_writer.interface;
+    const writer = root.stdout_writer;
 
     var iter = debug_stats.iterator();
     while (iter.next()) |entry| {
@@ -227,7 +227,7 @@ pub fn init() !void {
     debug_bool_stats = .init(std.heap.page_allocator);
     debug_corr_stats = .init(std.heap.page_allocator);
     debug_range_stats = .init(std.heap.page_allocator);
-    debug_rng.seed(@bitCast(std.time.microTimestamp()));
+    debug_rng.seed(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(root.io, .awake).nanoseconds))));
 }
 
 pub fn deinit() void {
@@ -334,8 +334,8 @@ fn datagenWorker(
     random_move_count_high: u8,
     min_depth: i32,
     node_count: u64,
-    writer: anytype,
-    writer_mutex: *std.Thread.Mutex,
+    writer_wrapper: *std.Io.File.Writer,
+    writer_mutex: *std.atomic.Mutex,
     stats: *DatagenStats,
 ) void {
     numa.bindCurrentThread(i) catch |err| {
@@ -357,15 +357,7 @@ fn datagenWorker(
     searcher.tt = std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster)) catch std.debug.panic("allocation failed\n", .{});
     const viriformat = root.viriformat;
     var seed: u64 = 0;
-    std.posix.getrandom(std.mem.asBytes(&seed)) catch {
-        const globals = struct {
-            var fallback_datagen_seed_counter = std.atomic.Value(u64).init(0);
-        };
-        var seed_prng = std.Random.DefaultCsprng.init(.{0} ** 32);
-        seed_prng.addEntropy(std.mem.asBytes(&globals.fallback_datagen_seed_counter.fetchAdd(1, .seq_cst)));
-        seed_prng.addEntropy(std.mem.asBytes(&std.time.nanoTimestamp()));
-        seed_prng.fill(std.mem.asBytes(&seed));
-    };
+    _ = std.os.linux.getrandom(std.mem.asBytes(&seed).ptr, std.mem.asBytes(&seed).len, 0);
     var rng = std.Random.DefaultPrng.init(seed);
     var alloc_buffer: [1 << 20]u8 = undefined;
     var num_positions_written: usize = 0;
@@ -494,8 +486,10 @@ fn datagenWorker(
             2 => stats.wins.fetchAdd(1, .seq_cst),
             else => {},
         };
-        writer_mutex.lock();
-        game.serializeInto(&writer.interface) catch @panic("failed to write game");
+        while (!writer_mutex.tryLock()) {
+            std.Thread.yield() catch {};
+        }
+        game.serializeInto(&writer_wrapper.interface) catch @panic("failed to write game");
 
         writer_mutex.unlock();
     }
@@ -505,7 +499,7 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
     var fbs = std.Io.Writer.fixed(buf);
 
     var random_buf: [32]u8 align(32) = undefined;
-    try std.posix.getrandom(&random_buf);
+    _ = std.os.linux.getrandom(std.mem.asBytes(&random_buf).ptr, std.mem.asBytes(&random_buf).len, 0);
 
     const build_options = @import("build_options");
     var eval_identifier = build_options.eval_identifier;
@@ -519,12 +513,14 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
 
 pub fn datagen(num_nodes: u64, positions: u64) !void {
     var buf: [4096]u8 = undefined;
-    var timer = try std.time.Timer.start();
-    var out_file = try std.fs.cwd().createFile(try getFileName(num_nodes, &buf), .{});
+    const start_time = std.Io.Timestamp.now(root.io, .awake);
+    var out_file = try std.Io.Dir.cwd().createFile(root.io, try getFileName(num_nodes, &buf), .{ .truncate = true });
+    defer out_file.close(root.io);
 
-    var writer = out_file.writer(&buf);
+    var writer_wrapper = out_file.writerStreaming(root.io, &buf);
+    var writer = &writer_wrapper.interface;
 
-    var writer_mutex = std.Thread.Mutex{};
+    var writer_mutex = std.atomic.Mutex.unlocked;
     var stats = DatagenStats{};
 
     var threads = try std.ArrayList(std.Thread).initCapacity(std.heap.page_allocator, thread_pool.threads.items.len);
@@ -534,27 +530,28 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     }
 
     for (0..thread_pool.threads.items.len) |i| {
-        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer, &writer_mutex, &stats }));
+        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer_wrapper, &writer_mutex, &stats }));
     }
     defer for (0..thread_pool.threads.items.len) |i| {
         std.heap.page_allocator.free(thread_pool.searchers.items[i].tt);
     };
     var prev_positions: usize = 0;
-    var prev_time = timer.read();
+    var prev_time: u64 = 0;
     var pps_ema_opt: ?u64 = null;
     while (true) {
-        std.Thread.sleep(std.time.ns_per_s);
+        std.Io.sleep(root.io, std.Io.Duration.fromNanoseconds(std.time.ns_per_s), .awake) catch {};
         if (!writer_mutex.tryLock()) {
-            std.Thread.sleep(std.time.ns_per_ms);
+            std.Io.sleep(root.io, std.Io.Duration.fromNanoseconds(std.time.ns_per_ms), .awake) catch {};
             continue;
         }
-        try writer.interface.flush();
+        try writer.flush();
         writer_mutex.unlock();
         const cur_positions = stats.positions.load(.seq_cst);
         if (cur_positions >= positions) {
             std.process.exit(0);
         }
-        const time = timer.read();
+        const now = std.Io.Timestamp.now(root.io, .awake);
+        const time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
         if (cur_positions == prev_positions) {
             continue;
         }
@@ -587,23 +584,23 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allo
         allocator.free(fen);
     };
     if (path) |p| {
-        var f = try std.fs.cwd().openFile(p, .{});
-        defer f.close();
+        var f = try std.Io.Dir.cwd().openFile(root.io, p, .{});
+        defer f.close(root.io);
         var reader_buf: [4096]u8 = undefined;
-        var reader = f.reader(&reader_buf);
+        var reader = f.readerStreaming(root.io, &reader_buf);
 
         var line_buf: [128]u8 = undefined;
         var line_writer = std.Io.Writer.fixed(&line_buf);
 
-        while (reader.interface.streamDelimiter(&line_writer, '\n')) |fen_size| {
+        while (reader.interface.streamDelimiter(&line_writer, '\n') catch null) |fen_size| {
             std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
-            std.debug.assert(line_writer.buffered().len == fen_size);
+            std.debug.assert(line_writer.end == fen_size);
 
-            try fens.append(try allocator.dupe(u8, line_writer.buffered()));
+            try fens.append(try allocator.dupe(u8, line_writer.buffer[0..line_writer.end]));
             const dfrc_pos = rng.random().uintLessThan(u20, 960 * 960);
             try fens.append(try allocator.dupe(u8, root.Board.dfrcPosition(dfrc_pos).toFen().slice()));
             _ = line_writer.consumeAll();
-        } else |_| {}
+        }
     }
     rng.random().shuffle([]const u8, fens.items);
 
@@ -630,7 +627,7 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allo
             continue :fen_loop;
         }
 
-        try writer.interface.print("info string genfens {s}\n", .{board.toFen().slice()});
+        try writer.print("info string genfens {s}\n", .{board.toFen().slice()});
         remaining -= 1;
     }
 }

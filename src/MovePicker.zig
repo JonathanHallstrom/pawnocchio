@@ -136,44 +136,59 @@ pub fn deinit(self: MovePicker) void {
     self.movelist.vals.len = 0;
 }
 
-fn packScore(score: i32, idx: usize) u32 {
-    const score_u32: u32 = @intCast(score + (1 << 20));
-    return @intCast(score_u32 << 8 | idx);
+fn packScore(score: i32, idx: u32) i32 {
+    return score << 8 | @as(i32, @intCast(idx));
 }
 
-fn packScores(comptime N: usize, scores: @Vector(N, i32), indices: @Vector(N, u32)) @Vector(N, u32) {
-    const offset: @Vector(N, i32) = @splat(1 << 20);
-    const scores_u32: @Vector(N, u32) = @intCast(scores + offset);
-    return scores_u32 << @splat(8) | indices;
+fn packScores(comptime N: usize, scores: @Vector(N, i32), indices: @Vector(N, i32)) @Vector(N, i32) {
+    return scores << @splat(8) | indices;
 }
 
-noinline fn findBest(noalias self: *MovePicker) usize {
+fn selectPrefix(n: usize, x: anytype, fill: @TypeOf(x)) @TypeOf(x) {
+    const V = @TypeOf(x);
+    const Vi = @typeInfo(V).vector;
+    const T = Vi.child;
+    const N = Vi.len;
+    const zero: std.meta.Int(.unsigned, N) = 0;
+    const mask = ~(~zero << @intCast(n));
+    const predicate: @Vector(N, bool) = @bitCast(mask);
+    return @select(T, predicate, x, fill);
+}
+
+fn findBest(noalias self: *MovePicker) usize {
     const moves = self.movelist.vals.slice()[self.first..self.last];
-    const scores = self.scores[self.first..self.last];
+    const len = self.last - self.first;
+    const scores = self.scores[self.first..];
 
-    const UNROLL = std.simd.suggestVectorLength(u32) orelse 1;
-    var best_vec: @Vector(UNROLL, u32) = @splat(0);
+    var i: usize = 0;
+    var best: i32 = std.math.minInt(i32);
 
-    var i: u32 = 0;
-    var indices = std.simd.iota(u32, UNROLL);
-    while (i + UNROLL <= scores.len) : ({
-        i += UNROLL;
-        indices += @splat(UNROLL);
-    }) {
-        best_vec = @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices));
+    if (std.simd.suggestVectorLength(i32)) |UNROLL| {
+        var best_vec: @Vector(UNROLL, i32) = @splat(std.math.minInt(i32));
+        var indices = std.simd.iota(i32, UNROLL);
+
+        while (i + UNROLL < len) : ({
+            i += UNROLL;
+            indices += @splat(UNROLL);
+        }) {
+            @branchHint(.unlikely);
+            best_vec = @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices));
+        }
+        const limit_vec: @Vector(UNROLL, i32) = @splat(@intCast(len));
+        best_vec = @select(i32, indices < limit_vec, @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices)), best_vec);
+
+        best = @reduce(.Max, best_vec) & 0xff;
+    } else {
+        while (i < len) : (i += 1) {
+            best = @max(best, packScore(scores[i], i));
+        }
     }
 
-    var best: u32 = @reduce(.Max, best_vec);
-    while (i < scores.len) : (i += 1) {
-        best = @max(best, packScore(scores[i], i));
-    }
+    const best_idx: usize = @intCast(best);
 
-    const best_idx: usize = best & 0xff;
+    std.mem.swap(Move, &moves[0], &moves[best_idx]);
+    std.mem.swap(i32, &scores[0], &scores[best_idx]);
 
-    if (best_idx != 0) {
-        std.mem.swap(Move, &moves[0], &moves[best_idx]);
-        std.mem.swap(i32, &scores[0], &scores[best_idx]);
-    }
     const res = self.first;
     self.first += 1;
     return res;
@@ -228,8 +243,8 @@ inline fn quietValue(
     }
 
     const danger = danger_squares[piece_idx];
-    const danger_bonus = (&from_danger_bonus)[piece_idx];
-    const danger_penalty = (&to_danger_penalty)[piece_idx];
+    const danger_bonus = from_danger_bonus[piece_idx];
+    const danger_penalty = to_danger_penalty[piece_idx];
     if (root.Bitboard.contains(danger, typed.move.from())) {
         @branchHint(.unpredictable);
         res += danger_bonus;
@@ -311,8 +326,8 @@ pub fn next(
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
 
-            const all_threats = (&board.threats)[stm.flipped().toInt()];
-            const defended = (&board.threats)[stm.toInt()];
+            const all_threats = board.threatsFor(stm.flipped());
+            const defended = board.threatsFor(stm);
             const undefended_threats = all_threats & ~defended;
             const pawn = board.threatsBy(stm.flipped(), .pawn);
             const knight = board.threatsBy(stm.flipped(), .knight);

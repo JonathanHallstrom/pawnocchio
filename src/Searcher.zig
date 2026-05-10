@@ -284,19 +284,19 @@ fn updatePv(self: *Searcher, move: Move) void {
 }
 
 fn stackEntry(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self), *StackEntry) {
-    return &(&self.search_stack)[@intCast(STACK_PADDING + @as(i64, self.ply) + offset)];
+    return &self.search_stack[@intCast(STACK_PADDING + @as(i64, self.ply) + offset)];
 }
 
 fn evalState(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self), *evaluation.State) {
-    return &(&self.eval_states)[@intCast(@as(i64, self.ply) + offset)];
+    return &self.eval_states[@intCast(@as(i64, self.ply) + offset)];
 }
 
 fn searchStackRoot(self: anytype) root.inheritConstness(@TypeOf(self), [*]StackEntry) {
-    return (&self.search_stack)[STACK_PADDING..];
+    return self.search_stack[STACK_PADDING..];
 }
 
 fn evalStateRoot(self: *Searcher) [*]evaluation.State {
-    return (&self.eval_states)[0..];
+    return self.eval_states[0..];
 }
 
 fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
@@ -450,7 +450,7 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
             }
             break :blk res;
         };
-        return (&(&(&table)[@intCast(@min(depth - 1, 31))])[@min(legal - 1, 31)])[@intFromBool(is_quiet)];
+        return table[@intCast(@min(depth - 1, 31))][@min(legal - 1, 31)][@intFromBool(is_quiet)];
     }
 }
 
@@ -653,7 +653,7 @@ fn qsearch(
         {
             std.debug.assert(board.isNoisy(move));
         }
-        const dest_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], move.to());
+        const dest_threatened = root.Bitboard.contains(board.threatsFor(stm.flipped()), move.to());
         const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const is_recapture = move.to() == previous_move_destination;
         if (best_score > evaluation.matedIn(MAX_PLY)) {
@@ -914,7 +914,7 @@ fn search(
         // reverse futility pruning (rfp)
         if (eval >= beta - TUNABLES.rfp_min_margin) {
             const corrplexity = self.correction_histories.squaredCorrectionTerms(board, cur.move, cur.prev);
-            const opponent_has_easy_capture = board.occupancyFor(stm) & (&board.lesser_threats)[stm.flipped().toInt()] != 0;
+            const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesserThreatsFor(stm.flipped()) != 0;
             const conditional_margin =
                 TUNABLES.rfp_improving_margin * @intFromBool(improving) +
                 TUNABLES.rfp_easy_margin * @intFromBool(opponent_has_easy_capture) +
@@ -938,7 +938,7 @@ fn search(
         }
 
         // razoring
-        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & (&board.lesser_threats)[stm.toInt()] != 0;
+        const we_have_easy_capture = board.occupancyFor(stm.flipped()) & board.lesserThreatsFor(stm) != 0;
         const depth_3 = @max(0, depth - 3);
         if (eval +
             TUNABLES.razoring_offs +
@@ -1147,7 +1147,7 @@ fn search(
         {
             std.debug.assert(!is_quiet);
         }
-        const dest_threatened = root.Bitboard.contains((&board.threats)[stm.flipped().toInt()], move.to());
+        const dest_threatened = root.Bitboard.contains(board.threatsFor(stm.flipped()), move.to());
         const skip_see_pruning = mp.stage == .good_noisies or !dest_threatened;
         const history_terms = self.histories.readMoveTerms(
             board,
@@ -1563,7 +1563,7 @@ const InfoType = enum {
 };
 
 fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) void {
-    const elapsed = @max(1, self.limits.timer.read());
+    const elapsed = @max(1, self.limits.elapsed());
     const type_str = switch (tp) {
         .completed => "",
         .lower => " lowerbound",

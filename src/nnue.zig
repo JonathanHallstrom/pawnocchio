@@ -46,20 +46,111 @@ pub const Q1_BITS = std.math.log2_int_ceil(u32, Q1);
 pub const INPUT_BUCKET_LAYOUT = arch.INPUT_BUCKET_LAYOUT;
 
 pub const TARGET = arch.target(@import("builtin").cpu);
-pub const VEC_BYTES = arch.vecBytes(@import("builtin").cpu);
-
-pub fn vecSize(comptime T: type) comptime_int {
-    return VEC_BYTES / @sizeOf(T);
-}
-
-const AccumulatorVec = @Vector(vecSize(i16), i16);
-const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / vecSize(i16);
+pub const VEC_BYTES = arch.VEC_BYTES;
+pub const vecSize = arch.vecSize;
+pub const AccumulatorVec = arch.AccumulatorVec;
+pub const ACCUMULATOR_VECTOR_COUNT = arch.ACCUMULATOR_VECTOR_COUNT;
+pub const RawAccumulator = arch.RawAccumulator;
 
 pub const Accumulator = struct {
     data: [L1_SIZE]i16 align(64),
 
-    inline fn vecs(self: anytype) root.inheritConstness(@TypeOf(self), *align(64) [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec) {
+    pub inline fn vecs(self: anytype) root.inheritConstness(@TypeOf(self), *align(64) RawAccumulator) {
         return @ptrCast(&self.data);
+    }
+
+    inline fn addSubManyImpl(dest: *Accumulator, src: *const Accumulator, adds: anytype, subs: anytype) void {
+        var i: usize = 0;
+
+        const UNROLL = 1;
+        while (i + UNROLL <= ACCUMULATOR_VECTOR_COUNT) : (i += UNROLL) {
+            var vals: [UNROLL]AccumulatorVec = undefined;
+            inline for (0..UNROLL) |j| {
+                vals[j] = src.vecs()[i + j];
+            }
+
+            inline for (0..UNROLL) |j| {
+                inline for (adds) |a| {
+                    vals[j] += a[i + j];
+                }
+                inline for (subs) |s| {
+                    vals[j] -= s[i + j];
+                }
+            }
+
+            inline for (0..UNROLL) |j| {
+                dest.vecs()[i + j] = vals[j];
+            }
+            std.mem.doNotOptimizeAway(i);
+        }
+
+        while (i + 1 <= ACCUMULATOR_VECTOR_COUNT) : (i += 1) {
+            var vals: AccumulatorVec = src.vecs()[i];
+
+            inline for (adds) |a| {
+                vals += a[i];
+            }
+            inline for (subs) |s| {
+                vals -= s[i];
+            }
+
+            dest.vecs()[i] = vals;
+        }
+    }
+
+    pub inline fn addSubMany(
+        self: *Accumulator,
+        adds: anytype,
+        subs: anytype,
+    ) void {
+        self.addSubManyImpl(self, adds, subs);
+    }
+
+    pub inline fn copyAddSubMany(
+        self: *Accumulator,
+        noalias src: *const Accumulator,
+        adds: anytype,
+        subs: anytype,
+    ) void {
+        self.addSubManyImpl(src, adds, subs);
+    }
+
+    pub inline fn add(
+        self: *Accumulator,
+        weights: *const RawAccumulator,
+    ) void {
+        self.addSubMany(.{weights}, .{});
+    }
+
+    pub inline fn copyAdd(
+        self: *Accumulator,
+        noalias src: *const Accumulator,
+        weights: *const RawAccumulator,
+    ) void {
+        self.copyAddSubMany(src, .{weights}, .{});
+    }
+
+    pub inline fn sub(
+        self: *Accumulator,
+        weights: *const RawAccumulator,
+    ) void {
+        self.addSubMany(.{}, .{weights});
+    }
+
+    pub inline fn addMany(
+        self: *Accumulator,
+        comptime N: usize,
+        adds: [N]*const RawAccumulator,
+    ) void {
+        self.addSubMany(adds, .{});
+    }
+
+    pub inline fn subMany(
+        self: *Accumulator,
+        comptime N: usize,
+        subs: [N]*const RawAccumulator,
+    ) void {
+        self.addSubMany(.{}, subs);
     }
 };
 
@@ -82,10 +173,7 @@ const build_options = @import("build_options");
 const use_numa = build_options.use_numa and builtin.os.tag == .linux and builtin.link_libc;
 
 pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
-    if (INPUT_BUCKET_COUNT == 1) {
-        return 0;
-    }
-    return INPUT_BUCKET_LAYOUT[(if (stm == .white) king_square else king_square.flipRank()).toInt()];
+    return @min(INPUT_BUCKET_COUNT - 1, INPUT_BUCKET_LAYOUT[(if (stm == .white) king_square else king_square.flipRank()).toInt()]);
 }
 
 pub inline fn whichOutputBucket(board: *const Board) usize {
@@ -94,18 +182,11 @@ pub inline fn whichOutputBucket(board: *const Board) usize {
     return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.occupancy()) - 2) / divisor);
 }
 
-var weights_file: std.fs.File = undefined;
-var mapped_weights: []align(std.heap.pageSize()) const u8 = undefined;
-var mapper: @import("MappedFile.zig") = undefined;
 const net = @embedFile("net");
 const verbatim_backing: [net.len:0]u8 align(64) = net.*;
 
-pub var verbatim_weights = @as(*const Weights, @ptrCast(&verbatim_backing));
+pub var verbatim_weights: *const Weights = @ptrCast(&verbatim_backing);
 var weights_by_node: numa.PerNode(Weights) = .{};
-
-inline fn hiddenLayerWeightsVector(weights: *const Weights) []const @Vector(vecSize(i16), i16) {
-    return @as([*]const @Vector(vecSize(i16), i16), @ptrCast(&weights.ft_w))[0 .. weights.ft_w.len / vecSize(i16)];
-}
 
 pub export fn setWeights(w: *const Weights) void {
     verbatim_weights = w;
@@ -115,6 +196,7 @@ pub fn init() !void {
     if (!use_numa) {
         return;
     }
+
     try weights_by_node.allocCopyToAll(verbatim_weights);
 }
 
@@ -122,6 +204,7 @@ pub fn deinit() void {
     if (!use_numa) {
         return;
     }
+
     weights_by_node.deinit();
 }
 
@@ -193,16 +276,30 @@ pub const MirroringType = if (HORIZONTAL_MIRRORING) struct {
     pub fn flip(_: anytype) void {}
 };
 
-pub fn idx(comptime perspective: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square, mirror: MirroringType) usize {
-    const bucket_offs = whichInputBucket(perspective, king_sq) * INPUT_SIZE;
-    const side_offs: usize = if (perspective == side) 0 else 1;
-    const sq_offs: usize = (if (perspective == .black) sq.flipRank().toInt() else sq.toInt()) ^ 7 * @as(usize, @intFromBool(mirror.read()));
-    const tp_offs: usize = tp.toInt();
-    return bucket_offs + side_offs * 64 * 6 + tp_offs * 64 + sq_offs;
-}
+pub inline fn feature(
+    weights: *const Weights,
+    perspective: Colour,
+    side: Colour,
+    king_sq: Square,
+    tp: PieceType,
+    sq_inp: Square,
+    mirror: MirroringType,
+) *const RawAccumulator {
+    const bucket = whichInputBucket(perspective, king_sq);
 
-fn vecIdx(comptime perspective: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square, mirror: MirroringType) usize {
-    return idx(perspective, side, king_sq, tp, sq, mirror) * L1_SIZE / vecSize(i16);
+    const side_idx: usize = if (perspective == side) 0 else 1;
+
+    var sq = sq_inp;
+    if (perspective == .black) {
+        @branchHint(.unpredictable);
+        sq = sq.flipRank();
+    }
+    if (mirror.read()) {
+        @branchHint(.unpredictable);
+        sq = sq.flipFile();
+    }
+
+    return &weights.ft_w[bucket][side_idx][tp.toInt()][sq.toInt()];
 }
 
 pub const State = struct {
@@ -230,7 +327,7 @@ pub const State = struct {
         };
     }
 
-    inline fn vecAccFor(self: anytype, col: Colour) *align(64) const [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec {
+    inline fn vecAccFor(self: anytype, col: Colour) *align(64) const RawAccumulator {
         return (if (col == .white) self.white.ptr else self.black.ptr).vecs();
     }
 
@@ -344,66 +441,52 @@ pub const State = struct {
     }
 
     inline fn writeFeature(self: *State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, tp: PieceType, sq: Square, ctx: evaluation.Context) void {
-        const add_idx = vecIdx(acc, side, king_sq, tp, sq, self.mirrorFor(acc));
-
-        const other_vec = self.vecAccFor(acc);
         const self_buf = self.buffer(acc, ctx);
-        const self_vec = self_buf.vecs();
-        for (0..ACCUMULATOR_VECTOR_COUNT) |i| {
-            self_vec[i] = other_vec[i] +
-                hiddenLayerWeightsVector(weights)[add_idx + i];
-        }
+        self_buf.copyAdd(
+            self.half(acc).ptr,
+            feature(weights, acc, side, king_sq, tp, sq, self.mirrorFor(acc)),
+        );
         self.setHalf(acc, self_buf);
     }
 
     inline fn writeMove(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, ctx: evaluation.Context) void {
-        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
-        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
-
-        const other_vec = other.vecAccFor(acc);
         const self_buf = self.buffer(acc, ctx);
-        const self_vec = self_buf.vecs();
-        for (0..ACCUMULATOR_VECTOR_COUNT) |i| {
-            self_vec[i] = other_vec[i] +
-                hiddenLayerWeightsVector(weights)[add_idx + i] -
-                hiddenLayerWeightsVector(weights)[sub_idx + i];
-        }
+        self_buf.copyAddSubMany(
+            other.half(acc).ptr,
+            .{feature(weights, acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc))},
+            .{feature(weights, acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc))},
+        );
         self.setHalf(acc, self_buf);
     }
 
     inline fn writeCapture(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add_tp: PieceType, add_sq: Square, sub_tp: PieceType, sub_sq: Square, opp_sub_tp: PieceType, opp_sub_sq: Square, ctx: evaluation.Context) void {
-        const add_idx = vecIdx(acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc));
-        const sub_idx = vecIdx(acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc));
-        const opp_sub_idx = vecIdx(acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc));
-
-        const other_vec = other.vecAccFor(acc);
         const self_buf = self.buffer(acc, ctx);
-        const self_vec = self_buf.vecs();
-        for (0..ACCUMULATOR_VECTOR_COUNT) |i| {
-            self_vec[i] = other_vec[i] +
-                hiddenLayerWeightsVector(weights)[add_idx + i] -
-                hiddenLayerWeightsVector(weights)[sub_idx + i] -
-                hiddenLayerWeightsVector(weights)[opp_sub_idx + i];
-        }
+        self_buf.copyAddSubMany(
+            other.half(acc).ptr,
+            .{
+                feature(weights, acc, side, king_sq, add_tp, add_sq, self.mirrorFor(acc)),
+            },
+            .{
+                feature(weights, acc, side, king_sq, sub_tp, sub_sq, self.mirrorFor(acc)),
+                feature(weights, acc, side.flipped(), king_sq, opp_sub_tp, opp_sub_sq, self.mirrorFor(acc)),
+            },
+        );
         self.setHalf(acc, self_buf);
     }
 
     inline fn writeCastle(self: *State, other: *const State, weights: *const Weights, comptime acc: Colour, comptime side: Colour, king_sq: Square, add1_tp: PieceType, add1_sq: Square, add2_tp: PieceType, add2_sq: Square, sub1_tp: PieceType, sub1_sq: Square, sub2_tp: PieceType, sub2_sq: Square, ctx: evaluation.Context) void {
-        const add1_idx = vecIdx(acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc));
-        const sub1_idx = vecIdx(acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc));
-        const add2_idx = vecIdx(acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc));
-        const sub2_idx = vecIdx(acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc));
-
-        const other_vec = other.vecAccFor(acc);
         const self_buf = self.buffer(acc, ctx);
-        const self_vec = self_buf.vecs();
-        for (0..ACCUMULATOR_VECTOR_COUNT) |i| {
-            self_vec[i] = other_vec[i] +
-                hiddenLayerWeightsVector(weights)[add1_idx + i] -
-                hiddenLayerWeightsVector(weights)[sub1_idx + i] +
-                hiddenLayerWeightsVector(weights)[add2_idx + i] -
-                hiddenLayerWeightsVector(weights)[sub2_idx + i];
-        }
+        self_buf.copyAddSubMany(
+            other.half(acc).ptr,
+            .{
+                feature(weights, acc, side, king_sq, add1_tp, add1_sq, self.mirrorFor(acc)),
+                feature(weights, acc, side, king_sq, add2_tp, add2_sq, self.mirrorFor(acc)),
+            },
+            .{
+                feature(weights, acc, side, king_sq, sub1_tp, sub1_sq, self.mirrorFor(acc)),
+                feature(weights, acc, side, king_sq, sub2_tp, sub2_sq, self.mirrorFor(acc)),
+            },
+        );
         self.setHalf(acc, self_buf);
     }
 
@@ -855,7 +938,7 @@ pub const State = struct {
         // in Q0² / 2⁹ * Q1
         var l1_intermediate: [L2_SIZE / vecSize(i32)][L2_UNROLL]i32Vec = @splat(@splat(@splat(0)));
         {
-            const w: [*]const i8 = &(&weights.l1w)[output_bucket];
+            const w: [*]const i8 = &weights.l1w[output_bucket];
             const ft_i32: [*]i32 = @ptrCast(&activated_ft);
 
             const nonzero_indices, const num_nonzero_indices = @import("sparse.zig").findNonZeroIndices(&activated_ft);
@@ -896,7 +979,7 @@ pub const State = struct {
         // in Q²
         var l1_out_vec: [2 * L2_SIZE / vecSize(i32)]i32Vec = undefined;
         {
-            const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&(&weights.l1b)[output_bucket]));
+            const l1_bias_vec: [*]const i32Vec = @ptrCast(@alignCast(&weights.l1b[output_bucket]));
             const SHIFT = comptime Q0_BITS * 2 - 9 + Q1_BITS - Q_BITS;
             const LO: i32Vec = @splat(0);
             const HI: i32Vec = @splat(Q);
@@ -910,10 +993,9 @@ pub const State = struct {
                 }
 
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const biased = intermediate + biases;
-                const shifted = biased >> @splat(SHIFT);
+                const shifted = intermediate + biases >> @splat(SHIFT);
 
-                const crelu = std.math.clamp(biased, LO, HI << @splat(SHIFT)) >> @splat(SHIFT - Q_BITS);
+                const crelu = std.math.clamp(shifted, LO, HI) << @splat(Q_BITS);
                 const csrelu = std.math.clamp(shifted * shifted, LO, HI2);
 
                 l1_out_vec[i] = crelu;
@@ -922,14 +1004,14 @@ pub const State = struct {
         }
 
         // in Q³
-        var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast((&weights.l2b)[output_bucket]);
+        var l2_intermediate: [L3_SIZE / vecSize(i32)]i32Vec = @bitCast(weights.l2b[output_bucket]);
         {
             const l1_out: *const [2 * L2_SIZE]i32 = @ptrCast(&l1_out_vec);
-            const l2_weight_vec: *const [2 * L2_SIZE][L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l2w)[output_bucket]));
+            const l2_weight_vec: *const [2 * L2_SIZE][L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&weights.l2w[output_bucket]));
             for (0..L2_SIZE * 2) |i| {
                 const l1_vec: i32Vec = @splat(l1_out[i]);
                 for (0..L3_SIZE / vecSize(i32)) |j| {
-                    l2_intermediate[j] += l1_vec * (&l2_weight_vec[i])[j];
+                    l2_intermediate[j] += l1_vec * l2_weight_vec[i][j];
                 }
             }
         }
@@ -937,7 +1019,7 @@ pub const State = struct {
         // in Q⁴
         var l3_sum: i32Vec = @splat(0);
         {
-            const l3_weight_vec: *const [L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&(&weights.l3w)[output_bucket]));
+            const l3_weight_vec: *const [L3_SIZE / vecSize(i32)]i32Vec = @ptrCast(@alignCast(&weights.l3w[output_bucket]));
             const LO: i32Vec = @splat(0);
             const HI3: i32Vec = @splat(Q * Q * Q);
             for (0..L3_SIZE / vecSize(i32)) |i| {
@@ -946,7 +1028,7 @@ pub const State = struct {
             }
         }
 
-        const bias = (&weights.l3b)[output_bucket];
+        const bias = weights.l3b[output_bucket];
         const scaled = (@reduce(.Add, l3_sum) + bias) * SCALE;
 
         return evaluation.clampScore(@divTrunc(scaled, arch.Q * arch.Q * arch.Q * arch.Q));

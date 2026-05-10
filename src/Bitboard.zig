@@ -524,11 +524,11 @@ fn idx(i: anytype) usize {
 }
 
 pub fn kingMoves(square: anytype) u64 {
-    return (&KING_MOVES)[idx(square)];
+    return KING_MOVES[idx(square)];
 }
 
 pub fn knightMoves(square: anytype) u64 {
-    return (&KNIGHT_MOVES)[idx(square)];
+    return KNIGHT_MOVES[idx(square)];
 }
 
 pub inline fn knightMoveBitBoard(bb: u64) u64 {
@@ -540,7 +540,7 @@ pub inline fn knightMoveBitBoard(bb: u64) u64 {
 }
 
 pub fn pawnAttacks(square: anytype, color: anytype) u64 {
-    return (&(&PAWN_ATTACKS)[idx(square)])[idx(color)];
+    return PAWN_ATTACKS[idx(square)][idx(color)];
 }
 
 pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
@@ -549,59 +549,59 @@ pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
 }
 
 pub fn bishopAttacks(square: anytype) u64 {
-    return (&BISHOP_ATTACKS)[idx(square)];
+    return BISHOP_ATTACKS[idx(square)];
 }
 
 pub fn rookAttacks(square: anytype) u64 {
-    return (&ROOK_ATTACKS)[idx(square)];
+    return ROOK_ATTACKS[idx(square)];
 }
 
 pub fn queenAttacks(square: anytype) u64 {
-    return (&QUEEN_ATTACKS)[idx(square)];
+    return QUEEN_ATTACKS[idx(square)];
 }
 
 pub fn extendingRayBb(from: anytype, to: anytype) u64 {
-    return (&(&EXTENDING_RAY_BB)[idx(from)])[idx(to)];
+    return EXTENDING_RAY_BB[idx(from)][idx(to)];
 }
 
 pub fn rookRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&ROOK_RAY_BETWEEN)[idx(from)])[idx(to)];
+    return ROOK_RAY_BETWEEN[idx(from)][idx(to)];
 }
 
 pub fn bishopRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&BISHOP_RAY_BETWEEN)[idx(from)])[idx(to)];
+    return BISHOP_RAY_BETWEEN[idx(from)][idx(to)];
 }
 
 pub fn queenRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&QUEEN_RAY_BETWEEN)[idx(from)])[idx(to)];
+    return QUEEN_RAY_BETWEEN[idx(from)][idx(to)];
 }
 
 pub fn rookRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&ROOK_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
+    return ROOK_RAY_BETWEEN_INCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn bishopRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&BISHOP_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
+    return BISHOP_RAY_BETWEEN_INCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn queenRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&QUEEN_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
+    return QUEEN_RAY_BETWEEN_INCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn rookRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&ROOK_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
+    return ROOK_RAY_BETWEEN_EXCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn bishopRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&BISHOP_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
+    return BISHOP_RAY_BETWEEN_EXCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn queenRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&QUEEN_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
+    return QUEEN_RAY_BETWEEN_EXCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn checkMask(from: anytype, to: anytype) u64 {
-    return (&(&CHECK_RAY_BETWEEN)[idx(from)])[idx(to)];
+    return CHECK_RAY_BETWEEN[idx(from)][idx(to)];
 }
 
 pub const LocIterator = struct {

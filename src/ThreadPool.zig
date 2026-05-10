@@ -19,6 +19,12 @@ const root = @import("root.zig");
 const Searcher = root.Searcher;
 const TTCluster = root.TTCluster;
 const history = root.history;
+
+const IS_LINUX_LIBC = @import("builtin").os.tag == .linux and @import("builtin").link_libc;
+const mman_c = if (IS_LINUX_LIBC) @cImport({
+    @cDefine("_GNU_SOURCE", "");
+    @cInclude("sys/mman.h");
+}) else void;
 const evaluation = root.evaluation;
 const numa = @import("numa.zig");
 const nnue = if (evaluation.eval_mode == .nnue) @import("nnue.zig") else void;
@@ -28,12 +34,9 @@ const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
 fn adviseHugePages(p: anytype) !void {
     const bytes = std.mem.sliceAsBytes(p);
-    if (@import("builtin").os.tag == .linux and @import("builtin").link_libc) {
+    if (IS_LINUX_LIBC) {
         const ptr = @as([*]align(4096) u8, @alignCast(bytes.ptr));
-        try std.posix.madvise(ptr, bytes.len, @cImport({
-            @cDefine("_GNU_SOURCE", "");
-            @cInclude("sys/mman.h");
-        }).MADV_HUGEPAGE);
+        try std.posix.madvise(ptr, bytes.len, @as(u32, @intCast(mman_c.MADV_HUGEPAGE)));
     }
 }
 
@@ -95,8 +98,8 @@ const CorrHistStore = struct {
 };
 
 const Thread = struct {
-    mutex: std.Thread.Mutex = .{},
-    cond: std.Thread.Condition = .{},
+    mutex: std.Io.Mutex = .init,
+    cond: std.Io.Condition = .init,
     action: ThreadAction = .sleep,
     exited: bool = false,
     tt: []TTCluster = &.{},
@@ -129,12 +132,12 @@ const Thread = struct {
         };
 
         while (true) {
-            self.mutex.lock();
+            self.mutex.lockUncancelable(root.io);
             while (self.action == .sleep) {
-                self.cond.wait(&self.mutex);
+                self.cond.waitUncancelable(root.io, &self.mutex);
             }
             const action = self.action;
-            self.mutex.unlock();
+            self.mutex.unlock(root.io);
 
             if (action == .exit) break;
 
@@ -161,47 +164,47 @@ const Thread = struct {
                 else => {},
             }
 
-            self.mutex.lock();
+            self.mutex.lockUncancelable(root.io);
             self.action = .sleep;
-            self.cond.signal();
-            self.mutex.unlock();
+            self.cond.signal(root.io);
+            self.mutex.unlock(root.io);
         }
 
-        self.mutex.lock();
+        self.mutex.lockUncancelable(root.io);
         self.exited = true;
-        self.cond.signal();
-        self.mutex.unlock();
+        self.cond.signal(root.io);
+        self.mutex.unlock(root.io);
     }
 
     pub fn wake(self: *Thread, action: ThreadAction) void {
-        self.mutex.lock();
+        self.mutex.lockUncancelable(root.io);
         self.action = action;
-        self.mutex.unlock();
-        self.cond.signal();
+        self.mutex.unlock(root.io);
+        self.cond.signal(root.io);
     }
 
     pub fn blockUntilSleep(self: *Thread) void {
-        self.mutex.lock();
+        self.mutex.lockUncancelable(root.io);
         while (self.action != .sleep) {
-            self.cond.wait(&self.mutex);
+            self.cond.waitUncancelable(root.io, &self.mutex);
         }
-        self.mutex.unlock();
+        self.mutex.unlock(root.io);
     }
 
     pub fn signalAndAwaitShutdown(self: *Thread) void {
         self.wake(.exit);
-        self.mutex.lock();
+        self.mutex.lockUncancelable(root.io);
         while (!self.exited) {
-            self.cond.wait(&self.mutex);
+            self.cond.waitUncancelable(root.io, &self.mutex);
         }
-        self.mutex.unlock();
+        self.mutex.unlock(root.io);
         self.thread.join();
     }
 };
 
 pub const ThreadPool = struct {
-    threads: std.ArrayListUnmanaged(*Thread) = .{},
-    searchers: std.ArrayListUnmanaged(*Searcher) = .{},
+    threads: std.ArrayListUnmanaged(*Thread) = .empty,
+    searchers: std.ArrayListUnmanaged(*Searcher) = .empty,
     tt: []align(std.atomic.cache_line) TTCluster = &.{},
     corrhists: CorrHistStore = .{},
     allocator: std.mem.Allocator,

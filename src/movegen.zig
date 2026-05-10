@@ -522,7 +522,7 @@ pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const 
 }
 
 test "startpos 16 pawn moves" {
-    root.init();
+    root.init(std.testing.io);
     var rec = MoveListReceiver{};
     const board = Board.startpos();
     const full_mask = ~@as(u64, 0);
@@ -533,7 +533,7 @@ test "startpos 16 pawn moves" {
 }
 
 test "startpos 20 moves" {
-    root.init();
+    root.init(std.testing.io);
     var rec = MoveListReceiver{};
     const board = Board.startpos();
     generateAllQuiets(.white, &board, &rec);
@@ -545,7 +545,7 @@ test "startpos 20 moves" {
 }
 
 test "kiwipete 48 moves" {
-    root.init();
+    root.init(std.testing.io);
     var rec = MoveListReceiver{};
     const board = try Board.parseFen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - ", false);
     generateAllNoisies(.white, &board, &rec);
@@ -556,7 +556,7 @@ test "kiwipete 48 moves" {
 }
 
 test "pos5 44 moves" {
-    root.init();
+    root.init(std.testing.io);
     var rec = MoveListReceiver{};
     const board = try Board.parseFen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", false);
     generateAllNoisies(.white, &board, &rec);
