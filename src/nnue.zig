@@ -910,9 +910,10 @@ pub const State = struct {
                 }
 
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const shifted = intermediate + biases >> @splat(SHIFT);
+                const biased = intermediate + biases;
+                const shifted = biased >> @splat(SHIFT);
 
-                const crelu = std.math.clamp(shifted, LO, HI) << @splat(Q_BITS);
+                const crelu = std.math.clamp(biased, LO, HI << @splat(SHIFT)) >> @splat(SHIFT - Q_BITS);
                 const csrelu = std.math.clamp(shifted * shifted, LO, HI2);
 
                 l1_out_vec[i] = crelu;
