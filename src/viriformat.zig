@@ -98,7 +98,7 @@ pub const MarlinPackedBoard = extern struct {
                 else => undefined,
             };
             switch (col) {
-                inline else => |ccol| res.addPiece(ccol, pt, sq, Board.NullEvalState{}),
+                inline else => |ccol| res.addPiece(ccol, pt, sq),
             }
         }
         if (@popCount(res.kingFor(.white)) != 1 or @popCount(res.kingFor(.black)) != 1) {

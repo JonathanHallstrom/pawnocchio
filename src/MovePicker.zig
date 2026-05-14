@@ -224,7 +224,7 @@ inline fn quietValue(
     var res = tuning.histQ(terms, tuning.quietHistoryWeights("ord"));
     const piece_idx = typed.tp.toInt();
 
-    if (board.isDirectCheck(typed.move)) {
+    if (board.givesDirectCheck(typed.move)) {
         @branchHint(.unpredictable);
         res += root.TUNABLE_CONSTANTS.ord_direct_check_bonus;
     }

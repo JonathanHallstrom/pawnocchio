@@ -104,7 +104,7 @@ const EvalPair = struct {
     }
 };
 
-const STACK_PADDING = history.CONTHIST_OFFSETS[history.NUM_CONTHISTS - 1];
+const STACK_PADDING = history.HIGHEST_CONTHIST_OFFSET;
 
 search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
 is_ready: bool align(std.atomic.cache_line) = false,
@@ -676,7 +676,7 @@ fn qsearch(
                 futility <= alpha and
                 !is_recapture and
                 @abs(alpha) <= 2000 and
-                !board.isDirectCheck(move) and
+                !board.givesDirectCheck(move) and
                 !SEE.scoreMove(board, move, 1, .pruning))
             {
                 if (!evaluation.isTBScore(best_score)) {
@@ -1151,7 +1151,7 @@ fn search(
             continue;
         }
         const is_quiet = board.isQuiet(move);
-        const direct_check = board.isDirectCheck(move);
+        const direct_check = board.givesDirectCheck(move);
         if (std.debug.runtime_safety and
             (mp.stage == .good_noisies or mp.stage == .bad_noisies))
         {

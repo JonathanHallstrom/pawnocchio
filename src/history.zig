@@ -95,6 +95,7 @@ pub const CONTHIST_OFFSETS = [_]comptime_int{
     3,
 };
 pub const NUM_CONTHISTS = CONTHIST_OFFSETS.len;
+pub const HIGHEST_CONTHIST_OFFSET = CONTHIST_OFFSETS[NUM_CONTHISTS - 1];
 pub const ConthistMoves = [NUM_CONTHISTS]TypedMove;
 pub const ConthistTables = [NUM_CONTHISTS]*ContHistory.ContHistTable;
 
