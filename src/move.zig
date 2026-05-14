@@ -23,6 +23,7 @@ const Square = root.Square;
 const PieceType = root.PieceType;
 const Colour = root.Colour;
 const Board = root.Board;
+const CastlingRights = root.CastlingRights;
 
 // 6 bits from 6 bits to 4 bits flag
 // start out with simplest possible flag, just the promotion piece
@@ -107,6 +108,10 @@ pub const Move = enum(u16) {
         return initFromParts(from_.toInt(), to_.toInt(), castling_flag | 2 + col.toInt());
     }
 
+    pub fn isMoveLeft(self: Move) bool {
+        return self.from().toInt() > self.to().toInt();
+    }
+
     pub fn promoTypeEquals(self: Move, p: PieceType) bool {
         const to_check: i16 = p.toInt();
         const f: i16 = self.flag();
@@ -119,7 +124,9 @@ pub const Move = enum(u16) {
     }
 
     pub fn getEnPassantPawnSquare(self: Move) Square {
-        return Square.fromRankFile(self.from().getRank(), self.to().getFile());
+        const f = self.from().toInt();
+        const t = self.to().toInt();
+        return .fromInt((f & 0b111000) | (t & 0b000111));
     }
 
     pub fn toString(self: Move, board: *const Board) BoundedArray(u8, 5) {
@@ -136,7 +143,7 @@ pub const Move = enum(u16) {
                     } else {
                         bw.print("{s}{s}", .{
                             @tagName(self.from()),
-                            @tagName(board.castlingKingDestFor(self, stm)),
+                            @tagName(CastlingRights.castlingKingDestFor(self, stm)),
                         }) catch unreachable;
                     }
                 } else if (board.isPromo(self)) {

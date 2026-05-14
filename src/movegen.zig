@@ -21,6 +21,7 @@ const simd = @import("simd.zig");
 
 const BoundedArray = root.BoundedArray;
 const Board = root.Board;
+const CastlingRights = root.CastlingRights;
 const Colour = root.Colour;
 const Move = root.Move;
 const Bitboard = root.Bitboard;
@@ -223,7 +224,7 @@ pub inline fn getAttacks(comptime col: Colour, pt: PieceType, square: Square, oc
         .bishop => attacks.bishopAttacks(square, occ),
         .knight => Bitboard.knightMoves(square),
         .rook => attacks.rookAttacks(square, occ),
-        .queen => attacks.bishopAttacks(square, occ) | attacks.rookAttacks(square, occ),
+        .queen => attacks.queenAttacks(square, occ),
         .king => Bitboard.kingMoves(square),
     };
 }
@@ -245,7 +246,7 @@ pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Boa
     const d_rank = if (stm == .white) 1 else -1;
 
     const double_move_mask: u64 = Bitboard.rankBB(if (stm == .white) .fourth else .fifth);
-    const promo_mask: u64 = Bitboard.rankBB(board.startingRankFor(stm.flipped()));
+    const promo_mask: u64 = Bitboard.rankBB(CastlingRights.startingRankFor(stm.flipped()));
 
     const pawns = board.pawnsFor(stm);
     const occ = board.occupancy();
@@ -275,7 +276,7 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
     const ReceiverType = @TypeOf(move_receiver.*);
     const d_rank = if (stm == .white) 1 else -1;
 
-    const promo_mask: u64 = Bitboard.rankBB(board.startingRankFor(stm.flipped()));
+    const promo_mask: u64 = Bitboard.rankBB(CastlingRights.startingRankFor(stm.flipped()));
 
     const pawns = board.pawnsFor(stm);
     const them = board.occupancyFor(stm.flipped());
@@ -382,7 +383,7 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
     emitBB(king_sq, Bitboard.kingMoves(king_sq) & ~occ & ~their_threats, move_receiver);
 
     if (board.checkers == 0) {
-        const home_rank: Rank = board.startingRankFor(stm);
+        const home_rank: Rank = CastlingRights.startingRankFor(stm);
 
         const kingside_rook_file = board.castling_rights.kingsideRookFileFor(stm);
         const queenside_rook_file = board.castling_rights.queensideRookFileFor(stm);

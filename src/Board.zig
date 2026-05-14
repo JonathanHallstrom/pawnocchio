@@ -203,10 +203,6 @@ pub inline fn colouredPieceOn(self: *const Board, sq: Square) ?ColouredPieceType
     return ColouredPieceType.fromInt(raw);
 }
 
-pub inline fn startingRankFor(self: *const Board, col: Colour) Rank {
-    return self.castling_rights.startingRankFor(col);
-}
-
 pub fn sumPieces(self: *const Board, values: anytype) std.meta.Child(@TypeOf(values)) {
     var res: std.meta.Child(@TypeOf(values)) = 0;
     for (PieceType.all) |pt| {
@@ -759,38 +755,6 @@ pub inline fn getCapturedType(self: *const Board, move: Move) ?PieceType {
         return cpt.toPieceType();
     }
     return null;
-}
-
-pub inline fn kingsideKingDestFor(self: *const Board, col: Colour) Square {
-    return Square.fromRankFile(self.startingRankFor(col), File.g);
-}
-
-pub inline fn queensideKingDestFor(self: *const Board, col: Colour) Square {
-    return Square.fromRankFile(self.startingRankFor(col), File.c);
-}
-
-pub inline fn castlingKingDestFor(self: *const Board, move: Move, col: Colour) Square {
-    if (move.from().toInt() < move.to().toInt()) {
-        return self.kingsideKingDestFor(col);
-    } else {
-        return self.queensideKingDestFor(col);
-    }
-}
-
-pub inline fn kingsideRookDestFor(self: *const Board, col: Colour) Square {
-    return Square.fromRankFile(self.startingRankFor(col), File.f);
-}
-
-pub inline fn queensideRookDestFor(self: *const Board, col: Colour) Square {
-    return Square.fromRankFile(self.startingRankFor(col), File.d);
-}
-
-pub inline fn castlingRookDestFor(self: *const Board, move: Move, col: Colour) Square {
-    if (move.from().toInt() < move.to().toInt()) {
-        return self.kingsideRookDestFor(col);
-    } else {
-        return self.queensideRookDestFor(col);
-    }
 }
 
 fn zobristPiece(self: *Board, comptime col: Colour, pt: PieceType, sq: Square) void {
@@ -1378,9 +1342,9 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
         .castling => {
             @branchHint(.unlikely);
             const king_from = move.from();
-            const king_to = self.castlingKingDestFor(move, stm);
+            const king_to = CastlingRights.castlingKingDestFor(move, stm);
             const rook_from = move.to();
-            const rook_to = self.castlingRookDestFor(move, stm);
+            const rook_to = CastlingRights.castlingRookDestFor(move, stm);
             updated_castling_rights.kingMoved(stm);
             self.movePieceCastling(stm, king_from, king_to, rook_from, rook_to, eval_state);
         },
@@ -1444,7 +1408,7 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
                     if (move.tp() != .castling) {
                         continue;
                     }
-                    if ((self.castlingKingDestFor(move, stm).getFile() == .c) == queenside) {
+                    if ((CastlingRights.castlingKingDestFor(move, stm).getFile() == .c) == queenside) {
                         return move;
                     }
                 }
@@ -1601,9 +1565,9 @@ pub fn isCastlingMoveLegal(self: *const Board, comptime stm: Colour, move: Move)
     if (self.pinnedFor(stm) & rook_from.toBitboard() != 0) {
         return false;
     }
-    const rook_to = self.castlingRookDestFor(move, stm);
+    const rook_to = CastlingRights.castlingRookDestFor(move, stm);
     const king_from = move.from();
-    const king_to = self.castlingKingDestFor(move, stm);
+    const king_to = CastlingRights.castlingKingDestFor(move, stm);
     const king_rook_bbs = rook_from.toBitboard() | king_from.toBitboard();
 
     const all_pieces = rook_from.toBitboard() | rook_to.toBitboard() | king_from.toBitboard() | king_to.toBitboard();
@@ -1738,7 +1702,7 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
         .knight => Bitboard.knightMoves(from),
         .bishop => attacks.bishopAttacks(from, self.occupancy()),
         .rook => attacks.rookAttacks(from, self.occupancy()),
-        .queen => attacks.bishopAttacks(from, self.occupancy()) | attacks.rookAttacks(from, self.occupancy()),
+        .queen => attacks.queenAttacks(from, self.occupancy()),
         .king => unreachable,
     } != 0;
 }

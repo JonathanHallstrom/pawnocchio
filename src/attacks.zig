@@ -28,3 +28,7 @@ pub const AttackEntry = attack_impl.AttackEntry;
 pub const init = attack_impl.init;
 pub const bishopAttacks = attack_impl.getBishopAttacks;
 pub const rookAttacks = attack_impl.getRookAttacks;
+
+pub inline fn queenAttacks(square: anytype, blockers: u64) u64 {
+    return bishopAttacks(square, blockers) | rookAttacks(square, blockers);
+}
