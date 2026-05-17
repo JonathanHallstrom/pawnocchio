@@ -40,31 +40,13 @@ pub const Accumulator = struct {
         return @ptrCast(&self.data);
     }
 
-    inline fn addSubManyImpl(dest: *Accumulator, src: *const Accumulator, adds: anytype, subs: anytype) void {
-        const UNROLL = comptime @max(1, 4 / (adds.len + subs.len));
-
-        var i: usize = 0;
-        while (i + UNROLL <= arch.ACCUMULATOR_VECTOR_COUNT) : (i += UNROLL) {
-            var vals: [UNROLL]arch.AccumulatorVec = undefined;
-            inline for (0..UNROLL) |j| {
-                vals[j] = src.vecs()[i + j];
-            }
-
-            inline for (0..UNROLL) |j| {
-                inline for (adds) |a| {
-                    vals[j] += a[i + j];
-                }
-                inline for (subs) |s| {
-                    vals[j] -= s[i + j];
-                }
-            }
-
-            inline for (0..UNROLL) |j| {
-                dest.vecs()[i + j] = vals[j];
-            }
-        }
-
-        while (i + 1 <= arch.ACCUMULATOR_VECTOR_COUNT) : (i += 1) {
+    inline fn addImpl(
+        self: *Accumulator,
+        noalias src: *const Accumulator,
+        adds: anytype,
+        subs: anytype,
+    ) void {
+        for (0..arch.ACCUMULATOR_VECTOR_COUNT) |i| {
             var vals: arch.AccumulatorVec = src.vecs()[i];
 
             inline for (adds) |a| {
@@ -74,63 +56,63 @@ pub const Accumulator = struct {
                 vals -= s[i];
             }
 
-            dest.vecs()[i] = vals;
+            self.vecs()[i] = vals;
         }
     }
 
-    pub inline fn addSubMany(
-        self: *Accumulator,
-        adds: anytype,
-        subs: anytype,
-    ) void {
-        self.addSubManyImpl(self, adds, subs);
-    }
-
-    pub inline fn copyAddSubMany(
+    pub fn copyAddSubMany(
         self: *Accumulator,
         noalias src: *const Accumulator,
         adds: anytype,
         subs: anytype,
     ) void {
-        self.addSubManyImpl(src, adds, subs);
+        self.addImpl(src, adds, subs);
     }
 
-    pub inline fn add(
+    pub fn addSubMany(
+        self: *Accumulator,
+        adds: anytype,
+        subs: anytype,
+    ) void {
+        self.addImpl(self, adds, subs);
+    }
+
+    pub fn add(
         self: *Accumulator,
         weights: *const arch.RawAccumulator,
     ) void {
-        self.addSubMany(.{weights}, .{});
+        self.addImpl(self, .{weights}, .{});
     }
 
-    pub inline fn copyAdd(
-        self: *Accumulator,
-        noalias src: *const Accumulator,
-        weights: *const arch.RawAccumulator,
-    ) void {
-        self.copyAddSubMany(src, .{weights}, .{});
-    }
-
-    pub inline fn sub(
+    pub fn sub(
         self: *Accumulator,
         weights: *const arch.RawAccumulator,
     ) void {
-        self.addSubMany(.{}, .{weights});
+        self.addImpl(self, .{}, .{weights});
     }
 
-    pub inline fn addMany(
+    pub fn addMany(
         self: *Accumulator,
         comptime N: usize,
         adds: [N]*const arch.RawAccumulator,
     ) void {
-        self.addSubMany(adds, .{});
+        self.addImpl(self, adds, .{});
     }
 
-    pub inline fn subMany(
+    pub fn subMany(
         self: *Accumulator,
         comptime N: usize,
         subs: [N]*const arch.RawAccumulator,
     ) void {
-        self.addSubMany(.{}, subs);
+        self.addImpl(self, .{}, subs);
+    }
+
+    pub fn copyAdd(
+        self: *Accumulator,
+        noalias src: *const Accumulator,
+        weights: *const arch.RawAccumulator,
+    ) void {
+        self.addImpl(src, .{weights}, .{});
     }
 };
 
@@ -189,31 +171,31 @@ pub fn weightsForNode(node: usize) *const arch.Weights {
 
 const DirtyPiece = union(enum) {
     clean,
-    // extern so that from and to are always in the same place so theres no branch needed to get them
-    move: extern struct {
+    move: struct {
         to: PSQTFeature,
         from: PSQTFeature,
     },
-    capture: extern struct {
+    capture: struct {
         to: PSQTFeature,
         from: PSQTFeature,
         captured: PSQTFeature,
     },
-    castle: extern struct {
-        to: PSQTFeature,
-        from: PSQTFeature,
-        rook_to: PSQTFeature,
-        rook_from: PSQTFeature,
+    castle: struct {
+        k_to: Square,
+        k_from: Square,
+        r_to: Square,
+        r_from: Square,
+        col: Colour,
     },
 
-    pub fn initMove(to_feat: PSQTFeature, from_feat: PSQTFeature) DirtyPiece {
+    pub inline fn initMove(to_feat: PSQTFeature, from_feat: PSQTFeature) DirtyPiece {
         return .{ .move = .{
             .to = to_feat,
             .from = from_feat,
         } };
     }
 
-    pub fn initCapture(to_feat: PSQTFeature, from_feat: PSQTFeature, captured: PSQTFeature) DirtyPiece {
+    pub inline fn initCapture(to_feat: PSQTFeature, from_feat: PSQTFeature, captured: PSQTFeature) DirtyPiece {
         return .{ .capture = .{
             .to = to_feat,
             .from = from_feat,
@@ -221,12 +203,13 @@ const DirtyPiece = union(enum) {
         } };
     }
 
-    pub fn initCastle(king_to: PSQTFeature, rook_to: PSQTFeature, king_from: PSQTFeature, rook_from: PSQTFeature) DirtyPiece {
+    pub inline fn initCastle(king_to: PSQTFeature, rook_to: PSQTFeature, king_from: PSQTFeature, rook_from: PSQTFeature) DirtyPiece {
         return .{ .castle = .{
-            .to = king_to,
-            .from = king_from,
-            .rook_to = rook_to,
-            .rook_from = rook_from,
+            .k_to = king_to.s,
+            .k_from = king_from.s,
+            .r_to = rook_to.s,
+            .r_from = rook_from.s,
+            .col = king_to.col(),
         } };
     }
 
@@ -241,14 +224,18 @@ const DirtyPiece = union(enum) {
     inline fn to(self: DirtyPiece) PSQTFeature {
         return switch (self) {
             .clean => unreachable,
-            inline else => |d| d.to,
+            .move => |state| state.to,
+            .capture => |state| state.to,
+            .castle => |state| .init(state.col, .king, state.k_to),
         };
     }
 
     inline fn from(self: DirtyPiece) PSQTFeature {
         return switch (self) {
             .clean => unreachable,
-            inline else => |d| d.from,
+            .move => |state| state.from,
+            .capture => |state| state.from,
+            .castle => |state| .init(state.col, .king, state.k_from),
         };
     }
 };
@@ -509,12 +496,12 @@ pub const State = struct {
             .castle => |state| buf.copyAddSubMany(
                 src,
                 .{
-                    feature(weights, acc, king_sq, .psqt, state.to, mir),
-                    feature(weights, acc, king_sq, .psqt, state.rook_to, mir),
+                    feature(weights, acc, king_sq, .psqt, .init(state.col, .king, state.k_to), mir),
+                    feature(weights, acc, king_sq, .psqt, .init(state.col, .rook, state.r_to), mir),
                 },
                 .{
-                    feature(weights, acc, king_sq, .psqt, state.from, mir),
-                    feature(weights, acc, king_sq, .psqt, state.rook_from, mir),
+                    feature(weights, acc, king_sq, .psqt, .init(state.col, .king, state.k_from), mir),
+                    feature(weights, acc, king_sq, .psqt, .init(state.col, .rook, state.r_from), mir),
                 },
             ),
             .clean => unreachable,

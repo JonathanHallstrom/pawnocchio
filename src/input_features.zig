@@ -20,7 +20,7 @@ pub const FeatureKind = enum {
     psqt,
 };
 
-pub const PSQTFeature = extern struct {
+pub const PSQTFeature = struct {
     c: root.ColouredPieceType,
     s: root.Square,
 
