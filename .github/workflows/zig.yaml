@@ -12,7 +12,7 @@ jobs:
           fetch-depth: 1
       - uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
       - run: zig build check
   test:
     runs-on: ubuntu-latest
@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 1
       - uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
       - run: zig build test
   lint:
     runs-on: ubuntu-latest
@@ -34,5 +34,5 @@ jobs:
           fetch-depth: 1
       - uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
       - run: zig fmt --check .
