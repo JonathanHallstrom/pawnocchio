@@ -40,6 +40,7 @@ extern "kernel32" fn MapViewOfFile(
 extern "kernel32" fn UnmapViewOfFile(lpBaseAddress: windows.LPCVOID) callconv(.winapi) windows.BOOL;
 
 const CloseHandle = windows.CloseHandle;
+const PAGE_READONLY = 0x02;
 
 const Mapping = if (IS_WINDOWS) windows.HANDLE else void;
 
@@ -51,7 +52,7 @@ const Self = @This();
 pub fn init(file: std.Io.File, io: std.Io) !Self {
     const len = (try file.stat(io)).size;
     if (IS_WINDOWS) {
-        const file_mapping = CreateFileMappingA(file.handle, null, windows.PAGE_READONLY, 0, 0, null) orelse return error.FileMapFailed;
+        const file_mapping = CreateFileMappingA(file.handle, null, PAGE_READONLY, 0, 0, null) orelse return error.FileMapFailed;
         const READ = 4;
         const raw_ptr = MapViewOfFile(file_mapping, READ, 0, 0, len) orelse return error.MapViewFailed;
         const ptr: [*]const u8 = @ptrCast(raw_ptr);

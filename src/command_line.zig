@@ -1079,6 +1079,7 @@ fn handleSanitise(allocator: std.mem.Allocator, args: anytype, threads: usize) !
 }
 
 fn runBench(bench_depth: i32) !void {
+    if (root.engine == void) return error.EngineMissing;
     defer root.engine.printDebugStats();
     var total_nodes: u64 = 0;
     const start_time = std.Io.Timestamp.now(root.io, .awake);
