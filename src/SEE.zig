@@ -120,13 +120,13 @@ pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, compt
 
     var stm = board.stm.flipped();
 
-    const all_pinned = board.pinned[0] | board.pinned[1];
+    const all_pinned = board.pinnedFor(.white) | board.pinnedFor(.black);
 
     const white_king_to_ray = Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(.white)), to);
     const black_king_to_ray = Bitboard.extendingRayBb(Square.fromBitboard(board.kingFor(.black)), to);
 
-    const white_allowed_pinned = board.pinned[0] & white_king_to_ray;
-    const black_allowed_pinned = board.pinned[1] & black_king_to_ray;
+    const white_allowed_pinned = board.pinnedFor(.white) & white_king_to_ray;
+    const black_allowed_pinned = board.pinnedFor(.black) & black_king_to_ray;
 
     const allowed_pinned = all_pinned & (white_allowed_pinned | black_allowed_pinned);
 
@@ -173,7 +173,7 @@ pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, compt
 }
 
 test scoreMove {
-    root.init();
+    root.init(std.testing.io);
     try std.testing.expect(scoreMove(&(Board.parseFen("k6b/8/8/8/8/8/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), value(.pawn, .testing), .testing));
     try std.testing.expect(!scoreMove(&(Board.parseFen("k6b/8/8/8/8/2p5/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), value(.pawn, .testing), .testing));
     try std.testing.expect(!scoreMove(&(Board.parseFen("k7/8/8/8/8/2p5/1p6/BK6 w - - 0 1", false) catch unreachable), Move.capture(.a1, .b2), value(.pawn, .testing), .testing));

@@ -183,11 +183,11 @@ pub fn getBishopAttacks(square: Square, blockers: u64) u64 {
     if (@inComptime()) {
         return attack_array_generation.computeBishopAttacks(square, blockers);
     }
-    return (&bishop_attacks)[@intCast((&BISHOP_ATTACK_ENTRIES)[square.toInt()].getBishopIndex(blockers))];
+    return bishop_attacks[@intCast(BISHOP_ATTACK_ENTRIES[square.toInt()].getBishopIndex(blockers))];
 }
 pub fn getRookAttacks(square: Square, blockers: u64) u64 {
     if (@inComptime()) {
         return attack_array_generation.computeRookAttacks(square, blockers);
     }
-    return (&rook_attacks)[@intCast((&ROOK_ATTACK_ENTRIES)[square.toInt()].getRookIndex(blockers))];
+    return rook_attacks[@intCast(ROOK_ATTACK_ENTRIES[square.toInt()].getRookIndex(blockers))];
 }

@@ -206,6 +206,14 @@ pub fn contains(bitboard: u64, square: Square) bool {
     return bitboard & square.toBitboard() != 0;
 }
 
+pub inline fn containsAny(bitboard: u64, squares: anytype) bool {
+    var res = false;
+    inline for (squares) |square| {
+        res = res or contains(bitboard, square);
+    }
+    return res;
+}
+
 pub fn rayArray(d_rank: anytype, d_file: anytype) [64]u64 {
     @setEvalBranchQuota(1 << 30);
     var res: [64]u64 = undefined;
@@ -524,11 +532,11 @@ fn idx(i: anytype) usize {
 }
 
 pub fn kingMoves(square: anytype) u64 {
-    return (&KING_MOVES)[idx(square)];
+    return KING_MOVES[idx(square)];
 }
 
 pub fn knightMoves(square: anytype) u64 {
-    return (&KNIGHT_MOVES)[idx(square)];
+    return KNIGHT_MOVES[idx(square)];
 }
 
 pub inline fn knightMoveBitBoard(bb: u64) u64 {
@@ -540,7 +548,7 @@ pub inline fn knightMoveBitBoard(bb: u64) u64 {
 }
 
 pub fn pawnAttacks(square: anytype, color: anytype) u64 {
-    return (&(&PAWN_ATTACKS)[idx(square)])[idx(color)];
+    return PAWN_ATTACKS[idx(square)][idx(color)];
 }
 
 pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
@@ -549,86 +557,113 @@ pub inline fn pawnAttackBitBoard(bb: u64, col: root.Colour) u64 {
 }
 
 pub fn bishopAttacks(square: anytype) u64 {
-    return (&BISHOP_ATTACKS)[idx(square)];
+    return BISHOP_ATTACKS[idx(square)];
 }
 
 pub fn rookAttacks(square: anytype) u64 {
-    return (&ROOK_ATTACKS)[idx(square)];
+    return ROOK_ATTACKS[idx(square)];
 }
 
 pub fn queenAttacks(square: anytype) u64 {
-    return (&QUEEN_ATTACKS)[idx(square)];
+    return QUEEN_ATTACKS[idx(square)];
 }
 
 pub fn extendingRayBb(from: anytype, to: anytype) u64 {
-    return (&(&EXTENDING_RAY_BB)[idx(from)])[idx(to)];
+    return EXTENDING_RAY_BB[idx(from)][idx(to)];
 }
 
 pub fn rookRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&ROOK_RAY_BETWEEN)[idx(from)])[idx(to)];
+    return ROOK_RAY_BETWEEN[idx(from)][idx(to)];
 }
 
 pub fn bishopRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&BISHOP_RAY_BETWEEN)[idx(from)])[idx(to)];
+    return BISHOP_RAY_BETWEEN[idx(from)][idx(to)];
 }
 
 pub fn queenRayBetween(from: anytype, to: anytype) u64 {
-    return (&(&QUEEN_RAY_BETWEEN)[idx(from)])[idx(to)];
+    return QUEEN_RAY_BETWEEN[idx(from)][idx(to)];
 }
 
 pub fn rookRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&ROOK_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
+    return ROOK_RAY_BETWEEN_INCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn bishopRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&BISHOP_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
+    return BISHOP_RAY_BETWEEN_INCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn queenRayBetweenInclusive(from: anytype, to: anytype) u64 {
-    return (&(&QUEEN_RAY_BETWEEN_INCLUSIVE)[idx(from)])[idx(to)];
+    return QUEEN_RAY_BETWEEN_INCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn rookRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&ROOK_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
+    return ROOK_RAY_BETWEEN_EXCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn bishopRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&BISHOP_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
+    return BISHOP_RAY_BETWEEN_EXCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn queenRayBetweenExclusive(from: anytype, to: anytype) u64 {
-    return (&(&QUEEN_RAY_BETWEEN_EXCLUSIVE)[idx(from)])[idx(to)];
+    return QUEEN_RAY_BETWEEN_EXCLUSIVE[idx(from)][idx(to)];
 }
 
 pub fn checkMask(from: anytype, to: anytype) u64 {
-    return (&(&CHECK_RAY_BETWEEN)[idx(from)])[idx(to)];
+    return CHECK_RAY_BETWEEN[idx(from)][idx(to)];
 }
 
-pub const LocIterator = struct {
+pub const LocIterator = extern struct {
     state: u64,
 
-    pub fn init(bitboard: u64) LocIterator {
+    pub inline fn init(bitboard: u64) LocIterator {
         return .{ .state = bitboard };
     }
 
-    pub fn next(self: *LocIterator) ?Square {
-        if (self.state == 0) {
-            return null;
-        }
-        const res = @ctz(self.state);
-        self.state &= self.state -% 1;
-        return Square.fromInt(@intCast(res));
+    pub inline fn isEmpty(self: LocIterator) bool {
+        return self.state == 0;
     }
 
-    pub fn peek(self: *const LocIterator) ?Square {
-        if (self.state == 0) {
-            return null;
-        }
-        const res = @ctz(self.state);
-        return Square.fromInt(@intCast(res));
+    pub inline fn remaining(self: LocIterator) u8 {
+        return @popCount(self.state);
+    }
+
+    inline fn getLowestBit(self: LocIterator) u64 {
+        return self.state & -%self.state;
+    }
+
+    inline fn popLowestBit(self: *LocIterator) void {
+        self.state &= self.state -% 1;
+    }
+
+    pub inline fn nextRaw(self: *LocIterator) u6 {
+        defer self.popLowestBit();
+        return self.peekRaw();
+    }
+
+    pub inline fn peekRaw(self: *const LocIterator) u6 {
+        return @intCast(@ctz(self.state));
+    }
+
+    pub inline fn next(self: *LocIterator) ?Square {
+        defer self.popLowestBit();
+        return self.peek();
+    }
+
+    pub inline fn peek(self: LocIterator) ?Square {
+        if (self.isEmpty()) return null;
+        return Square.fromInt(@ctz(self.state));
+    }
+
+    pub inline fn nextBB(self: *LocIterator) ?u64 {
+        defer self.popLowestBit();
+        return self.peekBB();
+    }
+
+    pub inline fn peekBB(self: LocIterator) ?u64 {
+        return if (self.isEmpty()) null else self.getLowestBit();
     }
 };
 
 pub fn iterator(bitboard: u64) LocIterator {
-    return LocIterator.init(bitboard);
+    return .init(bitboard);
 }

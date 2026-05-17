@@ -48,8 +48,8 @@ file_mapping: Mapping,
 
 const Self = @This();
 
-pub fn init(file: std.fs.File) !Self {
-    const len = (try file.stat()).size;
+pub fn init(file: std.Io.File, io: std.Io) !Self {
+    const len = (try file.stat(io)).size;
     if (IS_WINDOWS) {
         const file_mapping = CreateFileMappingA(file.handle, null, windows.PAGE_READONLY, 0, 0, null) orelse return error.FileMapFailed;
         const READ = 4;
@@ -62,17 +62,18 @@ pub fn init(file: std.fs.File) !Self {
         };
     } else {
         return .{
-            .data = try std.posix.mmap(null, len, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, file.handle, 0),
+            .data = try std.posix.mmap(null, len, .{ .READ = true }, .{ .TYPE = .PRIVATE }, file.handle, 0),
             .file_mapping = void{},
         };
     }
 }
 
-pub fn deinit(self: *const Self) void {
+pub fn deinit(self: *const Self, io: std.Io) void {
+    _ = io;
     if (IS_WINDOWS) {
         _ = CloseHandle(self.file_mapping);
         _ = UnmapViewOfFile(self.data.ptr);
     } else {
-        std.posix.munmap(@alignCast(self.data));
+        std.posix.munmap(@ptrCast(@alignCast(@constCast(self.data))));
     }
 }

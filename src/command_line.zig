@@ -17,6 +17,7 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const root = @import("root.zig");
+const nnue_arch = @import("nnue_arch.zig");
 const arg_parser = @import("arg_parser.zig");
 const edit_distance = @import("edit_distance.zig");
 const write = root.write;
@@ -175,25 +176,25 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
     };
 }
 
-fn openInputFile(path: []const u8) !std.fs.File {
+fn openInputFile(io: std.Io, path: []const u8) !std.Io.File {
     const open_result = if (std.fs.path.isAbsolute(path))
-        std.fs.openFileAbsolute(path, .{})
+        std.Io.Dir.openFileAbsolute(io, path, .{})
     else
-        std.fs.cwd().openFile(path, .{});
+        std.Io.Dir.cwd().openFile(io, path, .{});
     return open_result catch |e| {
         writeLog("opening file '{s}' gave: '{}'\n", .{ path, e });
         return e;
     };
 }
 
-fn createOutputFile(path: []const u8, allow_overwrite: bool) !std.fs.File {
-    const flags: std.fs.File.CreateFlags = .{
+fn createOutputFile(io: std.Io, path: []const u8, allow_overwrite: bool) !std.Io.File {
+    const flags: std.Io.Dir.CreateFileOptions = .{
         .exclusive = !allow_overwrite,
     };
     const create_result = if (std.fs.path.isAbsolute(path))
-        std.fs.createFileAbsolute(path, flags)
+        std.Io.Dir.createFileAbsolute(io, path, flags)
     else
-        std.fs.cwd().createFile(path, flags);
+        std.Io.Dir.cwd().createFile(io, path, flags);
     return create_result catch |e| {
         if (e == error.PathAlreadyExists and !allow_overwrite) {
             writeLog("refusing to overwrite existing file '{s}' (pass --allow-overwrite)\n", .{path});
@@ -204,19 +205,19 @@ fn createOutputFile(path: []const u8, allow_overwrite: bool) !std.fs.File {
     };
 }
 
-fn ensureTbPathExists(tb_path: []const u8) !void {
+fn ensureTbPathExists(io: std.Io, tb_path: []const u8) !void {
     const access_result = if (std.fs.path.isAbsolute(tb_path))
-        std.fs.accessAbsolute(tb_path, .{})
+        std.Io.Dir.accessAbsolute(io, tb_path, .{})
     else
-        std.fs.cwd().access(tb_path, .{});
+        std.Io.Dir.cwd().access(io, tb_path, .{});
     return access_result catch |e| {
         writeLog("tb path '{s}' is not accessible: '{}'\n", .{ tb_path, e });
         return e;
     };
 }
 
-pub fn handle(allocator: std.mem.Allocator, version: []const u8) !bool {
-    var args = try std.process.argsWithAllocator(allocator);
+pub fn handle(init: std.process.Init, version: []const u8) !bool {
+    var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
 
     _ = args.next() orelse "pawnocchio";
@@ -228,10 +229,9 @@ pub fn handle(allocator: std.mem.Allocator, version: []const u8) !bool {
             return true;
         }
 
-        var tokens = std.mem.tokenizeScalar(u8, arg, ' ');
-        const command_token = tokens.next() orelse "";
-        if (std.meta.stringToEnum(Command, command_token)) |command| {
-            (switch (command) {
+        const cmd_raw = std.mem.trim(u8, arg, "-");
+        if (std.meta.stringToEnum(Command, cmd_raw)) |command| {
+            switch (command) {
                 .help => {
                     handleHelp(version, threads);
                     return true;
@@ -239,34 +239,26 @@ pub fn handle(allocator: std.mem.Allocator, version: []const u8) !bool {
                 .datagen => if (TOOLS_ONLY) {
                     writeLog("datagen is unavailable in this build\n", .{});
                 } else {
-                    try handleDatagen(&args, threads);
+                    try handleDatagen(init.gpa, &args, threads);
                 },
                 .genfens => if (TOOLS_ONLY) {
                     writeLog("genfens is unavailable in this build\n", .{});
                 } else {
-                    try handleGenfens(arg, allocator);
+                    try handleGenfens(init.gpa, &args, threads);
                 },
-                .pgntovf => handlePgnToVf(&args, allocator),
-                .epdtovf => handleEpdToVf(&args, allocator),
-                .vftotxt => handleVfToTxt(&args, allocator),
-                .analyse => handleAnalyse(&args, allocator),
-                .@"relabel-tb" => handleRelabelTb(&args, allocator),
-                .@"relabel-chonker" => handleRelabelChonker(&args, allocator),
-                .sanitise => handleSanitise(&args, allocator),
-                .bench => if (TOOLS_ONLY) {
-                    writeLog("bench is unavailable in this build\n", .{});
-                } else {
-                    try handleBench(&args);
-                },
-            }) catch |e| {
-                if (e != error.HelpRequested) {
-                    return e;
-                }
-            };
+                .pgntovf => try handlePgntovf(init.gpa, &args),
+                .epdtovf => try handleEpdtovf(init.gpa, &args),
+                .vftotxt => try handleVftotxt(init.gpa, &args),
+                .analyse => try handleAnalyse(init.gpa, &args, threads),
+                .@"relabel-tb" => try handleRelabelTb(init.gpa, &args),
+                .@"relabel-chonker" => try handleRelabelChonker(init.gpa, &args),
+                .sanitise => try handleSanitise(init.gpa, &args, threads),
+                .bench => try handleBench(init.gpa, &args, threads),
+            }
             return true;
         }
 
-        logUnknownCommand(command_token, suggestCommand(command_token));
+        logUnknownCommand(arg, suggestCommand(arg));
         return true;
     }
 
@@ -358,7 +350,9 @@ fn handleHelp(version: []const u8, threads: usize) void {
     }
 }
 
-fn handleBench(args: anytype) !void {
+fn handleBench(allocator: std.mem.Allocator, args: anytype, threads: usize) !void {
+    _ = allocator;
+    _ = threads;
     const bench_args = try parseCommandArgs(
         args,
         .{ .depth = BENCH_DEPTH_DEFAULT },
@@ -368,7 +362,8 @@ fn handleBench(args: anytype) !void {
     try runBench(bench_args.depth);
 }
 
-fn handleDatagen(args: anytype, default_threads: usize) !void {
+fn handleDatagen(allocator: std.mem.Allocator, args: anytype, default_threads: usize) !void {
+    _ = allocator;
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -386,32 +381,31 @@ fn handleDatagen(args: anytype, default_threads: usize) !void {
     try root.engine.datagen(parsed.nodes, parsed.positions);
 }
 
-fn handleGenfens(arg: []const u8, allocator: std.mem.Allocator) !void {
+fn handleGenfens(allocator: std.mem.Allocator, args: anytype, threads: usize) !void {
+    _ = threads;
     var seed: u64 = 0;
     var count: usize = 0;
     var book: ?[]const u8 = null;
-    var tokens = std.mem.tokenizeScalar(u8, arg, ' ');
-    _ = tokens.next(); // discard "genfens"
-    count = std.fmt.parseInt(usize, tokens.next() orelse "", 10) catch |e| {
+    count = std.fmt.parseInt(usize, args.next() orelse "", 10) catch |e| {
         writeLog("invalid fen count, error: '{}'\n", .{e});
         return e;
     };
-    _ = tokens.next(); // discard "seed"
-    seed = std.fmt.parseInt(u64, tokens.next() orelse "", 10) catch |e| {
+    _ = args.next(); // discard "seed"
+    seed = std.fmt.parseInt(u64, args.next() orelse "", 10) catch |e| {
         writeLog("invalid seed, error: '{}'\n", .{e});
         return e;
     };
-    _ = tokens.next(); // discard "book"
+    _ = args.next(); // discard "book"
 
-    if (tokens.next()) |path| {
+    if (args.next()) |path| {
         if (!std.ascii.eqlIgnoreCase(path, "none")) {
             book = path;
         }
     }
-    try root.engine.genfens(book, count, seed, &root.stdout_writer, allocator);
+    try root.engine.genfens(book, count, seed, root.stdout_writer, allocator);
 }
 
-fn handlePgnToVf(args: anytype, allocator: std.mem.Allocator) !void {
+fn handlePgntovf(allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -450,27 +444,27 @@ fn handlePgnToVf(args: anytype, allocator: std.mem.Allocator) !void {
         try std.fmt.allocPrint(allocator, "{s}.vf", .{input});
     defer if (parsed.output == null) allocator.free(output);
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
+    var input_file = try openInputFile(root.io, input);
+    defer input_file.close(root.io);
 
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file = try createOutputFile(root.io, output, parsed.@"allow-overwrite");
+    defer output_file.close(root.io);
 
     var input_buf: [4096]u8 = undefined;
     var output_buf: [4096]u8 = undefined;
 
-    var input_reader = input_file.reader(&input_buf);
-    var output_writer = output_file.writer(&output_buf);
+    var input_reader = input_file.readerStreaming(root.io, &input_buf);
+    var output_writer = output_file.writerStreaming(root.io, &output_buf);
 
     try @import("pgn_to_vf.zig").convert(
+        allocator,
         &input_reader.interface,
         &output_writer.interface,
         skip_broken_games,
-        std.heap.smp_allocator,
     );
 }
 
-fn handleEpdToVf(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleEpdtovf(allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -504,28 +498,28 @@ fn handleEpdToVf(args: anytype, allocator: std.mem.Allocator) !void {
         try std.fmt.allocPrint(allocator, "{s}.vf", .{input});
     defer if (parsed.output == null) allocator.free(output);
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
+    var input_file = try openInputFile(root.io, input);
+    defer input_file.close(root.io);
 
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file = try createOutputFile(root.io, output, parsed.@"allow-overwrite");
+    defer output_file.close(root.io);
 
     var input_buf: [4096]u8 = undefined;
     var output_buf: [4096]u8 = undefined;
 
-    var input_reader = input_file.reader(&input_buf);
-    var output_writer = output_file.writer(&output_buf);
+    var input_reader = input_file.readerStreaming(root.io, &input_buf);
+    var output_writer = output_file.writerStreaming(root.io, &output_buf);
 
     try @import("epd_to_vf.zig").convert(
+        allocator,
         &input_reader.interface,
         &output_writer.interface,
         skip_broken_games,
         white_relative,
-        std.heap.smp_allocator,
     );
 }
 
-fn handleVfToTxt(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleVftotxt(allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -537,11 +531,11 @@ fn handleVfToTxt(args: anytype, allocator: std.mem.Allocator) !void {
     );
     const input = parsed.input;
 
-    var file = try openInputFile(input);
-    defer file.close();
+    var file = try openInputFile(root.io, input);
+    defer file.close(root.io);
 
     var buf: [4096]u8 = undefined;
-    var br = file.reader(&buf);
+    var br = file.readerStreaming(root.io, &buf);
 
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
     while (try reader.next()) |game| {
@@ -569,7 +563,8 @@ fn handleVfToTxt(args: anytype, allocator: std.mem.Allocator) !void {
     }
 }
 
-fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleAnalyse(allocator: std.mem.Allocator, args: anytype, threads: usize) !void {
+    _ = threads;
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -586,7 +581,7 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
     const input = parsed.input;
     const verbose = parsed.verbose;
     if (!parsed.@"allow-overwrite") {
-        if (std.fs.cwd().access("score_distribution.txt", .{})) {
+        if (std.Io.Dir.cwd().access(root.io, "score_distribution.txt", .{})) |_| {
             writeLog("refusing to overwrite existing file 'score_distribution.txt' (pass --allow-overwrite)\n", .{});
             return error.PathAlreadyExists;
         } else |e| switch (e) {
@@ -600,7 +595,7 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
 
     var use_tbs = false;
     if (parsed.@"tb-path") |tb_path| {
-        try ensureTbPathExists(tb_path);
+        try ensureTbPathExists(root.io, tb_path);
         const null_terminated = try allocator.dupeZ(u8, tb_path);
         defer allocator.free(null_terminated);
         try root.pyrrhic.init(null_terminated);
@@ -617,12 +612,12 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         std.debug.print("unique count is using a hashset, for better performance try --approximate\n", .{});
     }
 
-    var file = try openInputFile(input);
-    defer file.close();
-    const stat = try file.stat();
+    var file = try openInputFile(root.io, input);
+    defer file.close(root.io);
+    const stat = try file.stat(root.io);
 
     var buf: [4096]u8 = undefined;
-    var br = file.reader(&buf);
+    var br = file.readerStreaming(root.io, &buf);
 
     var sum_exits: i64 = 0;
     var game_count: u64 = 0;
@@ -630,19 +625,19 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
     var wins: u64 = 0;
     var draws: u64 = 0;
     var losses: u64 = 0;
-    var tb_results = std.mem.zeroes(std.EnumArray(root.WDL, std.EnumArray(root.WDL, u64)));
+    var tb_results = std.mem.zeroes(std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64)));
     var king_pos: [64]u64 = .{0} ** 64;
-    var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
-    defer zobrist_set.deinit();
+    var zobrist_set: std.AutoArrayHashMapUnmanaged(u64, void) = .empty;
+    defer zobrist_set.deinit(allocator);
     var score_counts: []u64 = try allocator.alloc(u64, 1 + std.math.maxInt(u16));
     defer allocator.free(score_counts);
     var total_piece_counts: [33]u64 = @splat(0);
     var phase_counts: [25]u64 = @splat(0);
 
-    const PieceCountTable = std.EnumArray(PieceType, [11]u64);
-    var piece_counts: [2]std.EnumArray(PieceType, [11]u64) = @splat(PieceCountTable.initFill(@splat(0)));
+    const PieceCountTable = std.enums.EnumArray(PieceType, [11]u64);
+    var piece_counts: [2]std.enums.EnumArray(PieceType, [11]u64) = @splat(PieceCountTable.initFill(@splat(0)));
     if (!approximate) {
-        try zobrist_set.ensureTotalCapacity(@intCast((stat.size + 3) / 4));
+        try zobrist_set.ensureTotalCapacity(allocator, @intCast((stat.size + 3) / 4));
     }
 
     var approximator = if (approximate) try @import("HyperLogLog.zig").init(20, allocator) else undefined;
@@ -661,7 +656,7 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
 
         if (game_count % 16384 == 0) {
             const unique_count = if (approximate) approximator.count() else zobrist_set.count();
-            const file_pos = try file.getPos();
+            const file_pos = br.logicalPos();
             write("\rprogress: {}% average exit so far: {d:.2} unique positions: {}/{} ({}%)", .{
                 @as(u128, file_pos * 100) / @max(@as(u64, 1), stat.size),
                 @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
@@ -713,7 +708,7 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
             if (approximate) {
                 approximator.add(board.hash);
             } else {
-                try zobrist_set.put(board.hash, void{});
+                try zobrist_set.put(allocator, board.hash, {});
             }
             position_count += 1;
             board.makeMoveSimple(ply.move);
@@ -804,16 +799,16 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
     }
 
     write("writing score distribution to 'score_distribution.txt'\n", .{});
-    var score_distr_file = try createOutputFile("score_distribution.txt", parsed.@"allow-overwrite");
-    defer score_distr_file.close();
+    var score_distr_file = try createOutputFile(root.io, "score_distribution.txt", parsed.@"allow-overwrite");
+    defer score_distr_file.close(root.io);
 
     // its fine to reuse the buffer since we finished reading the file
-    var writer = score_distr_file.writer(&buf);
+    var writer = score_distr_file.writerStreaming(root.io, &buf);
     try writer.interface.print("{any}\n", .{score_counts});
     try writer.interface.flush();
 }
 
-fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleRelabelTb(allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -831,26 +826,26 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
         "relabel-tb",
     );
     const input = parsed.input;
-    try ensureTbPathExists(parsed.@"tb-path");
+    try ensureTbPathExists(root.io, parsed.@"tb-path");
     const null_terminated = try allocator.dupeZ(u8, parsed.@"tb-path");
     defer allocator.free(null_terminated);
     try root.pyrrhic.init(null_terminated);
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
-    const stat = try input_file.stat();
+    var input_file = try openInputFile(root.io, input);
+    defer input_file.close(root.io);
+    const stat = try input_file.stat(root.io);
 
     var name_writer = std.Io.Writer.Allocating.init(allocator);
     defer name_writer.deinit();
     try name_writer.writer.print("{s}_relabeled", .{input});
     const output = parsed.output orelse name_writer.written();
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file = try createOutputFile(root.io, output, parsed.@"allow-overwrite");
+    defer output_file.close(root.io);
 
     var input_buf: [4096]u8 = undefined;
-    var br = input_file.reader(&input_buf);
+    var br = input_file.readerStreaming(root.io, &input_buf);
     var output_buf: [4096]u8 = undefined;
-    var bw = output_file.writer(&output_buf);
+    var bw = output_file.writerStreaming(root.io, &output_buf);
 
     var game_count: u64 = 0;
     var position_count: u64 = 0;
@@ -918,7 +913,7 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
     });
 }
 
-fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleRelabelChonker(allocator: std.mem.Allocator, args: anytype) !void {
     if (root.EVAL_MODE != .nnue) {
         return error.NNUENotEnabled;
     }
@@ -940,21 +935,21 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     );
     const input = parsed.input;
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
-    const stat = try input_file.stat();
+    var input_file = try openInputFile(root.io, input);
+    defer input_file.close(root.io);
+    const stat = try input_file.stat(root.io);
 
     var name_writer = std.Io.Writer.Allocating.init(allocator);
     defer name_writer.deinit();
     try name_writer.writer.print("{s}_evals_relabeled", .{input});
     const output = parsed.output orelse name_writer.written();
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file = try createOutputFile(root.io, output, parsed.@"allow-overwrite");
+    defer output_file.close(root.io);
 
     var input_buf: [4096]u8 = undefined;
-    var br = input_file.reader(&input_buf);
+    var br = input_file.readerStreaming(root.io, &input_buf);
     var output_buf: [4096]u8 = undefined;
-    var bw = output_file.writer(&output_buf);
+    var bw = output_file.writerStreaming(root.io, &output_buf);
 
     var game_count: u64 = 0;
     var position_count: u64 = 0;
@@ -962,7 +957,7 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
 
     const nnue = root.nnue;
-    const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT);
+    const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
     const weights = nnue.weightsForNode(0);
     var rc: RefreshCache = undefined;
     rc.initInPlace(weights);
@@ -976,14 +971,16 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     };
     acc.initInPlace(&Board.startpos(), weights, ctx);
 
-    var timer = try std.time.Timer.start();
+    const start_time = std.Io.Timestamp.now(root.io, .awake);
     while (try reader.next()) |game| {
         game_count += 1;
 
         if (position_count % 16384 == 0) {
+            const now = std.Io.Timestamp.now(root.io, .awake);
+            const elapsed = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
             write("\rprogress: {}% (evals/s: {})", .{
                 @as(u128, br.logicalPos() * 100) / stat.size,
-                position_count * 1000_000_000 / timer.read(),
+                position_count * 1000_000_000 / @max(1, elapsed),
             });
         }
 
@@ -993,14 +990,12 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
         var it = game.iter();
         while (try it.next()) |ply| {
             const board = ply.board;
-            acc.refreshHalf(weights, &rc, .white, board);
-            acc.refreshHalf(weights, &rc, .black, board);
+            acc.refreshHalf(ctx, .white, board);
+            acc.refreshHalf(ctx, .black, board);
             acc.markClean(board);
 
-            const eval = switch (board.stm) {
-                .white => acc.forward(.white, board, ctx),
-                .black => -acc.forward(.black, board, ctx),
-            };
+            const stm_eval = acc.forward(board, ctx);
+            const eval = if (board.stm == .white) stm_eval else -stm_eval;
 
             try record.addMove(ply.move, eval);
 
@@ -1017,7 +1012,8 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     , .{});
 }
 
-fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleSanitise(allocator: std.mem.Allocator, args: anytype, threads: usize) !void {
+    _ = threads;
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -1038,11 +1034,11 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
     );
     const input = parsed.input;
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
+    var input_file = try openInputFile(root.io, input);
+    defer input_file.close(root.io);
 
-    const mapped = try @import("MappedFile.zig").init(input_file);
-    defer mapped.deinit();
+    const mapped = try @import("MappedFile.zig").init(input_file, root.io);
+    defer mapped.deinit(root.io);
 
     const missing_null_terminator =
         mapped.data.len < 4 or
@@ -1051,21 +1047,21 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
         std.debug.print("warning: file does not end with null terminator\n", .{});
     }
 
-    var output_file: ?std.fs.File = null;
-    defer if (output_file) |*file| file.close();
+    var output_file: ?std.Io.File = null;
+    defer if (output_file) |*file| file.close(root.io);
 
     var name_writer: ?std.Io.Writer.Allocating = null;
     defer if (name_writer) |*writer| writer.deinit();
 
     var output_buf: [4096]u8 = undefined;
-    var output_writer: ?std.fs.File.Writer = null;
+    var output_writer: ?std.Io.File.Writer = null;
     if (!parsed.@"check-only") {
         name_writer = std.Io.Writer.Allocating.init(allocator);
         try name_writer.?.writer.print("{s}_sanitised", .{input});
         const output = parsed.output orelse name_writer.?.written();
 
-        output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-        output_writer = output_file.?.writer(&output_buf);
+        output_file = try createOutputFile(root.io, output, parsed.@"allow-overwrite");
+        output_writer = output_file.?.writerStreaming(root.io, &output_buf);
     }
 
     const skipped = try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(
@@ -1085,7 +1081,7 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
 fn runBench(bench_depth: i32) !void {
     defer root.engine.printDebugStats();
     var total_nodes: u64 = 0;
-    var timer = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start\n", .{});
+    const start_time = std.Io.Timestamp.now(root.io, .awake);
     root.engine.reset();
     for ([_][]const u8{
         "1B6/4R1p1/1p4kp/p7/r7/8/5P2/5K2 w - - 2 42",
@@ -1203,14 +1199,13 @@ fn runBench(bench_depth: i32) !void {
             .quiet = true,
         });
         root.engine.waitUntilDoneSearching();
-        total_nodes += root.engine.querySearchedNodes();
+        const node_count = root.engine.querySearchedNodes();
+        total_nodes += node_count;
     }
-    // in the event that bench *somehow* takes 0ns lets still not divide by 0
-    // more realistically this would indicate that the timer is broken
-    const elapsed = @max(1, timer.read());
-    write("{} nodes {} nps\n", .{ total_nodes, @as(u256, total_nodes) * std.time.ns_per_s / elapsed });
+    const now = std.Io.Timestamp.now(root.io, .awake);
+    const elapsed = @max(1, @as(u64, @intCast(start_time.durationTo(now).nanoseconds)));
+    write("{} nodes {} nps\n", .{ total_nodes, @as(u128, total_nodes) * std.time.ns_per_s / elapsed });
 }
-
 fn EnumArrayFormatter(comptime Enum: type, comptime Table: type) type {
     return struct {
         table: Table,
@@ -1238,7 +1233,7 @@ fn formatEnumArray(
 
 fn WdlMatrixFormatter() type {
     return struct {
-        table: std.EnumArray(root.WDL, std.EnumArray(root.WDL, u64)),
+        table: std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64)),
 
         pub fn format(
             self: @This(),
@@ -1261,7 +1256,7 @@ fn WdlMatrixFormatter() type {
 }
 
 fn formatWdlMatrix(
-    table: std.EnumArray(root.WDL, std.EnumArray(root.WDL, u64)),
+    table: std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64)),
 ) WdlMatrixFormatter() {
     return .{ .table = table };
 }

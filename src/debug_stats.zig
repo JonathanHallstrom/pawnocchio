@@ -17,11 +17,7 @@
 const std = @import("std");
 
 fn formatStatValue(writer: *std.Io.Writer, value: f64) std.Io.Writer.Error!void {
-    if (value == @round(value)) {
-        try writer.print("{d:.0}", .{value});
-    } else {
-        try writer.print("{d:.4}", .{value});
-    }
+    try writer.print("{d:.4}", .{value});
 }
 
 fn formatNamedStat(writer: *std.Io.Writer, label: []const u8, value: f64) std.Io.Writer.Error!void {
@@ -488,7 +484,7 @@ pub const Correlation = struct {
     }
 
     fn formatTopCorrelations(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        var correlations: std.ArrayListUnmanaged(struct { f64, usize, usize }) = .{};
+        var correlations: std.ArrayListUnmanaged(struct { f64, usize, usize }) = .empty;
         defer correlations.deinit(self.allocator);
 
         for (0..self.names.len) |i| {
@@ -583,7 +579,7 @@ fn formatPrecisePercentiles(
 }
 
 const ScalarValidation = if (SCALAR_VALIDATION) struct {
-    samples: std.ArrayListUnmanaged(i64) = .{},
+    samples: std.ArrayListUnmanaged(i64) = .empty,
 
     const Self = @This();
 

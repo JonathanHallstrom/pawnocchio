@@ -17,6 +17,7 @@
 const std = @import("std");
 
 const root = @import("root.zig");
+const simd = root.simd;
 
 const Move = root.Move;
 const Board = root.Board;
@@ -136,44 +137,45 @@ pub fn deinit(self: MovePicker) void {
     self.movelist.vals.len = 0;
 }
 
-fn packScore(score: i32, idx: usize) u32 {
-    const score_u32: u32 = @intCast(score + (1 << 20));
-    return @intCast(score_u32 << 8 | idx);
+fn packScore(score: i32, idx: u32) i32 {
+    return score << 8 | @as(i32, @intCast(idx));
 }
 
-fn packScores(comptime N: usize, scores: @Vector(N, i32), indices: @Vector(N, u32)) @Vector(N, u32) {
-    const offset: @Vector(N, i32) = @splat(1 << 20);
-    const scores_u32: @Vector(N, u32) = @intCast(scores + offset);
-    return scores_u32 << @splat(8) | indices;
+fn packScores(comptime N: usize, scores: @Vector(N, i32), indices: @Vector(N, i32)) @Vector(N, i32) {
+    return scores << @splat(8) | indices;
 }
 
 noinline fn findBest(noalias self: *MovePicker) usize {
     const moves = self.movelist.vals.slice()[self.first..self.last];
-    const scores = self.scores[self.first..self.last];
+    const len = self.last - self.first;
+    const scores = self.scores[self.first..];
 
-    const UNROLL = std.simd.suggestVectorLength(u32) orelse 1;
-    var best_vec: @Vector(UNROLL, u32) = @splat(0);
+    var best: i32 = std.math.minInt(i32);
 
-    var i: u32 = 0;
-    var indices = std.simd.iota(u32, UNROLL);
-    while (i + UNROLL <= scores.len) : ({
-        i += UNROLL;
-        indices += @splat(UNROLL);
-    }) {
-        best_vec = @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices));
+    if (std.simd.suggestVectorLength(i32)) |UNROLL| {
+        var best_vec: @Vector(UNROLL, i32) = @splat(std.math.minInt(i32));
+        var iter = simd.indexedChunkIter(i32, UNROLL, scores[0..len]);
+        while (iter.fullChunk()) |c| {
+            best_vec = @max(best_vec, packScores(UNROLL, c.data, c.indices));
+        }
+        {
+            var c = iter.tail();
+            c.data = packScores(UNROLL, c.data, c.indices);
+            best_vec = @max(best_vec, c.select(best_vec));
+        }
+        best = @reduce(.Max, best_vec) & 0xff;
+    } else {
+        var i: usize = 0;
+        while (i < len) : (i += 1) {
+            best = @max(best, packScore(scores[i], i));
+        }
     }
 
-    var best: u32 = @reduce(.Max, best_vec);
-    while (i < scores.len) : (i += 1) {
-        best = @max(best, packScore(scores[i], i));
-    }
+    const best_idx: usize = @intCast(best);
 
-    const best_idx: usize = best & 0xff;
+    std.mem.swap(Move, &moves[0], &moves[best_idx]);
+    std.mem.swap(i32, &scores[0], &scores[best_idx]);
 
-    if (best_idx != 0) {
-        std.mem.swap(Move, &moves[0], &moves[best_idx]);
-        std.mem.swap(i32, &scores[0], &scores[best_idx]);
-    }
     const res = self.first;
     self.first += 1;
     return res;
@@ -222,14 +224,14 @@ inline fn quietValue(
     var res = tuning.histQ(terms, tuning.quietHistoryWeights("ord"));
     const piece_idx = typed.tp.toInt();
 
-    if (board.isDirectCheck(typed.move)) {
+    if (board.givesDirectCheck(typed.move)) {
         @branchHint(.unpredictable);
         res += root.TUNABLE_CONSTANTS.ord_direct_check_bonus;
     }
 
     const danger = danger_squares[piece_idx];
-    const danger_bonus = (&from_danger_bonus)[piece_idx];
-    const danger_penalty = (&to_danger_penalty)[piece_idx];
+    const danger_bonus = from_danger_bonus[piece_idx];
+    const danger_penalty = to_danger_penalty[piece_idx];
     if (root.Bitboard.contains(danger, typed.move.from())) {
         @branchHint(.unpredictable);
         res += danger_bonus;
@@ -311,8 +313,8 @@ pub fn next(
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
 
-            const all_threats = (&board.threats)[stm.flipped().toInt()];
-            const defended = (&board.threats)[stm.toInt()];
+            const all_threats = board.threatsFor(stm.flipped());
+            const defended = board.threatsFor(stm);
             const undefended_threats = all_threats & ~defended;
             const pawn = board.threatsBy(stm.flipped(), .pawn);
             const knight = board.threatsBy(stm.flipped(), .knight);

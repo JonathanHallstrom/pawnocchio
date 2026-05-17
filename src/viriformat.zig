@@ -43,7 +43,7 @@ pub const Error = error{
 };
 
 fn LittleEndian(comptime T: type) type {
-    return packed struct {
+    return packed struct(T) {
         val: T,
 
         const Self = @This();
@@ -98,7 +98,7 @@ pub const MarlinPackedBoard = extern struct {
                 else => undefined,
             };
             switch (col) {
-                inline else => |ccol| res.addPiece(ccol, pt, sq, Board.NullEvalState{}),
+                inline else => |ccol| res.addPiece(ccol, pt, sq),
             }
         }
         if (@popCount(res.kingFor(.white)) != 1 or @popCount(res.kingFor(.black)) != 1) {
@@ -427,7 +427,7 @@ pub fn scoredPlyReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) Sco
     return .{
         .reader = reader,
         .allocator = allocator,
-        .move_buffer = .{},
+        .move_buffer = .empty,
         .initial_board = undefined,
     };
 }
@@ -499,7 +499,7 @@ fn viriformatTest(fen: []const u8, move: Move, expected: u32) !void {
 }
 
 test "viriformat moves" {
-    root.init();
+    root.init(std.testing.io);
     try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Move.quiet(.e2, .e4), 0x070c);
     try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1", Move.castlingKingside(.white, .e1, .h1), 0x81c4);
     try viriformatTest("8/6P1/8/8/1k6/4K3/8/8 w - - 0 1", Move.promo(.g7, .g8, .queen), 0xffb6);
@@ -507,7 +507,7 @@ test "viriformat moves" {
 }
 
 test "all edge cases i could think of in one position" {
-    root.init();
+    root.init(std.testing.io);
     var game = GameRecord.from(try Board.parseFen("4k3/P4p2/8/6P1/8/8/8/R3K2R w Q - 0 1", false), std.testing.allocator);
     defer game.deinit();
     try game.addMove(Move.castlingQueenside(.white, .e1, .a1), 0);

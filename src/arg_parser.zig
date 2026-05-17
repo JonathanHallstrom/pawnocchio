@@ -347,24 +347,25 @@ fn NormalizedSpecType(comptime RawSpec: type, comptime options: Options) type {
     }
 
     const raw_fields = std.meta.fields(RawSpec);
-    comptime var fields: [raw_fields.len]std.builtin.Type.StructField = undefined;
+    comptime var field_names: [raw_fields.len][]const u8 = undefined;
+    comptime var field_types: [raw_fields.len]type = undefined;
+    comptime var field_attrs: [raw_fields.len]std.builtin.Type.StructField.Attributes = undefined;
+
     inline for (raw_fields, 0..) |field, i| {
-        const field_type = NormalizedFieldType(field.type, options);
-        fields[i] = .{
-            .name = field.name,
-            .type = field_type,
+        field_names[i] = field.name;
+        field_types[i] = NormalizedFieldType(field.type, options);
+        field_attrs[i] = .{
+            .@"comptime" = false,
+            .@"align" = field.alignment,
             .default_value_ptr = null,
-            .is_comptime = false,
-            .alignment = field.alignment,
         };
     }
 
-    return @Type(.{ .@"struct" = .{
-        .layout = raw_info.@"struct".layout,
-        .fields = &fields,
-        .decls = &.{},
-        .is_tuple = raw_info.@"struct".is_tuple,
-    } });
+    if (raw_info.@"struct".is_tuple) {
+        return @Tuple(&field_types);
+    }
+
+    return @Struct(raw_info.@"struct".layout, null, &field_names, &field_types, &field_attrs);
 }
 
 fn NormalizedFieldType(comptime T: type, comptime options: Options) type {
@@ -382,9 +383,7 @@ fn NormalizedFieldType(comptime T: type, comptime options: Options) type {
             }
             break :blk T;
         },
-        .optional => |opt| @Type(.{ .optional = .{
-            .child = NormalizedFieldType(opt.child, options),
-        } }),
+        .optional => |opt| ?NormalizedFieldType(opt.child, options),
         else => T,
     };
 }

@@ -17,6 +17,7 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const root = @import("root.zig");
+const nnue_arch = @import("nnue_arch.zig");
 const command_line = @import("command_line.zig");
 const write = root.write;
 const writeLog = std.debug.print;
@@ -79,19 +80,18 @@ fn parseUCIBool(value: []const u8) ?bool {
     return null;
 }
 
-pub fn main() !void {
-    root.init();
+pub fn main(init: std.process.Init) !void {
+    root.init(init.io);
     defer root.deinit();
     defer if (!build_options.tools_only) {
         root.engine.stopSearch();
         root.engine.waitUntilDoneSearching();
     };
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = if (std.debug.runtime_safety) gpa.allocator() else std.heap.smp_allocator;
+
+    const allocator = init.gpa;
     const version = build_options.version_string;
 
-    if (try command_line.handle(allocator, version)) {
+    if (try command_line.handle(init, version)) {
         return;
     }
 
@@ -111,8 +111,8 @@ pub fn main() !void {
     var line_writer = std.Io.Writer.fixed(line_buf);
 
     var stdin_buf: [4096]u8 = undefined;
-    var stdin = std.fs.File.stdin();
-    var reader = stdin.readerStreaming(&stdin_buf);
+    var stdin = std.Io.File.stdin();
+    var reader = stdin.readerStreaming(init.io, &stdin_buf);
 
     var previous_positions = std.array_list.Managed(Board).init(allocator);
     defer previous_positions.deinit();
@@ -278,17 +278,17 @@ pub fn main() !void {
 
             if (root.USE_TBS) {
                 if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name) and !std.ascii.eqlIgnoreCase("<empty>", value) and value.len > 0) {
-                    var dir = std.fs.openDirAbsolute(value, .{ .iterate = true }) catch {
+                    var dir = std.Io.Dir.openDirAbsolute(root.io, value, .{}) catch {
                         write("info string Failed to open specified directory for Syzygy Tablebases '{s}'\n", .{value});
                         continue;
                     };
 
                     var num_files: usize = 0;
                     var iter = dir.iterate();
-                    while (try iter.next()) |_| {
+                    while (try iter.next(root.io)) |_| {
                         num_files += 1;
                     }
-                    dir.close();
+                    dir.close(root.io);
                     if (num_files == 0) {
                         write("info string The directory you specified contains no files, make sure the path is correct", .{});
                     }
@@ -353,14 +353,14 @@ pub fn main() !void {
                         writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
-                    var timer = std.time.Timer.start() catch unreachable;
+                    const start_time = std.Io.Timestamp.now(init.io, .awake);
                     const nodes = if (do_verify) board.perftVerify(false, depth) else board.perft(false, depth);
-                    const elapsed_ns = timer.read();
+                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and root.evaluation.EVAL_MODE == .nnue) {
-                    const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
+                    const RC = root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
                     const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
                     cache.initInPlace(weights);
@@ -373,36 +373,33 @@ pub fn main() !void {
                     };
                     acc.initInPlace(&board, weights, ctx);
 
-                    var timer = std.time.Timer.start() catch unreachable;
+                    const start_time = std.Io.Timestamp.now(init.io, .awake);
                     const iterations = 100_000_000;
                     var res: i16 = 0;
-                    switch (board.stm) {
-                        inline else => |stm| {
-                            const rank_from: u3 = if (stm == .white) 1 else 6;
-                            const rank_to: u3 = if (stm == .white) 3 else 4;
-                            for (0..iterations) |i| {
-                                const file: u3 = @intCast(i % 8);
-                                const is_back = (i / 8) % 2 == 1;
-                                const from = root.Square.fromRankFile(rank_from, file);
-                                const to = root.Square.fromRankFile(rank_to, file);
+                    const stm = board.stm;
+                    const rank_from: u3 = if (stm == .white) 1 else 6;
+                    const rank_to: u3 = if (stm == .white) 3 else 4;
+                    for (0..iterations) |i| {
+                        const file: u3 = @intCast(i % 8);
+                        const is_back = (i / 8) % 2 == 1;
+                        const from = root.Square.fromRankFile(rank_from, file);
+                        const to = root.Square.fromRankFile(rank_to, file);
 
-                                if (!is_back) {
-                                    acc.addSub(stm, .pawn, to, stm, .pawn, from);
-                                } else {
-                                    acc.addSub(stm, .pawn, from, stm, .pawn, to);
-                                }
-                                res +%= acc.forward(stm, &board, ctx);
-                                std.mem.doNotOptimizeAway(res);
-                            }
-                        },
+                        if (!is_back) {
+                            acc.addSub(.init(stm, .pawn, to), .init(stm, .pawn, from));
+                        } else {
+                            acc.addSub(.init(stm, .pawn, from), .init(stm, .pawn, to));
+                        }
+                        res +%= acc.forward(&board, ctx);
+                        std.mem.doNotOptimizeAway(res);
                     }
-                    const elapsed_ns = timer.read();
-                    write("evals: {} in {D} ({} eps) res: {}\n", .{ iterations, elapsed_ns, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
+                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
+                    write("evals: {} in {} ({} eps) res: {}\n", .{ iterations, elapsed_ns, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
                     continue :loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "refreshbench") and root.evaluation.EVAL_MODE == .nnue) {
                     const refresh_fens = @import("refresh_fens.zig").FENS;
-                    const RC = root.refreshCache(root.nnue.HORIZONTAL_MIRRORING, root.nnue.INPUT_BUCKET_COUNT);
+                    const RC = root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
                     const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
                     cache.initInPlace(weights);
@@ -412,7 +409,7 @@ pub fn main() !void {
                         boards[i] = root.Board.parseFen(fen, true) catch unreachable;
                     }
 
-                    var timer = std.time.Timer.start() catch unreachable;
+                    const start_time = std.Io.Timestamp.now(init.io, .awake);
                     const iterations = 1_000_000;
                     var res: i16 = 0;
                     for (0..iterations) |i| {
@@ -421,7 +418,7 @@ pub fn main() !void {
                         res +%= acc.ptr.data[0];
                         std.mem.doNotOptimizeAway(res);
                     }
-                    const elapsed_ns = timer.read();
+                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
                     write("refreshes: {} in {d:.3}ms ({} eps) res: {}\n", .{ iterations, @as(f64, @floatFromInt(elapsed_ns)) / 1e6, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
                     continue :loop;
                 }
@@ -432,61 +429,45 @@ pub fn main() !void {
                         continue;
                     };
                     defer epd_parser.deinit();
-                    var timer = std.time.Timer.start() catch unreachable;
+                    const start_time = std.Io.Timestamp.now(init.io, .awake);
 
-                    var thread_safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = allocator };
-                    var tp: std.Thread.Pool = undefined;
-
-                    tp.init(.{ .allocator = thread_safe_allocator.allocator() }) catch |e| {
-                        writeLog("thread pool creation failed with error: {}\n", .{e});
-                        continue :loop;
-                    };
-                    var wg: std.Thread.WaitGroup = .{};
                     var stop_perft = false;
                     var nodes: u64 = 0;
-                    const workerFn = struct {
-                        fn impl(pos: anytype, node_counter: *u64, stop: *bool) void {
-                            defer pos.deinit();
-                            if (@atomicLoad(bool, stop, .seq_cst)) return;
-                            const perft_board = Board.parseFen(pos.fen, true) catch {
-                                writeLog("invalid position: {s}\n", .{pos.fen});
-                                @atomicStore(bool, stop, true, .seq_cst);
-                                return;
-                            };
-                            for (pos.node_counts.slice()) |node_count| {
-                                const expected = node_count.nodes;
-                                const actual = perft_board.perft(true, node_count.depth);
-                                if (@atomicLoad(bool, stop, .seq_cst)) return;
-                                if (expected != actual) {
-                                    writeLog(
-                                        \\error at depth: {}
-                                        \\for position {s}
-                                        \\got: {} expected: {}
-                                    , .{
-                                        node_count.depth,
-                                        pos.fen,
-                                        actual,
-                                        expected,
-                                    });
-                                    @atomicStore(bool, stop, true, .seq_cst);
-                                    return;
-                                }
-                                _ = @atomicRmw(u64, node_counter, .Add, actual, .seq_cst);
-                            }
-                            write("completed {s}\n", .{pos.fen});
-                        }
-                    }.impl;
 
                     while (epd_parser.next() catch continue :loop) |position| {
+                        defer position.deinit();
                         std.debug.print("{s} {any}\n", .{ position.fen, position.node_counts.slice() });
-                        tp.spawnWg(&wg, workerFn, .{ position, &nodes, &stop_perft });
-                        if (@atomicLoad(bool, &stop_perft, .seq_cst)) continue :loop;
+                        if (stop_perft) continue :loop;
+                        const perft_board = Board.parseFen(position.fen, true) catch {
+                            writeLog("invalid position: {s}\n", .{position.fen});
+                            stop_perft = true;
+                            continue :loop;
+                        };
+                        for (position.node_counts.slice()) |node_count| {
+                            const expected = node_count.nodes;
+                            const actual = perft_board.perft(true, node_count.depth);
+                            if (stop_perft) continue :loop;
+                            if (expected != actual) {
+                                writeLog(
+                                    \\error at depth: {}
+                                    \\for position {s}
+                                    \\got: {} expected: {}
+                                , .{
+                                    node_count.depth,
+                                    position.fen,
+                                    actual,
+                                    expected,
+                                });
+                                stop_perft = true;
+                                continue :loop;
+                            }
+                            nodes += actual;
+                        }
+                        write("completed {s}\n", .{position.fen});
                     }
-                    writeLog("spawned jobs\n", .{});
-                    tp.waitAndWork(&wg);
 
                     const actual_nodes = @atomicLoad(u64, &nodes, .seq_cst);
-                    const elapsed_ns = timer.read();
+                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
                     write("Nodes: {} in {}ms ({} nps)\n", .{ actual_nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, actual_nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;
                 }
@@ -663,11 +644,11 @@ pub fn main() !void {
             root.engine.waitUntilDoneSearching();
         } else if (std.ascii.eqlIgnoreCase(command, "get_scale")) {
             const filename = parts.next() orelse "";
-            var file = try std.fs.cwd().openFile(filename, .{});
-            defer file.close();
+            var file = try std.Io.Dir.cwd().openFile(root.io, filename, .{});
+            defer file.close(root.io);
 
             var reader_buf: [4096]u8 = undefined;
-            var file_reader = file.reader(&reader_buf);
+            var file_reader = file.readerStreaming(root.io, &reader_buf);
 
             var sum: i64 = 0;
             var abs_sum: i64 = 0;
@@ -715,16 +696,20 @@ pub fn main() !void {
 
             write("{}\n", .{hce.evalPosition(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
-            var prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
-            var mutex = std.Thread.Mutex{};
-            var tp: std.Thread.Pool = undefined;
-            try tp.init(.{ .allocator = allocator });
-            defer tp.deinit();
+            var prng = std.Random.DefaultPrng.init(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(init.io, .awake).nanoseconds))));
+            var mutex = std.atomic.Mutex.unlocked;
+            var threads = std.array_list.Managed(std.Thread).init(allocator);
+            defer {
+                for (threads.items) |t| t.join();
+                threads.deinit();
+            }
 
             for (0..1024) |_| {
                 const worker_fn = struct {
-                    fn impl(rng: std.Random, m: *std.Thread.Mutex) void {
-                        m.lock();
+                    fn impl(rng: std.Random, m: *std.atomic.Mutex) void {
+                        while (!m.tryLock()) {
+                            std.Thread.yield() catch {};
+                        }
                         var b = Board.dfrcPosition(rng.uintLessThan(u20, 960 * 960));
                         m.unlock();
                         b.frc = true;
@@ -739,12 +724,14 @@ pub fn main() !void {
                             b.perft(true, 5),
                             b.perft(true, 6),
                         }) catch unreachable;
-                        m.lock();
-                        write("{s}", .{fbs.buffered()});
+                        while (!m.tryLock()) {
+                            std.Thread.yield() catch {};
+                        }
+                        root.write("{s}", .{fbs.buffer[0..fbs.end]});
                         m.unlock();
                     }
                 }.impl;
-                try tp.spawn(worker_fn, .{ prng.random(), &mutex });
+                try threads.append(try std.Thread.spawn(.{}, worker_fn, .{ prng.random(), &mutex }));
             }
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");

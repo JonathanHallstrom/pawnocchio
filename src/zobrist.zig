@@ -136,26 +136,30 @@ const DATA = blk: {
     break :blk res;
 };
 
+inline fn load(p: []const u8) u64 {
+    return std.mem.readInt(u64, p[0..8], .little);
+}
+
 pub fn piece(col: Colour, pt: PieceType, sq: Square) u64 {
     const offset = @intFromEnum(pt) * PIECE_ENTRIES + sq.toInt() + if (col == .white) SIDE_ENTRIES else 0;
-    return std.mem.readInt(u64, DATA[offset..][0..8], .little);
+    return load(DATA[offset..]);
 }
 
 pub fn castling(rights: u8) u64 {
-    return std.mem.readInt(u64, DATA[CASTLING_OFFS..][rights..][0..@sizeOf(u64)], .little);
+    return load(DATA[CASTLING_OFFS..][rights..]);
 }
 
 pub fn ep(where: Square) u64 {
     const file = where.toInt() % 8;
-    return std.mem.readInt(u64, DATA[EP_OFFS..][file..][0..@sizeOf(u64)], .little);
+    return load(DATA[EP_OFFS..][file..]);
 }
 
 pub fn turn() u64 {
-    return std.mem.readInt(u64, DATA[TURN_OFFS..][0..@sizeOf(u64)], .little);
+    return load(DATA[TURN_OFFS..]);
 }
 
 pub fn halfmove(clock: u8) u64 {
     const idx = clock / 8;
     const zero_mask: u64 = @intFromBool(idx != 0);
-    return -%zero_mask & std.mem.readInt(u64, DATA[HALFMOVE_OFFS..][idx..][0..@sizeOf(u64)], .little);
+    return -%zero_mask & load(DATA[HALFMOVE_OFFS..][idx..]);
 }

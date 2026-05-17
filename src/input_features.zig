@@ -14,21 +14,32 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const cpu = @import("builtin").cpu;
-const LLVM_NAME = cpu.model.llvm_name orelse "";
-const USE_PEXT = std.Target.x86.featureSetHas(cpu.model.features, .bmi2) and
-    !std.mem.eql(u8, "znver1", LLVM_NAME) and
-    !std.mem.eql(u8, "znver2", LLVM_NAME);
-pub const attack_impl = if (USE_PEXT)
-    @import("pext.zig")
-else
-    @import("magics.zig");
-pub const AttackEntry = attack_impl.AttackEntry;
-pub const init = attack_impl.init;
-pub const bishopAttacks = attack_impl.getBishopAttacks;
-pub const rookAttacks = attack_impl.getRookAttacks;
+const root = @import("root.zig");
 
-pub inline fn queenAttacks(square: anytype, blockers: u64) u64 {
-    return bishopAttacks(square, blockers) | rookAttacks(square, blockers);
-}
+pub const FeatureKind = enum {
+    psqt,
+};
+
+pub const PSQTFeature = struct {
+    c: root.ColouredPieceType,
+    s: root.Square,
+
+    pub fn col(self: PSQTFeature) root.Colour {
+        return self.c.toColour();
+    }
+
+    pub fn piece(self: PSQTFeature) root.PieceType {
+        return self.c.toPieceType();
+    }
+
+    pub fn square(self: PSQTFeature) root.Square {
+        return self.s;
+    }
+
+    pub fn init(c: root.Colour, p: root.PieceType, s: root.Square) PSQTFeature {
+        return .{
+            .c = .fromPieceType(p, c),
+            .s = s,
+        };
+    }
+};

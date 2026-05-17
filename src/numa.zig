@@ -49,7 +49,7 @@ fn freeOnNode(comptime T: type, ptr: *T) void {
 
 pub fn PerNode(comptime T: type) type {
     return struct {
-        items: std.ArrayListUnmanaged(*T) = .{},
+        items: std.ArrayListUnmanaged(*T) = .empty,
 
         const Self = @This();
 

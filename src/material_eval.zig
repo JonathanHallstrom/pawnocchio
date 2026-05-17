@@ -24,16 +24,16 @@ const PieceType = root.PieceType;
 pub const State = Board.NullEvalState;
 
 pub fn evalPosition(board: *const Board) i16 {
-    return evaluate(board.stm, board, undefined, undefined);
+    return evaluate(board, undefined, undefined);
 }
 
-pub inline fn evaluate(stm: root.Colour, board: *const Board, _: anytype, _: anytype) i16 {
+pub inline fn evaluate(board: *const Board, _: anytype, _: anytype) i16 {
     var res: i16 = 0;
     for (PieceType.all, [_]i16{ 100, 300, 300, 500, 900, 0 }) |pt, value| {
         res += value * @popCount(board.pieceFor(.white, pt));
         res -= value * @popCount(board.pieceFor(.black, pt));
     }
-    res = if (stm == .white) res else -res;
+    res = if (board.stm == .white) res else -res;
     res += @intCast(board.hash & 63);
     return res;
 }

@@ -97,16 +97,16 @@ pub fn getBishopAttacks(square: Square, blockers: u64) u64 {
     if (@inComptime()) {
         return attack_array_generation.computeBishopAttacks(square, blockers);
     }
-    return (&bishop_attacks)[@intCast((&BISHOP_ATTACK_ENTRIES)[square.toInt()].getBishopIndex(blockers))];
+    return bishop_attacks[@intCast(BISHOP_ATTACK_ENTRIES[square.toInt()].getBishopIndex(blockers))];
 }
 pub fn getRookAttacks(square: Square, blockers: u64) u64 {
     if (@inComptime()) {
         return attack_array_generation.computeRookAttacks(square, blockers);
     }
     if (COMPRESSED_ROOK_ATTACKS) {
-        const magic = (&ROOK_ATTACK_ENTRIES)[square.toInt()];
-        return Bitboard.pdep((&rook_attacks)[@intCast(magic.getRookIndex(blockers))], magic.mask_full);
+        const magic = ROOK_ATTACK_ENTRIES[square.toInt()];
+        return Bitboard.pdep(rook_attacks[@intCast(magic.getRookIndex(blockers))], magic.mask_full);
     } else {
-        return (&rook_attacks)[@intCast((&ROOK_ATTACK_ENTRIES)[square.toInt()].getRookIndex(blockers))];
+        return rook_attacks[@intCast(ROOK_ATTACK_ENTRIES[square.toInt()].getRookIndex(blockers))];
     }
 }

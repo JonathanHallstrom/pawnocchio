@@ -15,10 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 const std = @import("std");
 const builtin = @import("builtin");
+const root = @import("root.zig");
 
 const ALIGNMENT = 64;
 pub const Weights = extern struct {
-    ft_w: [L1_SIZE * INPUT_SIZE * INPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
+    ft_w: [INPUT_BUCKET_COUNT][2][6][64]RawAccumulator align(ALIGNMENT),
     ft_b: [L1_SIZE]i16 align(ALIGNMENT),
     l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 align(ALIGNMENT),
     l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]i32 align(ALIGNMENT),
@@ -101,18 +102,6 @@ pub fn target(cpu: std.Target.Cpu) Target {
     return .fallback;
 }
 
-pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
-    return switch (target(cpu)) {
-        .avx512vnni => 64,
-        .avx512 => 64,
-        .avx2 => 32,
-        .aarch64 => 16,
-        .ssse3 => 16,
-        .sse2 => 16,
-        .fallback => if (cpu.arch.endian() != .little) 4 else std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
-    };
-}
-
 const LONGEST_PERMUTE_LEN = 8;
 
 pub fn permuteOrderFor(target_kind: Target) []const u8 {
@@ -150,7 +139,7 @@ pub fn permuteBuffer(ptr: anytype, order: anytype) void {
         @memcpy(weights[0..order.len], vecs[i..][0..order.len]);
 
         for (0..order.len) |j| {
-            vecs[i + j] = (&weights)[order[j]];
+            vecs[i + j] = weights[order[j]];
         }
     }
 }
@@ -266,6 +255,10 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
     }
 }
 
+pub const AccumulatorVec = @Vector(@import("simd.zig").vecSize(i16), i16);
+pub const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / @import("simd.zig").vecSize(i16);
+pub const RawAccumulator = [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec;
+
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 16;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
@@ -287,3 +280,12 @@ pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     14, 14, 15, 15, 15, 15, 14, 14,
     14, 14, 15, 15, 15, 15, 14, 14,
 };
+
+pub inline fn whichInputBucket(stm: root.Colour, king_square: root.Square) usize {
+    return @min(INPUT_BUCKET_COUNT - 1, INPUT_BUCKET_LAYOUT[(if (stm == .white) king_square else king_square.flipRank()).toInt()]);
+}
+
+pub inline fn whichOutputBucket(board: *const root.Board) usize {
+    const divisor = (32 + OUTPUT_BUCKET_COUNT - 1) / OUTPUT_BUCKET_COUNT;
+    return @min(OUTPUT_BUCKET_COUNT - 1, (@popCount(board.occupancy()) - 2) / divisor);
+}
