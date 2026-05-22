@@ -1,8 +1,8 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
 curl https://raw.githubusercontent.com/tristanisham/zvm/master/install.sh | bash
 
-VERSION=0.15.2
+VERSION=0.16.0
 $HOME/.zvm/self/zvm i $VERSION
 $HOME/.zvm/self/zvm use $VERSION
 
