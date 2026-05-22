@@ -26,8 +26,8 @@ const c = if (enabled) @cImport({
 
 const metadata_allocator = std.heap.smp_allocator;
 
-var cpu_masks: std.ArrayListUnmanaged(std.os.linux.cpu_set_t) = .{};
-var node_ids: std.ArrayListUnmanaged(usize) = .{};
+var cpu_masks: std.ArrayListUnmanaged(std.os.linux.cpu_set_t) = .empty;
+var node_ids: std.ArrayListUnmanaged(usize) = .empty;
 var active = false;
 
 fn allocOnNode(comptime T: type, node: usize) !*T {
@@ -171,9 +171,9 @@ pub fn deinit() void {
     }
 
     node_ids.deinit(metadata_allocator);
-    node_ids = .{};
+    node_ids = .empty;
     cpu_masks.deinit(metadata_allocator);
-    cpu_masks = .{};
+    cpu_masks = .empty;
     active = false;
 }
 
