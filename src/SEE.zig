@@ -87,14 +87,14 @@ const pickFirst = switch (std.simd.suggestVectorLength(u64) orelse 0) {
 pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
     const from = move.from();
     const to = move.to();
-    const from_type = board.pieceOn(from).?;
+    const from_type = board.pieceOn(from) orelse return false;
     var captured_type: ?PieceType = null;
     var captured_value: i16 = 0;
     if (board.isEnPassant(move)) {
         captured_type = .pawn;
         captured_value = value(.pawn, mode);
     } else if (board.isCapture(move)) {
-        captured_type = board.pieceOn(to).?;
+        captured_type = board.pieceOn(to) orelse return false;
         captured_value = value(captured_type.?, mode);
     }
 

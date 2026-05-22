@@ -1029,6 +1029,7 @@ fn search(
             const probcut_see = @divTrunc((probcut_beta - eval) * TUNABLES.probcut_see_mult, 1024);
             const probcut_tt_move = if (has_tt_move and
                 !board.isQuiet(tt_entry.move) and
+                board.isLegal(stm, tt_entry.move) and
                 SEE.scoreMove(board, tt_entry.move, probcut_see, .pruning))
                 tt_entry.move
             else
