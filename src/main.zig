@@ -278,7 +278,7 @@ pub fn main(init: std.process.Init) !void {
 
             if (root.USE_TBS) {
                 if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name) and !std.ascii.eqlIgnoreCase("<empty>", value) and value.len > 0) {
-                    var dir = std.Io.Dir.openDirAbsolute(root.io, value, .{}) catch {
+                    var dir = std.Io.Dir.openDirAbsolute(root.io, value, .{ .iterate = true }) catch {
                         write("info string Failed to open specified directory for Syzygy Tablebases '{s}'\n", .{value});
                         continue;
                     };
