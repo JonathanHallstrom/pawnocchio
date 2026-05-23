@@ -57,7 +57,8 @@ pub inline fn parse(
     args: anytype,
     comptime spec_or_type: anytype,
     comptime options: Options,
-) Error!ParsedType(spec_or_type, options) {
+    allocator: std.mem.Allocator,
+) (Error || error{OutOfMemory})!ParsedType(spec_or_type, options) {
     const ArgType = std.meta.Child(@TypeOf(args));
     comptime if (!(@hasDecl(ArgType, "next") or @hasField(ArgType, "next"))) {
         @compileError(
@@ -79,7 +80,7 @@ pub inline fn parse(
         initSpecDefaults(RawSpecType, Spec)
     else
         normalizeSpecValue(Spec, spec_or_type);
-    return parseImpl(args, spec, options, required_mask);
+    return parseImpl(args, spec, options, required_mask, allocator);
 }
 
 fn parseImpl(
@@ -87,14 +88,25 @@ fn parseImpl(
     spec: anytype,
     comptime options: Options,
     required_mask: []const bool,
-) Error!@TypeOf(spec) {
+    allocator: std.mem.Allocator,
+) (Error || error{OutOfMemory})!@TypeOf(spec) {
     const Spec = @TypeOf(spec);
 
     var parsed = spec;
     var consumed_implied = false;
     var seen: [std.meta.fields(Spec).len]bool = .{false} ** std.meta.fields(Spec).len;
+    var pending: ?[]const u8 = null;
 
-    while (args.next()) |arg| {
+    var scratch: [std.meta.fields(Spec).len]std.ArrayListUnmanaged([]const u8) =
+        .{std.ArrayListUnmanaged([]const u8).empty} ** std.meta.fields(Spec).len;
+    defer {
+        for (&scratch) |*s| {
+            if (s.capacity > 0) s.deinit(allocator);
+        }
+    }
+
+    while (pending orelse args.next()) |arg| {
+        pending = null;
         if (std.mem.startsWith(u8, arg, "--")) {
             const option = arg[2..];
             const equals_idx = std.mem.indexOfScalar(u8, option, '=');
@@ -102,6 +114,30 @@ fn parseImpl(
             const inline_value = if (equals_idx) |idx| option[idx + 1 ..] else null;
             if (std.mem.eql(u8, option_name, "help")) {
                 return error.HelpRequested;
+            }
+
+            var list_field_idx: ?usize = null;
+            inline for (std.meta.fields(Spec), 0..) |field, i| {
+                if (comptime field.type == []const []const u8) {
+                    if (std.mem.eql(u8, field.name, option_name)) {
+                        list_field_idx = i;
+                    }
+                }
+            }
+            if (list_field_idx) |list_idx| {
+                seen[list_idx] = true;
+                if (inline_value) |val| {
+                    try scratch[list_idx].append(allocator, val);
+                } else {
+                    while (args.next()) |val| {
+                        if (std.mem.startsWith(u8, val, "--")) {
+                            pending = val;
+                            break;
+                        }
+                        try scratch[list_idx].append(allocator, val);
+                    }
+                }
+                continue;
             }
 
             const field_idx = try setNamedOption(Spec, &parsed, option_name, inline_value, args, &seen);
@@ -118,9 +154,29 @@ fn parseImpl(
         consumed_implied = true;
     }
 
+    inline for (std.meta.fields(Spec), 0..) |field, i| {
+        if (comptime field.type == []const []const u8) {
+            @field(parsed, field.name) = try scratch[i].toOwnedSlice(allocator);
+        }
+    }
+
     for (required_mask, 0..) |is_required, i| {
-        if (is_required and !seen[i]) {
-            return error.MissingRequiredOption;
+        if (!is_required or seen[i]) continue;
+        var is_list_field: bool = false;
+        inline for (std.meta.fields(Spec), 0..) |field, fi| {
+            if (fi == i and comptime field.type == []const []const u8) {
+                is_list_field = true;
+            }
+        }
+        if (is_list_field) continue;
+        return error.MissingRequiredOption;
+    }
+
+    inline for (std.meta.fields(Spec), 0..) |field, i| {
+        if (comptime field.type == []const []const u8) {
+            if (required_mask[i] and @field(parsed, field.name).len == 0) {
+                return error.MissingRequiredOption;
+            }
         }
     }
 
@@ -189,7 +245,9 @@ pub fn fullUsage(comptime spec_or_type: anytype, comptime options: Options) []co
             const custom_part = usageDescriptionForField(options, field.name);
             const custom_default = usageDefaultTextForField(options, field.name);
             const type_hint = typeHintText(spec_field.type);
-            const part = custom_part orelse if (implied_index != null and implied_index.? == i and spec_field.type != bool)
+            const part = custom_part orelse if (spec_field.type == []const []const u8)
+                std.fmt.comptimePrint("--{s} <{s}>...", .{ field.name, value_name[0..] })
+            else if (implied_index != null and implied_index.? == i and spec_field.type != bool)
                 std.fmt.comptimePrint("--{s} <{s}> or <{s}> (positional)", .{ field.name, value_name[0..], value_name[0..] })
             else if (spec_field.type == bool)
                 std.fmt.comptimePrint("--{s}", .{field.name})
@@ -331,10 +389,16 @@ fn typeHintText(comptime T: type) []const u8 {
         .float => "float",
         .bool => "bool",
         .@"enum" => std.fmt.comptimePrint("enum({s})", .{enumTagList(T)}),
-        .pointer => |ptr| if (ptr.size == .slice and ptr.child == u8)
-            "string"
-        else
-            @typeName(T),
+        .pointer => |ptr| blk: {
+            if (ptr.size == .slice and ptr.child == u8) break :blk "string";
+            if (ptr.size == .slice) {
+                const inner = @typeInfo(ptr.child);
+                if (inner == .pointer and inner.pointer.size == .slice and inner.pointer.child == u8) {
+                    break :blk "string...";
+                }
+            }
+            break :blk @typeName(T);
+        },
         .optional => |opt| std.fmt.comptimePrint("?{s}", .{typeHintText(opt.child)}),
         else => @typeName(T),
     };
@@ -404,6 +468,8 @@ fn initSpecDefaults(comptime RawSpec: type, comptime Spec: type) Spec {
             const DefaultPtr = *const raw_field.type;
             const default_value = @as(DefaultPtr, @ptrCast(@alignCast(default_ptr))).*;
             @field(spec, spec_field.name) = coerceValue(spec_field.type, default_value);
+        } else if (spec_field.type == []const []const u8) {
+            @field(spec, spec_field.name) = &.{};
         } else {
             @field(spec, spec_field.name) = undefined;
         }
@@ -487,6 +553,9 @@ fn setNamedOption(
                     true;
                 return i;
             }
+            if (FieldType == []const []const u8) {
+                unreachable; // list fields are intercepted in parseImpl before setNamedOption
+            }
 
             const value = inline_value orelse (args.next() orelse return error.MissingOptionValue);
             @field(parsed.*, field_name) = try parseValue(FieldType, value);
@@ -550,9 +619,9 @@ fn parseArgs(
     comptime spec_or_type: anytype,
     comptime options: Options,
     args: []const []const u8,
-) Error!ParsedType(spec_or_type, options) {
+) (Error || error{OutOfMemory})!ParsedType(spec_or_type, options) {
     var iter = SliceIterator{ .args = args };
-    return parse(&iter, spec_or_type, options);
+    return parse(&iter, spec_or_type, options, std.testing.allocator);
 }
 
 fn expectParseError(

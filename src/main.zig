@@ -81,7 +81,13 @@ fn parseUCIBool(value: []const u8) ?bool {
 }
 
 pub fn main(init: std.process.Init) !void {
-    root.init(init.io);
+    var threaded_io = std.Io.Threaded.init(init.gpa, .{
+        .environ = init.minimal.environ,
+    });
+    defer threaded_io.deinit();
+    const io = threaded_io.io();
+    root.init(io);
+
     defer root.deinit();
     defer if (!build_options.tools_only) {
         root.engine.stopSearch();
@@ -112,7 +118,7 @@ pub fn main(init: std.process.Init) !void {
 
     var stdin_buf: [4096]u8 = undefined;
     var stdin = std.Io.File.stdin();
-    var reader = stdin.readerStreaming(init.io, &stdin_buf);
+    var reader = stdin.readerStreaming(io, &stdin_buf);
 
     var previous_positions = std.array_list.Managed(Board).init(allocator);
     defer previous_positions.deinit();
@@ -278,17 +284,17 @@ pub fn main(init: std.process.Init) !void {
 
             if (root.USE_TBS) {
                 if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name) and !std.ascii.eqlIgnoreCase("<empty>", value) and value.len > 0) {
-                    var dir = std.Io.Dir.openDirAbsolute(root.io, value, .{ .iterate = true }) catch {
+                    var dir = std.Io.Dir.openDirAbsolute(io, value, .{ .iterate = true }) catch {
                         write("info string Failed to open specified directory for Syzygy Tablebases '{s}'\n", .{value});
                         continue;
                     };
 
                     var num_files: usize = 0;
                     var iter = dir.iterate();
-                    while (try iter.next(root.io)) |_| {
+                    while (try iter.next(io)) |_| {
                         num_files += 1;
                     }
-                    dir.close(root.io);
+                    dir.close(io);
                     if (num_files == 0) {
                         write("info string The directory you specified contains no files, make sure the path is correct", .{});
                     }
@@ -353,9 +359,9 @@ pub fn main(init: std.process.Init) !void {
                         writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
                         continue;
                     };
-                    const start_time = std.Io.Timestamp.now(init.io, .awake);
+                    const start_time = std.Io.Timestamp.now(io, .awake);
                     const nodes = if (do_verify) board.perftVerify(false, depth) else board.perft(false, depth);
-                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
+                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(io, .awake)).nanoseconds));
                     write("Nodes searched: {} in {}ms ({} nps)\n", .{ nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;
                 }
@@ -373,7 +379,7 @@ pub fn main(init: std.process.Init) !void {
                     };
                     acc.initInPlace(&board, weights, ctx);
 
-                    const start_time = std.Io.Timestamp.now(init.io, .awake);
+                    const start_time = std.Io.Timestamp.now(io, .awake);
                     const iterations = 100_000_000;
                     var res: i16 = 0;
                     const stm = board.stm;
@@ -393,7 +399,7 @@ pub fn main(init: std.process.Init) !void {
                         res +%= acc.forward(&board, ctx);
                         std.mem.doNotOptimizeAway(res);
                     }
-                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
+                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(io, .awake)).nanoseconds));
                     write("evals: {} in {} ({} eps) res: {}\n", .{ iterations, elapsed_ns, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
                     continue :loop;
                 }
@@ -409,7 +415,7 @@ pub fn main(init: std.process.Init) !void {
                         boards[i] = root.Board.parseFen(fen, true) catch unreachable;
                     }
 
-                    const start_time = std.Io.Timestamp.now(init.io, .awake);
+                    const start_time = std.Io.Timestamp.now(io, .awake);
                     const iterations = 1_000_000;
                     var res: i16 = 0;
                     for (0..iterations) |i| {
@@ -418,18 +424,18 @@ pub fn main(init: std.process.Init) !void {
                         res +%= acc.ptr.data[0];
                         std.mem.doNotOptimizeAway(res);
                     }
-                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
+                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(io, .awake)).nanoseconds));
                     write("refreshes: {} in {d:.3}ms ({} eps) res: {}\n", .{ iterations, @as(f64, @floatFromInt(elapsed_ns)) / 1e6, @as(u128, iterations) * std.time.ns_per_s / elapsed_ns, res });
                     continue :loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "perft_file")) {
                     const file_name = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    var epd_parser = root.PerftEPDParser.init(file_name, allocator) catch |e| {
+                    var epd_parser = root.PerftEPDParser.init(io, file_name, allocator) catch |e| {
                         writeLog("invalid file: '{s}' error: {}\n", .{ file_name, e });
                         continue;
                     };
                     defer epd_parser.deinit();
-                    const start_time = std.Io.Timestamp.now(init.io, .awake);
+                    const start_time = std.Io.Timestamp.now(io, .awake);
 
                     var stop_perft = false;
                     var nodes: u64 = 0;
@@ -467,7 +473,7 @@ pub fn main(init: std.process.Init) !void {
                     }
 
                     const actual_nodes = @atomicLoad(u64, &nodes, .seq_cst);
-                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(init.io, .awake)).nanoseconds));
+                    const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(io, .awake)).nanoseconds));
                     write("Nodes: {} in {}ms ({} nps)\n", .{ actual_nodes, elapsed_ns / std.time.ns_per_ms, @as(u128, actual_nodes) * std.time.ns_per_s / elapsed_ns });
                     continue :loop;
                 }
@@ -575,6 +581,7 @@ pub fn main(init: std.process.Init) !void {
             const my_time = my_time_opt orelse 1_000_000_000 * std.time.ns_per_s;
 
             var limits = root.Limits.initStandard(
+                io,
                 &board,
                 my_time,
                 my_increment,
@@ -582,7 +589,7 @@ pub fn main(init: std.process.Init) !void {
             );
 
             if (move_time_opt) |move_time| {
-                limits = root.Limits.initFixedTime(move_time);
+                limits = root.Limits.initFixedTime(io, move_time);
             }
 
             if (max_depth_opt) |max_depth| {
@@ -644,11 +651,11 @@ pub fn main(init: std.process.Init) !void {
             root.engine.waitUntilDoneSearching();
         } else if (std.ascii.eqlIgnoreCase(command, "get_scale")) {
             const filename = parts.next() orelse "";
-            var file = try std.Io.Dir.cwd().openFile(root.io, filename, .{});
-            defer file.close(root.io);
+            var file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+            defer file.close(io);
 
             var reader_buf: [4096]u8 = undefined;
-            var file_reader = file.readerStreaming(root.io, &reader_buf);
+            var file_reader = file.readerStreaming(io, &reader_buf);
 
             var sum: i64 = 0;
             var abs_sum: i64 = 0;
@@ -696,7 +703,7 @@ pub fn main(init: std.process.Init) !void {
 
             write("{}\n", .{hce.evalPosition(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
-            var prng = std.Random.DefaultPrng.init(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(init.io, .awake).nanoseconds))));
+            var prng = std.Random.DefaultPrng.init(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(io, .awake).nanoseconds))));
             var mutex = std.atomic.Mutex.unlocked;
             var threads = std.array_list.Managed(std.Thread).init(allocator);
             defer {

@@ -23,13 +23,14 @@ const pgn = root.pgn;
 const GameRecord = viriformat.GameRecord;
 
 pub fn convert(
+    io: std.Io,
     allocator: std.mem.Allocator,
     input: *std.Io.Reader,
     output: *std.Io.Writer,
     skip_broken_games: bool,
 ) !void {
     var position_count: u64 = 0;
-    const start_time = std.Io.Timestamp.now(root.io, .awake);
+    const start_time = std.Io.Timestamp.now(io, .awake);
     var num_broken_games: u64 = 0;
     var num_okay_games: u64 = 0;
 
@@ -68,7 +69,7 @@ pub fn convert(
         }
     }
 
-    const now = std.Io.Timestamp.now(root.io, .awake);
+    const now = std.Io.Timestamp.now(io, .awake);
     const elapsed = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
 
     try output.flush();

@@ -20,21 +20,23 @@ const root = @import("root.zig");
 const PerftEPDParser = @This();
 const Allocator = std.mem.Allocator;
 
+io: std.Io,
 file: std.Io.File,
 allocator: Allocator,
 buf: [4096]u8 = undefined,
 reader: ?std.Io.File.Reader = null,
 
-pub fn init(name: []const u8, alloc: Allocator) !PerftEPDParser {
-    const file = try std.Io.Dir.cwd().openFile(root.io, name, .{});
+pub fn init(io: std.Io, name: []const u8, alloc: Allocator) !PerftEPDParser {
+    const file = try std.Io.Dir.cwd().openFile(io, name, .{});
     return .{
+        .io = io,
         .file = file,
         .allocator = alloc,
     };
 }
 
 pub fn deinit(self: PerftEPDParser) void {
-    self.file.close(root.io);
+    self.file.close(self.io);
 }
 
 pub const NodeCount = struct {
@@ -54,7 +56,7 @@ pub const PerftPosition = struct {
 
 pub fn next(self: *PerftEPDParser) !?PerftPosition {
     if (self.reader == null) {
-        self.reader = self.file.readerStreaming(root.io, &self.buf);
+        self.reader = self.file.readerStreaming(self.io, &self.buf);
     }
 
     var w = std.Io.Writer.Allocating.init(self.allocator);

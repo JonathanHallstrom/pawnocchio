@@ -219,15 +219,15 @@ pub fn resetDebugStats() void {
     }
 }
 
-pub fn init() !void {
-    thread_pool = try ThreadPool.init(std.heap.page_allocator);
+pub fn init(io: std.Io) !void {
+    thread_pool = try ThreadPool.init(std.heap.page_allocator, io);
     try thread_pool.setTTSize(16);
     try thread_pool.setThreadCount(1);
     debug_stats = .init(std.heap.page_allocator); // yes its inefficient no i don't care
     debug_bool_stats = .init(std.heap.page_allocator);
     debug_corr_stats = .init(std.heap.page_allocator);
     debug_range_stats = .init(std.heap.page_allocator);
-    debug_rng.seed(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(root.io, .awake).nanoseconds))));
+    debug_rng.seed(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(io, .awake).nanoseconds))));
 }
 
 pub fn deinit() void {
@@ -329,6 +329,7 @@ const DatagenStats = struct {
 };
 
 fn datagenWorker(
+    io: std.Io,
     i: usize,
     random_move_count_low: u8,
     random_move_count_high: u8,
@@ -387,7 +388,7 @@ fn datagenWorker(
         var num_adj_draw: u8 = 0;
         var num_adj_loss: u8 = 0;
         game_loop: for (0..2000) |move_idx| {
-            var limits = root.Limits.initFixedTime(std.time.ns_per_s);
+            var limits = root.Limits.initFixedTime(io, std.time.ns_per_s);
             limits.soft_nodes = node_count;
             limits.hard_nodes = 100 * node_count;
             limits.min_depth = min_depth;
@@ -511,13 +512,13 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
     return fbs.buffered();
 }
 
-pub fn datagen(num_nodes: u64, positions: u64) !void {
+pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
     var buf: [4096]u8 = undefined;
-    const start_time = std.Io.Timestamp.now(root.io, .awake);
-    var out_file = try std.Io.Dir.cwd().createFile(root.io, try getFileName(num_nodes, &buf), .{ .truncate = true });
-    defer out_file.close(root.io);
+    const start_time = std.Io.Timestamp.now(io, .awake);
+    var out_file = try std.Io.Dir.cwd().createFile(io, try getFileName(num_nodes, &buf), .{ .truncate = true });
+    defer out_file.close(io);
 
-    var writer_wrapper = out_file.writerStreaming(root.io, &buf);
+    var writer_wrapper = out_file.writerStreaming(io, &buf);
     var writer = &writer_wrapper.interface;
 
     var writer_mutex = std.atomic.Mutex.unlocked;
@@ -530,7 +531,7 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     }
 
     for (0..thread_pool.threads.items.len) |i| {
-        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer_wrapper, &writer_mutex, &stats }));
+        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ io, i, 6, 10, 0, num_nodes, &writer_wrapper, &writer_mutex, &stats }));
     }
     defer for (0..thread_pool.threads.items.len) |i| {
         std.heap.page_allocator.free(thread_pool.searchers.items[i].tt);
@@ -539,9 +540,9 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     var prev_time: u64 = 0;
     var pps_ema_opt: ?u64 = null;
     while (true) {
-        std.Io.sleep(root.io, std.Io.Duration.fromNanoseconds(std.time.ns_per_s), .awake) catch {};
+        std.Io.sleep(io, std.Io.Duration.fromNanoseconds(std.time.ns_per_s), .awake) catch {};
         if (!writer_mutex.tryLock()) {
-            std.Io.sleep(root.io, std.Io.Duration.fromNanoseconds(std.time.ns_per_ms), .awake) catch {};
+            std.Io.sleep(io, std.Io.Duration.fromNanoseconds(std.time.ns_per_ms), .awake) catch {};
             continue;
         }
         try writer.flush();
@@ -550,7 +551,7 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
         if (cur_positions >= positions) {
             std.process.exit(0);
         }
-        const now = std.Io.Timestamp.now(root.io, .awake);
+        const now = std.Io.Timestamp.now(io, .awake);
         const time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
         if (cur_positions == prev_positions) {
             continue;
@@ -576,7 +577,7 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     }
 }
 
-pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allocator: std.mem.Allocator) !void {
+pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: anytype, allocator: std.mem.Allocator) !void {
     var rng = std.Random.DefaultPrng.init(seed);
     var fens = std.array_list.Managed([]const u8).init(allocator);
     defer fens.deinit();
@@ -584,10 +585,10 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allo
         allocator.free(fen);
     };
     if (path) |p| {
-        var f = try std.Io.Dir.cwd().openFile(root.io, p, .{});
-        defer f.close(root.io);
+        var f = try std.Io.Dir.cwd().openFile(io, p, .{});
+        defer f.close(io);
         var reader_buf: [4096]u8 = undefined;
-        var reader = f.readerStreaming(root.io, &reader_buf);
+        var reader = f.readerStreaming(io, &reader_buf);
 
         var line_buf: [128]u8 = undefined;
         var line_writer = std.Io.Writer.fixed(&line_buf);

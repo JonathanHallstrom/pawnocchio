@@ -114,7 +114,7 @@ fn initImpl(io_init: std.Io) void {
         nnue.init() catch |e| std.debug.panic("Fatal: couldn't initialize NNUE state, error: {}\n", .{e});
     }
     if (!TOOLS_ONLY) {
-        engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
+        engine.init(io_init) catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
     }
 }
 
@@ -621,8 +621,8 @@ comptime {
     assert(@sizeOf(TTCluster) == 32);
 }
 
-pub var io: std.Io = undefined;
-pub var stdout_wrapper: std.Io.File.Writer = undefined;
+var io: std.Io = undefined;
+var stdout_wrapper: std.Io.File.Writer = undefined;
 pub var stdout_writer: *std.Io.Writer = undefined;
 var stdout_buf: [4096]u8 = undefined;
 var stdout: std.Io.File = undefined;

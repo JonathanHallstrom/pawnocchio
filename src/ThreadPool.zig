@@ -114,13 +114,15 @@ const Thread = struct {
     reset_tt_slice: []TTCluster = &.{},
     idx: usize,
     correction_histories: *history.CorrectionHistoryTable = undefined,
+    io: std.Io,
 
-    pub fn init(allocator: std.mem.Allocator, searcher: *Searcher, idx: usize) !*Thread {
+    pub fn init(allocator: std.mem.Allocator, searcher: *Searcher, idx: usize, io: std.Io) !*Thread {
         const self = try allocator.create(Thread);
         self.* = .{
             .searcher = searcher,
             .thread = undefined,
             .idx = idx,
+            .io = io,
         };
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
         return self;
@@ -132,12 +134,12 @@ const Thread = struct {
         };
 
         while (true) {
-            self.mutex.lockUncancelable(root.io);
+            self.mutex.lockUncancelable(self.io);
             while (self.action == .sleep) {
-                self.cond.waitUncancelable(root.io, &self.mutex);
+                self.cond.waitUncancelable(self.io, &self.mutex);
             }
             const action = self.action;
-            self.mutex.unlock(root.io);
+            self.mutex.unlock(self.io);
 
             if (action == .exit) break;
 
@@ -164,40 +166,40 @@ const Thread = struct {
                 else => {},
             }
 
-            self.mutex.lockUncancelable(root.io);
+            self.mutex.lockUncancelable(self.io);
             self.action = .sleep;
-            self.cond.signal(root.io);
-            self.mutex.unlock(root.io);
+            self.cond.signal(self.io);
+            self.mutex.unlock(self.io);
         }
 
-        self.mutex.lockUncancelable(root.io);
+        self.mutex.lockUncancelable(self.io);
         self.exited = true;
-        self.cond.signal(root.io);
-        self.mutex.unlock(root.io);
+        self.cond.signal(self.io);
+        self.mutex.unlock(self.io);
     }
 
     pub fn wake(self: *Thread, action: ThreadAction) void {
-        self.mutex.lockUncancelable(root.io);
+        self.mutex.lockUncancelable(self.io);
         self.action = action;
-        self.mutex.unlock(root.io);
-        self.cond.signal(root.io);
+        self.mutex.unlock(self.io);
+        self.cond.signal(self.io);
     }
 
     pub fn blockUntilSleep(self: *Thread) void {
-        self.mutex.lockUncancelable(root.io);
+        self.mutex.lockUncancelable(self.io);
         while (self.action != .sleep) {
-            self.cond.waitUncancelable(root.io, &self.mutex);
+            self.cond.waitUncancelable(self.io, &self.mutex);
         }
-        self.mutex.unlock(root.io);
+        self.mutex.unlock(self.io);
     }
 
     pub fn signalAndAwaitShutdown(self: *Thread) void {
         self.wake(.exit);
-        self.mutex.lockUncancelable(root.io);
+        self.mutex.lockUncancelable(self.io);
         while (!self.exited) {
-            self.cond.waitUncancelable(root.io, &self.mutex);
+            self.cond.waitUncancelable(self.io, &self.mutex);
         }
-        self.mutex.unlock(root.io);
+        self.mutex.unlock(self.io);
         self.thread.join();
     }
 };
@@ -208,12 +210,14 @@ pub const ThreadPool = struct {
     tt: []align(std.atomic.cache_line) TTCluster = &.{},
     corrhists: CorrHistStore = .{},
     allocator: std.mem.Allocator,
+    io: std.Io,
     stop_searching: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
-    pub fn init(allocator: std.mem.Allocator) !ThreadPool {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io) !ThreadPool {
         return .{
             .corrhists = try CorrHistStore.init(allocator),
             .allocator = allocator,
+            .io = io,
         };
     }
 
@@ -242,7 +246,7 @@ pub const ThreadPool = struct {
             searcher = @ptrCast(ptr);
             try adviseHugePages(ptr);
         }
-        const thread = try Thread.init(self.allocator, searcher, self.threads.items.len);
+        const thread = try Thread.init(self.allocator, searcher, self.threads.items.len, self.io);
         thread.tt = self.tt;
         thread.correction_histories = self.corrhists.get(self.threads.items.len);
         try self.threads.append(self.allocator, thread);

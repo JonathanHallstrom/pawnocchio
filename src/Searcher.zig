@@ -2057,7 +2057,7 @@ fn buildHistory(
 
 var test_correction_histories: history.CorrectionHistoryTable = std.mem.zeroes(history.CorrectionHistoryTable);
 
-fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
+fn initTestSearcher(io: std.Io, searcher: *Searcher, hist: anytype) void {
     searcher.* = undefined;
     searcher.is_ready = false;
     searcher.ensureInvariants();
@@ -2067,7 +2067,7 @@ fn initTestSearcher(searcher: *Searcher, hist: anytype) void {
     const positions = hist.positions.slice();
     searcher.initSearchStack(.{
         .board = positions[positions.len - 1],
-        .limits = Limits.initFixedDepth(1),
+        .limits = Limits.initFixedDepth(io, 1),
         .previous_positions = hist.positions,
         .previous_moves = hist.played_moves,
         .contempt = 0,
@@ -2100,7 +2100,7 @@ test "conthist uses previous positions" {
     const moves = hist.played_moves.slice();
 
     var searcher: Searcher = undefined;
-    initTestSearcher(&searcher, hist);
+    initTestSearcher(std.testing.io, &searcher, hist);
 
     try std.testing.expectEqual(@as(u8, 4), searcher.stackEntry(0).usable_moves);
 
@@ -2158,7 +2158,7 @@ test "historical stack seeding sets evals" {
     const positions = hist.positions.slice();
 
     var searcher: Searcher = undefined;
-    initTestSearcher(&searcher, hist);
+    initTestSearcher(std.testing.io, &searcher, hist);
 
     for (0..4) |i| {
         const eval = history.HistoryTable.scaleEval(&positions[i + 1], evaluation.evalPosition(&positions[i + 1]));

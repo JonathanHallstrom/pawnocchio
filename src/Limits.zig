@@ -21,6 +21,7 @@ const root = @import("root.zig");
 const Move = root.Move;
 const TUNABLE_CONSTANTS = root.TUNABLE_CONSTANTS;
 
+io: std.Io,
 hard_time: u64 = 0, // absolute nanoseconds
 soft_time: ?u64 = null,
 max_depth: ?i32 = null,
@@ -42,36 +43,39 @@ min_score: i16 = std.math.minInt(i16),
 const Limits = @This();
 
 pub fn elapsed(self: *const Limits) u64 {
-    const now = std.Io.Timestamp.now(root.io, .awake);
+    const now = std.Io.Timestamp.now(self.io, .awake);
     const duration = self.start_timestamp.durationTo(now);
     return @intCast(duration.nanoseconds);
 }
 
-pub fn initStandard(board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
-    const start_time = std.Io.Timestamp.now(root.io, .awake);
+pub fn initStandard(io: std.Io, board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
+    const start_time = std.Io.Timestamp.now(io, .awake);
     const hard_time = (remaining_ns -| overhead_ns) * @as(u128, @min(
         @as(u128, @intCast(TUNABLE_CONSTANTS.hard_limit_base + (TUNABLE_CONSTANTS.hard_limit_phase_mult * (32 -| board.phase()) >> 6))),
         1024,
     )) >> 10;
     const soft_time = (remaining_ns -| overhead_ns) * @as(u128, @intCast(TUNABLE_CONSTANTS.soft_limit_base)) + increment_ns * @as(u128, @intCast(TUNABLE_CONSTANTS.soft_limit_incr)) >> 10;
     return Limits{
+        .io = io,
         .hard_time = @intCast(hard_time),
         .soft_time = @intCast(soft_time),
         .start_timestamp = start_time,
     };
 }
 
-pub fn initFixedTime(ns: u64) Limits {
-    const start_time = std.Io.Timestamp.now(root.io, .awake);
+pub fn initFixedTime(io: std.Io, ns: u64) Limits {
+    const start_time = std.Io.Timestamp.now(io, .awake);
     return Limits{
+        .io = io,
         .hard_time = ns,
         .start_timestamp = start_time,
     };
 }
 
-pub fn initFixedDepth(max_depth_: i32) Limits {
-    const start_time = std.Io.Timestamp.now(root.io, .awake);
+pub fn initFixedDepth(io: std.Io, max_depth_: i32) Limits {
+    const start_time = std.Io.Timestamp.now(io, .awake);
     return Limits{
+        .io = io,
         .hard_time = std.time.ns_per_hour,
         .start_timestamp = start_time,
         .max_depth = max_depth_,

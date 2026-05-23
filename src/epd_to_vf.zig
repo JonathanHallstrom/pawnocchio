@@ -71,6 +71,7 @@ inline fn parseLine(line: []const u8) !struct { Board, i16, WDL } {
 }
 
 pub fn convert(
+    io: std.Io,
     allocator: std.mem.Allocator,
     input: *std.Io.Reader,
     output: *std.Io.Writer,
@@ -78,7 +79,7 @@ pub fn convert(
     white_relative_scores: bool,
 ) !void {
     var position_count: u64 = 0;
-    const start_time = std.Io.Timestamp.now(root.io, .awake);
+    const start_time = std.Io.Timestamp.now(io, .awake);
     var game: viriformat.GameRecord = .from(Board{}, allocator);
     var board: Board = .{};
     var num_broken_games: u64 = 0;
@@ -86,7 +87,7 @@ pub fn convert(
     // var previous_hashes = root.BoundedArray(u64, 200){};
     while (try input.takeDelimiter('\n')) |line| {
         if (position_count % 1000 == 0) {
-            const now = std.Io.Timestamp.now(root.io, .awake);
+            const now = std.Io.Timestamp.now(io, .awake);
             const elapsed_time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
             std.debug.print("{}pos/s {}pos        \r", .{ position_count * std.time.ns_per_s / @max(1, elapsed_time), position_count });
         }
@@ -118,7 +119,7 @@ pub fn convert(
         num_okay_games += 1;
     }
 
-    const now = std.Io.Timestamp.now(root.io, .awake);
+    const now = std.Io.Timestamp.now(io, .awake);
     const elapsed_time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
 
     try output.flush();
