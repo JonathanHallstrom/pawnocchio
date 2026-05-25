@@ -6,55 +6,93 @@ const Colour = root.Colour;
 const PieceType = root.PieceType;
 const ColouredPieceType = root.ColouredPieceType;
 const Bitboard = root.Bitboard;
-const BoundedArray = @import("bounded_array.zig").BoundedArray;
-
-pub const ThreatFeatureUpdate = struct {
+pub const ThreatFeature = extern struct {
     attacker: u8,
     from: u8,
     victim: u8,
     to: u8,
 
     comptime {
-        if (@sizeOf(ThreatFeatureUpdate) != 4) @compileError("ThreatFeatureUpdate must be 4 bytes");
-        if (@offsetOf(ThreatFeatureUpdate, "attacker") != 0) @compileError("bad layout");
-        if (@offsetOf(ThreatFeatureUpdate, "from") != 1) @compileError("bad layout");
-        if (@offsetOf(ThreatFeatureUpdate, "victim") != 2) @compileError("bad layout");
-        if (@offsetOf(ThreatFeatureUpdate, "to") != 3) @compileError("bad layout");
+        if (@sizeOf(ThreatFeature) != 4) @compileError("ThreatFeatureUpdate must be 4 bytes");
+        if (@offsetOf(ThreatFeature, "attacker") != 0) @compileError("bad layout");
+        if (@offsetOf(ThreatFeature, "from") != 1) @compileError("bad layout");
+        if (@offsetOf(ThreatFeature, "victim") != 2) @compileError("bad layout");
+        if (@offsetOf(ThreatFeature, "to") != 3) @compileError("bad layout");
     }
 };
 
-pub const ThreatUpdateBuffer = struct {
+pub const FEATURE_STACK_SIZE = root.SEARCH_MAX_PLY * UpdateBuffer.MaxAdds + 16;
+pub const FeatureStack = [FEATURE_STACK_SIZE]ThreatFeature;
+
+const FeatureBuffer = [*]align(4) ThreatFeature;
+
+pub const Stacks = struct {
+    add: FeatureBuffer,
+    sub: FeatureBuffer,
+};
+
+pub const UpdateBuffer = struct {
     pub const MaxAdds = 128;
     pub const MaxSubs = 128;
-    add: BoundedArray(ThreatFeatureUpdate, MaxAdds) = .{},
-    sub: BoundedArray(ThreatFeatureUpdate, MaxSubs) = .{},
+    add_start: u16 = 0,
+    add_end: u16 = 0,
+    sub_start: u16 = 0,
+    sub_end: u16 = 0,
     refresh: [2]bool = .{ false, false },
 
-    pub fn clear(self: *ThreatUpdateBuffer) void {
-        self.add.len = 0;
-        self.sub.len = 0;
+    pub fn addSlice(self: *const UpdateBuffer, noalias add_stack: []const ThreatFeature) []const ThreatFeature {
+        return add_stack[self.add_start..self.add_end];
+    }
+
+    pub fn subSlice(self: *const UpdateBuffer, noalias sub_stack: []const ThreatFeature) []const ThreatFeature {
+        return sub_stack[self.sub_start..self.sub_end];
+    }
+
+    pub fn clearFrom(self: *UpdateBuffer, noalias parent: *const UpdateBuffer) void {
+        self.add_start = parent.add_end;
+        self.add_end = parent.add_end;
+        self.sub_start = parent.sub_end;
+        self.sub_end = parent.sub_end;
         self.refresh = .{ false, false };
     }
 
-    inline fn pushAdd(self: *ThreatUpdateBuffer, update: ThreatFeatureUpdate) void {
-        std.debug.assert(self.add.len < MaxAdds);
-        self.add.appendAssumeCapacity(update);
+    pub fn clearRoot(self: *UpdateBuffer) void {
+        self.add_start = 0;
+        self.add_end = 0;
+        self.sub_start = 0;
+        self.sub_end = 0;
+        self.refresh = .{ false, false };
     }
 
-    inline fn pushSub(self: *ThreatUpdateBuffer, update: ThreatFeatureUpdate) void {
-        std.debug.assert(self.sub.len < MaxSubs);
-        self.sub.appendAssumeCapacity(update);
+    inline fn addPtr(self: *const UpdateBuffer, noalias add_stack: FeatureBuffer) FeatureBuffer {
+        return add_stack + self.add_end;
+    }
+
+    inline fn subPtr(self: *const UpdateBuffer, noalias sub_stack: FeatureBuffer) FeatureBuffer {
+        return sub_stack + self.sub_end;
+    }
+
+    inline fn pushAdd(self: *UpdateBuffer, noalias add_stack: FeatureBuffer, update: ThreatFeature) void {
+        std.debug.assert(self.add_end - self.add_start < MaxAdds);
+        (add_stack + self.add_end)[0] = update;
+        self.add_end += 1;
+    }
+
+    inline fn pushSub(self: *UpdateBuffer, noalias sub_stack: FeatureBuffer, update: ThreatFeature) void {
+        std.debug.assert(self.sub_end - self.sub_start < MaxSubs);
+        (sub_stack + self.sub_end)[0] = update;
+        self.sub_end += 1;
     }
 };
 
-inline fn emitTuple(buf: *ThreatUpdateBuffer, comptime is_add: bool, attacker: u8, from: u8, victim: u8, to: u8) void {
-    const update = ThreatFeatureUpdate{
+inline fn emitTuple(buf: *UpdateBuffer, stacks: Stacks, comptime is_add: bool, attacker: u8, from: u8, victim: u8, to: u8) void {
+    const update = ThreatFeature{
         .attacker = attacker,
         .from = from,
         .victim = victim,
         .to = to,
     };
-    if (is_add) buf.pushAdd(update) else buf.pushSub(update);
+    if (is_add) buf.pushAdd(stacks.add, update) else buf.pushSub(stacks.sub, update);
 }
 
 const scalar = struct {
@@ -168,7 +206,8 @@ const scalar = struct {
     }
 
     fn emitChangeSide(
-        buf: *ThreatUpdateBuffer,
+        buf: *UpdateBuffer,
+        stacks: Stacks,
         board: *const Board,
         piece: ColouredPieceType,
         sq: Square,
@@ -185,7 +224,7 @@ const scalar = struct {
                     if (occ & ksq.toBitboard() == 0) continue;
                     const victim = board.colouredPieceOn(ksq) orelse continue;
                     if (victim.toPieceType() == .king) continue;
-                    emitTuple(buf, is_add, piece.toInt(), sq_idx, victim.toInt(), ksq.toInt());
+                    emitTuple(buf, stacks, is_add, piece.toInt(), sq_idx, victim.toInt(), ksq.toInt());
                 }
             } else {
                 const out_mask = outgoingRayMask(pt, col);
@@ -197,7 +236,7 @@ const scalar = struct {
                         if (nearest.dist > max_dist) continue;
                         const victim = board.colouredPieceOn(nearest.sq) orelse continue;
                         if (victim.toPieceType() == .king) continue;
-                        emitTuple(buf, is_add, piece.toInt(), sq_idx, victim.toInt(), nearest.sq.toInt());
+                        emitTuple(buf, stacks, is_add, piece.toInt(), sq_idx, victim.toInt(), nearest.sq.toInt());
                     }
                 }
             }
@@ -206,7 +245,7 @@ const scalar = struct {
                 if (findNearest(&RAY_TABLE[sq_idx][dir], occ)) |nearest| {
                     const attacker = board.colouredPieceOn(nearest.sq) orelse continue;
                     if (canAttackFocus(attacker.toPieceType(), attacker.toColour(), dir, nearest.dist)) {
-                        emitTuple(buf, is_add, attacker.toInt(), nearest.sq.toInt(), piece.toInt(), sq_idx);
+                        emitTuple(buf, stacks, is_add, attacker.toInt(), nearest.sq.toInt(), piece.toInt(), sq_idx);
                     }
                 }
             }
@@ -215,7 +254,7 @@ const scalar = struct {
                 if (occ & ksq.toBitboard() == 0) continue;
                 const attacker = board.colouredPieceOn(ksq) orelse continue;
                 if (attacker.toPieceType() == .knight) {
-                    emitTuple(buf, is_add, attacker.toInt(), ksq.toInt(), piece.toInt(), sq_idx);
+                    emitTuple(buf, stacks, is_add, attacker.toInt(), ksq.toInt(), piece.toInt(), sq_idx);
                 }
             }
         }
@@ -231,26 +270,26 @@ const scalar = struct {
             const p2 = board.colouredPieceOn(n2.sq) orelse continue;
 
             if (isSlider(p1.toPieceType()) and sliderAttacksDir(p1.toPieceType(), dir2) and p2.toPieceType() != .king) {
-                emitTuple(buf, !is_add, p1.toInt(), n1.sq.toInt(), p2.toInt(), n2.sq.toInt());
+                emitTuple(buf, stacks, !is_add, p1.toInt(), n1.sq.toInt(), p2.toInt(), n2.sq.toInt());
             }
 
             if (isSlider(p2.toPieceType()) and sliderAttacksDir(p2.toPieceType(), dir1) and p1.toPieceType() != .king) {
-                emitTuple(buf, !is_add, p2.toInt(), n2.sq.toInt(), p1.toInt(), n1.sq.toInt());
+                emitTuple(buf, stacks, !is_add, p2.toInt(), n2.sq.toInt(), p1.toInt(), n1.sq.toInt());
             }
         }
     }
 
-    pub fn doOnChange(buf: *ThreatUpdateBuffer, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
-        emitChangeSide(buf, board, piece, sq, is_add, board.occupancy());
+    pub fn doOnChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+        emitChangeSide(buf, stacks, board, piece, sq, is_add, board.occupancy());
     }
 
-    pub fn doOnMove(buf: *ThreatUpdateBuffer, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+    pub fn doOnMove(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
         const occ = board.occupancy();
-        emitChangeSide(buf, board, old_piece, src, false, occ & ~dst.toBitboard());
-        emitChangeSide(buf, board, new_piece, dst, true, occ);
+        emitChangeSide(buf, stacks, board, old_piece, src, false, occ & ~dst.toBitboard());
+        emitChangeSide(buf, stacks, board, new_piece, dst, true, occ);
     }
 
-    pub fn doOnMutate(buf: *ThreatUpdateBuffer, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+    pub fn doOnMutate(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
         const occ = board.occupancy();
         const sq_idx = sq.toInt();
         const old_pt = old_piece.toPieceType();
@@ -263,7 +302,7 @@ const scalar = struct {
                 if (occ & ksq.toBitboard() == 0) continue;
                 const victim = board.colouredPieceOn(ksq) orelse continue;
                 if (victim.toPieceType() == .king) continue;
-                emitTuple(buf, false, old_piece.toInt(), sq_idx, victim.toInt(), ksq.toInt());
+                emitTuple(buf, stacks, false, old_piece.toInt(), sq_idx, victim.toInt(), ksq.toInt());
             }
         } else if (old_pt != .king) {
             const out_mask = outgoingRayMask(old_pt, old_col);
@@ -275,7 +314,7 @@ const scalar = struct {
                     if (nearest.dist > max_dist) continue;
                     const victim = board.colouredPieceOn(nearest.sq) orelse continue;
                     if (victim.toPieceType() == .king) continue;
-                    emitTuple(buf, false, old_piece.toInt(), sq_idx, victim.toInt(), nearest.sq.toInt());
+                    emitTuple(buf, stacks, false, old_piece.toInt(), sq_idx, victim.toInt(), nearest.sq.toInt());
                 }
             }
         }
@@ -285,7 +324,7 @@ const scalar = struct {
                 if (occ & ksq.toBitboard() == 0) continue;
                 const victim = board.colouredPieceOn(ksq) orelse continue;
                 if (victim.toPieceType() == .king) continue;
-                emitTuple(buf, true, new_piece.toInt(), sq_idx, victim.toInt(), ksq.toInt());
+                emitTuple(buf, stacks, true, new_piece.toInt(), sq_idx, victim.toInt(), ksq.toInt());
             }
         } else if (new_pt != .king) {
             const out_mask = outgoingRayMask(new_pt, new_col);
@@ -297,7 +336,7 @@ const scalar = struct {
                     if (nearest.dist > max_dist) continue;
                     const victim = board.colouredPieceOn(nearest.sq) orelse continue;
                     if (victim.toPieceType() == .king) continue;
-                    emitTuple(buf, true, new_piece.toInt(), sq_idx, victim.toInt(), nearest.sq.toInt());
+                    emitTuple(buf, stacks, true, new_piece.toInt(), sq_idx, victim.toInt(), nearest.sq.toInt());
                 }
             }
         }
@@ -308,7 +347,7 @@ const scalar = struct {
                 if (findNearest(&RAY_TABLE[sq_idx][dir], occ)) |nearest| {
                     const attacker = board.colouredPieceOn(nearest.sq) orelse continue;
                     if (canAttackFocus(attacker.toPieceType(), attacker.toColour(), dir, nearest.dist)) {
-                        emitTuple(buf, false, attacker.toInt(), nearest.sq.toInt(), old_piece.toInt(), sq_idx);
+                        emitTuple(buf, stacks, false, attacker.toInt(), nearest.sq.toInt(), old_piece.toInt(), sq_idx);
                     }
                 }
             }
@@ -316,7 +355,7 @@ const scalar = struct {
                 if (occ & ksq.toBitboard() == 0) continue;
                 const attacker = board.colouredPieceOn(ksq) orelse continue;
                 if (attacker.toPieceType() == .knight) {
-                    emitTuple(buf, false, attacker.toInt(), ksq.toInt(), old_piece.toInt(), sq_idx);
+                    emitTuple(buf, stacks, false, attacker.toInt(), ksq.toInt(), old_piece.toInt(), sq_idx);
                 }
             }
         }
@@ -327,7 +366,7 @@ const scalar = struct {
                 if (findNearest(&RAY_TABLE[sq_idx][dir], occ)) |nearest| {
                     const attacker = board.colouredPieceOn(nearest.sq) orelse continue;
                     if (canAttackFocus(attacker.toPieceType(), attacker.toColour(), dir, nearest.dist)) {
-                        emitTuple(buf, true, attacker.toInt(), nearest.sq.toInt(), new_piece.toInt(), sq_idx);
+                        emitTuple(buf, stacks, true, attacker.toInt(), nearest.sq.toInt(), new_piece.toInt(), sq_idx);
                     }
                 }
             }
@@ -335,7 +374,7 @@ const scalar = struct {
                 if (occ & ksq.toBitboard() == 0) continue;
                 const attacker = board.colouredPieceOn(ksq) orelse continue;
                 if (attacker.toPieceType() == .knight) {
-                    emitTuple(buf, true, attacker.toInt(), ksq.toInt(), new_piece.toInt(), sq_idx);
+                    emitTuple(buf, stacks, true, attacker.toInt(), ksq.toInt(), new_piece.toInt(), sq_idx);
                 }
             }
         }
@@ -565,14 +604,24 @@ const byte_ray = struct {
         );
     }
 
-    inline fn appendTuples(buf: *ThreatUpdateBuffer, comptime is_add: bool, n: usize, tuples: Tupleboard) void {
-        const arr = if (is_add) &buf.add else &buf.sub;
-        std.debug.assert(arr.len + n <= if (is_add) ThreatUpdateBuffer.MaxAdds else ThreatUpdateBuffer.MaxSubs);
-        @memcpy(std.mem.sliceAsBytes(arr.unusedCapacitySlice())[0..64], std.mem.asBytes(&tuples));
-        arr.len += n;
+    noinline fn appendTuplesImpl(ptr: FeatureBuffer, tuples: Tupleboard) void {
+        const dest: *[16]u32 = @ptrCast(ptr);
+        dest.* = tuples;
     }
 
-    inline fn brEmitOutgoing(buf: *ThreatUpdateBuffer, rv: *const RayVector, closest: Bitrays, piece: ColouredPieceType, focus_sq: u8, comptime is_add: bool) void {
+    inline fn appendTuples(buf: *UpdateBuffer, stacks: Stacks, comptime is_add: bool, n: usize, tuples: Tupleboard) void {
+        const ptr = if (is_add) buf.addPtr(stacks.add) else buf.subPtr(stacks.sub);
+        if (is_add) {
+            std.debug.assert(buf.add_end - buf.add_start + 16 <= UpdateBuffer.MaxAdds);
+            buf.add_end += @intCast(n);
+        } else {
+            std.debug.assert(buf.sub_end - buf.sub_start + 16 <= UpdateBuffer.MaxSubs);
+            buf.sub_end += @intCast(n);
+        }
+        appendTuplesImpl(ptr, tuples);
+    }
+
+    inline fn brEmitOutgoing(buf: *UpdateBuffer, stacks: Stacks, rv: *const RayVector, closest: Bitrays, piece: ColouredPieceType, focus_sq: u8, comptime is_add: bool) void {
         const attacked = RAY_ATTACKS[piece.toInt()] & closest & ~testBits(rv.bits, KING_BOARD);
 
         if (has_vbmi2) {
@@ -584,19 +633,19 @@ const byte_ray = struct {
 
             const pair2 = compressPairs(rv.pieces, rv.perm, attacked);
             const tuples: Tupleboard = @bitCast(@select(u8, OUTGOING_SELECT, pair2, pair1));
-            appendTuples(buf, is_add, n, tuples);
+            appendTuples(buf, stacks, is_add, n, tuples);
         } else {
             const perm: [64]u8 = rv.perm;
             const pieces: [64]u8 = rv.pieces;
             var it = Bitboard.iterator(attacked);
             while (it.next()) |sq| {
                 const lane = sq.toInt();
-                emitTuple(buf, is_add, piece.toInt(), focus_sq, pieces[lane], perm[lane]);
+                emitTuple(buf, stacks, is_add, piece.toInt(), focus_sq, pieces[lane], perm[lane]);
             }
         }
     }
 
-    inline fn brEmitIncoming(buf: *ThreatUpdateBuffer, rv: *const RayVector, closest: Bitrays, piece: ColouredPieceType, focus_sq: u8, comptime is_add: bool) void {
+    inline fn brEmitIncoming(buf: *UpdateBuffer, stacks: Stacks, rv: *const RayVector, closest: Bitrays, piece: ColouredPieceType, focus_sq: u8, comptime is_add: bool) void {
         const attackers = closest & testBits(rv.bits, INCOMING_THREATS) & ~testBits(rv.bits, KING_BOARD);
 
         if (has_vbmi2) {
@@ -609,14 +658,14 @@ const byte_ray = struct {
 
             const pair2 = compressPairs(rv.pieces, rv.perm, attackers);
             const tuples: Tupleboard = @bitCast(@select(u8, INCOMING_SELECT, pair2, pair1));
-            appendTuples(buf, is_add, n, tuples);
+            appendTuples(buf, stacks, is_add, n, tuples);
         } else {
             const perm: [64]u8 = rv.perm;
             const pieces: [64]u8 = rv.pieces;
             var it = Bitboard.iterator(attackers);
             while (it.next()) |sq| {
                 const lane = sq.toInt();
-                emitTuple(buf, is_add, pieces[lane], perm[lane], piece.toInt(), focus_sq);
+                emitTuple(buf, stacks, is_add, pieces[lane], perm[lane], piece.toInt(), focus_sq);
             }
         }
     }
@@ -638,7 +687,7 @@ const byte_ray = struct {
         return t -% (t >> 7);
     }
 
-    inline fn brEmitDiscovered(buf: *ThreatUpdateBuffer, rv: *const RayVector, closest: Bitrays, comptime is_add: bool) void {
+    inline fn brEmitDiscovered(buf: *UpdateBuffer, stacks: Stacks, rv: *const RayVector, closest: Bitrays, comptime is_add: bool) void {
         const non_king = closest & ~testBits(rv.bits, KING_BOARD);
         const potential_victims = non_king & NON_KNIGHT;
         const sliders = closest & testBits(rv.bits, INCOMING_SLIDERS);
@@ -655,7 +704,7 @@ const byte_ray = struct {
             const att = compressPairs(rv.pieces, rv.perm, slider_mask);
             const vic = compressPairs(flipHalves(rv.pieces), flipHalves(rv.perm), victim_mask);
             const tuples: Tupleboard = @bitCast(@select(u8, OUTGOING_SELECT, vic, att));
-            appendTuples(buf, !is_add, n, tuples);
+            appendTuples(buf, stacks, !is_add, n, tuples);
         } else {
             for (0..4) |pair| {
                 const ray_a = pair * 8;
@@ -667,7 +716,7 @@ const byte_ray = struct {
                 const vl_b = ray_b + @ctz(victim_b);
                 if (slider_a != 0 and victim_b != 0) {
                     @branchHint(.unpredictable);
-                    emitTuple(buf, !is_add, pieces_arr[sl_a], perm_arr[sl_a], pieces_arr[vl_b], perm_arr[vl_b]);
+                    emitTuple(buf, stacks, !is_add, pieces_arr[sl_a], perm_arr[sl_a], pieces_arr[vl_b], perm_arr[vl_b]);
                 }
 
                 const slider_b = sliders >> @intCast(ray_b) & 0xff;
@@ -676,64 +725,64 @@ const byte_ray = struct {
                 const vl_a = ray_a + @ctz(victim_a);
                 if (slider_b != 0 and victim_a != 0) {
                     @branchHint(.unpredictable);
-                    emitTuple(buf, !is_add, pieces_arr[sl_b], perm_arr[sl_b], pieces_arr[vl_a], perm_arr[vl_a]);
+                    emitTuple(buf, stacks, !is_add, pieces_arr[sl_b], perm_arr[sl_b], pieces_arr[vl_a], perm_arr[vl_a]);
                 }
             }
         }
     }
 
-    inline fn emitChangeSide(buf: *ThreatUpdateBuffer, board: *const Board, piece: ColouredPieceType, focus: u8, comptime is_add: bool, ignore: ?u8) void {
+    inline fn emitChangeSide(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, focus: u8, comptime is_add: bool, ignore: ?u8) void {
         const rv = permuteMailbox(board, focus, ignore);
         const occupied = occupiedMask(rv.bits);
         const closest = closestOnRays(occupied);
 
         if (piece.toPieceType() != .king) {
-            brEmitOutgoing(buf, &rv, closest, piece, focus, is_add);
-            brEmitIncoming(buf, &rv, closest, piece, focus, is_add);
+            brEmitOutgoing(buf, stacks, &rv, closest, piece, focus, is_add);
+            brEmitIncoming(buf, stacks, &rv, closest, piece, focus, is_add);
         }
-        brEmitDiscovered(buf, &rv, closest, is_add);
+        brEmitDiscovered(buf, stacks, &rv, closest, is_add);
     }
 
-    pub noinline fn doOnChange(buf: *ThreatUpdateBuffer, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
-        emitChangeSide(buf, board, piece, sq.toInt(), is_add, null);
+    pub fn doOnChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+        emitChangeSide(buf, stacks, board, piece, sq.toInt(), is_add, null);
     }
 
-    pub noinline fn doOnMove(buf: *ThreatUpdateBuffer, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
-        emitChangeSide(buf, board, old_piece, src.toInt(), false, dst.toInt());
-        emitChangeSide(buf, board, new_piece, dst.toInt(), true, null);
+    pub fn doOnMove(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+        emitChangeSide(buf, stacks, board, old_piece, src.toInt(), false, dst.toInt());
+        emitChangeSide(buf, stacks, board, new_piece, dst.toInt(), true, null);
     }
 
-    pub noinline fn doOnMutate(buf: *ThreatUpdateBuffer, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+    pub fn doOnMutate(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
         const focus = sq.toInt();
         const rv = permuteMailbox(board, focus, null);
         const occupied = occupiedMask(rv.bits);
         const closest = closestOnRays(occupied);
 
         if (old_piece.toPieceType() != .king) {
-            brEmitOutgoing(buf, &rv, closest, old_piece, focus, false);
-            brEmitIncoming(buf, &rv, closest, old_piece, focus, false);
+            brEmitOutgoing(buf, stacks, &rv, closest, old_piece, focus, false);
+            brEmitIncoming(buf, stacks, &rv, closest, old_piece, focus, false);
         }
         if (new_piece.toPieceType() != .king) {
-            brEmitOutgoing(buf, &rv, closest, new_piece, focus, true);
-            brEmitIncoming(buf, &rv, closest, new_piece, focus, true);
+            brEmitOutgoing(buf, stacks, &rv, closest, new_piece, focus, true);
+            brEmitIncoming(buf, stacks, &rv, closest, new_piece, focus, true);
         }
     }
 };
 
 const backend = if (has_vbmi) byte_ray else scalar;
 
-pub fn onChange(buf: *ThreatUpdateBuffer, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
-    backend.doOnChange(buf, board, piece, sq, is_add);
+pub fn onChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+    backend.doOnChange(buf, stacks, board, piece, sq, is_add);
 }
 
-pub fn onMove(buf: *ThreatUpdateBuffer, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
-    backend.doOnMove(buf, board, old_piece, src, new_piece, dst);
+pub fn onMove(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+    backend.doOnMove(buf, stacks, board, old_piece, src, new_piece, dst);
 }
 
-pub fn onMutate(buf: *ThreatUpdateBuffer, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
-    backend.doOnMutate(buf, board, old_piece, new_piece, sq);
+pub fn onMutate(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+    backend.doOnMutate(buf, stacks, board, old_piece, new_piece, sq);
 }
 
-pub fn prepareKingMove(buf: *ThreatUpdateBuffer, colour: Colour) void {
+pub fn prepareKingMove(buf: *UpdateBuffer, colour: Colour) void {
     buf.refresh[colour.toInt()] = true;
 }

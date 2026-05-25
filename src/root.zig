@@ -630,7 +630,7 @@ comptime {
     assert(@sizeOf(TTCluster) == 32);
 }
 
-var io: std.Io = undefined;
+pub var io: std.Io = undefined;
 var stdout_wrapper: std.Io.File.Writer = undefined;
 pub var stdout_writer: *std.Io.Writer = undefined;
 var stdout_buf: [4096]u8 = undefined;

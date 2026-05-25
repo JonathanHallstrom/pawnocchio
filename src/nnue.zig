@@ -32,7 +32,7 @@ const numa = @import("numa.zig");
 const simd = @import("simd.zig");
 const nnue_threats = @import("nnue_threats.zig");
 const nnue_threat_updates = @import("nnue_threat_updates.zig");
-const ThreatUpdateBuffer = nnue_threat_updates.ThreatUpdateBuffer;
+const UpdateBuffer = nnue_threat_updates.UpdateBuffer;
 
 const Q_BITS: comptime_int = std.math.log2_int_ceil(u32, arch.Q);
 const Q0_BITS: comptime_int = std.math.log2_int_ceil(u32, arch.Q0);
@@ -313,7 +313,7 @@ const State = struct {
     ply: u16,
 
     dirty_piece: DirtyPiece,
-    threat_updates: ThreatUpdateBuffer,
+    threat_updates: UpdateBuffer,
     pending_parent: bool,
     board_ref: ?*const Board,
 
@@ -372,6 +372,7 @@ const State = struct {
         ctx: *Context,
     ) void {
         self.* = default(weights);
+        self.threat_updates.clearRoot();
         self.setMirrored(board);
         self.board_ref = board;
 
@@ -408,7 +409,7 @@ const State = struct {
         self.pending_parent = true;
         self.board_ref = board;
         self.dirty_piece.clear();
-        self.threat_updates.clear();
+        self.threat_updates.clearFrom(&other.threat_updates);
     }
 
     fn resolvePending(noalias self: *State, stm: Colour, ctx: *Context) bool {
@@ -462,7 +463,7 @@ const State = struct {
     pub inline fn markClean(self: *State, board: *const Board) void {
         self.pending_parent = false;
         self.dirty_piece.clear();
-        self.threat_updates.clear();
+        self.threat_updates.clearRoot();
         self.board_ref = board;
     }
 
@@ -502,8 +503,8 @@ const State = struct {
             return;
         }
 
-        const adds_raw = self.threat_updates.add.slice();
-        const subs_raw = self.threat_updates.sub.slice();
+        const adds_raw = self.threat_updates.addSlice(&ctx.threat_add_stack);
+        const subs_raw = self.threat_updates.subSlice(&ctx.threat_sub_stack);
 
         if (adds_raw.len == 0 and subs_raw.len == 0) {
             self.threatHalf(col).* = parent.threatHalf(col).*;
@@ -517,7 +518,7 @@ const State = struct {
         const src = parent.threatHalf(col).ptr;
         const dst = self.threatBuffer(col, ctx);
 
-        var add_indices: [ThreatUpdateBuffer.MaxAdds]u32 = undefined;
+        var add_indices: [UpdateBuffer.MaxAdds]u32 = undefined;
         var add_count: usize = 0;
         for (adds_raw) |upd| {
             if (nnue_threats.threatIndex(
@@ -533,7 +534,7 @@ const State = struct {
             }
         }
 
-        var sub_indices: [ThreatUpdateBuffer.MaxSubs]u32 = undefined;
+        var sub_indices: [UpdateBuffer.MaxSubs]u32 = undefined;
         var sub_count: usize = 0;
         for (subs_raw) |upd| {
             if (nnue_threats.threatIndex(
@@ -549,6 +550,9 @@ const State = struct {
             }
         }
 
+        // _ = root.engine.dbg("adds", adds_raw.len);
+        // _ = root.engine.dbg("subs", subs_raw.len);
+        //
         applyThreatRows(dst, src, weights, add_indices[0..add_count], sub_indices[0..sub_count]);
         self.threatHalf(col).* = .{ .ptr = dst };
         self.threatMirrorPtrFor(col).* = parent.threatMirrorFor(col);
@@ -923,16 +927,20 @@ const RawHandle = struct {
         self.state.addAddSubSub(add1, add2, sub1, sub2);
     }
 
+    fn threatStacks(self: RawHandle) nnue_threat_updates.Stacks {
+        return .{ .add = &self.ctx.threat_add_stack, .sub = &self.ctx.threat_sub_stack };
+    }
+
     pub fn threatOnChange(self: RawHandle, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
-        nnue_threat_updates.onChange(&self.state.threat_updates, board, piece, sq, is_add);
+        nnue_threat_updates.onChange(&self.state.threat_updates, self.threatStacks(), board, piece, sq, is_add);
     }
 
     pub fn threatOnMove(self: RawHandle, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
-        nnue_threat_updates.onMove(&self.state.threat_updates, board, old_piece, src, new_piece, dst);
+        nnue_threat_updates.onMove(&self.state.threat_updates, self.threatStacks(), board, old_piece, src, new_piece, dst);
     }
 
     pub fn threatOnMutate(self: RawHandle, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
-        nnue_threat_updates.onMutate(&self.state.threat_updates, board, old_piece, new_piece, sq);
+        nnue_threat_updates.onMutate(&self.state.threat_updates, self.threatStacks(), board, old_piece, new_piece, sq);
     }
 
     pub fn eval(self: RawHandle, board: *const Board) i16 {
@@ -945,6 +953,8 @@ pub const Context = struct {
     refresh_cache: root.refreshCache(arch.HORIZONTAL_MIRRORING, arch.INPUT_BUCKET_COUNT) = undefined,
     accumulator_stack: [root.SEARCH_MAX_PLY][2]Accumulator = undefined,
     threat_accumulator_stack: [root.SEARCH_MAX_PLY][2]Accumulator = undefined,
+    threat_add_stack: nnue_threat_updates.FeatureStack align(64) = undefined,
+    threat_sub_stack: nnue_threat_updates.FeatureStack align(64) = undefined,
     frames: [root.SEARCH_MAX_PLY]State = undefined,
 
     pub fn initForThread(self: *Context, thread_idx: usize) void {
