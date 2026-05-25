@@ -200,33 +200,25 @@ pub const Context = struct {
         var add_indices: [nnue_threat_updates.UpdateBuffer.MaxAdds]u32 = undefined;
         var add_count: usize = 0;
         for (adds_raw) |upd| {
-            if (nnue_threats.threatIndex(
-                col,
-                king_sq,
-                ColouredPieceType.fromInt(upd.attacker),
-                Square.fromInt(upd.from),
-                ColouredPieceType.fromInt(upd.victim),
-                Square.fromInt(upd.to),
-            )) |idx| {
-                add_indices[add_count] = idx;
-                add_count += 1;
-            }
+            const idx = nnue_threats.threatIndex(
+                col, king_sq,
+                ColouredPieceType.fromInt(upd.attacker), Square.fromInt(upd.from),
+                ColouredPieceType.fromInt(upd.victim), Square.fromInt(upd.to),
+            );
+            add_indices[add_count] = @bitCast(idx);
+            add_count += @intFromBool(idx >= 0);
         }
 
         var sub_indices: [nnue_threat_updates.UpdateBuffer.MaxSubs]u32 = undefined;
         var sub_count: usize = 0;
         for (subs_raw) |upd| {
-            if (nnue_threats.threatIndex(
-                col,
-                king_sq,
-                ColouredPieceType.fromInt(upd.attacker),
-                Square.fromInt(upd.from),
-                ColouredPieceType.fromInt(upd.victim),
-                Square.fromInt(upd.to),
-            )) |idx| {
-                sub_indices[sub_count] = idx;
-                sub_count += 1;
-            }
+            const idx = nnue_threats.threatIndex(
+                col, king_sq,
+                ColouredPieceType.fromInt(upd.attacker), Square.fromInt(upd.from),
+                ColouredPieceType.fromInt(upd.victim), Square.fromInt(upd.to),
+            );
+            sub_indices[sub_count] = @bitCast(idx);
+            sub_count += @intFromBool(idx >= 0);
         }
 
         applyThreatRows(dst, src, weights, add_indices[0..add_count], sub_indices[0..sub_count]);

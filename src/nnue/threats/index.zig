@@ -161,38 +161,24 @@ pub fn threatIndex(
     from_in: Square,
     victim_in: ColouredPieceType,
     to_in: Square,
-) ?u32 {
-    var attacker = attacker_in;
-    var victim = victim_in;
-    var from = from_in;
-    var to = to_in;
+) i32 {
+    const colour_mask: u8 = @intFromBool(colour == .black);
+    const mirror_mask: u8 = @as(u8, 0b000111) * @intFromBool(king.getFile().toInt() >= File.e.toInt());
+    const sq_mask: u8 = (0b111000 * colour_mask) ^ mirror_mask;
 
-    if (colour == .black) {
-        @branchHint(.unpredictable);
-        attacker = attacker.flipColor();
-        victim = victim.flipColor();
-        from = from.flipRank();
-        to = to.flipRank();
-    }
-
-    if (king.getFile().toInt() >= File.e.toInt()) {
-        @branchHint(.unpredictable);
-        from = from.flipFile();
-        to = to.flipFile();
-    }
+    const attacker = ColouredPieceType.fromInt(attacker_in.toInt() ^ colour_mask);
+    const victim = ColouredPieceType.fromInt(victim_in.toInt() ^ colour_mask);
+    const from = Square.fromInt(from_in.toInt() ^ sq_mask);
+    const to = Square.fromInt(to_in.toInt() ^ sq_mask);
 
     const fwd_idx: usize = if (from.toInt() < to.toInt()) 1 else 0;
     const base = ATTACK_INDEX[attacker.toInt()][victim.toInt()][fwd_idx];
 
-    const sq_offset = OFFSETS.offsets[attacker.toInt()][from.toInt()];
-    const piece_idx = PIECE_INDEX[attacker.toInt()][from.toInt()][to.toInt()];
+    const sq_offset: u32 = OFFSETS.offsets[attacker.toInt()][from.toInt()];
+    const piece_idx: u32 = PIECE_INDEX[attacker.toInt()][from.toInt()][to.toInt()];
 
-    const idx = base + sq_offset + piece_idx;
-    if (base != TOTAL_THREATS) {
-        std.debug.assert(idx < TOTAL_THREATS);
-    }
-
-    return if (base == TOTAL_THREATS) null else idx;
+    const excluded: u32 = @intFromBool(base == TOTAL_THREATS);
+    return @bitCast((base +% sq_offset +% piece_idx) | (excluded << 31));
 }
 
 comptime {
@@ -238,9 +224,8 @@ fn positionThreatIndices(board: *const root.Board, colour: Colour) TestThreatInd
             const victim = board.colouredPieceOn(victim_sq).?;
             if (victim.toPieceType() == .king) continue;
 
-            if (threatIndex(colour, king, attacker, attacker_sq, victim, victim_sq)) |idx| {
-                indices.appendAssumeCapacity(idx);
-            }
+            const idx = threatIndex(colour, king, attacker, attacker_sq, victim, victim_sq);
+            if (idx >= 0) indices.appendAssumeCapacity(@intCast(idx));
         }
     }
 
@@ -282,9 +267,8 @@ pub fn refreshThreats(
         var victims_it = Bitboard.iterator(attacked);
         while (victims_it.next()) |victim_sq| {
             if (board.colouredPieceOn(victim_sq)) |victim| {
-                if (threatIndex(colour, king_sq, attacker, attacker_sq, victim, victim_sq)) |idx| {
-                    acc.addThreat(&weights.input.threat_w[idx]);
-                }
+                const idx = threatIndex(colour, king_sq, attacker, attacker_sq, victim, victim_sq);
+                if (idx >= 0) acc.addThreat(&weights.input.threat_w[@intCast(idx)]);
             }
         }
     }
