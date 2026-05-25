@@ -27,7 +27,7 @@ const mman_c = if (IS_LINUX_LIBC) @cImport({
 }) else void;
 const evaluation = root.evaluation;
 const numa = @import("numa.zig");
-const nnue = if (evaluation.eval_mode == .nnue) @import("nnue.zig") else void;
+const nnue = root.nnue;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;

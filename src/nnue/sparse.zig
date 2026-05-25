@@ -15,16 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
-const attack_array_generation = @import("attack_array_generation.zig");
-const root = @import("root.zig");
-const nnue_arch = @import("nnue_arch.zig");
-const Square = root.Square;
-const Bitboard = root.Bitboard;
+const root = @import("../root.zig");
+const arch = @import("arch.zig");
+const simd = root.simd;
 
-const nnue = root.nnue;
-const simd = @import("simd.zig");
-
-const L1_SIZE = nnue_arch.L1_SIZE;
+const L1_SIZE = arch.L1_SIZE;
 
 const NONZERO_INDICES = blk: {
     var res: [256]@Vector(8, u16) = @splat(@splat(0));

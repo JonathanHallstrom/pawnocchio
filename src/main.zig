@@ -17,7 +17,6 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const root = @import("root.zig");
-const nnue_arch = @import("nnue_arch.zig");
 const command_line = @import("command_line.zig");
 const write = root.write;
 const writeLog = std.debug.print;
@@ -397,7 +396,7 @@ pub fn main(init: std.process.Init) !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "refreshbench") and root.evaluation.EVAL_MODE == .nnue) {
                     const refresh_fens = @import("refresh_fens.zig").FENS;
-                    const RC = root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
+                    const RC = root.refreshCache(root.nnue.arch.HORIZONTAL_MIRRORING, root.nnue.arch.INPUT_BUCKET_COUNT);
                     const weights = root.nnue.weightsForNode(0);
                     var cache: RC = undefined;
                     cache.initInPlace(weights);

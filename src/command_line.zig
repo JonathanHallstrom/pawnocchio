@@ -17,7 +17,6 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const root = @import("root.zig");
-const nnue_arch = @import("nnue_arch.zig");
 const arg_parser = @import("arg_parser.zig");
 const edit_distance = @import("edit_distance.zig");
 const HyperLogLog = @import("HyperLogLog.zig");

@@ -55,22 +55,22 @@ fn prepareInputs(
     eval_mode: EvalMode,
     net_override: ?std.Build.LazyPath,
 ) !Inputs {
-    if (eval_mode == .hce and net_override != null) {
-        std.log.err("build cannot set both -Deval=hce and -Dnet\n", .{});
+    if (eval_mode != .nnue and net_override != null) {
+        std.log.err("cannot set net when eval mode is not nnue\n", .{});
         return error.IncompatibleFlags;
     }
 
     const generated_files = b.addWriteFiles();
     const tuning_generated_file = try build_tuning.prepareGeneratedTuning(b, generated_files);
-    const input: build_net.Input = if (eval_mode == .hce)
-        .hce
-    else
+    const input: build_net.Input = if (eval_mode == .nnue)
         try build_net.prepareNet(
             b,
             transform_tool,
             target.result.cpu,
             net_override orelse b.path(DEFAULT_NET_PATH),
-        );
+        )
+    else
+        .hce;
     return .{
         .generated_files = generated_files,
         .tuning_generated_file = tuning_generated_file,

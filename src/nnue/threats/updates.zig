@@ -1,5 +1,5 @@
 const std = @import("std");
-const root = @import("root.zig");
+const root = @import("../../root.zig");
 const Board = root.Board;
 const Square = root.Square;
 const Colour = root.Colour;
@@ -382,8 +382,8 @@ const scalar = struct {
 };
 
 const builtin = @import("builtin");
-const simd = @import("simd.zig");
-const arch = @import("nnue_arch.zig");
+const simd = root.simd;
+const arch = @import("../arch.zig");
 const has_vbmi = simd.TARGET == .avx512vbmi;
 const has_vbmi2 = has_vbmi and builtin.cpu.has(.x86, .avx512vbmi2);
 

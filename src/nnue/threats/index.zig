@@ -15,9 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
-const root = @import("root.zig");
+const root = @import("../../root.zig");
 const nnue = root.nnue;
-const arch = @import("nnue_arch.zig");
+const arch = @import("../arch.zig");
 const Accumulator = nnue.Accumulator;
 const Bitboard = root.Bitboard;
 const Board = root.Board;
@@ -27,7 +27,7 @@ const PieceType = root.PieceType;
 const ColouredPieceType = root.ColouredPieceType;
 const File = root.File;
 
-const TOTAL_THREATS = @import("nnue_arch.zig").TOTAL_THREATS;
+const TOTAL_THREATS = arch.TOTAL_THREATS;
 
 const PIECE_TARGET_MAP: [6][6]i32 = .{
     .{ 0, 1, -1, 2, -1, -1 },
@@ -220,7 +220,7 @@ fn testAttacks(piece: ColouredPieceType, sq: Square, occ: u64) u64 {
     };
 }
 
-const TestThreatIndices = @import("bounded_array.zig").BoundedArray(u32, 128);
+const TestThreatIndices = root.BoundedArray(u32, 128);
 
 fn positionThreatIndices(board: *const root.Board, colour: Colour) TestThreatIndices {
     const king = Square.fromBitboard(board.kingFor(colour));
@@ -283,7 +283,7 @@ pub fn refreshThreats(
         while (victims_it.next()) |victim_sq| {
             if (board.colouredPieceOn(victim_sq)) |victim| {
                 if (threatIndex(colour, king_sq, attacker, attacker_sq, victim, victim_sq)) |idx| {
-                    acc.addThreat(&weights.threat_w[idx]);
+                    acc.addThreat(&weights.input.threat_w[idx]);
                 }
             }
         }

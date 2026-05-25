@@ -15,12 +15,51 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
-const arch = @import("nnue_arch.zig");
 
-pub const TARGET = arch.target(@import("builtin").cpu);
+pub const Target = enum {
+    avx512vnni,
+    avx512vbmi,
+    avx512,
+    avx2,
+    aarch64,
+    ssse3,
+    sse2,
+    fallback,
+};
+
+pub fn target(cpu: std.Target.Cpu) Target {
+    if (cpu.has(.x86, .avx512vnni) and false) {
+        return .avx512vnni;
+    }
+    if (cpu.has(.x86, .avx512vbmi)) {
+        return .avx512vbmi;
+    }
+    if (cpu.has(.x86, .avx512f)) {
+        return .avx512;
+    }
+    if (cpu.has(.x86, .avx2)) {
+        return .avx2;
+    }
+    if (cpu.has(.aarch64, .neon)) {
+        return .aarch64;
+    }
+    if (cpu.has(.x86, .ssse3)) {
+        return .ssse3;
+    }
+    if (cpu.has(.x86, .sse2)) {
+        return .sse2;
+    }
+    return .fallback;
+}
+
+pub fn parseTarget(name: []const u8) ?Target {
+    return std.meta.stringToEnum(Target, name);
+}
+
+pub const TARGET = target(@import("builtin").cpu);
 
 pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
-    return switch (arch.target(cpu)) {
+    return switch (target(cpu)) {
         .avx512vnni, .avx512vbmi, .avx512 => 64,
         .avx2 => 32,
         .aarch64, .ssse3, .sse2 => 16,
@@ -281,10 +320,58 @@ pub fn IndexedChunkIter(comptime T: type, comptime N: usize) type {
     };
 }
 
+pub fn ReverseChunkIter(comptime T: type, comptime N: usize) type {
+    return struct {
+        ptr: [*]const T,
+        len: usize,
+        i: usize,
+
+        pub const Chunk = struct {
+            data: @Vector(N, T),
+            mask: @Vector(N, bool),
+            start: usize,
+
+            pub inline fn select(self: @This(), fill: @Vector(N, T)) @Vector(N, T) {
+                return @select(T, self.mask, self.data, fill);
+            }
+        };
+
+        pub inline fn init(s: []const T) @This() {
+            return .{ .ptr = s.ptr, .len = s.len, .i = finalIdx(N, s.len) };
+        }
+
+        pub inline fn isEmpty(self: @This()) bool {
+            return self.len == 0;
+        }
+
+        pub inline fn maskedChunk(self: *@This()) ?Chunk {
+            if (self.len == 0) return null;
+
+            const start = self.i;
+            const data: @Vector(N, T) = self.ptr[start..][0..N].*;
+            const valid = self.len - start;
+            const mask: @Vector(N, bool) = if (valid >= N) @splat(true) else @bitCast(prefixMask(N, valid));
+
+            if (start >= N) {
+                self.i = start - N;
+                self.len = start;
+            } else {
+                self.len = 0;
+            }
+
+            return .{ .data = data, .mask = mask, .start = start };
+        }
+    };
+}
+
 pub fn chunkIter(comptime T: type, comptime N: usize, slice: []const T) ChunkIter(T, N) {
     return .init(slice);
 }
 
 pub fn indexedChunkIter(comptime T: type, comptime N: usize, slice: []const T) IndexedChunkIter(T, N) {
+    return .init(slice);
+}
+
+pub fn reverseChunkIter(comptime T: type, comptime N: usize, slice: []const T) ReverseChunkIter(T, N) {
     return .init(slice);
 }

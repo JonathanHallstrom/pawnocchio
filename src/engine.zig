@@ -20,7 +20,7 @@ const ThreadPool = @import("ThreadPool.zig").ThreadPool;
 const Searcher = root.Searcher;
 const debug_stats_mod = @import("debug_stats.zig");
 const numa = @import("numa.zig");
-const nnue = if (root.eval_mode == .nnue) @import("nnue.zig") else void;
+const nnue = root.nnue;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
