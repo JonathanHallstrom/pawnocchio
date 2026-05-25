@@ -79,6 +79,39 @@ pub fn dpbusd(sum: simd.vector(i32), u: simd.vector(u8), i: simd.vector(i8)) sim
     return s;
 }
 
+pub fn vpermb(idx: anytype, src: @TypeOf(idx)) @TypeOf(idx) {
+    return asm ("vpermb %[src], %[idx], %[ret]"
+        : [ret] "=x" (-> @TypeOf(idx)),
+        : [idx] "x" (idx),
+          [src] "x" (src),
+    );
+}
+
+pub fn vpshufb(idx: @Vector(64, u8), src: @Vector(64, u8)) @Vector(64, u8) {
+    return asm ("vpshufb %[idx], %[src], %[ret]"
+        : [ret] "=x" (-> @Vector(64, u8)),
+        : [src] "x" (src),
+          [idx] "x" (idx),
+    );
+}
+
+pub fn vpshufbMask(idx: @Vector(64, u8), src: @Vector(64, u8), mask: u64) @Vector(64, u8) {
+    return asm ("vpshufb %[idx], %[src], %[ret] {%[k]} {z}"
+        : [ret] "=x" (-> @Vector(64, u8)),
+        : [src] "x" (src),
+          [idx] "x" (idx),
+          [k] "{k1}" (mask),
+    );
+}
+
+pub fn vpcompressb(src: @Vector(64, u8), mask: u64) @Vector(64, u8) {
+    return asm ("vpcompressb %[src], %[ret] {%[mask]} {z}"
+        : [ret] "=x" (-> @Vector(64, u8)),
+        : [src] "x" (src),
+          [mask] "{k1}" (mask),
+    );
+}
+
 pub fn vpcompressw(src: @Vector(32, u16), mask: u32) @Vector(32, u16) {
     return asm ("vpcompressw %[src], %[ret] {%[mask]} {z}"
         : [ret] "=x" (-> @Vector(32, u16)),

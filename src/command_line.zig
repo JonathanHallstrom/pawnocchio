@@ -1123,20 +1123,9 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
 
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
 
-    const nnue = root.nnue;
-    const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
-    const weights = nnue.weightsForNode(0);
-    var rc: RefreshCache = undefined;
-    rc.initInPlace(weights);
-
-    var acc: nnue.State = undefined;
-    var accumulator_stack = root.nnue.accumulatorStack(1);
-    const ctx: root.evaluation.Context = .{
-        .weights = weights,
-        .refresh_cache = &rc,
-        .accumulator_stack = &accumulator_stack,
-    };
-    acc.initInPlace(&Board.startpos(), weights, ctx);
+    var ctx: root.evaluation.Context = undefined;
+    ctx.initForThread(0);
+    ctx.initRoot(&Board.startpos());
 
     const start_time = std.Io.Timestamp.now(io, .awake);
     while (try reader.next()) |game| {
@@ -1157,11 +1146,8 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
         var it = game.iter();
         while (try it.next()) |ply| {
             const board = ply.board;
-            acc.refreshHalf(ctx, .white, board);
-            acc.refreshHalf(ctx, .black, board);
-            acc.markClean(board);
-
-            const stm_eval = acc.forward(board, ctx);
+            ctx.initRoot(board);
+            const stm_eval = ctx.handle(0).eval(board);
             const eval = if (board.stm == .white) stm_eval else -stm_eval;
 
             try record.addMove(ply.move, eval);

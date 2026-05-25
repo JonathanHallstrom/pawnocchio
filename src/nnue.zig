@@ -22,12 +22,17 @@ const Square = root.Square;
 const PieceType = root.PieceType;
 const Bitboard = root.Bitboard;
 const Colour = root.Colour;
+const ColouredPieceType = root.ColouredPieceType;
 const evaluation = root.evaluation;
 const Move = root.Move;
+const CastlingRights = root.CastlingRights;
 
 const arch = @import("nnue_arch.zig");
 const numa = @import("numa.zig");
 const simd = @import("simd.zig");
+const nnue_threats = @import("nnue_threats.zig");
+const nnue_threat_updates = @import("nnue_threat_updates.zig");
+const ThreatUpdateBuffer = nnue_threat_updates.ThreatUpdateBuffer;
 
 const Q_BITS: comptime_int = std.math.log2_int_ceil(u32, arch.Q);
 const Q0_BITS: comptime_int = std.math.log2_int_ceil(u32, arch.Q0);
@@ -114,21 +119,24 @@ pub const Accumulator = struct {
     ) void {
         self.addImpl(src, .{weights}, .{});
     }
+
+    pub fn addThreat(
+        self: *Accumulator,
+        weights: *const arch.ThreatWeight,
+    ) void {
+        self.addImpl(self, .{weights}, .{});
+    }
 };
-
-pub fn AccumulatorStack(comptime N: usize) type {
-    return [N][2]Accumulator;
-}
-
-pub fn accumulatorStack(comptime N: usize) AccumulatorStack(N) {
-    return undefined;
-}
 
 pub const AccumulatorHalf = struct {
     pub const Generation = u64;
 
     ptr: *const Accumulator,
     generation: Generation = 0,
+};
+
+pub const zero_accumulator: Accumulator align(64) = .{
+    .data = [_]i16{0} ** arch.L1_SIZE,
 };
 
 const build_options = @import("build_options");
@@ -240,6 +248,10 @@ const DirtyPiece = union(enum) {
     }
 };
 
+inline fn crossesMiddle(from: Square, to: Square) bool {
+    return (from.getFile().toInt() >= 4) != (to.getFile().toInt() >= 4);
+}
+
 pub const MirroringType = if (arch.HORIZONTAL_MIRRORING) struct {
     data: bool = false,
 
@@ -293,26 +305,36 @@ pub inline fn feature(
     return &weights.ft_w[bucket][side_idx][f.piece().toInt()][sq.toInt()];
 }
 
-pub const State = struct {
+const State = struct {
     white: AccumulatorHalf,
     black: AccumulatorHalf,
+    white_threat: AccumulatorHalf,
+    black_threat: AccumulatorHalf,
     ply: u16,
 
     dirty_piece: DirtyPiece,
+    threat_updates: ThreatUpdateBuffer,
     pending_parent: bool,
     board_ref: ?*const Board,
 
     white_mirrored: MirroringType,
     black_mirrored: MirroringType,
+    white_threat_mirrored: MirroringType,
+    black_threat_mirrored: MirroringType,
 
     pub inline fn default(weights: *const arch.Weights) State {
         return .{
             .white = .{ .ptr = @ptrCast(&weights.ft_b) },
             .black = .{ .ptr = @ptrCast(&weights.ft_b) },
+            .white_threat = .{ .ptr = &zero_accumulator },
+            .black_threat = .{ .ptr = &zero_accumulator },
             .ply = 0,
             .white_mirrored = .{},
             .black_mirrored = .{},
+            .white_threat_mirrored = .{},
+            .black_threat_mirrored = .{},
             .dirty_piece = .clean,
+            .threat_updates = .{},
             .pending_parent = false,
             .board_ref = null,
         };
@@ -335,11 +357,19 @@ pub const State = struct {
         self.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
     }
 
+    inline fn threatMirrorFor(self: anytype, col: Colour) MirroringType {
+        return if (col == .white) self.white_threat_mirrored else self.black_threat_mirrored;
+    }
+
+    inline fn threatMirrorPtrFor(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *MirroringType) {
+        return if (col == .white) &self.white_threat_mirrored else &self.black_threat_mirrored;
+    }
+
     pub fn initInPlace(
         self: *State,
         board: *const Board,
         weights: *const arch.Weights,
-        ctx: evaluation.Context,
+        ctx: *Context,
     ) void {
         self.* = default(weights);
         self.setMirrored(board);
@@ -363,6 +393,9 @@ pub const State = struct {
                 }
             }
         }
+
+        self.refreshThreatHalf(ctx, .white, board);
+        self.refreshThreatHalf(ctx, .black, board);
     }
 
     pub fn update(
@@ -375,9 +408,10 @@ pub const State = struct {
         self.pending_parent = true;
         self.board_ref = board;
         self.dirty_piece.clear();
+        self.threat_updates.clear();
     }
 
-    fn resolvePending(noalias self: *State, stm: Colour, ctx: evaluation.Context) bool {
+    fn resolvePending(noalias self: *State, stm: Colour, ctx: *Context) bool {
         if (!self.pending_parent) {
             return false;
         }
@@ -390,7 +424,7 @@ pub const State = struct {
         return fresh;
     }
 
-    inline fn refreshStale(self: *State, ctx: evaluation.Context) void {
+    inline fn refreshStale(self: *State, ctx: *Context) void {
         if (self.white.generation != 0 and self.white.generation != ctx.refresh_cache.currentGeneration(.white)) {
             const board = self.board_ref orelse unreachable;
             self.refreshHalf(ctx, .white, board);
@@ -401,13 +435,13 @@ pub const State = struct {
         }
     }
 
-    pub fn init(board: *const Board, weights: *const arch.Weights, ctx: evaluation.Context) State {
+    pub fn init(board: *const Board, weights: *const arch.Weights, ctx: *Context) State {
         var acc = default(weights);
         acc.initInPlace(board, weights, ctx);
         return acc;
     }
 
-    inline fn buffer(self: *State, col: Colour, ctx: evaluation.Context) *Accumulator {
+    inline fn buffer(self: *State, col: Colour, ctx: *Context) *Accumulator {
         return &ctx.accumulator_stack[self.ply][col.toInt()];
     }
 
@@ -419,7 +453,7 @@ pub const State = struct {
         self.half(acc).* = .{ .ptr = ptr };
     }
 
-    pub fn refreshHalf(self: *State, ctx: evaluation.Context, acc: Colour, board: *const Board) void {
+    pub fn refreshHalf(self: *State, ctx: *Context, acc: Colour, board: *const Board) void {
         self.mirrorPtrFor(acc).write(Square.fromBitboard(board.kingFor(acc)).getFile().toInt() >= 4);
         const refreshed = ctx.refresh_cache.refresh(ctx.weights, acc, board);
         self.half(acc).* = refreshed;
@@ -428,10 +462,11 @@ pub const State = struct {
     pub inline fn markClean(self: *State, board: *const Board) void {
         self.pending_parent = false;
         self.dirty_piece.clear();
+        self.threat_updates.clear();
         self.board_ref = board;
     }
 
-    inline fn writeFeature(self: *State, acc: Colour, king_sq: Square, piece: PSQTFeature, ctx: evaluation.Context) void {
+    inline fn writeFeature(self: *State, acc: Colour, king_sq: Square, piece: PSQTFeature, ctx: *Context) void {
         const self_buf = self.buffer(acc, ctx);
         self_buf.copyAdd(
             self.half(acc).ptr,
@@ -440,8 +475,147 @@ pub const State = struct {
         self.setHalf(acc, self_buf);
     }
 
+    inline fn threatBuffer(self: *State, col: Colour, ctx: *Context) *Accumulator {
+        return &ctx.threat_accumulator_stack[self.ply][col.toInt()];
+    }
+
+    inline fn threatHalf(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *AccumulatorHalf) {
+        return if (col == .white) &self.white_threat else &self.black_threat;
+    }
+
+    fn refreshThreatHalf(self: *State, ctx: *Context, col: Colour, board: *const Board) void {
+        const buf = self.threatBuffer(col, ctx);
+        nnue_threats.refreshThreats(buf, board, col, ctx.weights);
+        self.threatHalf(col).* = .{ .ptr = buf };
+        self.threatMirrorPtrFor(col).write(Square.fromBitboard(board.kingFor(col)).getFile().toInt() >= 4);
+    }
+
+    fn materialiseThreatHalf(
+        self: *State,
+        noalias parent: *State,
+        col: Colour,
+        board: *const Board,
+        ctx: *Context,
+    ) void {
+        if (self.threat_updates.refresh[col.toInt()]) {
+            self.refreshThreatHalf(ctx, col, board);
+            return;
+        }
+
+        const adds_raw = self.threat_updates.add.slice();
+        const subs_raw = self.threat_updates.sub.slice();
+
+        if (adds_raw.len == 0 and subs_raw.len == 0) {
+            self.threatHalf(col).* = parent.threatHalf(col).*;
+            self.threatMirrorPtrFor(col).* = parent.threatMirrorFor(col);
+            return;
+        }
+
+        const king_sq = Square.fromBitboard(board.kingFor(col));
+        const weights = ctx.weights;
+
+        const src = parent.threatHalf(col).ptr;
+        const dst = self.threatBuffer(col, ctx);
+
+        var add_indices: [ThreatUpdateBuffer.MaxAdds]u32 = undefined;
+        var add_count: usize = 0;
+        for (adds_raw) |upd| {
+            if (nnue_threats.threatIndex(
+                col,
+                king_sq,
+                ColouredPieceType.fromInt(upd.attacker),
+                Square.fromInt(upd.from),
+                ColouredPieceType.fromInt(upd.victim),
+                Square.fromInt(upd.to),
+            )) |idx| {
+                add_indices[add_count] = idx;
+                add_count += 1;
+            }
+        }
+
+        var sub_indices: [ThreatUpdateBuffer.MaxSubs]u32 = undefined;
+        var sub_count: usize = 0;
+        for (subs_raw) |upd| {
+            if (nnue_threats.threatIndex(
+                col,
+                king_sq,
+                ColouredPieceType.fromInt(upd.attacker),
+                Square.fromInt(upd.from),
+                ColouredPieceType.fromInt(upd.victim),
+                Square.fromInt(upd.to),
+            )) |idx| {
+                sub_indices[sub_count] = idx;
+                sub_count += 1;
+            }
+        }
+
+        applyThreatRows(dst, src, weights, add_indices[0..add_count], sub_indices[0..sub_count]);
+        self.threatHalf(col).* = .{ .ptr = dst };
+        self.threatMirrorPtrFor(col).* = parent.threatMirrorFor(col);
+    }
+
+    fn applyThreatRows(
+        noalias dst: *Accumulator,
+        src: *const Accumulator,
+        weights: *const arch.Weights,
+        adds: []const u32,
+        subs: []const u32,
+    ) void {
+        if (adds.len + subs.len == 0) {
+            @memcpy(std.mem.asBytes(&dst.data), std.mem.asBytes(&src.data));
+            return;
+        }
+        applyThreatRowsInner(dst, src, weights, adds, subs);
+    }
+
+    fn applyThreatRowsInner(
+        noalias dst: *Accumulator,
+        src: *const Accumulator,
+        weights: *const arch.Weights,
+        adds: []const u32,
+        subs: []const u32,
+    ) void {
+        var i: usize = 0;
+        const TILE = 8;
+        while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
+            var v: [TILE]arch.AccumulatorVec = src.vecs()[i..][0..TILE].*;
+            for (subs) |idx| inline for (0..TILE) |t| {
+                v[t] -= weights.threat_w[idx][i + t];
+            };
+            for (adds) |idx| inline for (0..TILE) |t| {
+                v[t] += weights.threat_w[idx][i + t];
+            };
+            dst.vecs()[i..][0..TILE].* = v;
+        }
+    }
+
+    fn resolvePendingThreats(self: *State, stm: Colour, ctx: *Context) void {
+        if (!self.pending_parent) return;
+
+        const parent: *State = @ptrFromInt(@intFromPtr(self) - @sizeOf(State));
+        parent.resolvePendingThreats(stm.flipped(), ctx);
+
+        const board = self.board_ref orelse unreachable;
+
+        inline for ([_]Colour{ .white, .black }) |col| {
+            const king_sq = Square.fromBitboard(board.kingFor(col));
+            if (needsThreatRefresh(col, parent, king_sq)) {
+                self.refreshThreatHalf(ctx, col, board);
+            } else {
+                self.materialiseThreatHalf(parent, col, board, ctx);
+            }
+        }
+    }
+
+    fn needsThreatRefresh(col: Colour, parent: *State, king_sq: Square) bool {
+        if (!arch.HORIZONTAL_MIRRORING) return false;
+        const parent_mirrored = parent.threatMirrorFor(col).read();
+        const current_mirrored = king_sq.getFile().toInt() >= 4;
+        return parent_mirrored != current_mirrored;
+    }
+
     inline fn needsRefresh(stm: Colour, from: Square, to: Square) bool {
-        if (arch.HORIZONTAL_MIRRORING and (from.getFile().toInt() >= 4) != (to.getFile().toInt() >= 4)) {
+        if (arch.HORIZONTAL_MIRRORING and crossesMiddle(from, to)) {
             return true;
         }
         return arch.whichInputBucket(stm, from) != arch.whichInputBucket(stm, to);
@@ -454,7 +628,7 @@ pub const State = struct {
         parent_fresh: if (mode == .inplace) void else bool,
         stm: Colour,
         board: *const Board,
-        ctx: evaluation.Context,
+        ctx: *Context,
     ) bool {
         if (mode == .copy) {
             self.white_mirrored = other.white_mirrored;
@@ -473,7 +647,7 @@ pub const State = struct {
         return true;
     }
 
-    inline fn updateHalf(self: *State, copy: *State, acc: Colour, king_sq: Square, dirty: DirtyPiece, ctx: evaluation.Context) void {
+    inline fn updateHalf(self: *State, copy: *State, acc: Colour, king_sq: Square, dirty: DirtyPiece, ctx: *Context) void {
         const mir = self.mirrorFor(acc);
         const buf = self.buffer(acc, ctx);
         const src = copy.half(acc).ptr;
@@ -514,7 +688,7 @@ pub const State = struct {
         copy: *State,
         stm: Colour,
         board: *const Board,
-        ctx: evaluation.Context,
+        ctx: *Context,
     ) void {
         const dirty = self.dirty_piece;
         defer self.dirty_piece.clear();
@@ -553,9 +727,21 @@ pub const State = struct {
         self.dirty_piece = .initCastle(add1, add2, sub1, sub2);
     }
 
-    pub fn forward(noalias self: *State, board: *const Board, ctx: evaluation.Context) i16 {
+    pub fn forward(noalias self: *State, board: *const Board, ctx: *Context) i16 {
         const stm = board.stm;
         const weights: *const arch.Weights = ctx.weights;
+
+        self.resolvePendingThreats(stm, ctx);
+
+        if (std.debug.runtime_safety) {
+            var white_oracle: Accumulator align(64) = undefined;
+            var black_oracle: Accumulator align(64) = undefined;
+            nnue_threats.refreshThreats(&white_oracle, board, .white, weights);
+            nnue_threats.refreshThreats(&black_oracle, board, .black, weights);
+            std.debug.assert(std.mem.eql(i16, &self.white_threat.ptr.data, &white_oracle.data));
+            std.debug.assert(std.mem.eql(i16, &self.black_threat.ptr.data, &black_oracle.data));
+        }
+
         var fresh: bool = self.resolvePending(stm, ctx);
         if (!self.dirty_piece.isClean()) {
             fresh = self.applyDirty(.inplace, null, {}, stm.flipped(), board, ctx);
@@ -567,6 +753,9 @@ pub const State = struct {
         const stm_acc: *const Accumulator = if (stm == .white) self.white.ptr else self.black.ptr;
         const ntm_acc: *const Accumulator = if (stm == .white) self.black.ptr else self.white.ptr;
 
+        const stm_threat: *const Accumulator = if (stm == .white) self.white_threat.ptr else self.black_threat.ptr;
+        const ntm_threat: *const Accumulator = if (stm == .white) self.black_threat.ptr else self.white_threat.ptr;
+
         const output_bucket: usize = arch.whichOutputBucket(board);
 
         // in Q0² / 2⁹
@@ -577,15 +766,15 @@ pub const State = struct {
             const LO: simd.vector(i16) = @splat(0);
             const HI: simd.vector(i16) = @splat(arch.Q0);
             while (i < arch.L1_SIZE / 2) : (i += items_per_iter) {
-                var s1: simd.vector(i16) = stm_acc.data[i..][0..simd.vecSize(i16)].*;
-                var s2: simd.vector(i16) = stm_acc.data[i + arch.L1_SIZE / 2 ..][0..simd.vecSize(i16)].*;
-                var s3: simd.vector(i16) = stm_acc.data[i + simd.vecSize(i16) ..][0..simd.vecSize(i16)].*;
-                var s4: simd.vector(i16) = stm_acc.data[i + simd.vecSize(i16) + arch.L1_SIZE / 2 ..][0..simd.vecSize(i16)].*;
+                var s1 = readAccs(stm_acc, stm_threat, i);
+                var s2 = readAccs(stm_acc, stm_threat, i + arch.L1_SIZE / 2);
+                var s3 = readAccs(stm_acc, stm_threat, i + simd.vecSize(i16));
+                var s4 = readAccs(stm_acc, stm_threat, i + simd.vecSize(i16) + arch.L1_SIZE / 2);
 
-                var n1: simd.vector(i16) = ntm_acc.data[i..][0..simd.vecSize(i16)].*;
-                var n2: simd.vector(i16) = ntm_acc.data[i + arch.L1_SIZE / 2 ..][0..simd.vecSize(i16)].*;
-                var n3: simd.vector(i16) = ntm_acc.data[i + simd.vecSize(i16) ..][0..simd.vecSize(i16)].*;
-                var n4: simd.vector(i16) = ntm_acc.data[i + simd.vecSize(i16) + arch.L1_SIZE / 2 ..][0..simd.vecSize(i16)].*;
+                var n1 = readAccs(ntm_acc, ntm_threat, i);
+                var n2 = readAccs(ntm_acc, ntm_threat, i + arch.L1_SIZE / 2);
+                var n3 = readAccs(ntm_acc, ntm_threat, i + simd.vecSize(i16));
+                var n4 = readAccs(ntm_acc, ntm_threat, i + simd.vecSize(i16) + arch.L1_SIZE / 2);
 
                 s1 = std.math.clamp(s1, LO, HI);
                 s2 = @min(s2, HI);
@@ -718,22 +907,77 @@ pub const State = struct {
     }
 };
 
-pub fn evaluate(board: *const Board, eval_state: *State, ctx: evaluation.Context) i16 {
-    return eval_state.forward(board, ctx);
+const RawHandle = struct {
+    ctx: *Context,
+    state: *State,
+
+    pub fn addSub(self: RawHandle, add: PSQTFeature, sub: PSQTFeature) void {
+        self.state.addSub(add, sub);
+    }
+
+    pub fn addSubSub(self: RawHandle, add: PSQTFeature, sub1: PSQTFeature, sub2: PSQTFeature) void {
+        self.state.addSubSub(add, sub1, sub2);
+    }
+
+    pub fn addAddSubSub(self: RawHandle, add1: PSQTFeature, add2: PSQTFeature, sub1: PSQTFeature, sub2: PSQTFeature) void {
+        self.state.addAddSubSub(add1, add2, sub1, sub2);
+    }
+
+    pub fn threatOnChange(self: RawHandle, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+        nnue_threat_updates.onChange(&self.state.threat_updates, board, piece, sq, is_add);
+    }
+
+    pub fn threatOnMove(self: RawHandle, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+        nnue_threat_updates.onMove(&self.state.threat_updates, board, old_piece, src, new_piece, dst);
+    }
+
+    pub fn threatOnMutate(self: RawHandle, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+        nnue_threat_updates.onMutate(&self.state.threat_updates, board, old_piece, new_piece, sq);
+    }
+
+    pub fn eval(self: RawHandle, board: *const Board) i16 {
+        return self.state.forward(board, self.ctx);
+    }
+};
+
+pub const Context = struct {
+    weights: *const arch.Weights = undefined,
+    refresh_cache: root.refreshCache(arch.HORIZONTAL_MIRRORING, arch.INPUT_BUCKET_COUNT) = undefined,
+    accumulator_stack: [root.SEARCH_MAX_PLY][2]Accumulator = undefined,
+    threat_accumulator_stack: [root.SEARCH_MAX_PLY][2]Accumulator = undefined,
+    frames: [root.SEARCH_MAX_PLY]State = undefined,
+
+    pub fn initForThread(self: *Context, thread_idx: usize) void {
+        const node: usize = if (root.numa.enabled) numa.nodeForThread(thread_idx) else 0;
+        self.weights = weightsForNode(node);
+        self.refresh_cache.initInPlace(self.weights);
+    }
+
+    pub fn initRoot(self: *Context, board: *const Board) void {
+        self.frames[0].initInPlace(board, self.weights, self);
+    }
+
+    pub fn prepareChild(self: *Context, child_ply: usize, child_board: *const Board) void {
+        self.frames[child_ply].update(&self.frames[child_ply - 1], child_board);
+    }
+
+    pub fn handle(self: *Context, ply: usize) evaluation.Handle(RawHandle) {
+        return evaluation.wrapHandle(RawHandle{
+            .ctx = self,
+            .state = &self.frames[ply],
+        });
+    }
+};
+
+inline fn readAccs(acc: *const Accumulator, threat: *const Accumulator, i: usize) simd.vector(i16) {
+    const V = simd.vector(i16);
+    return @as(V, acc.data[i..][0..simd.vecSize(i16)].*) + @as(V, threat.data[i..][0..simd.vecSize(i16)].*);
 }
 
 pub fn evalPosition(board: *const Board) i16 {
-    const RefreshCache = @import("refresh_cache.zig").refreshCache(arch.HORIZONTAL_MIRRORING, arch.INPUT_BUCKET_COUNT);
-    const weights = weightsForNode(0);
-    var cache: RefreshCache = undefined;
-    cache.initInPlace(weights);
-    var accumulator_stack = accumulatorStack(1);
-    var acc: State = State.default(weights);
-    const ctx: evaluation.Context = .{
-        .weights = weights,
-        .refresh_cache = &cache,
-        .accumulator_stack = &accumulator_stack,
-    };
-    acc.initInPlace(board, weights, ctx);
-    return acc.forward(board, ctx);
+    const ctx = std.heap.page_allocator.create(Context) catch @panic("OOM");
+    defer std.heap.page_allocator.destroy(ctx);
+    ctx.initForThread(0);
+    ctx.initRoot(board);
+    return ctx.handle(0).eval(board);
 }

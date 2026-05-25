@@ -17,7 +17,6 @@
 const std = @import("std");
 
 test {
-    _ = pyrrhic;
     std.testing.refAllDecls(@This());
 }
 
@@ -322,6 +321,10 @@ pub const PieceType = enum(u8) {
             else => null,
         };
     }
+
+    pub inline fn withColour(self: PieceType, col: Colour) ColouredPieceType {
+        return ColouredPieceType.fromPieceType(self, col);
+    }
 };
 
 pub const ColouredPieceType = enum(u8) {
@@ -342,6 +345,8 @@ pub const ColouredPieceType = enum(u8) {
 
     white_king = 10,
     black_king = 11,
+
+    none = 12,
 
     pub inline fn fromInt(i: u8) ColouredPieceType {
         return @enumFromInt(i);
@@ -378,6 +383,10 @@ pub const ColouredPieceType = enum(u8) {
     pub inline fn toAsciiLetter(self: ColouredPieceType) u8 {
         const pt_char = self.toPieceType().toAsciiLetter();
         return if (self.toColour() == .white) std.ascii.toUpper(pt_char) else std.ascii.toLower(pt_char);
+    }
+
+    pub fn flipColor(self: ColouredPieceType) ColouredPieceType {
+        return .fromInt(self.toInt() ^ 1);
     }
 };
 

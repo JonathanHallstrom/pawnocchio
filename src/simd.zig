@@ -17,11 +17,11 @@
 const std = @import("std");
 const arch = @import("nnue_arch.zig");
 
-const TARGET = arch.target(@import("builtin").cpu);
+pub const TARGET = arch.target(@import("builtin").cpu);
 
 pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
     return switch (arch.target(cpu)) {
-        .avx512vnni, .avx512 => 64,
+        .avx512vnni, .avx512vbmi, .avx512 => 64,
         .avx2 => 32,
         .aarch64, .ssse3, .sse2 => 16,
         .fallback => if (cpu.arch.endian() != .little) 4 else std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
@@ -50,7 +50,7 @@ pub fn maskInt(comptime V: type) type {
 
 pub fn maddubs(u: vector(u8), i: vector(i8)) vector(i16) {
     return switch (TARGET) {
-        .avx512vnni, .avx512 => avx512.maddubs(u, i),
+        .avx512vnni, .avx512vbmi, .avx512 => avx512.maddubs(u, i),
         .avx2 => avx2.maddubs(u, i),
         .ssse3 => sse.maddubs(u, i),
         .aarch64 => neon.maddubs(u, i),
@@ -60,7 +60,7 @@ pub fn maddubs(u: vector(u8), i: vector(i8)) vector(i16) {
 
 pub fn maddwd(a: vector(i16), b: vector(i16)) vector(i32) {
     return switch (TARGET) {
-        .avx512vnni, .avx512 => avx512.maddwd(a, b),
+        .avx512vnni, .avx512vbmi, .avx512 => avx512.maddwd(a, b),
         .avx2 => avx2.maddwd(a, b),
         .ssse3, .sse2 => sse.maddwd(a, b),
         .aarch64 => neon.maddwd(a, b),
@@ -70,7 +70,7 @@ pub fn maddwd(a: vector(i16), b: vector(i16)) vector(i32) {
 
 pub fn mulhi(a: vector(i16), b: vector(i16)) vector(i16) {
     return switch (TARGET) {
-        .avx512vnni, .avx512 => avx512.mulhi(a, b),
+        .avx512vnni, .avx512vbmi, .avx512 => avx512.mulhi(a, b),
         .avx2 => avx2.mulhi(a, b),
         .ssse3, .sse2 => sse.mulhi(a, b),
         .aarch64 => neon.mulhi(a, b),
@@ -87,7 +87,7 @@ pub fn mulhiShift(a: vector(i16), b: vector(i16), comptime shift: anytype) vecto
 
 pub fn packus(a: vector(i16), b: vector(i16)) vector(u8) {
     return switch (TARGET) {
-        .avx512vnni, .avx512 => avx512.packus(a, b),
+        .avx512vnni, .avx512vbmi, .avx512 => avx512.packus(a, b),
         .avx2 => avx2.packus(a, b),
         .ssse3, .sse2 => sse.packus(a, b),
         .aarch64 => neon.packus(a, b),
@@ -98,7 +98,7 @@ pub fn packus(a: vector(i16), b: vector(i16)) vector(u8) {
 pub fn dpbusd(sum: vector(i32), u: vector(u8), i: vector(i8)) vector(i32) {
     return switch (TARGET) {
         .avx512vnni => avx512.dpbusd(sum, u, i),
-        .avx512, .avx2, .ssse3, .sse2, .fallback => sum + maddwd(maddubs(u, i), @splat(1)),
+        .avx512vbmi, .avx512, .avx2, .ssse3, .sse2, .fallback => sum + maddwd(maddubs(u, i), @splat(1)),
         .aarch64 => neon.dpbusd(sum, u, i),
     };
 }
@@ -112,11 +112,14 @@ pub fn dpbusdx2(
 ) vector(i32) {
     return switch (TARGET) {
         .avx512vnni => dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2),
-        .avx512, .avx2, .aarch64, .ssse3, .sse2, .fallback => sum + maddwd(maddubs(u_1, i_1) + maddubs(u_2, i_2), @splat(1)),
+        .avx512vbmi, .avx512, .avx2, .aarch64, .ssse3, .sse2, .fallback => sum + maddwd(maddubs(u_1, i_1) + maddubs(u_2, i_2), @splat(1)),
     };
 }
 
 pub const vpcompressw = avx512.vpcompressw;
+pub const vpshufbMask = avx512.vpshufbMask;
+pub const vpcompressb = avx512.vpcompressb;
+pub const vpermb = avx512.vpermb;
 
 pub fn prefixMask(
     comptime N: usize,
@@ -189,7 +192,7 @@ pub fn ChunkIter(comptime T: type, comptime N: usize) type {
             const last_idx = finalIdx(N, self.len);
             const remaining = self.len - last_idx;
             const data: @Vector(N, T) = switch (TARGET) {
-                .avx512vnni, .avx512 => avx512.loadN(T, N, self.ptr + last_idx, remaining),
+                .avx512vnni, .avx512vbmi, .avx512 => avx512.loadN(T, N, self.ptr + last_idx, remaining),
                 else => fallback.loadN(T, N, self.ptr + last_idx, remaining),
             };
             return .{ .data = data, .mask = @bitCast(prefixMask(N, self.len - last_idx)) };
@@ -270,7 +273,7 @@ pub fn IndexedChunkIter(comptime T: type, comptime N: usize) type {
             const W = std.meta.Int(.unsigned, 2 * N);
             const mask_int: U = @truncate(~(~@as(W, 0) << @intCast(remaining)));
             const data: @Vector(N, T) = switch (TARGET) {
-                .avx512vnni, .avx512 => avx512.loadN(T, N, self.inner.ptr + self.inner.i, remaining),
+                .avx512vnni, .avx512vbmi, .avx512 => avx512.loadN(T, N, self.inner.ptr + self.inner.i, remaining),
                 else => fallback.loadN(T, N, self.inner.ptr + self.inner.i, remaining),
             };
             return .{ .data = data, .indices = self.indices, .mask = @bitCast(mask_int) };

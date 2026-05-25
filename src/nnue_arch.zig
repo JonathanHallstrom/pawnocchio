@@ -17,9 +17,12 @@ const std = @import("std");
 const builtin = @import("builtin");
 const root = @import("root.zig");
 
+pub const TOTAL_THREATS = 60144;
+
 const ALIGNMENT = 64;
 pub const Weights = extern struct {
-    ft_w: [INPUT_BUCKET_COUNT][2][6][64]RawAccumulator align(ALIGNMENT),
+    ft_w: [INPUT_BUCKET_COUNT][2][6][64]PSQTWeight align(ALIGNMENT),
+    threat_w: [TOTAL_THREATS]ThreatWeight align(ALIGNMENT),
     ft_b: [L1_SIZE]i16 align(ALIGNMENT),
     l1w: [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 align(ALIGNMENT),
     l1b: [OUTPUT_BUCKET_COUNT][L2_SIZE]i32 align(ALIGNMENT),
@@ -62,8 +65,7 @@ pub const Weights = extern struct {
     pub const SIZE_BYTES = blk: {
         var res = 0;
         for (std.meta.fields(Weights)) |field| {
-            const array_info = @typeInfo(field.type).array;
-            res += array_info.len * @sizeOf(array_info.child);
+            res += @sizeOf(field.type);
         }
         break :blk res;
     };
@@ -71,6 +73,7 @@ pub const Weights = extern struct {
 
 pub const Target = enum {
     avx512vnni,
+    avx512vbmi,
     avx512,
     avx2,
     aarch64,
@@ -80,9 +83,11 @@ pub const Target = enum {
 };
 
 pub fn target(cpu: std.Target.Cpu) Target {
-    // disabled, slower
     if (cpu.has(.x86, .avx512vnni) and false) {
         return .avx512vnni;
+    }
+    if (cpu.has(.x86, .avx512vbmi)) {
+        return .avx512vbmi;
     }
     if (cpu.has(.x86, .avx512f)) {
         return .avx512;
@@ -106,7 +111,7 @@ const LONGEST_PERMUTE_LEN = 8;
 
 pub fn permuteOrderFor(target_kind: Target) []const u8 {
     return switch (target_kind) {
-        .avx512vnni, .avx512 => &.{ 0, 2, 4, 6, 1, 3, 5, 7 },
+        .avx512vnni, .avx512vbmi, .avx512 => &.{ 0, 2, 4, 6, 1, 3, 5, 7 },
         .avx2 => &.{ 0, 2, 1, 3 },
         .aarch64, .ssse3, .sse2, .fallback => &.{},
     };
@@ -114,7 +119,7 @@ pub fn permuteOrderFor(target_kind: Target) []const u8 {
 
 pub fn needsPermutingFor(target_kind: Target) bool {
     return switch (target_kind) {
-        .avx512vnni, .avx512, .avx2 => true,
+        .avx512vnni, .avx512vbmi, .avx512, .avx2 => true,
         .aarch64, .ssse3, .sse2, .fallback => false,
     };
 }
@@ -127,9 +132,8 @@ pub fn parseEndian(name: []const u8) ?std.builtin.Endian {
     return std.meta.stringToEnum(std.builtin.Endian, name);
 }
 
-pub fn permuteBuffer(ptr: anytype, order: anytype) void {
-    const Block = @Vector(16, u8);
-
+fn permuteBufferWithBlockBytes(comptime block_bytes: usize, ptr: anytype, order: anytype) void {
+    const Block = [block_bytes]u8;
     const num_blocks = @sizeOf(@TypeOf(ptr.*)) / @sizeOf(Block);
     const vecs: *[num_blocks]Block = @ptrCast(ptr);
 
@@ -137,11 +141,16 @@ pub fn permuteBuffer(ptr: anytype, order: anytype) void {
     var weights: [LONGEST_PERMUTE_LEN]Block = undefined;
     while (i < num_blocks) : (i += order.len) {
         @memcpy(weights[0..order.len], vecs[i..][0..order.len]);
-
-        for (0..order.len) |j| {
-            vecs[i + j] = weights[order[j]];
-        }
+        for (0..order.len) |j| vecs[i + j] = weights[order[j]];
     }
+}
+
+pub fn permuteBufferI8(ptr: anytype, order: anytype) void {
+    permuteBufferWithBlockBytes(8, ptr, order);
+}
+
+pub fn permuteBuffer(ptr: anytype, order: anytype) void {
+    permuteBufferWithBlockBytes(16, ptr, order);
 }
 
 fn UltimateChild(comptime T: type) type {
@@ -179,6 +188,7 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
         inline for (.{ &net.ft_w, &net.ft_b }) |ptr| {
             permuteBuffer(ptr, order);
         }
+        permuteBufferI8(&net.threat_w, order);
     }
 
     if (endian != .little) {
@@ -256,14 +266,18 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
 }
 
 pub const AccumulatorVec = @Vector(@import("simd.zig").vecSize(i16), i16);
+pub const PSQTWeightVec = @Vector(@import("simd.zig").vecSize(i16), i16);
+pub const ThreatWeightVec = @Vector(@import("simd.zig").vecSize(i16), i8);
 pub const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / @import("simd.zig").vecSize(i16);
 pub const RawAccumulator = [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec;
+pub const PSQTWeight = [ACCUMULATOR_VECTOR_COUNT]PSQTWeightVec;
+pub const ThreatWeight = [ACCUMULATOR_VECTOR_COUNT]ThreatWeightVec;
 
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 16;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
 pub const INPUT_SIZE: usize = 768;
-pub const L1_SIZE: usize = 2048;
+pub const L1_SIZE: usize = 768;
 pub const L2_SIZE: usize = 16;
 pub const L3_SIZE: usize = 32;
 pub const SCALE: i64 = 400;

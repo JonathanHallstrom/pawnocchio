@@ -32,6 +32,10 @@ pub const PSQTFeature = struct {
         return self.c.toPieceType();
     }
 
+    pub fn colouredPiece(self: PSQTFeature) root.ColouredPieceType {
+        return self.c;
+    }
+
     pub fn square(self: PSQTFeature) root.Square {
         return self.s;
     }

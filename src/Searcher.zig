@@ -17,12 +17,10 @@
 const std = @import("std");
 
 const root = @import("root.zig");
-const nnue_arch = @import("nnue_arch.zig");
 
 const simd = root.simd;
 const BoundedArray = root.BoundedArray;
 const evaluation = root.evaluation;
-const nnue = if (evaluation.eval_mode == .nnue) root.nnue else void;
 const movegen = root.movegen;
 const Move = root.Move;
 const Board = root.Board;
@@ -38,11 +36,9 @@ const SEE = root.SEE;
 const tuning = root.tuning;
 const TUNABLES = root.TUNABLE_CONSTANTS;
 const write = root.write;
-const evaluate = evaluation.evaluate;
 const TTEntry = root.TTEntry;
 const TTCluster = root.TTCluster;
 const cuckoo = root.cuckoo;
-const stores_numa_weights = evaluation.eval_mode == .nnue and root.numa.enabled;
 pub const MAX_PLY = 256;
 pub const MAX_HALFMOVE = 100;
 
@@ -110,7 +106,7 @@ search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
 is_ready: bool align(std.atomic.cache_line) = false,
 nodes: u64 align(std.atomic.cache_line),
 hashes: [MAX_PLY + 8]u64,
-eval_states: [MAX_PLY]evaluation.State,
+eval_context: evaluation.Context,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: ?Move,
 root_score: ?i16,
@@ -138,9 +134,6 @@ show_wdl: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
-refresh_cache: if (evaluation.EVAL_MODE == .nnue) root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT) else void,
-accumulator_stack: if (evaluation.EVAL_MODE == .nnue) root.nnue.AccumulatorStack(MAX_PLY) else void,
-nnue_weights: if (stores_numa_weights) *const nnue_arch.Weights else void,
 histories: history.HistoryTable,
 correction_histories: *history.CorrectionHistoryTable,
 
@@ -183,7 +176,7 @@ pub fn writeTT(
 
 fn rawEval(self: *Searcher) i16 {
     const hash = self.stackEntry(0).board.getHashWithHalfmove();
-    const eval = evaluate(&self.stackEntry(0).board, self.evalState(0), self.evalContext());
+    const eval = self.eval_context.handle(self.ply).eval(&self.stackEntry(0).board);
     self.writeTT(
         false,
         hash,
@@ -194,17 +187,6 @@ fn rawEval(self: *Searcher) i16 {
         eval,
     );
     return eval;
-}
-
-inline fn evalContext(self: *Searcher) evaluation.Context {
-    return switch (evaluation.eval_mode) {
-        .nnue => .{
-            .weights = if (stores_numa_weights) self.nnue_weights else nnue.verbatim_weights,
-            .refresh_cache = &self.refresh_cache,
-            .accumulator_stack = &self.accumulator_stack,
-        },
-        inline else => .{},
-    };
 }
 
 inline fn prefetch(self: *const Searcher, board: *const Board, move: Move) void {
@@ -289,16 +271,8 @@ fn stackEntry(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self
     return &self.search_stack[@intCast(STACK_PADDING + @as(i64, self.ply) + offset)];
 }
 
-fn evalState(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self), *evaluation.State) {
-    return &self.eval_states[@intCast(@as(i64, self.ply) + offset)];
-}
-
 fn searchStackRoot(self: anytype) root.inheritConstness(@TypeOf(self), [*]StackEntry) {
     return self.search_stack[STACK_PADDING..];
-}
-
-fn evalStateRoot(self: *Searcher) [*]evaluation.State {
-    return self.eval_states[0..];
 }
 
 fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
@@ -314,9 +288,7 @@ fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
 
 fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
     const prev_stack_entry: *StackEntry = self.stackEntry(0);
-    const prev_eval_state: *evaluation.State = self.evalState(0);
     const new_stack_entry: *StackEntry = self.stackEntry(1);
-    const new_eval_state: *evaluation.State = self.evalState(1);
     const board = &prev_stack_entry.board;
     const move = typed.move;
 
@@ -327,10 +299,11 @@ fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
         prev_stack_entry.evals,
         prev_stack_entry.usable_moves + 1,
     );
-    new_eval_state.update(prev_eval_state, &new_stack_entry.board);
     self.ply += 1;
+    self.eval_context.prepareChild(self.ply, &new_stack_entry.board);
+    const new_handle = self.eval_context.handle(self.ply);
     self.pvs[self.ply].len = 0;
-    new_stack_entry.board.makeMove(stm, move, new_eval_state);
+    new_stack_entry.board.makeMove(stm, move, new_handle);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
 
@@ -342,9 +315,7 @@ fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
 
 fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     const prev_stack_entry = self.stackEntry(0);
-    const prev_eval_state = self.evalState(0);
     const new_stack_entry = self.stackEntry(1);
-    const new_eval_state = self.evalState(1);
     const board = &prev_stack_entry.board;
     new_stack_entry.init(
         board,
@@ -353,8 +324,8 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
         prev_stack_entry.evals,
         0,
     );
-    new_eval_state.update(prev_eval_state, &new_stack_entry.board);
     self.ply += 1;
+    self.eval_context.prepareChild(self.ply, &new_stack_entry.board);
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
     self.hashes[self.ply] = new_stack_entry.board.hash;
@@ -1723,7 +1694,8 @@ fn initSearchStack(self: *Searcher, params: Params) void {
         );
         entry.move_is_noisy = board_before.isNoisy(move);
 
-        const raw_static_eval = evaluation.evalPosition(board_after);
+        self.eval_context.initRoot(board_after);
+        const raw_static_eval = self.eval_context.handle(0).eval(board_after);
         _, const corrected_static_eval = self.correction_histories.correct(
             board_after,
             move_typed,
@@ -1768,7 +1740,6 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.is_main_thread = is_main_thread;
     self.should_stop.store(false, .release);
     self.stop.store(false, .release);
-    const board = params.board;
     self.previous_position_hashes.len = 0;
     self.contempt = params.contempt;
     self.normalize = params.normalize;
@@ -1792,10 +1763,8 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.fixupPreviousPositionHashes();
 
     self.initSearchStack(params);
-    switch (evaluation.eval_mode) {
-        .nnue => self.evalStateRoot()[0].initInPlace(&board, if (stores_numa_weights) self.nnue_weights else nnue.weightsForNode(0), self.evalContext()),
-        inline else => self.evalStateRoot()[0].initInPlace(&board),
-    }
+    const root_board = &self.searchStackRoot()[0].board;
+    self.eval_context.initRoot(root_board);
     self.histories.age();
     self.ttage +%= 1;
 }
@@ -2061,9 +2030,10 @@ fn initTestSearcher(io: std.Io, searcher: *Searcher, hist: anytype) void {
     searcher.* = undefined;
     searcher.is_ready = false;
     searcher.ensureInvariants();
-    searcher.histories = std.mem.zeroes(history.HistoryTable);
+    @memset(std.mem.asBytes(&searcher.histories), 0);
     @memset(std.mem.asBytes(&test_correction_histories), 0);
     searcher.correction_histories = &test_correction_histories;
+    searcher.eval_context.initForThread(0);
     const positions = hist.positions.slice();
     searcher.initSearchStack(.{
         .board = positions[positions.len - 1],
@@ -2075,17 +2045,7 @@ fn initTestSearcher(io: std.Io, searcher: *Searcher, hist: anytype) void {
         .minimal = false,
         .show_wdl = false,
     });
-    switch (evaluation.eval_mode) {
-        .nnue => {
-            const weights = nnue.weightsForNode(0);
-            if (stores_numa_weights) {
-                searcher.nnue_weights = weights;
-            }
-            searcher.refresh_cache.initInPlace(weights);
-            searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1], weights, searcher.evalContext());
-        },
-        inline else => searcher.evalStateRoot()[0].initInPlace(&positions[positions.len - 1]),
-    }
+    searcher.eval_context.initRoot(&positions[positions.len - 1]);
 }
 
 test retainOnlyDuplicates {
@@ -2099,8 +2059,9 @@ test "conthist uses previous positions" {
     const positions = hist.positions.slice();
     const moves = hist.played_moves.slice();
 
-    var searcher: Searcher = undefined;
-    initTestSearcher(std.testing.io, &searcher, hist);
+    const searcher = try std.testing.allocator.create(Searcher);
+    defer std.testing.allocator.destroy(searcher);
+    initTestSearcher(std.testing.io, searcher, hist);
 
     try std.testing.expectEqual(@as(u8, 4), searcher.stackEntry(0).usable_moves);
 
@@ -2157,19 +2118,27 @@ test "historical stack seeding sets evals" {
     const hist = try buildHistory(&.{ "e2e4", "e7e5", "g1f3", "b8c6" });
     const positions = hist.positions.slice();
 
-    var searcher: Searcher = undefined;
-    initTestSearcher(std.testing.io, &searcher, hist);
+    const searcher = try std.testing.allocator.create(Searcher);
+    defer std.testing.allocator.destroy(searcher);
+    initTestSearcher(std.testing.io, searcher, hist);
+
+    const eval_helper = struct {
+        fn eval(s: *Searcher, board: *const Board) i16 {
+            s.eval_context.initRoot(board);
+            return s.eval_context.handle(0).eval(board);
+        }
+    }.eval;
 
     for (0..4) |i| {
-        const eval = history.HistoryTable.scaleEval(&positions[i + 1], evaluation.evalPosition(&positions[i + 1]));
+        const eval = history.HistoryTable.scaleEval(&positions[i + 1], eval_helper(searcher, &positions[i + 1]));
         try std.testing.expectEqual(eval, searcher.stackEntry(@as(i64, @intCast(i)) - 3).static_eval);
         try std.testing.expectEqual(eval, searcher.stackEntry(@as(i64, @intCast(i)) - 3).corrected_eval);
     }
 
     try std.testing.expectEqualDeep(EvalPair{
-        .white = history.HistoryTable.scaleEval(&positions[2], evaluation.evalPosition(&positions[2])),
-        .black = history.HistoryTable.scaleEval(&positions[3], evaluation.evalPosition(&positions[3])),
+        .white = history.HistoryTable.scaleEval(&positions[2], eval_helper(searcher, &positions[2])),
+        .black = history.HistoryTable.scaleEval(&positions[3], eval_helper(searcher, &positions[3])),
         .prev_white = null,
-        .prev_black = history.HistoryTable.scaleEval(&positions[1], evaluation.evalPosition(&positions[1])),
+        .prev_black = history.HistoryTable.scaleEval(&positions[1], eval_helper(searcher, &positions[1])),
     }, searcher.stackEntry(0).evals);
 }

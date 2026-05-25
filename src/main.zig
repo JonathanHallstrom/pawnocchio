@@ -366,18 +366,10 @@ pub fn main(init: std.process.Init) !void {
                     continue :loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and root.evaluation.EVAL_MODE == .nnue) {
-                    const RC = root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
-                    const weights = root.nnue.weightsForNode(0);
-                    var cache: RC = undefined;
-                    cache.initInPlace(weights);
-                    var accumulator_stack = root.nnue.accumulatorStack(1);
-                    var acc: root.nnue.State = undefined;
-                    const ctx: root.evaluation.Context = .{
-                        .weights = weights,
-                        .refresh_cache = &cache,
-                        .accumulator_stack = &accumulator_stack,
-                    };
-                    acc.initInPlace(&board, weights, ctx);
+                    var ctx: root.evaluation.Context = undefined;
+                    ctx.initForThread(0);
+                    ctx.initRoot(&board);
+                    const handle = ctx.handle(0);
 
                     const start_time = std.Io.Timestamp.now(io, .awake);
                     const iterations = 100_000_000;
@@ -392,11 +384,11 @@ pub fn main(init: std.process.Init) !void {
                         const to = root.Square.fromRankFile(rank_to, file);
 
                         if (!is_back) {
-                            acc.addSub(.init(stm, .pawn, to), .init(stm, .pawn, from));
+                            handle.addSub(.init(stm, .pawn, to), .init(stm, .pawn, from));
                         } else {
-                            acc.addSub(.init(stm, .pawn, from), .init(stm, .pawn, to));
+                            handle.addSub(.init(stm, .pawn, from), .init(stm, .pawn, to));
                         }
-                        res +%= acc.forward(&board, ctx);
+                        res +%= handle.eval(&board);
                         std.mem.doNotOptimizeAway(res);
                     }
                     const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(io, .awake)).nanoseconds));

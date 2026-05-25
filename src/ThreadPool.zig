@@ -150,13 +150,7 @@ const Thread = struct {
                 .reset => {
                     @memset(std.mem.asBytes(self.searcher), 0);
                     self.searcher.correction_histories = self.correction_histories;
-                    if (root.evaluation.EVAL_MODE == .nnue) {
-                        const weights = if (root.numa.enabled) nnue.weightsForNode(numa.nodeForThread(self.idx)) else nnue.weightsForNode(0);
-                        if (root.numa.enabled) {
-                            self.searcher.nnue_weights = weights;
-                        }
-                        self.searcher.refresh_cache.initInPlace(weights);
-                    }
+                    self.searcher.eval_context.initForThread(self.idx);
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
                     if (self.reset_tt_slice.len > 0) {
