@@ -134,7 +134,7 @@ pub fn main(init: std.process.Init) !void {
     var minimal: bool = false;
     var normalize: bool = true;
     var softnodes: bool = false;
-    var weird_tcs: bool = false;
+    var weird_tcs: bool = true;
     var show_wdl: bool = false;
     loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
@@ -172,7 +172,7 @@ pub fn main(init: std.process.Init) !void {
             write("option name NormalizeEval type check default true\n", .{});
             write("option name Minimal type check default false\n", .{});
             write("option name SoftNodes type check default false\n", .{});
-            write("option name EnableWeirdTCs type check default false\n", .{});
+            write("option name EnableWeirdTCs type check default true\n", .{});
             write("option name UCI_ShowWDL type check default false\n", .{});
             if (root.tuning.DO_TUNING or root.tuning.DO_FACTORIZED_TUNING) {
                 writeTuningOptions();
