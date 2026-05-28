@@ -474,7 +474,7 @@ pub const Context = struct {
         exclude: u64 = 0,
     };
 
-    noinline fn dirtyPawns(dirty: psq.DirtyPiece, col: Colour) DirtyPawns {
+    fn dirtyPawns(dirty: psq.DirtyPiece, col: Colour) DirtyPawns {
         const DUMMY_FEATURE: root.PSQTFeature = .init(.white, .pawn, .fromInt(FIRST_PAWN));
 
         const do_add = switch (dirty) {
@@ -546,8 +546,8 @@ pub const Context = struct {
 
                 const unch_bb = board.pawns() & ~dp.exclude;
 
-                const r0_band: u16 = @truncate(Bitboard.pext(arch.PP_MASK[r0.sq.toInt()] & unch_bb, unch_bb));
-                const r1_band: u16 = @truncate(Bitboard.pext(arch.PP_MASK[r1.sq.toInt()] & unch_bb, unch_bb));
+                const r0_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[r0.sq.toInt()] & unch_bb, unch_bb));
+                const r1_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[r1.sq.toInt()] & unch_bb, unch_bb));
 
                 const r0_mask = unch_mask & r0_band * @intFromBool(has_one_removed);
                 const r1_mask = unch_mask & r1_band * @intFromBool(has_two_removed);
@@ -565,7 +565,7 @@ pub const Context = struct {
                 delta.subs[delta.n_subs] = ppIndex(r0_id, r1_id);
                 delta.n_subs += @intFromBool(has_two_removed and in_band);
 
-                const a_band: u16 = @truncate(Bitboard.pext(arch.PP_MASK[a.sq.toInt()] & unch_bb, unch_bb));
+                const a_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[a.sq.toInt()] & unch_bb, unch_bb));
                 const a_mask = unch_mask & a_band * @intFromBool(dp.n_added != 0);
 
                 const av: IdVec = @splat(a_id);
