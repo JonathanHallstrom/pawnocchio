@@ -30,7 +30,7 @@ const File = root.File;
 const TOTAL_THREATS = arch.TOTAL_THREATS;
 
 const PIECE_TARGET_MAP: [6][6]i32 = .{
-    .{ 0, 1, -1, 2, -1, -1 },
+    .{ -1, 0, -1, 1, -1, -1 },
     .{ 0, 1, 2, 3, 4, -1 },
     .{ 0, 1, 2, 3, -1, -1 },
     .{ 0, 1, 2, 3, -1, -1 },
@@ -61,7 +61,7 @@ fn emptyBoardAttacks(piece: ColouredPieceType, sq: Square) u64 {
     };
 }
 
-const PIECE_INDEX: [12][64][64]u8 = blk: {
+pub const PIECE_INDEX: [12][64][64]u8 = blk: {
     @setEvalBranchQuota(1 << 28);
     var table: [12][64][64]u8 = @splat(@splat(@splat(0)));
     for (0..12) |piece_idx| {
@@ -82,12 +82,12 @@ const PIECE_INDEX: [12][64][64]u8 = blk: {
     break :blk table;
 };
 
-const Offset = struct {
+pub const Offset = struct {
     indices: [12]struct { piece_offset: i32, global_offset: i32 },
     offsets: [12][64]u32,
 };
 
-const OFFSETS: Offset = blk: {
+pub const OFFSETS: Offset = blk: {
     @setEvalBranchQuota(1 << 20);
     var dst: Offset = .{
         .indices = @splat(.{ .piece_offset = 0, .global_offset = 0 }),
@@ -122,7 +122,7 @@ const OFFSETS: Offset = blk: {
     break :blk dst;
 };
 
-const ATTACK_INDEX: [12][12][2]u32 = blk: {
+pub const ATTACK_INDEX: [12][12][2]u32 = blk: {
     @setEvalBranchQuota(1 << 20);
     const SENTINEL: u32 = @intCast(TOTAL_THREATS);
     var dst: [12][12][2]u32 = @splat(@splat(.{ SENTINEL, SENTINEL }));
@@ -163,15 +163,15 @@ pub fn threatIndex(
     to_in: Square,
 ) i32 {
     const colour_mask: u8 = @intFromBool(colour == .black);
-    const mirror_mask: u8 = @as(u8, 0b000111) * @intFromBool(king.getFile().toInt() >= File.e.toInt());
-    const sq_mask: u8 = (0b111000 * colour_mask) ^ mirror_mask;
+    const mirror_mask: u8 = @intFromBool(king.getFile().toInt() >= File.e.toInt());
+    const sq_mask: u8 = (0b111000 * colour_mask) ^ (0b000111 * mirror_mask);
 
     const attacker = ColouredPieceType.fromInt(attacker_in.toInt() ^ colour_mask);
     const victim = ColouredPieceType.fromInt(victim_in.toInt() ^ colour_mask);
     const from = Square.fromInt(from_in.toInt() ^ sq_mask);
     const to = Square.fromInt(to_in.toInt() ^ sq_mask);
 
-    const fwd_idx: usize = if (from.toInt() < to.toInt()) 1 else 0;
+    const fwd_idx: usize = @intFromBool(from.toInt() < to.toInt());
     const base = ATTACK_INDEX[attacker.toInt()][victim.toInt()][fwd_idx];
 
     const sq_offset: u32 = OFFSETS.offsets[attacker.toInt()][from.toInt()];

@@ -90,6 +90,13 @@ pub const Accumulator = struct {
     ) void {
         self.addImpl(self, .{weights}, .{});
     }
+
+    pub fn subThreat(
+        self: *Accumulator,
+        weights: *const arch.ThreatWeight,
+    ) void {
+        self.addImpl(self, .{}, .{weights});
+    }
 };
 
 pub const AccumulatorHalf = struct {
@@ -102,4 +109,3 @@ pub const AccumulatorHalf = struct {
 pub const zero_accumulator: Accumulator align(64) = .{
     .data = [_]i16{0} ** arch.L1_SIZE,
 };
-

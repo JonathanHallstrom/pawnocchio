@@ -46,24 +46,3 @@ pub fn packus(a: simd.vector(i16), b: simd.vector(i16)) simd.vector(u8) {
     const halves: [2]@Vector(simd.vecSize(i16), u8) = .{ a_packed, b_packed };
     return @bitCast(halves);
 }
-
-pub fn loadN(
-    comptime T: type,
-    comptime N: usize,
-    ptr: [*]const T,
-    remaining: usize,
-) @Vector(N, T) {
-    comptime std.debug.assert(std.math.isPowerOfTwo(N));
-    var buf: [N]T = @splat(0);
-    var off: usize = 0;
-    var n: usize = remaining;
-    comptime var w = N;
-    inline while (w >= 1) : (w /= 2) {
-        if (n >= w) {
-            buf[off..][0..w].* = ptr[off..][0..w].*;
-            off += w;
-            n -= w;
-        }
-    }
-    return buf;
-}

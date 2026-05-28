@@ -97,7 +97,7 @@ inline fn emitTuple(buf: *UpdateBuffer, stacks: Stacks, comptime is_add: bool, a
 
 const scalar = struct {
     const RayEntry = struct {
-        squares: [7]Square,
+        squares: [7]Square = undefined,
         len: u8 = 0,
 
         fn slice(self: *const RayEntry) []const Square {
@@ -112,14 +112,14 @@ const scalar = struct {
         @setEvalBranchQuota(1 << 16);
         var table: [64][8]RayEntry = undefined;
         for (0..64) |sq_idx| {
-            const rank = sq_idx / 8;
-            const file = sq_idx % 8;
+            const rank: comptime_int = sq_idx / 8;
+            const file: comptime_int = sq_idx % 8;
             for (RAY_D_RANKS, RAY_D_FILES, 0..) |dr, df, dir| {
                 var entry = RayEntry{};
                 var r = rank + dr;
                 var f = file + df;
                 while (r >= 0 and r < 8 and f >= 0 and f < 8) {
-                    entry.squares[entry.len] = r * 8 + f;
+                    entry.squares[entry.len] = @enumFromInt(r * 8 + f);
                     entry.len += 1;
                     r += dr;
                     f += df;
@@ -131,7 +131,7 @@ const scalar = struct {
     };
 
     const KnightEntry = struct {
-        squares: [8]Square,
+        squares: [8]Square = undefined,
         len: u8 = 0,
 
         fn slice(self: *const KnightEntry) []const Square {
@@ -142,14 +142,14 @@ const scalar = struct {
     const KNIGHT_TABLE: [64]KnightEntry = blk: {
         var table: [64]KnightEntry = undefined;
         for (0..64) |sq_idx| {
-            const rank = sq_idx / 8;
-            const file = sq_idx % 8;
+            const rank: comptime_int = sq_idx / 8;
+            const file: comptime_int = sq_idx % 8;
             var entry = KnightEntry{};
             for (Bitboard.KNIGHT_D_RANKS, Bitboard.KNIGHT_D_FILES) |dr, df| {
                 const r = rank + dr;
                 const f = file + df;
                 if (r >= 0 and r < 8 and f >= 0 and f < 8) {
-                    entry.squares[entry.len] = r * 8 + f;
+                    entry.squares[entry.len] = @enumFromInt(r * 8 + f);
                     entry.len += 1;
                 }
             }
@@ -168,7 +168,7 @@ const scalar = struct {
         };
     }
 
-    fn canAttackFocus(pt: PieceType, col: Colour, dir: u3, dist: u8) bool {
+    fn canAttackFocus(pt: PieceType, col: Colour, dir: usize, dist: u8) bool {
         return switch (pt) {
             .rook => dir & 1 == 0,
             .bishop => dir & 1 == 1,
@@ -181,7 +181,7 @@ const scalar = struct {
         };
     }
 
-    fn sliderAttacksDir(pt: PieceType, dir: u3) bool {
+    fn sliderAttacksDir(pt: PieceType, dir: usize) bool {
         return switch (pt) {
             .bishop => dir & 1 == 1,
             .rook => dir & 1 == 0,
@@ -229,9 +229,8 @@ const scalar = struct {
             } else {
                 const out_mask = outgoingRayMask(pt, col);
                 const max_dist: u8 = if (pt == .pawn) 1 else 7;
-                for (0..8) |dir_idx| {
-                    const dir: u3 = @intCast(dir_idx);
-                    if (out_mask & (@as(u8, 1) << dir) == 0) continue;
+                for (0..8) |dir| {
+                    if (out_mask & (@as(u8, 1) << @intCast(dir)) == 0) continue;
                     if (findNearest(&RAY_TABLE[sq_idx][dir], occ)) |nearest| {
                         if (nearest.dist > max_dist) continue;
                         const victim = board.colouredPieceOn(nearest.sq) orelse continue;
@@ -260,8 +259,8 @@ const scalar = struct {
         }
 
         for (0..4) |pair_idx| {
-            const dir1: u3 = @intCast(pair_idx);
-            const dir2: u3 = @intCast(pair_idx + 4);
+            const dir1 = pair_idx;
+            const dir2 = pair_idx + 4;
 
             const n1 = findNearest(&RAY_TABLE[sq_idx][dir1], occ) orelse continue;
             const n2 = findNearest(&RAY_TABLE[sq_idx][dir2], occ) orelse continue;
@@ -598,8 +597,8 @@ const byte_ray = struct {
     inline fn compressPairs(pieces: Byteboard, perm: Byteboard, mask: Bitrays) Byteboard {
         return @shuffle(
             u8,
-            simd.vpcompressb(pieces, mask),
-            simd.vpcompressb(perm, mask),
+            simd.vpcompress(pieces, mask),
+            simd.vpcompress(perm, mask),
             PAIR2_SHUFFLE,
         );
     }

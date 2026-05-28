@@ -46,8 +46,8 @@ pub fn forward(
     var i: usize = 0;
     while (i < arch.L1_SIZE) {
         inline for (&accs) |*acc| {
-            const us = std.math.clamp(resolved.read(.stm,i), LO, HI);
-            const them = std.math.clamp(resolved.read(.ntm,i), LO, HI);
+            const us = std.math.clamp(resolved.read(.stm, i), LO, HI);
+            const them = std.math.clamp(resolved.read(.ntm, i), LO, HI);
 
             const us_w: simd.vector(i16) = w[i..][0..simd.vecSize(i16)].*;
             const them_w: simd.vector(i16) = w[i + arch.L1_SIZE ..][0..simd.vecSize(i16)].*;

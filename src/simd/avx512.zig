@@ -17,105 +17,48 @@
 const std = @import("std");
 const simd = @import("../simd.zig");
 
-pub fn loadMasked(comptime T: type, comptime N: usize, ptr: [*]const T, mask: std.meta.Int(.unsigned, N)) @Vector(N, T) {
-    const instr = comptime switch (@bitSizeOf([1]T)) {
-        8 => "vmovdqu8",
-        16 => "vmovdqu16",
-        32 => "vmovdqu32",
-        64 => "vmovdqu64",
-        else => @compileError("unsupported element size"),
-    };
-
-    return asm (instr ++ " (%[ptr]), %[dst] {%[mask]} {z}"
-        : [dst] "=x" (-> @Vector(N, T)),
-        : [ptr] "r" (ptr),
-          [mask] "{k1}" (mask),
-    );
-}
-
-pub fn loadN(comptime T: type, comptime N: usize, ptr: [*]const T, n: usize) @Vector(N, T) {
-    return loadMasked(T, N, ptr, simd.prefixMask(N, n));
-}
-
-pub fn maddubs(u: simd.vector(u8), i: simd.vector(i8)) simd.vector(i16) {
-    return asm ("vpmaddubsw %[i], %[u], %[ret]"
-        : [ret] "=x" (-> simd.vector(i16)),
-        : [u] "x" (u),
-          [i] "x" (i),
-    );
-}
-
-pub fn maddwd(a: simd.vector(i16), b: simd.vector(i16)) simd.vector(i32) {
-    return asm ("vpmaddwd %[b], %[a], %[ret]"
-        : [ret] "=x" (-> simd.vector(i32)),
-        : [a] "x" (a),
-          [b] "x" (b),
-    );
-}
-
-pub fn mulhi(a: simd.vector(i16), b: simd.vector(i16)) simd.vector(i16) {
-    return asm ("vpmulhw %[b], %[a], %[ret]"
-        : [ret] "=x" (-> simd.vector(i16)),
-        : [a] "x" (a),
-          [b] "x" (b),
-    );
-}
-
-pub fn packus(a: simd.vector(i16), b: simd.vector(i16)) simd.vector(u8) {
-    return asm ("vpackuswb %[b], %[a], %[ret]"
-        : [ret] "=x" (-> simd.vector(u8)),
-        : [a] "x" (a),
-          [b] "x" (b),
-    );
-}
-
 pub fn dpbusd(sum: simd.vector(i32), u: simd.vector(u8), i: simd.vector(i8)) simd.vector(i32) {
-    var s = sum;
-    asm ("vpdpbusd %[i], %[u], %[s]"
-        : [s] "+x" (s),
-        : [u] "x" (u),
-          [i] "x" (i),
-    );
-    return s;
+    return @extern(*const fn (simd.vector(i32), simd.vector(u8), simd.vector(i8)) callconv(.c) simd.vector(i32), .{
+        .name = "llvm.x86.avx512.vpdpbusd.512",
+    }).*(sum, u, i);
 }
 
 pub fn vpermb(idx: anytype, src: @TypeOf(idx)) @TypeOf(idx) {
-    return asm ("vpermb %[src], %[idx], %[ret]"
-        : [ret] "=x" (-> @TypeOf(idx)),
-        : [idx] "x" (idx),
-          [src] "x" (src),
-    );
+    const V = @TypeOf(idx);
+    const L = @typeInfo(V).vector.len;
+    return @extern(*const fn (V, V) callconv(.c) V, .{ .name = switch (L) {
+        64 => "llvm.x86.avx512.permvar.qi.512",
+        32 => "llvm.x86.avx512.permvar.qi.256",
+        else => unreachable,
+    } }).*(src, idx);
 }
 
 pub fn vpshufb(idx: @Vector(64, u8), src: @Vector(64, u8)) @Vector(64, u8) {
-    return asm ("vpshufb %[idx], %[src], %[ret]"
-        : [ret] "=x" (-> @Vector(64, u8)),
-        : [src] "x" (src),
-          [idx] "x" (idx),
-    );
+    return @extern(*const fn (@Vector(64, u8), @Vector(64, u8)) callconv(.c) @Vector(64, u8), .{
+        .name = "llvm.x86.avx512.pshuf.b.512",
+    }).*(src, idx);
 }
 
 pub fn vpshufbMask(idx: @Vector(64, u8), src: @Vector(64, u8), mask: u64) @Vector(64, u8) {
-    return asm ("vpshufb %[idx], %[src], %[ret] {%[k]} {z}"
-        : [ret] "=x" (-> @Vector(64, u8)),
-        : [src] "x" (src),
-          [idx] "x" (idx),
-          [k] "{k1}" (mask),
-    );
+    const zero: @Vector(64, u8) = @splat(0);
+    return @extern(*const fn (@Vector(64, u8), @Vector(64, u8), @Vector(64, u8), u64) callconv(.c) @Vector(64, u8), .{
+        .name = "llvm.x86.avx512.mask.pshuf.b.512",
+    }).*(src, idx, zero, mask);
 }
 
-pub fn vpcompressb(src: @Vector(64, u8), mask: u64) @Vector(64, u8) {
-    return asm ("vpcompressb %[src], %[ret] {%[mask]} {z}"
-        : [ret] "=x" (-> @Vector(64, u8)),
-        : [src] "x" (src),
-          [mask] "{k1}" (mask),
-    );
-}
-
-pub fn vpcompressw(src: @Vector(32, u16), mask: u32) @Vector(32, u16) {
-    return asm ("vpcompressw %[src], %[ret] {%[mask]} {z}"
-        : [ret] "=x" (-> @Vector(32, u16)),
-        : [src] "x" (src),
-          [mask] "{k1}" (mask),
-    );
+pub fn vpcompress(src: anytype, mask: simd.maskInt(@TypeOf(src))) @TypeOf(src) {
+    const V = @TypeOf(src);
+    const info = @typeInfo(V).vector;
+    const zero: V = @splat(0);
+    const elem_char = switch (@bitSizeOf(info.child)) {
+        8 => "b",
+        16 => "w",
+        32 => "d",
+        64 => "q",
+        else => unreachable,
+    };
+    const total_bits = std.fmt.comptimePrint("{d}", .{info.len * @bitSizeOf(info.child)});
+    return @extern(*const fn (V, V, simd.maskInt(V)) callconv(.c) V, .{
+        .name = "llvm.x86.avx512.mask.compress." ++ elem_char ++ "." ++ total_bits,
+    }).*(src, zero, mask);
 }

@@ -23,7 +23,22 @@ pub const parseTarget = simd.parseTarget;
 pub const inputs = @import("inputs/psq_threats.zig");
 pub const outputs = @import("outputs/multilayer.zig");
 
-pub const TOTAL_THREATS = 60144;
+pub const TOTAL_THREATS = 59808;
+pub const TOTAL_PAWN_PAIRS = 96 * 95 / 2;
+
+// [0..8) and [56..64) must be zero, cant have pawns there
+pub const PP_MASK: [64]u64 = blk: {
+    const A: u64 = 0x0101_0101_0101_0101;
+    var table: [64]u64 = @splat(0);
+    for (8..56) |sq| {
+        const f = sq & 7;
+        var m: u64 = A << f;
+        if (f > 0) m |= A << (f - 1);
+        if (f < 7) m |= A << (f + 1);
+        table[sq] = m;
+    }
+    break :blk table;
+};
 
 pub const Weights = extern struct {
     input: inputs.Weights,

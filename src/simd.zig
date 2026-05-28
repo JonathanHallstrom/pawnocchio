@@ -73,9 +73,8 @@ pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
 }
 
+const x86 = @import("simd/x86.zig");
 const avx512 = @import("simd/avx512.zig");
-const avx2 = @import("simd/avx2.zig");
-const sse = @import("simd/sse.zig");
 const neon = @import("simd/neon.zig");
 const fallback = @import("simd/fallback.zig");
 
@@ -89,9 +88,7 @@ pub fn maskInt(comptime V: type) type {
 
 pub fn maddubs(u: vector(u8), i: vector(i8)) vector(i16) {
     return switch (TARGET) {
-        .avx512vnni, .avx512vbmi, .avx512 => avx512.maddubs(u, i),
-        .avx2 => avx2.maddubs(u, i),
-        .ssse3 => sse.maddubs(u, i),
+        .avx512vnni, .avx512vbmi, .avx512, .avx2, .ssse3 => x86.maddubs(u, i),
         .aarch64 => neon.maddubs(u, i),
         .sse2, .fallback => fallback.maddubs(u, i),
     };
@@ -99,9 +96,7 @@ pub fn maddubs(u: vector(u8), i: vector(i8)) vector(i16) {
 
 pub fn maddwd(a: vector(i16), b: vector(i16)) vector(i32) {
     return switch (TARGET) {
-        .avx512vnni, .avx512vbmi, .avx512 => avx512.maddwd(a, b),
-        .avx2 => avx2.maddwd(a, b),
-        .ssse3, .sse2 => sse.maddwd(a, b),
+        .avx512vnni, .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.maddwd(a, b),
         .aarch64 => neon.maddwd(a, b),
         .fallback => fallback.maddwd(a, b),
     };
@@ -109,9 +104,7 @@ pub fn maddwd(a: vector(i16), b: vector(i16)) vector(i32) {
 
 pub fn mulhi(a: vector(i16), b: vector(i16)) vector(i16) {
     return switch (TARGET) {
-        .avx512vnni, .avx512vbmi, .avx512 => avx512.mulhi(a, b),
-        .avx2 => avx2.mulhi(a, b),
-        .ssse3, .sse2 => sse.mulhi(a, b),
+        .avx512vnni, .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.mulhi(a, b),
         .aarch64 => neon.mulhi(a, b),
         .fallback => fallback.mulhi(a, b),
     };
@@ -126,9 +119,7 @@ pub fn mulhiShift(a: vector(i16), b: vector(i16), comptime shift: anytype) vecto
 
 pub fn packus(a: vector(i16), b: vector(i16)) vector(u8) {
     return switch (TARGET) {
-        .avx512vnni, .avx512vbmi, .avx512 => avx512.packus(a, b),
-        .avx2 => avx2.packus(a, b),
-        .ssse3, .sse2 => sse.packus(a, b),
+        .avx512vnni, .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.packus(a, b),
         .aarch64 => neon.packus(a, b),
         .fallback => fallback.packus(a, b),
     };
@@ -155,10 +146,24 @@ pub fn dpbusdx2(
     };
 }
 
-pub const vpcompressw = avx512.vpcompressw;
 pub const vpshufbMask = avx512.vpshufbMask;
-pub const vpcompressb = avx512.vpcompressb;
 pub const vpermb = avx512.vpermb;
+pub const vpcompress = avx512.vpcompress;
+
+pub fn loadMasked(comptime T: type, comptime N: usize, ptr: [*]const T, mask: std.meta.Int(.unsigned, N)) @Vector(N, T) {
+    const V = @Vector(N, T);
+    const zero: V = @splat(0);
+    const mask_vec: @Vector(N, bool) = @bitCast(mask);
+    const len = std.fmt.comptimePrint("{d}", .{N});
+    const bits = std.fmt.comptimePrint("{d}", .{@bitSizeOf(T)});
+    return @extern(*const fn (@Vector(N, bool), [*]const T, i32, V) callconv(.c) V, .{
+        .name = "llvm.masked.load.v" ++ len ++ "i" ++ bits ++ ".p0",
+    }).*(mask_vec, ptr, @alignOf(T), zero);
+}
+
+pub fn loadN(comptime T: type, comptime N: usize, ptr: [*]const T, n: usize) @Vector(N, T) {
+    return loadMasked(T, N, ptr, prefixMask(N, n));
+}
 
 pub fn prefixMask(
     comptime N: usize,
@@ -230,10 +235,7 @@ pub fn ChunkIter(comptime T: type, comptime N: usize) type {
         pub inline fn tailSafe(self: *@This()) Tail {
             const last_idx = finalIdx(N, self.len);
             const remaining = self.len - last_idx;
-            const data: @Vector(N, T) = switch (TARGET) {
-                .avx512vnni, .avx512vbmi, .avx512 => avx512.loadN(T, N, self.ptr + last_idx, remaining),
-                else => fallback.loadN(T, N, self.ptr + last_idx, remaining),
-            };
+            const data: @Vector(N, T) = loadN(T, N, self.ptr + last_idx, remaining);
             return .{ .data = data, .mask = @bitCast(prefixMask(N, self.len - last_idx)) };
         }
     };
@@ -311,10 +313,7 @@ pub fn IndexedChunkIter(comptime T: type, comptime N: usize) type {
             const U = std.meta.Int(.unsigned, N);
             const W = std.meta.Int(.unsigned, 2 * N);
             const mask_int: U = @truncate(~(~@as(W, 0) << @intCast(remaining)));
-            const data: @Vector(N, T) = switch (TARGET) {
-                .avx512vnni, .avx512vbmi, .avx512 => avx512.loadN(T, N, self.inner.ptr + self.inner.i, remaining),
-                else => fallback.loadN(T, N, self.inner.ptr + self.inner.i, remaining),
-            };
+            const data: @Vector(N, T) = loadN(T, N, self.inner.ptr + self.inner.i, remaining);
             return .{ .data = data, .indices = self.indices, .mask = @bitCast(mask_int) };
         }
     };

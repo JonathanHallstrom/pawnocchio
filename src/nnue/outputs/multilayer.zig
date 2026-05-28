@@ -122,15 +122,15 @@ pub fn forward(
         const LO: simd.vector(i16) = @splat(0);
         const HI: simd.vector(i16) = @splat(arch.Q0);
         while (i < arch.L1_SIZE / 2) : (i += items_per_iter) {
-            var s1 = resolved.read(.stm,i);
-            var s2 = resolved.read(.stm,i + arch.L1_SIZE / 2);
-            var s3 = resolved.read(.stm,i + simd.vecSize(i16));
-            var s4 = resolved.read(.stm,i + simd.vecSize(i16) + arch.L1_SIZE / 2);
+            var s1 = resolved.read(.stm, i);
+            var s2 = resolved.read(.stm, i + arch.L1_SIZE / 2);
+            var s3 = resolved.read(.stm, i + simd.vecSize(i16));
+            var s4 = resolved.read(.stm, i + simd.vecSize(i16) + arch.L1_SIZE / 2);
 
-            var n1 = resolved.read(.ntm,i);
-            var n2 = resolved.read(.ntm,i + arch.L1_SIZE / 2);
-            var n3 = resolved.read(.ntm,i + simd.vecSize(i16));
-            var n4 = resolved.read(.ntm,i + simd.vecSize(i16) + arch.L1_SIZE / 2);
+            var n1 = resolved.read(.ntm, i);
+            var n2 = resolved.read(.ntm, i + arch.L1_SIZE / 2);
+            var n3 = resolved.read(.ntm, i + simd.vecSize(i16));
+            var n4 = resolved.read(.ntm, i + simd.vecSize(i16) + arch.L1_SIZE / 2);
 
             s1 = std.math.clamp(s1, LO, HI);
             s2 = @min(s2, HI);

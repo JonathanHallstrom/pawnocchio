@@ -94,7 +94,7 @@ pub const DirtyPiece = union(enum) {
 
     pub inline fn to(self: DirtyPiece) PSQTFeature {
         return switch (self) {
-            .clean => unreachable,
+            .clean => undefined,
             .move => |s| s.to,
             .capture => |s| s.to,
             .castle => |s| .init(s.col, .king, s.k_to),
@@ -102,7 +102,7 @@ pub const DirtyPiece = union(enum) {
     }
     pub inline fn from(self: DirtyPiece) PSQTFeature {
         return switch (self) {
-            .clean => unreachable,
+            .clean => undefined,
             .move => |s| s.from,
             .capture => |s| s.from,
             .castle => |s| .init(s.col, .king, s.k_from),
