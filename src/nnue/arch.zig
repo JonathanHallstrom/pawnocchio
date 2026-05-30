@@ -27,7 +27,7 @@ pub const TOTAL_THREATS = 59808;
 pub const TOTAL_PAWN_PAIRS = 96 * 95 / 2;
 
 // [0..8) and [56..64) must be zero, cant have pawns there
-pub const PP_MASK: [64]u64 = blk: {
+pub const PP_MASK_BAND: [64]u64 = blk: {
     const A: u64 = 0x0101_0101_0101_0101;
     var table: [64]u64 = @splat(0);
     for (8..56) |sq| {
@@ -39,6 +39,19 @@ pub const PP_MASK: [64]u64 = blk: {
     }
     break :blk table;
 };
+
+pub const PP_MASK_ANNEALED: [64]u64 = .{
+    0,               0,               0,               0,                0,                0,                0,                0,
+    0x0000103030200, 0x0000507070500, 0x0000e080e0200, 0x000010101c0000, 0x00000808380000, 0x00007010704000, 0x0000a0e0e0a000, 0x000080c0c04000,
+    0x0030303020300, 0x0030707050700, 0x0040e0e0a0e00, 0x00001c1c141c00, 0x00003838283800, 0x00207070507000, 0x00c0e0e0a0e000, 0x00c0c0c040c000,
+    0x3030302030300, 0x4070705070300, 0x60e0e0a0e0200, 0x141c1c141c1400, 0x28383828382800, 0x60707050704000, 0x20e0e0a0e0c000, 0xc0c0c040c0c000,
+    0x3030203030300, 0x3070507070400, 0x20e0a0e0e0600, 0x141c141c1c1400, 0x28382838382800, 0x40705070706000, 0xc0e0a0e0e02000, 0xc0c040c0c0c000,
+    0x3020303030000, 0x7050707030000, 0xe0a0e0e040000, 0x1c141c1c000000, 0x38283838000000, 0x70507070200000, 0xe0a0e0e0c00000, 0xc040c0c0c00000,
+    0x2030301000000, 0x5070705000000, 0x20e080e000000, 0x001c1010000000, 0x00380808000000, 0x40701070000000, 0xa0e0e0a0000000, 0x40c0c080000000,
+    0,               0,               0,               0,                0,                0,                0,                0,
+};
+
+pub const PP_MASK: [64]u64 = PP_MASK_ANNEALED;
 
 pub const Weights = extern struct {
     input: inputs.Weights,

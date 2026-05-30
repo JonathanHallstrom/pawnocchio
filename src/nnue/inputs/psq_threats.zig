@@ -428,7 +428,7 @@ pub const Context = struct {
         }
 
         var pp = PPDelta.empty;
-        if (has_pp) {
+        if (has_pp and anyMaskedPair(board, dp)) {
             @branchHint(.unlikely);
             pp.compute(board, col, dp);
         }
@@ -512,6 +512,14 @@ pub const Context = struct {
             .n_added = to_is_pawn,
             .exclude = to.square().toBitboard() * @as(u64, to_is_pawn),
         };
+    }
+
+    fn anyMaskedPair(board: *const Board, dp: DirtyPawns) bool {
+        const r0m = arch.PP_MASK[dp.removed[0].sq.toInt()];
+        const r1m = arch.PP_MASK[dp.removed[1].sq.toInt()];
+        const am = arch.PP_MASK[dp.added.sq.toInt()];
+        const diff_bb = board.pawns() & ~dp.exclude | dp.removed[0].sq.toBitboard();
+        return (r0m | r1m | am) & diff_bb != 0;
     }
 
     const PPDelta = struct {
