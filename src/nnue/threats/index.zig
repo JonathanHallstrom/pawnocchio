@@ -155,6 +155,11 @@ pub const ATTACK_INDEX: [12][12][2]IdxType = blk: {
     break :blk dst;
 };
 
+pub fn perspectiveSquareMask(colour: Colour, king: Square) u8 {
+    return (0b111000 * @as(u8, @intFromBool(colour == .black))) ^
+        (0b000111 * @as(u8, @intFromBool(king.getFile().toInt() >= File.e.toInt())));
+}
+
 pub fn threatIndexUnchecked(
     colour: Colour,
     king: Square,
@@ -164,8 +169,7 @@ pub fn threatIndexUnchecked(
     to_in: Square,
 ) IdxType {
     const colour_mask: u8 = @intFromBool(colour == .black);
-    const mirror_mask: u8 = @intFromBool(king.getFile().toInt() >= File.e.toInt());
-    const sq_mask: u8 = (0b111000 * colour_mask) ^ (0b000111 * mirror_mask);
+    const sq_mask = perspectiveSquareMask(colour, king);
 
     const attacker = ColouredPieceType.fromInt(attacker_in.toInt() ^ colour_mask);
     const victim = ColouredPieceType.fromInt(victim_in.toInt() ^ colour_mask);
@@ -189,8 +193,7 @@ pub fn threatIndex(
     to_in: Square,
 ) struct { IdxType, bool } {
     const colour_mask: u8 = @intFromBool(colour == .black);
-    const mirror_mask: u8 = @intFromBool(king.getFile().toInt() >= File.e.toInt());
-    const sq_mask: u8 = (0b111000 * colour_mask) ^ (0b000111 * mirror_mask);
+    const sq_mask = perspectiveSquareMask(colour, king);
 
     const attacker = ColouredPieceType.fromInt(attacker_in.toInt() ^ colour_mask);
     const victim = ColouredPieceType.fromInt(victim_in.toInt() ^ colour_mask);
@@ -263,14 +266,27 @@ fn startposThreatIndices(colour: Colour) TestThreatIndices {
     return positionThreatIndices(&board, colour);
 }
 
+fn perspectiveBelow(from: Square, sq_mask: u8) u64 {
+    const from_p = from.toInt() ^ sq_mask;
+    const flip_files = sq_mask & 0b000111 != 0;
+    const flip_ranks = sq_mask & 0b111000 != 0;
+    var below: u64 = (@as(u64, 1) << @intCast(from_p)) - 1;
+    if (flip_files and flip_ranks) {
+        below = @bitReverse(below);
+    } else if (flip_files) {
+        below = @bitReverse(@byteSwap(below));
+    } else if (flip_ranks) {
+        below = @byteSwap(below);
+    }
+    return below;
+}
+
 pub fn collectRefreshThreats(out: []u16, board: *const Board, colour: Colour) usize {
-    const king_sq = Square.fromBitboard(board.kingFor(colour));
     const occ = board.occupancy();
+    const king_sq = Square.fromBitboard(board.kingFor(colour));
     const piece_bbs = board.pieceBBs();
 
-    const flip_ranks = colour == .black;
-    const flip_files = king_sq.getFile().toInt() >= File.e.toInt();
-    const sq_mask: u6 = @intCast((@as(u8, 0b111000) * @intFromBool(flip_ranks)) ^ (@as(u8, 0b000111) * @intFromBool(flip_files)));
+    const sq_mask = perspectiveSquareMask(colour, king_sq);
 
     var victim_mask: [6]u64 = @splat(0);
     inline for (0..6) |apt| {
@@ -294,15 +310,7 @@ pub fn collectRefreshThreats(out: []u16, board: *const Board, colour: Colour) us
             .king => unreachable,
         };
 
-        const from_p: u6 = @as(u6, @intCast(attacker_sq.toInt())) ^ sq_mask;
-        var below: u64 = (@as(u64, 1) << from_p) - 1;
-        if (flip_files and flip_ranks) {
-            below = @bitReverse(below);
-        } else if (flip_files) {
-            below = @bitReverse(@byteSwap(below));
-        } else if (flip_ranks) {
-            below = @byteSwap(below);
-        }
+        const below = perspectiveBelow(attacker_sq, sq_mask);
         const same_type = piece_bbs[apt.toInt()];
         const attacked = attacks & victim_mask[apt.toInt()] & (~same_type | below);
 

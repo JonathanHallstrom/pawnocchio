@@ -454,10 +454,7 @@ pub const Context = struct {
     }
 
     fn ppSqMask(board: *const Board, col: Colour) u8 {
-        const king_sq = Square.fromBitboard(board.kingFor(col));
-        const colour_mask: u8 = @intFromBool(col == .black);
-        const mirror_mask: u8 = @intFromBool(king_sq.getFile().toInt() >= File.e.toInt());
-        return (0b111000 * colour_mask) ^ (0b000111 * mirror_mask);
+        return nnue_threats.perspectiveSquareMask(col, .fromBitboard(board.kingFor(col)));
     }
 
     const PawnRef = struct {
