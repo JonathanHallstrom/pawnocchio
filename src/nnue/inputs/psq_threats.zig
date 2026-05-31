@@ -150,6 +150,7 @@ pub const Context = struct {
 
         var cursor: u16 = @intCast(first_pending);
         while (cursor <= ply) : (cursor += 1) {
+            self.pending[cursor] = false;
             const board = self.psq.frames[cursor].board_ref orelse unreachable;
             inline for ([_]Colour{ .white, .black }) |col| {
                 const king_sq = Square.fromBitboard(board.kingFor(col));
@@ -160,7 +161,6 @@ pub const Context = struct {
                 }
             }
         }
-        @memset(self.pending[first_pending..], false);
     }
 
     fn needsThreatRefresh(self: *Context, parent_ply: u16, col: Colour, king_sq: Square) bool {
@@ -609,7 +609,7 @@ pub const Context = struct {
         return .{ .n_adds = n_adds, .n_subs = n_subs };
     }
 
-    inline fn applyAllRows(
+    fn applyAllRows(
         noalias dst: *Accumulator,
         src: *const Accumulator,
         weights: *const arch.Weights,

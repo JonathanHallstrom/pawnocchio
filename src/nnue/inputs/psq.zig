@@ -245,10 +245,10 @@ pub const Context = struct {
 
         var cursor: u16 = @intCast(first_pending);
         while (cursor <= ply) : (cursor += 1) {
+            self.pending[cursor] = false;
             const board = self.frames[cursor].board_ref orelse unreachable;
             self.applyDirtyCopy(cursor, board.stm.flipped(), weights);
         }
-        @memset(self.pending[first_pending .. ply + 1], false);
     }
 
     fn applyDirtyCopy(self: *Context, ply: u16, stm: Colour, weights: *const arch.Weights) void {

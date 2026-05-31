@@ -609,7 +609,7 @@ const byte_ray = struct {
         );
     }
 
-    noinline fn appendTuplesImpl(ptr: FeatureBuffer, tuples: Tupleboard) void {
+    fn appendTuplesImpl(ptr: FeatureBuffer, tuples: Tupleboard) void {
         const dest: *[16]u32 = @ptrCast(ptr);
         dest.* = tuples;
     }
