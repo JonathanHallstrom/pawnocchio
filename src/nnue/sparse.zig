@@ -37,9 +37,9 @@ const NONZERO_INDICES = blk: {
     break :blk res;
 };
 
-fn getMask(vals: simd.vector(u8)) simd.maskInt(simd.vector(i32)) {
-    const as_i32: simd.vector(i32) = @bitCast(vals);
-    const zero: simd.vector(i32) = @splat(0);
+fn getMask(vals: simd.Vector(u8)) simd.MaskInt(simd.Vector(i32)) {
+    const as_i32: simd.Vector(i32) = @bitCast(vals);
+    const zero: simd.Vector(i32) = @splat(0);
     return @bitCast(as_i32 != zero);
 }
 

@@ -119,8 +119,8 @@ pub fn forward(
     {
         const items_per_iter: usize = simd.vecSize(i16) * 2;
         var i: usize = 0;
-        const LO: simd.vector(i16) = @splat(0);
-        const HI: simd.vector(i16) = @splat(arch.Q0);
+        const LO: simd.Vector(i16) = @splat(0);
+        const HI: simd.Vector(i16) = @splat(arch.Q0);
         while (i < arch.L1_SIZE / 2) : (i += items_per_iter) {
             var s1 = resolved.read(.stm, i);
             var s2 = resolved.read(.stm, i + arch.L1_SIZE / 2);
@@ -142,14 +142,14 @@ pub fn forward(
             n3 = std.math.clamp(n3, LO, HI);
             n4 = @min(n4, HI);
 
-            const sp1: simd.vector(i16) = simd.mulhiShift(s1, s2, 7);
-            const sp2: simd.vector(i16) = simd.mulhiShift(s3, s4, 7);
+            const sp1: simd.Vector(i16) = simd.mulhiShift(s1, s2, 7);
+            const sp2: simd.Vector(i16) = simd.mulhiShift(s3, s4, 7);
 
-            const np1: simd.vector(i16) = simd.mulhiShift(n1, n2, 7);
-            const np2: simd.vector(i16) = simd.mulhiShift(n3, n4, 7);
+            const np1: simd.Vector(i16) = simd.mulhiShift(n1, n2, 7);
+            const np2: simd.Vector(i16) = simd.mulhiShift(n3, n4, 7);
 
-            const p1: simd.vector(u8) = simd.packus(sp1, sp2);
-            const p2: simd.vector(u8) = simd.packus(np1, np2);
+            const p1: simd.Vector(u8) = simd.packus(sp1, sp2);
+            const p2: simd.Vector(u8) = simd.packus(np1, np2);
 
             activated_ft[i..][0..simd.vecSize(u8)].* = p1;
             activated_ft[i + arch.L1_SIZE / 2 ..][0..simd.vecSize(u8)].* = p2;
@@ -157,7 +157,7 @@ pub fn forward(
     }
 
     const L2_UNROLL = 4;
-    var l1_intermediate: [arch.L2_SIZE / simd.vecSize(i32)][L2_UNROLL]simd.vector(i32) = @splat(@splat(@splat(0)));
+    var l1_intermediate: [arch.L2_SIZE / simd.vecSize(i32)][L2_UNROLL]simd.Vector(i32) = @splat(@splat(@splat(0)));
     {
         const w: [*]const i8 = &ow.l1w[output_bucket];
         const ft_i32: [*]i32 = @ptrCast(&activated_ft);
@@ -171,8 +171,8 @@ pub fn forward(
                 for (0..L2_UNROLL) |i_inner| {
                     const i_1: u16 = nonzero_indices[i_outer + 2 * i_inner];
                     const i_2: u16 = nonzero_indices[i_outer + 2 * i_inner + 1];
-                    const ft_vec_1: simd.vector(u8) = @bitCast(@as(simd.vector(i32), @splat(ft_i32[i_1])));
-                    const ft_vec_2: simd.vector(u8) = @bitCast(@as(simd.vector(i32), @splat(ft_i32[i_2])));
+                    const ft_vec_1: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i_1])));
+                    const ft_vec_2: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i_2])));
                     l1_intermediate[j][i_inner] = simd.dpbusdx2(
                         l1_intermediate[j][i_inner],
                         ft_vec_1,
@@ -185,7 +185,7 @@ pub fn forward(
         }
         while (i_outer < num_nonzero_indices) : (i_outer += 1) {
             const i = nonzero_indices[i_outer];
-            const ft_vec: simd.vector(u8) = @bitCast(@as(simd.vector(i32), @splat(ft_i32[i])));
+            const ft_vec: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i])));
 
             for (0..arch.L2_SIZE / simd.vecSize(i32)) |j| {
                 l1_intermediate[j][0] = simd.dpbusd(
@@ -197,22 +197,22 @@ pub fn forward(
         }
     }
 
-    var l1_out_vec: [2 * arch.L2_SIZE / simd.vecSize(i32)]simd.vector(i32) = undefined;
+    var l1_out_vec: [2 * arch.L2_SIZE / simd.vecSize(i32)]simd.Vector(i32) = undefined;
     {
-        const l1_bias_vec: [*]const simd.vector(i32) = @ptrCast(@alignCast(&ow.l1b[output_bucket]));
+        const l1_bias_vec: [*]const simd.Vector(i32) = @ptrCast(@alignCast(&ow.l1b[output_bucket]));
 
         const EXPLICIT_MULHI_SHIFT_UP = 7;
         const IMPLIED_MULHI_SHIFT_DOWN = 16;
         const MULHI_SHIFT = EXPLICIT_MULHI_SHIFT_UP - IMPLIED_MULHI_SHIFT_DOWN;
 
         const SHIFT = Q0_BITS * 2 + MULHI_SHIFT + Q1_BITS - Q_BITS;
-        const LO: simd.vector(i32) = @splat(0);
-        const HI: simd.vector(i32) = @splat(arch.Q);
-        const HI2: simd.vector(i32) = @splat(arch.Q * arch.Q);
+        const LO: simd.Vector(i32) = @splat(0);
+        const HI: simd.Vector(i32) = @splat(arch.Q);
+        const HI2: simd.Vector(i32) = @splat(arch.Q * arch.Q);
         for (0..arch.L2_SIZE / simd.vecSize(i32)) |i| {
-            const biases: simd.vector(i32) = l1_bias_vec[i];
+            const biases: simd.Vector(i32) = l1_bias_vec[i];
 
-            var intermediate: simd.vector(i32) = @splat(0);
+            var intermediate: simd.Vector(i32) = @splat(0);
             for (l1_intermediate[i]) |e| {
                 intermediate += e;
             }
@@ -220,33 +220,33 @@ pub fn forward(
             const biased = intermediate + biases;
             const shifted = biased >> @splat(SHIFT);
 
-            const crelu: simd.vector(i32) = std.math.clamp(biased, LO, HI << @splat(SHIFT)) >> @splat(SHIFT - Q_BITS);
-            const csrelu: simd.vector(i32) = std.math.clamp(shifted * shifted, LO, HI2);
+            const crelu: simd.Vector(i32) = std.math.clamp(biased, LO, HI << @splat(SHIFT)) >> @splat(SHIFT - Q_BITS);
+            const csrelu: simd.Vector(i32) = std.math.clamp(shifted * shifted, LO, HI2);
 
             l1_out_vec[i] = crelu;
             l1_out_vec[i + arch.L2_SIZE / simd.vecSize(i32)] = csrelu;
         }
     }
 
-    var l2_intermediate: [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @bitCast(ow.l2b[output_bucket]);
+    var l2_intermediate: [arch.L3_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @bitCast(ow.l2b[output_bucket]);
     {
         const l1_out: *const [2 * arch.L2_SIZE]i32 = @ptrCast(&l1_out_vec);
-        const l2_weight_vec: *const [2 * arch.L2_SIZE][arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @ptrCast(@alignCast(&ow.l2w[output_bucket]));
+        const l2_weight_vec: *const [2 * arch.L2_SIZE][arch.L3_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @ptrCast(@alignCast(&ow.l2w[output_bucket]));
         for (0..arch.L2_SIZE * 2) |i| {
-            const l1_vec: simd.vector(i32) = @splat(l1_out[i]);
+            const l1_vec: simd.Vector(i32) = @splat(l1_out[i]);
             for (0..arch.L3_SIZE / simd.vecSize(i32)) |j| {
                 l2_intermediate[j] += l1_vec * l2_weight_vec[i][j];
             }
         }
     }
 
-    var l3_sum: simd.vector(i32) = @splat(0);
+    var l3_sum: simd.Vector(i32) = @splat(0);
     {
-        const l3_weight_vec: *const [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @ptrCast(@alignCast(&ow.l3w[output_bucket]));
-        const LO: simd.vector(i32) = @splat(0);
-        const HI3: simd.vector(i32) = @splat(arch.Q * arch.Q * arch.Q);
+        const l3_weight_vec: *const [arch.L3_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @ptrCast(@alignCast(&ow.l3w[output_bucket]));
+        const LO: simd.Vector(i32) = @splat(0);
+        const HI3: simd.Vector(i32) = @splat(arch.Q * arch.Q * arch.Q);
         for (0..arch.L3_SIZE / simd.vecSize(i32)) |i| {
-            const activated: simd.vector(i32) = std.math.clamp(l2_intermediate[i], LO, HI3);
+            const activated: simd.Vector(i32) = std.math.clamp(l2_intermediate[i], LO, HI3);
             l3_sum += activated * l3_weight_vec[i];
         }
     }

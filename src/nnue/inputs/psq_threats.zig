@@ -63,8 +63,8 @@ pub const Resolved = struct {
     stm_threat: *const Accumulator,
     ntm_threat: *const Accumulator,
 
-    pub inline fn read(self: Resolved, comptime perspective: Perspective, i: usize) simd.vector(i16) {
-        const V = simd.vector(i16);
+    pub inline fn read(self: Resolved, comptime perspective: Perspective, i: usize) simd.Vector(i16) {
+        const V = simd.Vector(i16);
         const psq_ptr = if (perspective == .stm) self.stm_psq else self.ntm_psq;
         const threat_ptr = if (perspective == .stm) self.stm_threat else self.ntm_threat;
         const p: V = psq_ptr.data[i..][0..simd.vecSize(i16)].*;

@@ -152,7 +152,7 @@ pub const Resolved = struct {
     stm: *const Accumulator,
     ntm: *const Accumulator,
 
-    pub inline fn read(self: Resolved, comptime perspective: Perspective, i: usize) simd.vector(i16) {
+    pub inline fn read(self: Resolved, comptime perspective: Perspective, i: usize) simd.Vector(i16) {
         return (if (perspective == .stm) self.stm else self.ntm).data[i..][0..simd.vecSize(i16)].*;
     }
 };

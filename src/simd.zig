@@ -17,7 +17,6 @@
 const std = @import("std");
 
 pub const Target = enum {
-    avx512vnni,
     avx512vbmi,
     avx512,
     avx2,
@@ -28,9 +27,6 @@ pub const Target = enum {
 };
 
 pub fn target(cpu: std.Target.Cpu) Target {
-    if (cpu.has(.x86, .avx512vnni) and false) {
-        return .avx512vnni;
-    }
     if (cpu.has(.x86, .avx512vbmi)) {
         return .avx512vbmi;
     }
@@ -60,7 +56,7 @@ pub const TARGET = target(@import("builtin").cpu);
 
 pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
     return switch (target(cpu)) {
-        .avx512vnni, .avx512vbmi, .avx512 => 64,
+        .avx512vbmi, .avx512 => 64,
         .avx2 => 32,
         .aarch64, .ssse3, .sse2 => 16,
         .fallback => if (cpu.arch.endian() != .little) 4 else std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
@@ -73,75 +69,80 @@ pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
 }
 
+const HAS_AVX512_VNNI = @import("builtin").cpu.has(.x86, .avx512vnni);
+const HAS_AVX_VNNI = @import("builtin").cpu.has(.x86, .avxvnni);
+const HAS_VNNI = HAS_AVX512_VNNI or HAS_AVX_VNNI;
+const HAS_I8MM = @import("builtin").cpu.has(.aarch64, .i8mm);
+
 const x86 = @import("simd/x86.zig");
 const avx512 = @import("simd/avx512.zig");
 const neon = @import("simd/neon.zig");
 const fallback = @import("simd/fallback.zig");
 
-pub fn vector(comptime T: type) type {
+pub fn Vector(comptime T: type) type {
     return @Vector(vecSize(T), T);
 }
 
-pub fn maskInt(comptime V: type) type {
+pub fn MaskInt(comptime V: type) type {
     return std.meta.Int(.unsigned, @typeInfo(V).vector.len);
 }
 
-pub fn maddubs(u: vector(u8), i: vector(i8)) vector(i16) {
+pub fn maddubs(u: Vector(u8), i: Vector(i8)) Vector(i16) {
     return switch (TARGET) {
-        .avx512vnni, .avx512vbmi, .avx512, .avx2, .ssse3 => x86.maddubs(u, i),
-        .aarch64 => neon.maddubs(u, i),
-        .sse2, .fallback => fallback.maddubs(u, i),
+        .avx512vbmi, .avx512, .avx2, .ssse3 => x86.maddubs(u, i),
+        .aarch64, .sse2, .fallback => fallback.maddubs(u, i),
     };
 }
 
-pub fn maddwd(a: vector(i16), b: vector(i16)) vector(i32) {
+pub fn maddwd(a: Vector(i16), b: Vector(i16)) Vector(i32) {
     return switch (TARGET) {
-        .avx512vnni, .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.maddwd(a, b),
-        .aarch64 => neon.maddwd(a, b),
-        .fallback => fallback.maddwd(a, b),
+        .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.maddwd(a, b),
+        .aarch64, .fallback => fallback.maddwd(a, b),
     };
 }
 
-pub fn mulhi(a: vector(i16), b: vector(i16)) vector(i16) {
+pub fn mulhi(a: Vector(i16), b: Vector(i16)) Vector(i16) {
     return switch (TARGET) {
-        .avx512vnni, .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.mulhi(a, b),
-        .aarch64 => neon.mulhi(a, b),
-        .fallback => fallback.mulhi(a, b),
+        .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.mulhi(a, b),
+        .aarch64, .fallback => fallback.mulhi(a, b),
     };
 }
 
-pub fn mulhiShift(a: vector(i16), b: vector(i16), comptime shift: anytype) vector(i16) {
-    if (TARGET == .aarch64) {
-        return neon.mulhiShift(a, b, shift);
+pub fn mulhiShift(a: Vector(i16), b: Vector(i16), comptime shift: anytype) Vector(i16) {
+    return switch (TARGET) {
+        .aarch64 => neon.mulhiShift(a, b, shift),
+        else => mulhi(a << @splat(shift), b),
+    };
+}
+
+pub fn packus(a: Vector(i16), b: Vector(i16)) Vector(u8) {
+    return switch (TARGET) {
+        .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.packus(a, b),
+        .aarch64, .fallback => fallback.packus(a, b),
+    };
+}
+
+pub fn dpbusd(sum: Vector(i32), u: Vector(u8), i: Vector(i8)) Vector(i32) {
+    if (HAS_VNNI) {
+        return x86.dpbusd(sum, u, i);
     }
-    return mulhi(a << @splat(shift), b);
-}
-
-pub fn packus(a: vector(i16), b: vector(i16)) vector(u8) {
-    return switch (TARGET) {
-        .avx512vnni, .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.packus(a, b),
-        .aarch64 => neon.packus(a, b),
-        .fallback => fallback.packus(a, b),
-    };
-}
-
-pub fn dpbusd(sum: vector(i32), u: vector(u8), i: vector(i8)) vector(i32) {
-    return switch (TARGET) {
-        .avx512vnni => avx512.dpbusd(sum, u, i),
-        .avx512vbmi, .avx512, .avx2, .ssse3, .sse2, .fallback => sum + maddwd(maddubs(u, i), @splat(1)),
-        .aarch64 => neon.dpbusd(sum, u, i),
-    };
+    if (HAS_I8MM) {
+        return neon.usdot(sum, u, i);
+    }
+    return sum + maddwd(maddubs(u, i), @splat(1));
 }
 
 pub fn dpbusdx2(
-    sum: vector(i32),
-    u_1: vector(u8),
-    i_1: vector(i8),
-    u_2: vector(u8),
-    i_2: vector(i8),
-) vector(i32) {
+    sum: Vector(i32),
+    u_1: Vector(u8),
+    i_1: Vector(i8),
+    u_2: Vector(u8),
+    i_2: Vector(i8),
+) Vector(i32) {
+    if (HAS_VNNI or HAS_I8MM) {
+        return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2);
+    }
     return switch (TARGET) {
-        .avx512vnni => dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2),
         .avx512vbmi, .avx512, .avx2, .aarch64, .ssse3, .sse2, .fallback => sum + maddwd(maddubs(u_1, i_1) + maddubs(u_2, i_2), @splat(1)),
     };
 }

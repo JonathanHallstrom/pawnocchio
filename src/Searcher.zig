@@ -338,7 +338,7 @@ fn unmakeNullMove(self: *Searcher, comptime stm: Colour) void {
 
 fn isRepetition(self: *Searcher, board: *const Board) bool {
     const hash = board.hash;
-    const hash_vec: simd.vector(u64) = @splat(hash);
+    const hash_vec: simd.Vector(u64) = @splat(hash);
 
     const amt: usize = @min(self.ply, board.halfmove);
 

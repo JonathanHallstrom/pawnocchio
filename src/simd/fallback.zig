@@ -17,30 +17,30 @@
 const std = @import("std");
 const simd = @import("../simd.zig");
 
-pub fn maddubs(u: simd.vector(u8), i: simd.vector(i8)) simd.vector(i16) {
+pub fn maddubs(u: simd.Vector(u8), i: simd.Vector(i8)) simd.Vector(i16) {
     const u_parts = std.simd.deinterlace(2, u);
     const i_parts = std.simd.deinterlace(2, i);
-    const products_even = @as(simd.vector(i16), u_parts[0]) * @as(simd.vector(i16), i_parts[0]);
-    const products_odd = @as(simd.vector(i16), u_parts[1]) * @as(simd.vector(i16), i_parts[1]);
+    const products_even = @as(simd.Vector(i16), u_parts[0]) * @as(simd.Vector(i16), i_parts[0]);
+    const products_odd = @as(simd.Vector(i16), u_parts[1]) * @as(simd.Vector(i16), i_parts[1]);
     return products_even +| products_odd;
 }
 
-pub fn maddwd(a: simd.vector(i16), b: simd.vector(i16)) simd.vector(i32) {
+pub fn maddwd(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(i32) {
     const a_parts = std.simd.deinterlace(2, a);
     const b_parts = std.simd.deinterlace(2, b);
-    const products_even = @as(simd.vector(i32), a_parts[0]) * @as(simd.vector(i32), b_parts[0]);
-    const products_odd = @as(simd.vector(i32), a_parts[1]) * @as(simd.vector(i32), b_parts[1]);
+    const products_even = @as(simd.Vector(i32), a_parts[0]) * @as(simd.Vector(i32), b_parts[0]);
+    const products_odd = @as(simd.Vector(i32), a_parts[1]) * @as(simd.Vector(i32), b_parts[1]);
     return products_even + products_odd;
 }
 
-pub fn mulhi(a: simd.vector(i16), b: simd.vector(i16)) simd.vector(i16) {
+pub fn mulhi(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(i16) {
     const Wide = @Vector(simd.vecSize(i16), i32);
     const products: Wide = @as(Wide, @intCast(a)) * @as(Wide, @intCast(b));
-    return @as(simd.vector(i16), @intCast(products >> @as(Wide, @splat(16))));
+    return @as(simd.Vector(i16), @intCast(products >> @as(Wide, @splat(16))));
 }
 
-pub fn packus(a: simd.vector(i16), b: simd.vector(i16)) simd.vector(u8) {
-    const zero: simd.vector(i16) = @splat(0);
+pub fn packus(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(u8) {
+    const zero: simd.Vector(i16) = @splat(0);
     const a_packed: @Vector(simd.vecSize(i16), u8) = @intCast(@max(a, zero));
     const b_packed: @Vector(simd.vecSize(i16), u8) = @intCast(@max(b, zero));
     const halves: [2]@Vector(simd.vecSize(i16), u8) = .{ a_packed, b_packed };

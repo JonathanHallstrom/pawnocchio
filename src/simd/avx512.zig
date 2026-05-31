@@ -17,12 +17,6 @@
 const std = @import("std");
 const simd = @import("../simd.zig");
 
-pub fn dpbusd(sum: simd.vector(i32), u: simd.vector(u8), i: simd.vector(i8)) simd.vector(i32) {
-    return @extern(*const fn (simd.vector(i32), simd.vector(u8), simd.vector(i8)) callconv(.c) simd.vector(i32), .{
-        .name = "llvm.x86.avx512.vpdpbusd.512",
-    }).*(sum, u, i);
-}
-
 pub fn vpermb(idx: anytype, src: @TypeOf(idx)) @TypeOf(idx) {
     const V = @TypeOf(idx);
     const L = @typeInfo(V).vector.len;
@@ -46,7 +40,7 @@ pub fn vpshufbMask(idx: @Vector(64, u8), src: @Vector(64, u8), mask: u64) @Vecto
     }).*(src, idx, zero, mask);
 }
 
-pub fn vpcompress(src: anytype, mask: simd.maskInt(@TypeOf(src))) @TypeOf(src) {
+pub fn vpcompress(src: anytype, mask: simd.MaskInt(@TypeOf(src))) @TypeOf(src) {
     const V = @TypeOf(src);
     const info = @typeInfo(V).vector;
     const zero: V = @splat(0);
@@ -58,7 +52,7 @@ pub fn vpcompress(src: anytype, mask: simd.maskInt(@TypeOf(src))) @TypeOf(src) {
         else => unreachable,
     };
     const total_bits = std.fmt.comptimePrint("{d}", .{info.len * @bitSizeOf(info.child)});
-    return @extern(*const fn (V, V, simd.maskInt(V)) callconv(.c) V, .{
+    return @extern(*const fn (V, V, simd.MaskInt(V)) callconv(.c) V, .{
         .name = "llvm.x86.avx512.mask.compress." ++ elem_char ++ "." ++ total_bits,
     }).*(src, zero, mask);
 }
