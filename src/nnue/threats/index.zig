@@ -28,6 +28,7 @@ const ColouredPieceType = root.ColouredPieceType;
 const File = root.File;
 
 const TOTAL_THREATS = arch.TOTAL_THREATS;
+const IdxType = if (TOTAL_THREATS + arch.TOTAL_PAWN_PAIRS < std.math.maxInt(u16)) u16 else u32;
 
 const PIECE_TARGET_MAP: [6][6]i32 = .{
     .{ -1, 0, -1, 1, -1, -1 },
@@ -83,8 +84,8 @@ pub const PIECE_INDEX: [12][64][64]u8 = blk: {
 };
 
 pub const Offset = struct {
-    indices: [12]struct { piece_offset: i32, global_offset: i32 },
-    offsets: [12][64]u32,
+    indices: [12]struct { piece_offset: IdxType, global_offset: IdxType },
+    offsets: [12][64]IdxType,
 };
 
 pub const OFFSETS: Offset = blk: {
@@ -113,8 +114,8 @@ pub const OFFSETS: Offset = blk: {
                 }
             }
             dst.indices[pidx] = .{
-                .piece_offset = piece_offset,
-                .global_offset = global_offset,
+                .piece_offset = @intCast(piece_offset),
+                .global_offset = @intCast(global_offset),
             };
             global_offset += PIECE_TARGET_COUNT[pt_idx] * piece_offset;
         }
@@ -122,10 +123,10 @@ pub const OFFSETS: Offset = blk: {
     break :blk dst;
 };
 
-pub const ATTACK_INDEX: [12][12][2]u32 = blk: {
+pub const ATTACK_INDEX: [12][12][2]IdxType = blk: {
     @setEvalBranchQuota(1 << 20);
-    const SENTINEL: u32 = @intCast(TOTAL_THREATS);
-    var dst: [12][12][2]u32 = @splat(@splat(.{ SENTINEL, SENTINEL }));
+    const SENTINEL: IdxType = @intCast(TOTAL_THREATS);
+    var dst: [12][12][2]IdxType = @splat(@splat(.{ SENTINEL, SENTINEL }));
 
     for (0..12) |a_idx| {
         const attacker = ColouredPieceType.fromInt(@intCast(a_idx));
@@ -154,14 +155,14 @@ pub const ATTACK_INDEX: [12][12][2]u32 = blk: {
     break :blk dst;
 };
 
-pub fn threatIndex(
+pub fn threatIndexUnchecked(
     colour: Colour,
     king: Square,
     attacker_in: ColouredPieceType,
     from_in: Square,
     victim_in: ColouredPieceType,
     to_in: Square,
-) i32 {
+) IdxType {
     const colour_mask: u8 = @intFromBool(colour == .black);
     const mirror_mask: u8 = @intFromBool(king.getFile().toInt() >= File.e.toInt());
     const sq_mask: u8 = (0b111000 * colour_mask) ^ (0b000111 * mirror_mask);
@@ -171,14 +172,37 @@ pub fn threatIndex(
     const from = Square.fromInt(from_in.toInt() ^ sq_mask);
     const to = Square.fromInt(to_in.toInt() ^ sq_mask);
 
-    const fwd_idx: usize = @intFromBool(from.toInt() < to.toInt());
-    const base = ATTACK_INDEX[attacker.toInt()][victim.toInt()][fwd_idx];
+    const base = ATTACK_INDEX[attacker.toInt()][victim.toInt()][@intFromBool(from.toInt() < to.toInt())];
 
-    const sq_offset: u32 = OFFSETS.offsets[attacker.toInt()][from.toInt()];
-    const piece_idx: u32 = PIECE_INDEX[attacker.toInt()][from.toInt()][to.toInt()];
+    const sq_offset = OFFSETS.offsets[attacker.toInt()][from.toInt()];
+    const piece_idx = PIECE_INDEX[attacker.toInt()][from.toInt()][to.toInt()];
 
-    const excluded: u32 = @intFromBool(base == TOTAL_THREATS);
-    return @bitCast((base +% sq_offset +% piece_idx) | (excluded << 31));
+    return base + sq_offset + piece_idx;
+}
+
+pub fn threatIndex(
+    colour: Colour,
+    king: Square,
+    attacker_in: ColouredPieceType,
+    from_in: Square,
+    victim_in: ColouredPieceType,
+    to_in: Square,
+) struct { IdxType, bool } {
+    const colour_mask: u8 = @intFromBool(colour == .black);
+    const mirror_mask: u8 = @intFromBool(king.getFile().toInt() >= File.e.toInt());
+    const sq_mask: u8 = (0b111000 * colour_mask) ^ (0b000111 * mirror_mask);
+
+    const attacker = ColouredPieceType.fromInt(attacker_in.toInt() ^ colour_mask);
+    const victim = ColouredPieceType.fromInt(victim_in.toInt() ^ colour_mask);
+    const from = Square.fromInt(from_in.toInt() ^ sq_mask);
+    const to = Square.fromInt(to_in.toInt() ^ sq_mask);
+
+    const base: IdxType = ATTACK_INDEX[attacker.toInt()][victim.toInt()][@intFromBool(from.toInt() < to.toInt())];
+
+    const sq_offset: IdxType = OFFSETS.offsets[attacker.toInt()][from.toInt()];
+    const piece_idx: IdxType = PIECE_INDEX[attacker.toInt()][from.toInt()][to.toInt()];
+
+    return .{ base +% sq_offset +% piece_idx, base != TOTAL_THREATS };
 }
 
 comptime {
@@ -224,8 +248,8 @@ fn positionThreatIndices(board: *const root.Board, colour: Colour) TestThreatInd
             const victim = board.colouredPieceOn(victim_sq).?;
             if (victim.toPieceType() == .king) continue;
 
-            const idx = threatIndex(colour, king, attacker, attacker_sq, victim, victim_sq);
-            if (idx >= 0) indices.appendAssumeCapacity(@intCast(idx));
+            const idx, const valid = threatIndex(colour, king, attacker, attacker_sq, victim, victim_sq);
+            if (valid) indices.appendAssumeCapacity(@intCast(idx));
         }
     }
 
@@ -239,39 +263,58 @@ fn startposThreatIndices(colour: Colour) TestThreatIndices {
     return positionThreatIndices(&board, colour);
 }
 
-pub fn refreshThreats(
-    acc: *Accumulator,
-    board: *const Board,
-    colour: Colour,
-    weights: *const arch.Weights,
-) void {
-    @memset(&acc.data, 0);
+pub fn collectRefreshThreats(out: []u16, board: *const Board, colour: Colour) usize {
     const king_sq = Square.fromBitboard(board.kingFor(colour));
     const occ = board.occupancy();
+    const piece_bbs = board.pieceBBs();
 
-    var attackers_it = Bitboard.iterator(occ);
+    const flip_ranks = colour == .black;
+    const flip_files = king_sq.getFile().toInt() >= File.e.toInt();
+    const sq_mask: u6 = @intCast((@as(u8, 0b111000) * @intFromBool(flip_ranks)) ^ (@as(u8, 0b000111) * @intFromBool(flip_files)));
+
+    var victim_mask: [6]u64 = @splat(0);
+    inline for (0..6) |apt| {
+        inline for (0..6) |vpt| {
+            if (PIECE_TARGET_MAP[apt][vpt] != -1) victim_mask[apt] |= piece_bbs[vpt];
+        }
+    }
+
+    var n: usize = 0;
+    var attackers_it = Bitboard.iterator(occ & ~board.kings());
     while (attackers_it.next()) |attacker_sq| {
         const attacker = board.colouredPieceOn(attacker_sq).?;
+        const apt = attacker.toPieceType();
 
-        if (attacker.toPieceType() == .king) continue;
-
-        const attacked = switch (attacker.toPieceType()) {
+        const attacks = switch (apt) {
             .pawn => Bitboard.pawnAttacks(attacker_sq, attacker.toColour()),
             .knight => Bitboard.knightMoves(attacker_sq),
             .bishop => root.attacks.bishopAttacks(attacker_sq, occ),
             .rook => root.attacks.rookAttacks(attacker_sq, occ),
             .queen => root.attacks.queenAttacks(attacker_sq, occ),
             .king => unreachable,
-        } & occ;
+        };
+
+        const from_p: u6 = @as(u6, @intCast(attacker_sq.toInt())) ^ sq_mask;
+        var below: u64 = (@as(u64, 1) << from_p) - 1;
+        if (flip_files and flip_ranks) {
+            below = @bitReverse(below);
+        } else if (flip_files) {
+            below = @bitReverse(@byteSwap(below));
+        } else if (flip_ranks) {
+            below = @byteSwap(below);
+        }
+        const same_type = piece_bbs[apt.toInt()];
+        const attacked = attacks & victim_mask[apt.toInt()] & (~same_type | below);
 
         var victims_it = Bitboard.iterator(attacked);
         while (victims_it.next()) |victim_sq| {
-            if (board.colouredPieceOn(victim_sq)) |victim| {
-                const idx = threatIndex(colour, king_sq, attacker, attacker_sq, victim, victim_sq);
-                if (idx >= 0) acc.addThreat(&weights.input.threat_w[@intCast(idx)]);
-            }
+            const victim = board.colouredPieceOnUnchecked(victim_sq);
+            const idx = threatIndexUnchecked(colour, king_sq, attacker, attacker_sq, victim, victim_sq);
+            out[n] = @intCast(idx + arch.TOTAL_PAWN_PAIRS);
+            n += 1;
         }
     }
+    return n;
 }
 
 test "startpos threat indices" {

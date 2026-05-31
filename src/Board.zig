@@ -197,10 +197,14 @@ pub inline fn isSquareEmpty(self: *const Board, sq: Square) bool {
     return !Bitboard.contains(self.occupancy(), sq);
 }
 
+pub inline fn colouredPieceOnUnchecked(self: *const Board, sq: Square) ColouredPieceType {
+    return .fromInt(self.mailbox[sq.toInt()]);
+}
+
 pub inline fn colouredPieceOn(self: *const Board, sq: Square) ?ColouredPieceType {
     const raw = self.mailbox[sq.toInt()];
     if (mailboxIsEmpty(raw)) return null;
-    return ColouredPieceType.fromInt(raw);
+    return .fromInt(raw);
 }
 
 pub fn sumPieces(self: *const Board, values: anytype) std.meta.Child(@TypeOf(values)) {

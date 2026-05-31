@@ -167,6 +167,172 @@ fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void
     gp.value_ptr.add(index, value);
 }
 
+pub const TIMING_ENABLED = false;
+
+const TimerSlot = struct {
+    hash: u64 = 0,
+    group: []const u8 = "",
+    part: []const u8 = "",
+    cycles: u64 = 0,
+    hits: u64 = 0,
+
+    pub fn nameLen(self: TimerSlot) usize {
+        var res = self.group.len;
+        if (self.part.len > 0) {
+            res += self.part.len + 1;
+        }
+        return res;
+    }
+
+    pub fn cost(self: TimerSlot) f64 {
+        return @as(f64, @floatFromInt(self.cycles)) / @as(f64, @floatFromInt(@max(1, self.hits)));
+    }
+};
+
+const TimerInfo = struct {
+    slot: TimerSlot,
+    group_cycles: u64,
+
+    pub fn order(_: void, a: TimerInfo, b: TimerInfo) bool {
+        const ag = timerHash(a.slot.group);
+        const bg = timerHash(b.slot.group);
+        if (ag != bg) {
+            if (a.group_cycles != b.group_cycles) return a.group_cycles > b.group_cycles;
+            return ag < bg;
+        }
+        return a.slot.cycles > b.slot.cycles;
+    }
+};
+
+var timer_table: []TimerSlot = &.{};
+var timer_mask: u64 = 0;
+
+inline fn timerHash(name: []const u8) u64 {
+    return std.hash.Fnv1a_64.hash(name);
+}
+
+inline fn rdtscp() u64 {
+    var hi: u32 = undefined;
+    var lo: u32 = undefined;
+    asm volatile ("rdtscp"
+        : [hi] "={edx}" (hi),
+          [lo] "={eax}" (lo),
+        :
+        : .{ .ecx = true });
+    return (@as(u64, hi) << 32) | lo;
+}
+
+noinline fn registerTimer(h: u64, group: []const u8, part: []const u8) void {
+    var saved: [256]TimerSlot = undefined;
+    var n: usize = 0;
+    for (timer_table) |e| if (e.hash != 0) {
+        saved[n] = e;
+        n += 1;
+    };
+    saved[n] = .{ .hash = h, .group = group, .part = part };
+    n += 1;
+    var cap: usize = 16;
+    while (cap < n * 2) cap *= 2;
+    while (true) {
+        const fresh = std.heap.page_allocator.alloc(TimerSlot, cap) catch @panic("OOM");
+        @memset(fresh, .{});
+        const mask = cap - 1;
+        var ok = true;
+        for (saved[0..n]) |e| {
+            const idx = e.hash & mask;
+            if (fresh[idx].hash != 0) {
+                ok = false;
+                break;
+            }
+            fresh[idx] = e;
+        }
+        if (ok) {
+            if (timer_table.len != 0) std.heap.page_allocator.free(timer_table);
+            timer_table = fresh;
+            timer_mask = mask;
+            return;
+        }
+        std.heap.page_allocator.free(fresh);
+        cap *= 2;
+    }
+}
+
+pub const ScopedTimer = struct {
+    start: u64,
+    hash: u64,
+    pub inline fn register(self: ScopedTimer) void {
+        if (comptime !TIMING_ENABLED) return;
+        const elapsed = rdtscp() -% self.start;
+        const slot = &timer_table[self.hash & timer_mask];
+        slot.cycles +%= elapsed;
+        slot.hits +%= 1;
+    }
+};
+
+pub inline fn timeGrouped(comptime group: []const u8, comptime part: []const u8) ScopedTimer {
+    if (comptime !TIMING_ENABLED) return .{ .start = 0, .hash = 0 };
+    const h = comptime timerHash(group ++ "\x00" ++ part);
+    if (timer_table.len == 0 or timer_table[h & timer_mask].hash != h) registerTimer(h, group, part);
+    return .{ .start = rdtscp(), .hash = h };
+}
+
+pub inline fn time(comptime name: []const u8) ScopedTimer {
+    return timeGrouped(name, "");
+}
+
+fn timerPct(x: u64, total: u64) f64 {
+    return if (total == 0) 0 else @as(f64, @floatFromInt(x)) * 100.0 / @as(f64, @floatFromInt(total));
+}
+
+fn printTimers(writer: *std.Io.Writer) void {
+    if (comptime !TIMING_ENABLED) return;
+    var infos: [256]TimerInfo = undefined;
+    var n: usize = 0;
+    var total_cycles: u64 = 0;
+    for (timer_table) |e| {
+        if (e.hash == 0 or e.hits == 0) continue;
+        var group_cycles: u64 = 0;
+        for (timer_table) |o| {
+            if (o.hash != 0 and o.hits != 0 and std.mem.eql(u8, o.group, e.group)) group_cycles += o.cycles;
+        }
+        infos[n] = .{ .slot = e, .group_cycles = group_cycles };
+        n += 1;
+        total_cycles += e.cycles;
+    }
+    if (total_cycles == 0) return;
+
+    std.mem.sort(TimerInfo, infos[0..n], {}, TimerInfo.order);
+
+    writer.print("raw:\n", .{}) catch unreachable;
+    for (infos[0..n]) |info| {
+        const e = info.slot;
+        var name_buf: [64]u8 = undefined;
+        const sep: []const u8 = if (e.part.len > 0) " " else "";
+        const label = std.fmt.bufPrint(&name_buf, "{s}{s}{s}", .{ e.group, sep, e.part }) catch "[?]";
+        writer.print("  {s: <26} cyc={d: >14} hits={d: >12} cyc/hit={d: >8.2}\n", .{ label, e.cycles, e.hits, e.cost() }) catch unreachable;
+    }
+
+    writer.print("summary:\n", .{}) catch unreachable;
+    var i: usize = 0;
+    while (i < n) {
+        const g = infos[i].slot.group;
+        const gtot = infos[i].group_cycles;
+        writer.print("  {s: <26}{d: >6.2}%\n", .{ g, timerPct(gtot, total_cycles) }) catch unreachable;
+        while (i < n and std.mem.eql(u8, infos[i].slot.group, g)) : (i += 1) {
+            const e = infos[i].slot;
+            if (e.part.len == 0) continue;
+            writer.print("    {s: <24}{d: >6.2}%  {d: >5.1}%\n", .{ e.part, timerPct(e.cycles, total_cycles), timerPct(e.cycles, gtot) }) catch unreachable;
+        }
+    }
+}
+
+fn resetTimers() void {
+    for (timer_table) |*e| {
+        e.cycles = 0;
+        e.hits = 0;
+    }
+}
+
 pub fn printDebugStats() void {
     const writer = root.stdout_writer;
 
@@ -194,10 +360,12 @@ pub fn printDebugStats() void {
         entry.value_ptr.format(writer) catch unreachable;
     }
 
+    printTimers(writer);
     writer.flush() catch unreachable;
 }
 
 pub fn resetDebugStats() void {
+    resetTimers();
     var iter = debug_stats.valueIterator();
     while (iter.next()) |e| {
         e.reset();
@@ -546,16 +714,16 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
             std.process.exit(0);
         }
         const now = std.Io.Timestamp.now(io, .awake);
-        const time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
+        const elapsed_ns = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
         if (cur_positions == prev_positions) {
             continue;
         }
         defer {
             prev_positions = cur_positions;
-            prev_time = time;
+            prev_time = elapsed_ns;
         }
         // u64 because if we're able to generate >2^64 positions per second then this program makes no sense
-        const pps: u64 = @intCast(@as(u128, cur_positions - prev_positions) * std.time.ns_per_s / @max(1, time - prev_time));
+        const pps: u64 = @intCast(@as(u128, cur_positions - prev_positions) * std.time.ns_per_s / @max(1, elapsed_ns - prev_time));
         const lower_bound = if (pps_ema_opt) |pps_ema| pps_ema / 2 -| 1000 else pps;
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);

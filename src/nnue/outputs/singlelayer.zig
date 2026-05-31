@@ -1,6 +1,8 @@
 const std = @import("std");
 const arch = @import("../arch.zig");
 const simd = @import("../../simd.zig");
+const Board = @import("../../Board.zig");
+const evaluation = @import("../../evaluation.zig");
 
 const ALIGNMENT = 64;
 
@@ -30,9 +32,8 @@ pub const Weights = extern struct {
 pub fn forward(
     resolved: anytype,
     weights: *const arch.Weights,
-    board: *const @import("../../root.zig").Board,
+    board: *const Board,
 ) i16 {
-    const evaluation = @import("../../root.zig").evaluation;
     const output_bucket = arch.whichOutputBucket(@popCount(board.occupancy()));
     const ow = &weights.output;
     const w = &ow.output_w[output_bucket];

@@ -54,28 +54,7 @@ const NNCacheEntry = struct {
                 }
             }
         }
-        while (num_adds >= 4) : (num_adds -= 4) {
-            self.accumulator.addMany(4, .{
-                adds[num_adds - 1],
-                adds[num_adds - 2],
-                adds[num_adds - 3],
-                adds[num_adds - 4],
-            });
-        }
-        while (num_adds >= 1) : (num_adds -= 1) {
-            self.accumulator.add(adds[num_adds - 1]);
-        }
-        while (num_subs >= 4) : (num_subs -= 4) {
-            self.accumulator.subMany(4, .{
-                subs[num_subs - 1],
-                subs[num_subs - 2],
-                subs[num_subs - 3],
-                subs[num_subs - 4],
-            });
-        }
-        while (num_subs >= 1) : (num_subs -= 1) {
-            self.accumulator.sub(subs[num_subs - 1]);
-        }
+        self.accumulator.addSubInPlace(adds[0..num_adds], subs[0..num_subs]);
         self.pieces = board.pieceBBs().*;
         self.sides = .{ board.white(), board.black() };
         return &self.accumulator;

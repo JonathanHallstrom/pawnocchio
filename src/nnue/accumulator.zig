@@ -15,16 +15,16 @@ pub const Accumulator = struct {
         adds: anytype,
         subs: anytype,
     ) void {
+        inline for (adds) |a| @prefetch(a, .{ .rw = .read });
+        inline for (subs) |s| @prefetch(s, .{ .rw = .read });
         for (0..arch.ACCUMULATOR_VECTOR_COUNT) |i| {
             var vals: arch.AccumulatorVec = src.vecs()[i];
-
             inline for (adds) |a| {
                 vals += a[i];
             }
             inline for (subs) |s| {
                 vals -= s[i];
             }
-
             self.vecs()[i] = vals;
         }
     }
@@ -96,6 +96,27 @@ pub const Accumulator = struct {
         weights: *const arch.ThreatWeight,
     ) void {
         self.addImpl(self, .{}, .{weights});
+    }
+
+    pub fn addSubInPlace(
+        self: *Accumulator,
+        adds: []const *const arch.RawAccumulator,
+        subs: []const *const arch.RawAccumulator,
+    ) void {
+        for (adds) |a| @prefetch(a, .{ .rw = .read });
+        for (subs) |s| @prefetch(s, .{ .rw = .read });
+        const TILE = arch.ACCUMULATOR_TILE;
+        var i: usize = 0;
+        while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
+            var v: [TILE]arch.AccumulatorVec = self.vecs()[i..][0..TILE].*;
+            for (adds) |a| inline for (0..TILE) |t| {
+                v[t] += a[i + t];
+            };
+            for (subs) |s| inline for (0..TILE) |t| {
+                v[t] -= s[i + t];
+            };
+            self.vecs()[i..][0..TILE].* = v;
+        }
     }
 };
 

@@ -279,16 +279,22 @@ const scalar = struct {
     }
 
     pub fn doOnChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+        const timer = root.engine.timeGrouped("threat_emit", "change");
+        defer timer.register();
         emitChangeSide(buf, stacks, board, piece, sq, is_add, board.occupancy());
     }
 
     pub fn doOnMove(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+        const timer = root.engine.timeGrouped("threat_emit", "move");
+        defer timer.register();
         const occ = board.occupancy();
         emitChangeSide(buf, stacks, board, old_piece, src, false, occ & ~dst.toBitboard());
         emitChangeSide(buf, stacks, board, new_piece, dst, true, occ);
     }
 
     pub fn doOnMutate(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+        const timer = root.engine.timeGrouped("threat_emit", "mutate");
+        defer timer.register();
         const occ = board.occupancy();
         const sq_idx = sq.toInt();
         const old_pt = old_piece.toPieceType();
@@ -743,15 +749,21 @@ const byte_ray = struct {
     }
 
     pub fn doOnChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+        const timer = root.engine.timeGrouped("threat_emit", "change");
+        defer timer.register();
         emitChangeSide(buf, stacks, board, piece, sq.toInt(), is_add, null);
     }
 
     pub fn doOnMove(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+        const timer = root.engine.timeGrouped("threat_emit", "move");
+        defer timer.register();
         emitChangeSide(buf, stacks, board, old_piece, src.toInt(), false, dst.toInt());
         emitChangeSide(buf, stacks, board, new_piece, dst.toInt(), true, null);
     }
 
     pub fn doOnMutate(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+        const timer = root.engine.timeGrouped("threat_emit", "mutate");
+        defer timer.register();
         const focus = sq.toInt();
         const rv = permuteMailbox(board, focus, null);
         const occupied = occupiedMask(rv.bits);

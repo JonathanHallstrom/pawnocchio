@@ -147,6 +147,12 @@ pub const AccumulatorVec = @Vector(simd.vecSize(i16), i16);
 pub const PSQTWeightVec = @Vector(simd.vecSize(i16), i16);
 pub const ThreatWeightVec = @Vector(simd.vecSize(i16), i8);
 pub const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / simd.vecSize(i16);
+
+pub const ACCUMULATOR_TILE = @min(ACCUMULATOR_VECTOR_COUNT, switch (simd.TARGET) {
+    .avx512vbmi, .avx512 => 32,
+    else => 8,
+});
+
 pub const RawAccumulator = [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec;
 pub const PSQTWeight = [ACCUMULATOR_VECTOR_COUNT]PSQTWeightVec;
 pub const ThreatWeight = [ACCUMULATOR_VECTOR_COUNT]ThreatWeightVec;

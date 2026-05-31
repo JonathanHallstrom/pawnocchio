@@ -273,6 +273,8 @@ pub const Context = struct {
     }
 
     fn applyDirtyImpl(self: *Context, ply: u16, src_ply: u16, stm: Colour, weights: *const arch.Weights) void {
+        const timer = root.engine.time("psq_update");
+        defer timer.register();
         const f = &self.frames[ply];
         const src = &self.frames[src_ply];
         const dirty = f.dirty_piece;
@@ -332,6 +334,8 @@ pub const Context = struct {
     }
 
     fn refreshHalf(self: *Context, ply: u16, acc: Colour, board: *const Board, weights: *const arch.Weights) void {
+        const timer = root.engine.time("psq_refresh");
+        defer timer.register();
         const f = &self.frames[ply];
         f.mirrorPtrFor(acc).write(Square.fromBitboard(board.kingFor(acc)).getFile().toInt() >= 4);
         const refreshed = self.refresh_cache.refresh(weights, acc, board);

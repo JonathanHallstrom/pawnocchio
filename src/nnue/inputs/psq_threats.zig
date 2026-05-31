@@ -132,10 +132,8 @@ pub const Context = struct {
             const board = self.psq.frames[ply].board_ref.?;
             var white_oracle: Accumulator align(64) = undefined;
             var black_oracle: Accumulator align(64) = undefined;
-            nnue_threats.refreshThreats(&white_oracle, board, .white, weights);
-            nnue_threats.refreshThreats(&black_oracle, board, .black, weights);
-            addAllPawnPairs(&white_oracle, board, .white, weights);
-            addAllPawnPairs(&black_oracle, board, .black, weights);
+            buildThreatAccumulator(&white_oracle, board, .white, weights);
+            buildThreatAccumulator(&black_oracle, board, .black, weights);
             std.debug.assert(std.mem.eql(i16, &self.threat_frames[ply].white_threat.ptr.data, &white_oracle.data));
             std.debug.assert(std.mem.eql(i16, &self.threat_frames[ply].black_threat.ptr.data, &black_oracle.data));
         }
@@ -181,9 +179,10 @@ pub const Context = struct {
     const PAWN_SQUARES: u8 = 48;
 
     fn refreshThreatHalf(self: *Context, ply: u16, col: Colour, board: *const Board, weights: *const arch.Weights) void {
+        const timer = root.engine.time("threat_refresh");
+        defer timer.register();
         const buf = &self.threat_accumulator_stack[ply][col.toInt()];
-        nnue_threats.refreshThreats(buf, board, col, weights);
-        addAllPawnPairs(buf, board, col, weights);
+        buildThreatAccumulator(buf, board, col, weights);
         const tf = &self.threat_frames[ply];
         tf.threatHalf(col).* = .{ .ptr = buf };
         tf.threatMirrorPtrFor(col).write(Square.fromBitboard(board.kingFor(col)).getFile().toInt() >= 4);
@@ -231,6 +230,8 @@ pub const Context = struct {
     };
 
     inline fn collectPawnIdsVBMI2(board: *const Board, col: Colour, sq_mask: u8, exclude: u64) @Vector(64, u8) {
+        const timer = root.engine.time("pp_collect_ids");
+        defer timer.register();
         // const adjusted = (std.simd.iota(u8, 64) ^ @as(@Vector(64, u8), @splat(sq_mask))) -% @as(@Vector(64, u8), @splat(8));
         const ADJUSTED_SQUARES: [256]@Vector(64, u8) = comptime blk: {
             @setEvalBranchQuota(1 << 20);
@@ -313,12 +314,11 @@ pub const Context = struct {
         return n;
     }
 
-    fn addAllPawnPairs(acc: *Accumulator, board: *const Board, col: Colour, weights: *const arch.Weights) void {
+    fn collectAllPawnPairs(out: []u16, board: *const Board, col: Colour) usize {
         const sq_mask = ppSqMask(board, col);
         const total: usize = @popCount(board.pawns());
         const all_mask: u64 = simd.prefixMask(16, total);
 
-        var indices: [120 + 32]u16 = undefined;
         var mask = all_mask;
         var n: usize = undefined;
         const pairs = total -| 1;
@@ -362,21 +362,34 @@ pub const Context = struct {
                 const fixed: IdVec32 = @bitCast(simd.vpermb(fixed_idx, pawns));
                 const pair_indices = ppIndex(fixed, others_il);
                 const interleaved: u32 = @intCast(Bitboard.pdep(m0, 0x55555555) | Bitboard.pdep(m1, 0xAAAAAAAA));
-                indices[n..][0..32].* = simd.vpcompress(pair_indices, interleaved);
+                out[n..][0..32].* = simd.vpcompress(pair_indices, interleaved);
                 n += @popCount(interleaved);
             }
         } else {
-            n = collectPawnPairs(board, col, sq_mask, 0, &indices);
+            n = collectPawnPairs(board, col, sq_mask, 0, out);
         }
 
-        applyAllRows(acc, acc, weights, &.{}, &.{}, indices[0..n], &.{});
+        return n;
+    }
+
+    noinline fn buildThreatAccumulator(buf: *Accumulator, board: *const Board, col: Colour, weights: *const arch.Weights) void {
+        @branchHint(.cold);
+        var indices: [256]u16 = undefined;
+
+        var n = nnue_threats.collectRefreshThreats(&indices, board, col);
+        n += collectAllPawnPairs(indices[n..], board, col);
+        @memset(&buf.data, 0);
+        applyAllRows(buf, buf, weights, indices[0..n], &.{});
     }
 
     fn materialiseThreatHalf(self: *Context, ply: u16, col: Colour, board: *const Board, weights: *const arch.Weights) void {
+        const timer = root.engine.time("materialise_threat");
+        defer timer.register();
         const tf = &self.threat_frames[ply];
         const parent_tf = &self.threat_frames[ply - 1];
 
         if (tf.threat_updates.refresh[col.toInt()]) {
+            @branchHint(.unlikely);
             self.refreshThreatHalf(ply, col, board, weights);
             return;
         }
@@ -397,44 +410,45 @@ pub const Context = struct {
         const src = parent_tf.threatHalf(col).ptr;
         const dst = &self.threat_accumulator_stack[ply][col.toInt()];
 
-        var add_indices: [nnue_threat_updates.UpdateBuffer.MaxAdds]u32 = undefined;
+        var add_indices: [nnue_threat_updates.UpdateBuffer.MaxAdds]u16 = undefined;
         var add_count: usize = 0;
         for (adds_raw) |upd| {
-            const idx = nnue_threats.threatIndex(
+            const idx, const valid = nnue_threats.threatIndex(
                 col,
                 king_sq,
-                ColouredPieceType.fromInt(upd.attacker),
-                Square.fromInt(upd.from),
-                ColouredPieceType.fromInt(upd.victim),
-                Square.fromInt(upd.to),
+                .fromInt(upd.attacker),
+                .fromInt(upd.from),
+                .fromInt(upd.victim),
+                .fromInt(upd.to),
             );
-            add_indices[add_count] = @bitCast(idx);
-            add_count += @intFromBool(idx >= 0);
+            add_indices[add_count] = @intCast(idx +% arch.TOTAL_PAWN_PAIRS & 0xffff);
+            add_count += @intFromBool(valid);
         }
 
-        var sub_indices: [nnue_threat_updates.UpdateBuffer.MaxSubs]u32 = undefined;
+        var sub_indices: [nnue_threat_updates.UpdateBuffer.MaxSubs]u16 = undefined;
         var sub_count: usize = 0;
         for (subs_raw) |upd| {
-            const idx = nnue_threats.threatIndex(
+            const idx, const valid = nnue_threats.threatIndex(
                 col,
                 king_sq,
-                ColouredPieceType.fromInt(upd.attacker),
-                Square.fromInt(upd.from),
-                ColouredPieceType.fromInt(upd.victim),
-                Square.fromInt(upd.to),
+                .fromInt(upd.attacker),
+                .fromInt(upd.from),
+                .fromInt(upd.victim),
+                .fromInt(upd.to),
             );
-            sub_indices[sub_count] = @bitCast(idx);
-            sub_count += @intFromBool(idx >= 0);
+            sub_indices[sub_count] = @intCast(idx +% arch.TOTAL_PAWN_PAIRS & 0xffff);
+            sub_count += @intFromBool(valid);
         }
 
-        var pp = PPDelta.empty;
         if (has_pp and anyMaskedPair(board, dp)) {
             @branchHint(.unlikely);
-            pp.compute(board, col, dp);
+            const pp = computePairs(board, col, dp, add_indices[add_count..], sub_indices[sub_count..]);
+            add_count += pp.n_adds;
+            sub_count += pp.n_subs;
         }
 
         // only iterate the accumulator once to save memory bandwidth, instead of adding the features one by one reloading the accumulator each time
-        applyAllRows(dst, src, weights, add_indices[0..add_count], sub_indices[0..sub_count], pp.adds[0..pp.n_adds], pp.subs[0..pp.n_subs]);
+        applyAllRows(dst, src, weights, add_indices[0..add_count], sub_indices[0..sub_count]);
         tf.threatHalf(col).* = .{ .ptr = dst };
         tf.threatMirrorPtrFor(col).* = parent_tf.threatMirrorFor(col);
     }
@@ -522,110 +536,103 @@ pub const Context = struct {
         return (r0m | r1m | am) & diff_bb != 0;
     }
 
-    const PPDelta = struct {
-        adds: [16]u16,
-        subs: [32]u16,
-        n_adds: usize,
-        n_subs: usize,
+    const PPCounts = struct { n_adds: usize, n_subs: usize };
 
-        pub const empty: PPDelta = .{
-            .n_adds = 0,
-            .n_subs = 0,
-            .adds = undefined,
-            .subs = undefined,
-        };
+    fn computePairs(board: *const Board, col: Colour, dp: DirtyPawns, add_out: []u16, sub_out: []u16) PPCounts {
+        const sq_mask = ppSqMask(board, col);
+        const r0_id = pawnId(dp.removed[0].sq, dp.removed[0].enemy_offset, sq_mask);
+        const r1_id = pawnId(dp.removed[1].sq, dp.removed[1].enemy_offset, sq_mask);
+        const a_id = pawnId(dp.added.sq, dp.added.enemy_offset, sq_mask);
 
-        pub fn compute(delta: *PPDelta, board: *const Board, col: Colour, dp: DirtyPawns) void {
-            const sq_mask = ppSqMask(board, col);
-            const unch_count = @popCount(board.pawns() & ~dp.exclude);
-            const unch_mask: u16 = simd.prefixMask(16, unch_count);
+        if (comptime simd.TARGET == .avx512vbmi) {
+            return computePairsVBMI2(board, col, dp, sq_mask, r0_id, r1_id, a_id, add_out, sub_out);
+        } else {
+            return computePairsScalar(board, col, dp, sq_mask, r0_id, r1_id, a_id, add_out, sub_out);
+        }
+    }
 
-            const r0 = dp.removed[0];
-            const r1 = dp.removed[1];
-            const a = dp.added;
-            const r0_id = pawnId(r0.sq, r0.enemy_offset, sq_mask);
-            const r1_id = pawnId(r1.sq, r1.enemy_offset, sq_mask);
-            const a_id = pawnId(a.sq, a.enemy_offset, sq_mask);
+    fn computePairsVBMI2(board: *const Board, col: Colour, dp: DirtyPawns, sq_mask: u8, r0_id: u16, r1_id: u16, a_id: u16, add_out: []u16, sub_out: []u16) PPCounts {
+        const r0 = dp.removed[0];
+        const r1 = dp.removed[1];
+        const a = dp.added;
 
-            if (comptime simd.TARGET == .avx512vbmi) {
-                const unch_doubled: IdVec32 = @bitCast(simd.vpermb(WIDEN_AND_DUP_MASK, collectPawnIdsVBMI2(board, col, sq_mask, dp.exclude)));
-                const has_one_removed = dp.n_removed >= 1;
-                const has_two_removed = dp.n_removed >= 2;
+        const unch_bb = board.pawns() & ~dp.exclude;
+        const unch_mask: u16 = simd.prefixMask(16, @popCount(unch_bb));
+        const unch_doubled: IdVec32 = @bitCast(simd.vpermb(WIDEN_AND_DUP_MASK, collectPawnIdsVBMI2(board, col, sq_mask, dp.exclude)));
 
-                const unch_bb = board.pawns() & ~dp.exclude;
+        const r0_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[r0.sq.toInt()] & unch_bb, unch_bb));
+        const r1_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[r1.sq.toInt()] & unch_bb, unch_bb));
 
-                const r0_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[r0.sq.toInt()] & unch_bb, unch_bb));
-                const r1_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[r1.sq.toInt()] & unch_bb, unch_bb));
+        const r0_mask = unch_mask & r0_band * @intFromBool(dp.n_removed >= 1);
+        const r1_mask = unch_mask & r1_band * @intFromBool(dp.n_removed >= 2);
+        const r_mask = @as(u32, r0_mask) | (@as(u32, r1_mask) << 16);
 
-                const r0_mask = unch_mask & r0_band * @intFromBool(has_one_removed);
-                const r1_mask = unch_mask & r1_band * @intFromBool(has_two_removed);
-                const r_mask = @as(u32, r0_mask) | (@as(u32, r1_mask) << 16);
+        const rv = std.simd.join(@as(IdVec, @splat(r0_id)), @as(IdVec, @splat(r1_id)));
+        const ri = ppIndex(rv, unch_doubled);
 
-                const rv0: IdVec = @splat(r0_id);
-                const rv1: IdVec = @splat(r1_id);
-                const rv = std.simd.join(rv0, rv1);
-                const ri = ppIndex(rv, unch_doubled);
+        sub_out[0..32].* = simd.vpcompress(ri, r_mask);
+        var n_subs: usize = @popCount(r_mask);
 
-                delta.subs[0..32].* = simd.vpcompress(ri, r_mask);
-                delta.n_subs = @popCount(r_mask);
+        const in_band = arch.PP_MASK[r0.sq.toInt()] >> @intCast(r1.sq.toInt()) & 1 != 0;
+        sub_out[n_subs] = ppIndex(r0_id, r1_id);
+        n_subs += @intFromBool(dp.n_removed >= 2 and in_band);
 
-                const in_band = arch.PP_MASK[r0.sq.toInt()] >> @intCast(r1.sq.toInt()) & 1 != 0;
-                delta.subs[delta.n_subs] = ppIndex(r0_id, r1_id);
-                delta.n_subs += @intFromBool(has_two_removed and in_band);
+        const a_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[a.sq.toInt()] & unch_bb, unch_bb));
+        const a_mask = unch_mask & a_band * @intFromBool(dp.n_added != 0);
 
-                const a_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[a.sq.toInt()] & unch_bb, unch_bb));
-                const a_mask = unch_mask & a_band * @intFromBool(dp.n_added != 0);
+        const ai = ppIndex(@as(IdVec, @splat(a_id)), std.simd.extract(unch_doubled, 0, 16));
+        add_out[0..16].* = simd.vpcompress(ai, a_mask);
 
-                const av: IdVec = @splat(a_id);
-                const ai = ppIndex(av, std.simd.extract(unch_doubled, 0, 16));
-                delta.adds[0..16].* = simd.vpcompress(ai, a_mask);
-                delta.n_adds = @popCount(a_mask);
-            } else {
-                const friendly_bb = board.pawnsFor(col) & ~dp.exclude;
-                const enemy_bb = board.pawnsFor(col.flipped()) & ~dp.exclude;
+        return .{ .n_adds = @popCount(a_mask), .n_subs = n_subs };
+    }
 
-                if (dp.n_removed >= 1) {
-                    delta.n_subs = writePairIndices(r0_id, r0.sq, friendly_bb, enemy_bb, sq_mask, &delta.subs);
-                    if (dp.n_removed >= 2) {
-                        delta.n_subs += writePairIndices(r1_id, r1.sq, friendly_bb, enemy_bb, sq_mask, delta.subs[delta.n_subs..]);
-                        if (arch.PP_MASK[r0.sq.toInt()] >> @intCast(r1.sq.toInt()) & 1 != 0) {
-                            delta.subs[delta.n_subs] = ppIndex(r0_id, r1_id);
-                            delta.n_subs += 1;
-                        }
-                    }
-                }
+    fn computePairsScalar(board: *const Board, col: Colour, dp: DirtyPawns, sq_mask: u8, r0_id: u16, r1_id: u16, a_id: u16, add_out: []u16, sub_out: []u16) PPCounts {
+        const r0 = dp.removed[0];
+        const r1 = dp.removed[1];
+        const a = dp.added;
+        const friendly_bb = board.pawnsFor(col) & ~dp.exclude;
+        const enemy_bb = board.pawnsFor(col.flipped()) & ~dp.exclude;
 
-                if (dp.n_added != 0) {
-                    delta.n_adds = writePairIndices(a_id, a.sq, friendly_bb, enemy_bb, sq_mask, &delta.adds);
+        var n_subs: usize = 0;
+        var n_adds: usize = 0;
+        if (dp.n_removed >= 1) {
+            n_subs = writePairIndices(r0_id, r0.sq, friendly_bb, enemy_bb, sq_mask, sub_out);
+            if (dp.n_removed >= 2) {
+                n_subs += writePairIndices(r1_id, r1.sq, friendly_bb, enemy_bb, sq_mask, sub_out[n_subs..]);
+                if (arch.PP_MASK[r0.sq.toInt()] >> @intCast(r1.sq.toInt()) & 1 != 0) {
+                    sub_out[n_subs] = ppIndex(r0_id, r1_id);
+                    n_subs += 1;
                 }
             }
         }
-    };
 
-    fn applyAllRows(
+        if (dp.n_added != 0) {
+            n_adds = writePairIndices(a_id, a.sq, friendly_bb, enemy_bb, sq_mask, add_out);
+        }
+        return .{ .n_adds = n_adds, .n_subs = n_subs };
+    }
+
+    inline fn applyAllRows(
         noalias dst: *Accumulator,
         src: *const Accumulator,
         weights: *const arch.Weights,
-        threat_adds: []const u32,
-        threat_subs: []const u32,
-        pp_adds: []const u16,
-        pp_subs: []const u16,
+        adds: []const u16,
+        subs: []const u16,
     ) void {
+        const timer = root.engine.time("apply_rows");
+        defer timer.register();
+        const combined: [*]const arch.ThreatWeight = @ptrCast(&weights.input.pp_w);
         var i: usize = 0;
-        const TILE = 8;
+        const TILE = arch.ACCUMULATOR_TILE;
+        for (subs) |idx| @prefetch(&combined[idx], .{ .rw = .read });
+        for (adds) |idx| @prefetch(&combined[idx], .{ .rw = .read });
         while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
             var v: [TILE]arch.AccumulatorVec = src.vecs()[i..][0..TILE].*;
-            for (threat_subs) |idx| inline for (0..TILE) |t| {
-                v[t] -= weights.input.threat_w[idx][i + t];
+            for (subs) |idx| inline for (0..TILE) |t| {
+                v[t] -= combined[idx][i + t];
             };
-            for (threat_adds) |idx| inline for (0..TILE) |t| {
-                v[t] += weights.input.threat_w[idx][i + t];
-            };
-            for (pp_subs) |idx| inline for (0..TILE) |t| {
-                v[t] -= weights.input.pp_w[idx][i + t];
-            };
-            for (pp_adds) |idx| inline for (0..TILE) |t| {
-                v[t] += weights.input.pp_w[idx][i + t];
+            for (adds) |idx| inline for (0..TILE) |t| {
+                v[t] += combined[idx][i + t];
             };
             dst.vecs()[i..][0..TILE].* = v;
         }
