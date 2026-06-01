@@ -144,6 +144,25 @@ pub export fn setWeights(w: *const arch.Weights) void {
     verbatim_weights = w;
 }
 
+pub const PRECISION_MARGIN: comptime_int = blk: {
+    const L1OUT_MAX = arch.Q * arch.Q;
+    const L2W_MAX: comptime_int = inner: {
+        const WEIGHT_COUNT = 2 * arch.L3_SIZE * arch.L2_SIZE;
+
+        const l2w: *const [arch.OUTPUT_BUCKET_COUNT][WEIGHT_COUNT]i32 = @ptrCast(verbatim_backing[@offsetOf(arch.Weights, "l2w")..]);
+
+        var highest: @Vector(WEIGHT_COUNT, u32) = @splat(0);
+        for (l2w) |*w| {
+            highest = @max(highest, @abs(@as(@Vector(WEIGHT_COUNT, i32), w.*)));
+        }
+        break :inner @reduce(.Max, highest);
+    };
+    const MAX_ACC = (2 * arch.L2_SIZE) * L1OUT_MAX * L2W_MAX;
+    const PM: comptime_int = @floor(@log2(@as(comptime_float, std.math.maxInt(i32)) / @as(comptime_float, MAX_ACC)));
+    std.debug.assert((MAX_ACC << PM) <= std.math.maxInt(i32));
+    break :blk PM;
+};
+
 pub fn init() !void {
     if (!use_numa) {
         return;
@@ -678,10 +697,10 @@ pub const State = struct {
 
                 const biased = intermediate + biases;
 
-                const crelu = std.math.shr(simd.vector(i32), std.math.clamp(biased, LO, HI), SHIFT - Q_BITS - arch.PRECISION_MARGIN);
+                const crelu = std.math.shr(simd.vector(i32), std.math.clamp(biased, LO, HI), SHIFT - Q_BITS - PRECISION_MARGIN);
 
                 const clamped: simd.vector(i32) = std.math.clamp(biased, -HI, HI);
-                const csrelu = std.math.shr(simd.vector(i32), clamped * clamped, SHIFT * 2 - arch.PRECISION_MARGIN);
+                const csrelu = std.math.shr(simd.vector(i32), clamped * clamped, SHIFT * 2 - PRECISION_MARGIN);
 
                 l1_out_vec[i] = crelu;
                 l1_out_vec[i + arch.L2_SIZE / simd.vecSize(i32)] = csrelu;
@@ -710,7 +729,7 @@ pub const State = struct {
             const ONE: simd.vector(i32) = @splat(1);
             const HI3: simd.vector(i32) = ONE << @splat(arch.L3_SIZE_BITS + 3 * Q_BITS);
             for (0..arch.L3_SIZE / simd.vecSize(i32)) |i| {
-                const shifted = std.math.shr(simd.vector(i32), l2_intermediate[i], arch.PRECISION_MARGIN - arch.L3_SIZE_BITS) + l2_biases[i];
+                const shifted = std.math.shr(simd.vector(i32), l2_intermediate[i], PRECISION_MARGIN - arch.L3_SIZE_BITS) + l2_biases[i];
                 const activated = std.math.clamp(shifted, LO, HI3);
                 l3_sums[i] += activated * l3_weight_vec[i];
             }

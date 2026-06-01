@@ -279,13 +279,6 @@ pub const Q = 64;
 
 pub const L3_SIZE_BITS: usize = std.math.log2_int(u32, L3_SIZE);
 
-pub const PRECISION_MARGIN: comptime_int = blk: {
-    const ACC_BITS: comptime_int = std.math.log2_int(u32, std.math.maxInt(i32));
-    const Q_BITS: comptime_int = std.math.log2_int(u32, Q);
-    //         budget     l1out        l2w range      num added terms
-    break :blk ACC_BITS - 2 * Q_BITS - (Q_BITS + 1) - std.math.log2_int(u32, 2 * L2_SIZE);
-};
-
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     0,  1,  2,  3,  3,  2,  1,  0,
     4,  5,  6,  7,  7,  6,  5,  4,
