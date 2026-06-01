@@ -146,18 +146,9 @@ pub export fn setWeights(w: *const arch.Weights) void {
 
 pub const PRECISION_MARGIN: comptime_int = blk: {
     const L1OUT_MAX = arch.Q * arch.Q;
-    const L2W_MAX: comptime_int = inner: {
-        const WEIGHT_COUNT = 2 * arch.L3_SIZE * arch.L2_SIZE;
-
-        const l2w: *const [arch.OUTPUT_BUCKET_COUNT][WEIGHT_COUNT]i32 = @ptrCast(verbatim_backing[@offsetOf(arch.Weights, "l2w")..]);
-
-        var highest: @Vector(WEIGHT_COUNT, u32) = @splat(0);
-        for (l2w) |*w| {
-            highest = @max(highest, @abs(@as(@Vector(WEIGHT_COUNT, i32), w.*)));
-        }
-        break :inner @reduce(.Max, highest);
-    };
-    const MAX_ACC = (2 * arch.L2_SIZE) * L1OUT_MAX * L2W_MAX;
+    const WEIGHT_MAX = 1.98;
+    const L2W_MAX: comptime_int = @round(arch.Q * WEIGHT_MAX);
+    const MAX_ACC: comptime_int = (2 * arch.L2_SIZE) * L1OUT_MAX * L2W_MAX;
     const PM: comptime_int = @floor(@log2(@as(comptime_float, std.math.maxInt(i32)) / @as(comptime_float, MAX_ACC)));
     std.debug.assert((MAX_ACC << PM) <= std.math.maxInt(i32));
     break :blk PM;
