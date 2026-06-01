@@ -28,27 +28,27 @@ pub const Weights = extern struct {
     l3w: [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 align(ALIGNMENT),
     l3b: [OUTPUT_BUCKET_COUNT]i32 align(ALIGNMENT),
 
-    fn l1wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 {
+    fn l1wInferenceLayout(self: *Weights) *align(ALIGNMENT) [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8 {
         return @ptrCast(&self.l1w);
     }
 
-    fn l1wDisk(self: *Weights) *align(64) [L1_SIZE][OUTPUT_BUCKET_COUNT][L2_SIZE]i8 {
+    fn l1wDiskLayout(self: *Weights) *align(ALIGNMENT) [L1_SIZE][OUTPUT_BUCKET_COUNT][L2_SIZE]i8 {
         return @ptrCast(&self.l1w);
     }
 
-    fn l2wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32 {
+    fn l2wInferenceLayout(self: *Weights) *align(ALIGNMENT) [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32 {
         return @ptrCast(&self.l2w);
     }
 
-    fn l2wDisk(self: *Weights) *align(64) [2 * L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
+    fn l2wDiskLayout(self: *Weights) *align(ALIGNMENT) [2 * L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
         return @ptrCast(&self.l2w);
     }
 
-    fn l3wInference(self: *Weights) *align(64) [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
+    fn l3wInferenceLayout(self: *Weights) *align(ALIGNMENT) [OUTPUT_BUCKET_COUNT][L3_SIZE]i32 {
         return @ptrCast(&self.l3w);
     }
 
-    fn l3wDisk(self: *Weights) *align(64) [L3_SIZE][OUTPUT_BUCKET_COUNT]i32 {
+    fn l3wDiskLayout(self: *Weights) *align(ALIGNMENT) [L3_SIZE][OUTPUT_BUCKET_COUNT]i32 {
         return @ptrCast(&self.l3w);
     }
 
@@ -206,10 +206,10 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
     // permute l1w for dpbusd
     {
         // [L1_SIZE][OUTPUT_BUCKET_COUNT][L2_SIZE]i8
-        const l1w_disk = net.l1wDisk().*;
+        const l1w_disk = net.l1wDiskLayout().*;
 
         // [OUTPUT_BUCKET_COUNT][L2_SIZE * L1_SIZE]i8
-        const l1w_inf = net.l1wInference();
+        const l1w_inf = net.l1wInferenceLayout();
 
         for (0..OUTPUT_BUCKET_COUNT) |ob| {
             for (0..L1_SIZE / 4) |i| {
@@ -225,10 +225,10 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
     // transpose l2w
     {
         // [2 * L2_SIZE][OUTPUT_BUCKET_COUNT][L3_SIZE]i32
-        const l2w_disk = net.l2wDisk().*;
+        const l2w_disk = net.l2wDiskLayout().*;
 
         // [OUTPUT_BUCKET_COUNT][2 * L3_SIZE * L2_SIZE]i32
-        const l2w_inf = net.l2wInference();
+        const l2w_inf = net.l2wInferenceLayout();
 
         for (0..OUTPUT_BUCKET_COUNT) |ob| {
             for (0..2 * L2_SIZE) |i| {
@@ -239,13 +239,19 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
         }
     }
 
+    for (0..OUTPUT_BUCKET_COUNT) |ob| {
+        for (0..L3_SIZE) |i| {
+            net.l2b[ob][i] <<= L3_SIZE_BITS;
+        }
+    }
+
     // transpose l3w
     {
         // [L3_SIZE][OUTPUT_BUCKET_COUNT]i32
-        const l3w_disk = net.l3wDisk().*;
+        const l3w_disk = net.l3wDiskLayout().*;
 
         // [OUTPUT_BUCKET_COUNT][L3_SIZE]i32
-        const l3w_inf = net.l3wInference();
+        const l3w_inf = net.l3wInferenceLayout();
 
         for (0..OUTPUT_BUCKET_COUNT) |ob| {
             for (0..L3_SIZE) |i| {
@@ -270,6 +276,16 @@ pub const SCALE: i64 = 400;
 pub const Q0 = 255;
 pub const Q1 = 128;
 pub const Q = 64;
+
+pub const L3_SIZE_BITS: usize = std.math.log2_int(u32, L3_SIZE);
+
+pub const PRECISION_MARGIN: comptime_int = blk: {
+    const ACC_BITS: comptime_int = std.math.log2_int(u32, std.math.maxInt(i32));
+    const Q_BITS: comptime_int = std.math.log2_int(u32, Q);
+    //         budget     l1out        l2w range      num added terms
+    break :blk ACC_BITS - 2 * Q_BITS - (Q_BITS + 1) - std.math.log2_int(u32, 2 * L2_SIZE);
+};
+
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     0,  1,  2,  3,  3,  2,  1,  0,
     4,  5,  6,  7,  7,  6,  5,  4,

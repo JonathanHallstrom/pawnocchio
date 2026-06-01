@@ -678,10 +678,10 @@ pub const State = struct {
 
                 const biased = intermediate + biases;
 
-                const crelu: simd.vector(i32) = std.math.clamp(biased, LO, HI) >> @splat(SHIFT - Q_BITS);
+                const crelu = std.math.shr(simd.vector(i32), std.math.clamp(biased, LO, HI), SHIFT - Q_BITS - arch.PRECISION_MARGIN);
 
                 const clamped: simd.vector(i32) = std.math.clamp(biased, -HI, HI);
-                const csrelu: simd.vector(i32) = clamped * clamped >> @splat(SHIFT * 2);
+                const csrelu = std.math.shr(simd.vector(i32), clamped * clamped, SHIFT * 2 - arch.PRECISION_MARGIN);
 
                 l1_out_vec[i] = crelu;
                 l1_out_vec[i + arch.L2_SIZE / simd.vecSize(i32)] = csrelu;
@@ -689,7 +689,7 @@ pub const State = struct {
         }
 
         // in arch.Q³
-        var l2_intermediate: [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @bitCast(weights.l2b[output_bucket]);
+        var l2_intermediate: [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @splat(@splat(0));
         {
             const l1_out: *const [2 * arch.L2_SIZE]i32 = @ptrCast(&l1_out_vec);
             const l2_weight_vec: *const [2 * arch.L2_SIZE][arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @ptrCast(@alignCast(&weights.l2w[output_bucket]));
@@ -702,15 +702,22 @@ pub const State = struct {
         }
 
         // in arch.Q⁴
-        var l3_sum: simd.vector(i32) = @splat(0);
+        var l3_sums: [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @splat(@splat(0));
         {
-            const l3_weight_vec: *const [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @ptrCast(@alignCast(&weights.l3w[output_bucket]));
+            const l2_biases: *const [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @ptrCast(&weights.l2b[output_bucket]);
+            const l3_weight_vec: *const [arch.L3_SIZE / simd.vecSize(i32)]simd.vector(i32) = @ptrCast(&weights.l3w[output_bucket]);
             const LO: simd.vector(i32) = @splat(0);
-            const HI3: simd.vector(i32) = @splat(arch.Q * arch.Q * arch.Q);
+            const ONE: simd.vector(i32) = @splat(1);
+            const HI3: simd.vector(i32) = ONE << @splat(arch.L3_SIZE_BITS + 3 * Q_BITS);
             for (0..arch.L3_SIZE / simd.vecSize(i32)) |i| {
-                const activated: simd.vector(i32) = std.math.clamp(l2_intermediate[i], LO, HI3);
-                l3_sum += activated * l3_weight_vec[i];
+                const shifted = std.math.shr(simd.vector(i32), l2_intermediate[i], arch.PRECISION_MARGIN - arch.L3_SIZE_BITS) + l2_biases[i];
+                const activated = std.math.clamp(shifted, LO, HI3);
+                l3_sums[i] += activated * l3_weight_vec[i];
             }
+        }
+        var l3_sum: simd.vector(i32) = @splat(0);
+        for (l3_sums) |e| {
+            l3_sum += std.math.shr(simd.vector(i32), e, arch.L3_SIZE_BITS);
         }
 
         const bias: i32 = weights.l3b[output_bucket];
