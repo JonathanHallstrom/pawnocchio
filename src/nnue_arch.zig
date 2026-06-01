@@ -239,12 +239,6 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
         }
     }
 
-    for (0..OUTPUT_BUCKET_COUNT) |ob| {
-        for (0..L3_SIZE) |i| {
-            net.l2b[ob][i] <<= L3_SIZE_BITS;
-        }
-    }
-
     // transpose l3w
     {
         // [L3_SIZE][OUTPUT_BUCKET_COUNT]i32
@@ -276,8 +270,6 @@ pub const SCALE: i64 = 400;
 pub const Q0 = 255;
 pub const Q1 = 128;
 pub const Q = 64;
-
-pub const L3_SIZE_BITS: usize = std.math.log2_int(u32, L3_SIZE);
 
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     0,  1,  2,  3,  3,  2,  1,  0,
