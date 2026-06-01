@@ -378,8 +378,7 @@ pub const Context = struct {
 
         var n = nnue_threats.collectRefreshThreats(&indices, board, col);
         n += collectAllPawnPairs(indices[n..], board, col);
-        @memset(&buf.data, 0);
-        applyAllRows(buf, buf, weights, indices[0..n], &.{});
+        applyAllRowsZeroed(buf, weights, indices[0..n]);
     }
 
     fn materialiseThreatHalf(self: *Context, ply: u16, col: Colour, board: *const Board, weights: *const arch.Weights) void {
@@ -609,7 +608,7 @@ pub const Context = struct {
         return .{ .n_adds = n_adds, .n_subs = n_subs };
     }
 
-    fn applyAllRows(
+    inline fn applyAllRows(
         noalias dst: *Accumulator,
         src: *const Accumulator,
         weights: *const arch.Weights,
@@ -628,6 +627,20 @@ pub const Context = struct {
             for (subs) |idx| inline for (0..TILE) |t| {
                 v[t] -= combined[idx][i + t];
             };
+            for (adds) |idx| inline for (0..TILE) |t| {
+                v[t] += combined[idx][i + t];
+            };
+            dst.vecs()[i..][0..TILE].* = v;
+        }
+    }
+
+    fn applyAllRowsZeroed(noalias dst: *Accumulator, weights: *const arch.Weights, adds: []const u16) void {
+        const combined: [*]const arch.ThreatWeight = @ptrCast(&weights.input.pp_w);
+        for (adds) |idx| @prefetch(&combined[idx], .{ .rw = .read });
+        const TILE = arch.ACCUMULATOR_TILE;
+        var i: usize = 0;
+        while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
+            var v: [TILE]arch.AccumulatorVec = @splat(@splat(0));
             for (adds) |idx| inline for (0..TILE) |t| {
                 v[t] += combined[idx][i + t];
             };
