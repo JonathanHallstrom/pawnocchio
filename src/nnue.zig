@@ -664,8 +664,8 @@ pub const State = struct {
 
             const SHIFT = Q0_BITS * 2 + MULHI_SHIFT + Q1_BITS - Q_BITS;
             const LO: simd.vector(i32) = @splat(0);
-            const HI: simd.vector(i32) = @splat(arch.Q);
-            const HI2: simd.vector(i32) = @splat(arch.Q * arch.Q);
+            const ONE: simd.vector(i32) = @splat(1);
+            const HI: simd.vector(i32) = ONE << @splat(SHIFT + Q_BITS);
             for (0..arch.L2_SIZE / simd.vecSize(i32)) |i| {
                 const biases: simd.vector(i32) = l1_bias_vec[i];
 
@@ -675,11 +675,13 @@ pub const State = struct {
                 }
 
                 // NOTE: PLEASE BE CAREFUL WITH THE QUANTISATION OF THESE BIASES
-                const biased = intermediate + biases;
-                const shifted = biased >> @splat(SHIFT);
 
-                const crelu: simd.vector(i32) = std.math.clamp(biased, LO, HI << @splat(SHIFT)) >> @splat(SHIFT - Q_BITS);
-                const csrelu: simd.vector(i32) = std.math.clamp(shifted * shifted, LO, HI2);
+                const biased = intermediate + biases;
+
+                const crelu: simd.vector(i32) = std.math.clamp(biased, LO, HI) >> @splat(SHIFT - Q_BITS);
+
+                const clamped: simd.vector(i32) = std.math.clamp(biased, -HI, HI);
+                const csrelu: simd.vector(i32) = clamped * clamped >> @splat(SHIFT * 2);
 
                 l1_out_vec[i] = crelu;
                 l1_out_vec[i + arch.L2_SIZE / simd.vecSize(i32)] = csrelu;
