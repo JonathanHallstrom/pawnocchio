@@ -110,7 +110,7 @@ pub fn endianSwap(field: anytype) void {
     }
 }
 
-fn UltimateChild(comptime T: type) type {
+pub fn UltimateChild(comptime T: type) type {
     const info = @typeInfo(T);
 
     switch (info) {
@@ -123,7 +123,7 @@ fn UltimateChild(comptime T: type) type {
     }
 }
 
-fn totalElements(comptime T: type) comptime_int {
+pub fn totalElements(comptime T: type) comptime_int {
     const info = @typeInfo(T);
 
     switch (info) {

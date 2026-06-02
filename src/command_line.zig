@@ -1028,6 +1028,7 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
 
         var record = root.viriformat.GameRecord.from(game.board, allocator);
         defer record.deinit();
+        record.setOutCome(game.outcome);
 
         var skipping = false;
         var final_correct_wdl_idx: ?usize = null;
@@ -1141,6 +1142,7 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
 
         var record = root.viriformat.GameRecord.from(game.board, allocator);
         defer record.deinit();
+        record.setOutCome(game.outcome);
 
         var it = game.iter();
         while (try it.next()) |ply| {
