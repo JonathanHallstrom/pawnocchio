@@ -204,10 +204,8 @@ pub const Context = struct {
     fn ppIndex(id_a: anytype, id_b: anytype) PPIndexType(@TypeOf(id_a)) {
         const T = PPIndexType(@TypeOf(id_a));
         const ONE: T = if (T == u16) 1 else @splat(1);
-        const a: T = id_a;
-        const b: T = id_b;
-        const lo: T = @min(a, b);
-        const hi: T = @max(a, b);
+        const hi: T = @max(id_a, id_b);
+        const lo: T = @min(id_a, id_b);
         return (hi *% (hi -% ONE) >> ONE) +% lo;
     }
 
@@ -268,8 +266,8 @@ pub const Context = struct {
         return ids;
     }
 
-    fn pawnId(sq: Square, enemy_offset: u8, sq_mask: u8) u16 {
-        return enemy_offset +% (@as(u16, sq.toInt() ^ sq_mask) -% FIRST_PAWN);
+    fn pawnId(sq: Square, enemy_offset: u8, sq_mask: u8) u8 {
+        return enemy_offset + (sq.toInt() ^ sq_mask) -% FIRST_PAWN;
     }
 
     fn collectPawnPairs(board: *const Board, col: Colour, sq_mask: u8, exclude: u64, indices: []u16) usize {
@@ -298,20 +296,24 @@ pub const Context = struct {
         return n;
     }
 
-    fn writePairIndices(fixed_id: u16, fixed_sq: Square, friendly_bb: u64, enemy_bb: u64, sq_mask: u8, out: []u16) usize {
-        const band = arch.PP_MASK[fixed_sq.toInt()];
-        var n: usize = 0;
-        var friendly = Bitboard.iterator(friendly_bb & band);
-        while (friendly.next()) |sq| {
-            out[n] = ppIndex(fixed_id, pawnId(sq, 0, sq_mask));
-            n += 1;
+    inline fn perspectiveBB(bb: anytype, sq_mask: u8) @TypeOf(bb) {
+        var res = bb;
+        if (sq_mask & 7 != 0) {
+            @branchHint(.unpredictable);
+            res = @bitReverse(@byteSwap(res));
         }
-        var enemy = Bitboard.iterator(enemy_bb & band);
-        while (enemy.next()) |sq| {
-            out[n] = ppIndex(fixed_id, pawnId(sq, PAWN_SQUARES, sq_mask));
-            n += 1;
+        if (sq_mask & 56 != 0) {
+            @branchHint(.unpredictable);
+            res = @byteSwap(res);
         }
-        return n;
+        return res;
+        // return switch (sq_mask) {
+        //     0 => bb,
+        //     56 => @byteSwap(bb),
+        //     7 => @byteSwap(@bitReverse(bb)),
+        //     63 => @bitReverse(bb),
+        //     else => unreachable,
+        // };
     }
 
     fn collectAllPawnPairs(out: []u16, board: *const Board, col: Colour) usize {
@@ -439,9 +441,9 @@ pub const Context = struct {
             sub_count += @intFromBool(valid);
         }
 
-        if (has_pp and anyMaskedPair(board, dp)) {
+        if (has_pp and anyMaskedPair(board, &dp)) {
             @branchHint(.unlikely);
-            const pp = computePairs(board, col, dp, add_indices[add_count..], sub_indices[sub_count..]);
+            const pp = computePairs(board, col, &dp, add_indices[add_count..], sub_indices[sub_count..]);
             add_count += pp.n_adds;
             sub_count += pp.n_subs;
         }
@@ -524,7 +526,7 @@ pub const Context = struct {
         };
     }
 
-    fn anyMaskedPair(board: *const Board, dp: DirtyPawns) bool {
+    fn anyMaskedPair(board: *const Board, dp: *const DirtyPawns) bool {
         const r0m = arch.PP_MASK[dp.removed[0].sq.toInt()];
         const r1m = arch.PP_MASK[dp.removed[1].sq.toInt()];
         const am = arch.PP_MASK[dp.added.sq.toInt()];
@@ -534,20 +536,119 @@ pub const Context = struct {
 
     const PPCounts = struct { n_adds: usize, n_subs: usize };
 
-    fn computePairs(board: *const Board, col: Colour, dp: DirtyPawns, add_out: []u16, sub_out: []u16) PPCounts {
+    fn computePairs(board: *const Board, col: Colour, dp: *const DirtyPawns, add_out: []u16, sub_out: []u16) PPCounts {
         const sq_mask = ppSqMask(board, col);
         const r0_id = pawnId(dp.removed[0].sq, dp.removed[0].enemy_offset, sq_mask);
         const r1_id = pawnId(dp.removed[1].sq, dp.removed[1].enemy_offset, sq_mask);
         const a_id = pawnId(dp.added.sq, dp.added.enemy_offset, sq_mask);
 
-        if (comptime simd.TARGET == .avx512vbmi) {
-            return computePairsVBMI2(board, col, dp, sq_mask, r0_id, r1_id, a_id, add_out, sub_out);
-        } else {
-            return computePairsScalar(board, col, dp, sq_mask, r0_id, r1_id, a_id, add_out, sub_out);
-        }
+        const impl = if (comptime simd.TARGET == .avx512vbmi) computePairsVBMI2 else computePairsScalar;
+
+        return impl(board, col, dp, sq_mask, r0_id, r1_id, a_id, add_out, sub_out);
     }
 
-    fn computePairsVBMI2(board: *const Board, col: Colour, dp: DirtyPawns, sq_mask: u8, r0_id: u16, r1_id: u16, a_id: u16, add_out: []u16, sub_out: []u16) PPCounts {
+    const FILE_A: u64 = 0x0101_0101_0101_0101;
+    const FILE_A_128: u128 = @as(u128, FILE_A) << 64 | FILE_A;
+    const RANK_BYTES: u64 = @bitCast([8]u8{ 0, 8, 16, 24, 32, 40, 48, 56 });
+
+    const FILE_BIT_GATHER: u64 = 0x0102_0408_1020_4080;
+    const EXTRACT_LUT = blk: {
+        var t: [64]u64 = undefined;
+        for (0..64) |p| {
+            var v: u64 = 0;
+            var pos: u6 = 0;
+            for (0..6) |k| {
+                if ((p >> @intCast(k)) & 1 != 0) {
+                    v |= @as(u64, 8 * k) << pos;
+                    pos += 8;
+                }
+            }
+            t[p] = v;
+        }
+        break :blk t;
+    };
+
+    inline fn harvestCol(col: u64, file: u8, offset: u8) struct { u64, u8 } {
+        const fp0 = col >> @truncate(file +% 8);
+        const file_mask = fp0 & FILE_A;
+        const n: u8 = @popCount(file_mask);
+        const c: u64 = @as(u64, file) + offset;
+        const ids = if (simd.HAS_PEXT)
+            Bitboard.pext(RANK_BYTES +% FILE_A *% c, file_mask *% 255)
+        else lut: {
+            const mask = (@as(u64, 1) << @intCast(n * 8)) -% 1;
+            break :lut EXTRACT_LUT[@intCast(file_mask *% FILE_BIT_GATHER >> 56 & 63)] +% ((FILE_A *% c) & mask);
+        };
+        return .{ ids, n };
+    }
+
+    inline fn colourBands(bb: u64, lo: u8, offset: u8, r0_hi: bool, a_hi: bool) struct { u64, u8, u64, u8 } {
+        const c0i, const c0n = harvestCol(bb & ~(FILE_A << 7), lo -% 1, offset);
+        const c1i, const c1n = harvestCol(bb, lo, offset);
+        const c2i, const c2n = harvestCol(bb & ~FILE_A, lo +% 1, offset);
+        const c3i, const c3n = harvestCol(bb & ~FILE_A, lo +% 2, offset);
+
+        const mid_i = c1i | c2i << @intCast(c1n << 3);
+        const mid_n = c1n + c2n;
+        const shift: u6 = @intCast(mid_n << 3);
+
+        const r0_ex_i = if (r0_hi) c3i else c0i;
+        const r0_ex_n = if (r0_hi) c3n else c0n;
+        const a_ex_i = if (a_hi) c3i else c0i;
+        const a_ex_n = if (a_hi) c3n else c0n;
+
+        return .{
+            mid_i | r0_ex_i << shift, mid_n + r0_ex_n,
+            mid_i | a_ex_i << shift,  mid_n + a_ex_n,
+        };
+    }
+
+    inline fn computePairsScalar(board: *const Board, col: Colour, dp: *const DirtyPawns, sq_mask: u8, r0_id: u8, r1_id: u8, a_id: u8, add_out: []u16, sub_out: []u16) PPCounts {
+        var raw: @Vector(2, u64) = board.bbs[6..8].*;
+        raw &= @splat(board.pawns() & ~dp.exclude);
+        raw = perspectiveBB(raw, sq_mask);
+        const white, const black = @as([2]u64, raw);
+        const friendly = if (col == .white) white else black;
+        const enemy = if (col == .white) black else white;
+
+        const r0f = (dp.removed[0].sq.toInt() ^ sq_mask) & 7;
+        const ar1f = (dp.added.sq.toInt() ^ sq_mask) & 7;
+
+        const lo = @min(r0f, ar1f);
+        const r0_hi = r0f != lo;
+        const a_hi = ar1f != lo;
+
+        const rfb_i, const rfb_n, const afb_i, const afb_n = colourBands(friendly, lo, 0, r0_hi, a_hi);
+        const reb_i, const reb_n, const aeb_i, const aeb_n = colourBands(enemy, lo, PAWN_SQUARES, r0_hi, a_hi);
+
+        const r0w: u8 = rfb_n + reb_n;
+        var subp: u128 = @as(u128, rfb_i) << @intCast(reb_n << 3) | reb_i;
+        var subf: u128 = FILE_A_128 *% @as(u128, r0_id);
+        var n_subs: usize = r0w;
+        if (dp.n_removed >= 2) {
+            @branchHint(.unlikely);
+            subp = subp << @intCast(afb_n << 3) | afb_i;
+            subp = subp << @intCast(aeb_n << 3) | aeb_i;
+            subp = subp << 8 | r0_id;
+            const r1w: u8 = afb_n + aeb_n + 1;
+            subf = subf << @intCast(r1w << 3) | (FILE_A_128 *% @as(u128, r1_id) >> @intCast(16 - r1w << 3));
+            n_subs = r0w + r1w;
+        }
+        const addp: u64 = afb_i | aeb_i << @intCast(afb_n << 3);
+        const addf: u64 = FILE_A *% a_id;
+        const n_adds: usize = if (dp.n_added != 0) afb_n + aeb_n else 0;
+
+        const partner = std.simd.join(@as(@Vector(16, u8), @bitCast(subp)), @as(@Vector(8, u8), @bitCast(addp)));
+        const fixed = std.simd.join(@as(@Vector(16, u8), @bitCast(subf)), @as(@Vector(8, u8), @bitCast(addf)));
+        const ci = ppIndex(fixed, partner);
+
+        sub_out[0..16].* = std.simd.extract(ci, 0, 16);
+        add_out[0..8].* = std.simd.extract(ci, 16, 8);
+
+        return .{ .n_adds = n_adds, .n_subs = n_subs };
+    }
+
+    inline fn computePairsVBMI2(board: *const Board, col: Colour, dp: *const DirtyPawns, sq_mask: u8, r0_id: u8, r1_id: u8, a_id: u8, add_out: []u16, sub_out: []u16) PPCounts {
         const r0 = dp.removed[0];
         const r1 = dp.removed[1];
         const a = dp.added;
@@ -569,9 +670,8 @@ pub const Context = struct {
         sub_out[0..32].* = simd.vpcompress(ri, r_mask);
         var n_subs: usize = @popCount(r_mask);
 
-        const in_band = arch.PP_MASK[r0.sq.toInt()] >> @intCast(r1.sq.toInt()) & 1 != 0;
         sub_out[n_subs] = ppIndex(r0_id, r1_id);
-        n_subs += @intFromBool(dp.n_removed >= 2 and in_band);
+        n_subs += @intFromBool(dp.n_removed >= 2);
 
         const a_band: u16 = @intCast(Bitboard.pext(arch.PP_MASK[a.sq.toInt()] & unch_bb, unch_bb));
         const a_mask = unch_mask & a_band * @intFromBool(dp.n_added != 0);
@@ -580,32 +680,6 @@ pub const Context = struct {
         add_out[0..16].* = simd.vpcompress(ai, a_mask);
 
         return .{ .n_adds = @popCount(a_mask), .n_subs = n_subs };
-    }
-
-    fn computePairsScalar(board: *const Board, col: Colour, dp: DirtyPawns, sq_mask: u8, r0_id: u16, r1_id: u16, a_id: u16, add_out: []u16, sub_out: []u16) PPCounts {
-        const r0 = dp.removed[0];
-        const r1 = dp.removed[1];
-        const a = dp.added;
-        const friendly_bb = board.pawnsFor(col) & ~dp.exclude;
-        const enemy_bb = board.pawnsFor(col.flipped()) & ~dp.exclude;
-
-        var n_subs: usize = 0;
-        var n_adds: usize = 0;
-        if (dp.n_removed >= 1) {
-            n_subs = writePairIndices(r0_id, r0.sq, friendly_bb, enemy_bb, sq_mask, sub_out);
-            if (dp.n_removed >= 2) {
-                n_subs += writePairIndices(r1_id, r1.sq, friendly_bb, enemy_bb, sq_mask, sub_out[n_subs..]);
-                if (arch.PP_MASK[r0.sq.toInt()] >> @intCast(r1.sq.toInt()) & 1 != 0) {
-                    sub_out[n_subs] = ppIndex(r0_id, r1_id);
-                    n_subs += 1;
-                }
-            }
-        }
-
-        if (dp.n_added != 0) {
-            n_adds = writePairIndices(a_id, a.sq, friendly_bb, enemy_bb, sq_mask, add_out);
-        }
-        return .{ .n_adds = n_adds, .n_subs = n_subs };
     }
 
     inline fn applyAllRows(

@@ -52,7 +52,17 @@ pub fn parseTarget(name: []const u8) ?Target {
     return std.meta.stringToEnum(Target, name);
 }
 
+pub fn hasPext(cpu: std.Target.Cpu) bool {
+    if (cpu.arch != .x86_64 and cpu.arch != .x86) return false;
+    const llvm_name = cpu.model.llvm_name orelse "";
+    return std.Target.x86.featureSetHas(cpu.model.features, .bmi2) and
+        !std.mem.eql(u8, "znver1", llvm_name) and
+        !std.mem.eql(u8, "znver2", llvm_name);
+}
+
 pub const TARGET = target(@import("builtin").cpu);
+
+pub const HAS_PEXT = hasPext(@import("builtin").cpu);
 
 pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
     return switch (target(cpu)) {
@@ -150,6 +160,9 @@ pub fn dpbusdx2(
 pub const vpshufbMask = avx512.vpshufbMask;
 pub const vpermb = avx512.vpermb;
 pub const vpcompress = avx512.vpcompress;
+pub const pshufb = x86.pshufb;
+pub const tbl1 = neon.tbl1;
+pub const tbl4 = neon.tbl4;
 
 pub fn loadMasked(comptime T: type, comptime N: usize, ptr: [*]const T, mask: std.meta.Int(.unsigned, N)) @Vector(N, T) {
     const V = @Vector(N, T);

@@ -16,6 +16,18 @@
 
 const simd = @import("../simd.zig");
 
+pub fn tbl1(table: simd.Vector(u8), idx: simd.Vector(u8)) simd.Vector(u8) {
+    return @extern(*const fn (simd.Vector(u8), simd.Vector(u8)) callconv(.c) simd.Vector(u8), .{
+        .name = "llvm.aarch64.neon.tbl1.v16i8",
+    }).*(table, idx);
+}
+
+pub fn tbl4(t0: simd.Vector(u8), t1: simd.Vector(u8), t2: simd.Vector(u8), t3: simd.Vector(u8), idx: simd.Vector(u8)) simd.Vector(u8) {
+    return @extern(*const fn (simd.Vector(u8), simd.Vector(u8), simd.Vector(u8), simd.Vector(u8), simd.Vector(u8)) callconv(.c) simd.Vector(u8), .{
+        .name = "llvm.aarch64.neon.tbl4.v16i8",
+    }).*(t0, t1, t2, t3, idx);
+}
+
 pub fn usdot(sum: simd.Vector(i32), u: simd.Vector(u8), i: simd.Vector(i8)) simd.Vector(i32) {
     return @extern(*const fn (simd.Vector(i32), simd.Vector(u8), simd.Vector(i8)) callconv(.c) simd.Vector(i32), .{
         .name = "llvm.aarch64.neon.usdot.v4i32.v16i8",

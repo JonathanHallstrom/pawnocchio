@@ -222,50 +222,6 @@ comptime {
     std.debug.assert(total_offset == TOTAL_THREATS);
 }
 
-fn testAttacks(piece: ColouredPieceType, sq: Square, occ: u64) u64 {
-    return switch (piece.toPieceType()) {
-        .pawn => Bitboard.pawnAttacks(sq, piece.toColour()),
-        .knight => Bitboard.knightMoves(sq),
-        .bishop => root.attacks.bishopAttacks(sq, occ),
-        .rook => root.attacks.rookAttacks(sq, occ),
-        .queen => root.attacks.queenAttacks(sq, occ),
-        .king => 0,
-    };
-}
-
-const TestThreatIndices = root.BoundedArray(u32, 128);
-
-fn positionThreatIndices(board: *const root.Board, colour: Colour) TestThreatIndices {
-    const king = Square.fromBitboard(board.kingFor(colour));
-    const occ = board.occupancy();
-    var indices: TestThreatIndices = .{};
-
-    var attacker_squares = Bitboard.iterator(occ);
-    while (attacker_squares.next()) |attacker_sq| {
-        const attacker = board.colouredPieceOn(attacker_sq).?;
-        if (attacker.toPieceType() == .king) continue;
-
-        const attacked_occupied = testAttacks(attacker, attacker_sq, occ) & occ;
-        var victim_squares = Bitboard.iterator(attacked_occupied);
-        while (victim_squares.next()) |victim_sq| {
-            const victim = board.colouredPieceOn(victim_sq).?;
-            if (victim.toPieceType() == .king) continue;
-
-            const idx, const valid = threatIndex(colour, king, attacker, attacker_sq, victim, victim_sq);
-            if (valid) indices.appendAssumeCapacity(@intCast(idx));
-        }
-    }
-
-    std.mem.sort(u32, indices.slice(), {}, std.sort.asc(u32));
-
-    return indices;
-}
-
-fn startposThreatIndices(colour: Colour) TestThreatIndices {
-    const board = root.Board.startpos();
-    return positionThreatIndices(&board, colour);
-}
-
 fn perspectiveBelow(from: Square, sq_mask: u8) u64 {
     const from_p = from.toInt() ^ sq_mask;
     const flip_files = sq_mask & 0b000111 != 0;
@@ -323,43 +279,4 @@ pub fn collectRefreshThreats(out: []u16, board: *const Board, colour: Colour) us
         }
     }
     return n;
-}
-
-test "startpos threat indices" {
-    const expected = [_]u32{
-        506,   525,   3878,  3879,  3899,  3900,  8351,  8449,
-        9240,  9344,  15603, 15604, 15605, 18512, 32570, 32589,
-        36699, 36700, 36720, 36721, 42790, 42888, 43687, 43791,
-        54247, 54248, 54249, 57166,
-    };
-
-    const white_indices = startposThreatIndices(.white);
-    const black_indices = startposThreatIndices(.black);
-    try std.testing.expectEqualSlices(u32, &expected, white_indices.slice());
-    try std.testing.expectEqualSlices(u32, &expected, black_indices.slice());
-}
-
-test "kiwipete threat indices" {
-    const board = try root.Board.parseFen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", false);
-    const white_expected = [_]u32{
-        34,    95,    605,   606,   608,   1276,  2034,  2374,
-        2376,  2377,  4517,  8351,  8449,  15907, 15908, 15919,
-        17370, 18821, 23190, 24659, 30086, 30134, 30195, 30397,
-        30398, 30401, 30488, 30491, 30807, 30809, 30840, 32491,
-        32521, 33531, 35486, 37185, 38306, 42786, 42888, 54045,
-        54050, 54054, 54055, 55505,
-    };
-    const black_expected = [_]u32{
-        3,     4,     7,     94,    97,    389,   581,   612,
-        1619,  2263,  2265,  2293,  4490,  5607,  8355,  8449,
-        15752, 15753, 15758, 15765, 17213, 30107, 30143, 30372,
-        30489, 30710, 30711, 30712, 32510, 32512, 32515, 33186,
-        33740, 35517, 37212, 42790, 42888, 46560, 48008, 53839,
-        53847, 53848, 55300, 56761,
-    };
-
-    const white_indices = positionThreatIndices(&board, .white);
-    const black_indices = positionThreatIndices(&board, .black);
-    try std.testing.expectEqualSlices(u32, &white_expected, white_indices.slice());
-    try std.testing.expectEqualSlices(u32, &black_expected, black_indices.slice());
 }

@@ -16,6 +16,16 @@
 
 const simd = @import("../simd.zig");
 
+pub fn pshufb(src: anytype, idx: @TypeOf(src)) @TypeOf(src) {
+    const V = @TypeOf(src);
+    return @extern(*const fn (V, V) callconv(.c) V, .{ .name = switch (@typeInfo(V).vector.len) {
+        64 => "llvm.x86.avx512.pshuf.b.512",
+        32 => "llvm.x86.avx2.pshuf.b",
+        16 => "llvm.x86.ssse3.pshuf.b.128",
+        else => unreachable,
+    } }).*(src, idx);
+}
+
 pub fn maddubs(u: simd.Vector(u8), i: simd.Vector(i8)) simd.Vector(i16) {
     return @extern(*const fn (simd.Vector(u8), simd.Vector(i8)) callconv(.c) simd.Vector(i16), .{ .name = switch (simd.vecSize(u8)) {
         64 => "llvm.x86.avx512.pmaddubs.w.512",

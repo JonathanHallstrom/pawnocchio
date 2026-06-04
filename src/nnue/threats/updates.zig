@@ -391,6 +391,8 @@ const simd = root.simd;
 const arch = @import("../arch.zig");
 const has_vbmi = simd.TARGET == .avx512vbmi;
 const has_vbmi2 = has_vbmi and builtin.cpu.has(.x86, .avx512vbmi2);
+const has_vec_permute = simd.TARGET == .avx2 or simd.TARGET == .avx512;
+const has_neon = simd.TARGET == .aarch64;
 
 const byte_ray = struct {
     const Bitrays = u64;
@@ -528,43 +530,91 @@ const byte_ray = struct {
 
     inline fn permuteMailbox(board: *const Board, focus: u8, ignore: ?u8) RayVector {
         if (has_vbmi) return permuteMailboxVbmi(board, focus, ignore);
-        return permuteMailboxScalar(board, focus, ignore);
+        if (has_vec_permute) return permuteMailboxVec(board, focus, ignore);
+        if (has_neon) return permuteMailboxNeon(board, focus, ignore);
+        unreachable; // byte_ray is only selected for vbmi/avx512/avx2/aarch64 targets
     }
 
-    inline fn permuteMailboxVbmi(board: *const Board, focus: u8, ignore: ?u8) RayVector {
-        const perm = PERMUTATION_TABLE[focus];
+    const Half = @Vector(32, u8);
+
+    inline fn maskedMailbox(board: *const Board, ignore: ?u8) Byteboard {
         var mailbox_vec: Byteboard = board.mailbox;
         if (ignore) |ign| {
             const ignore_mask: @Vector(64, bool) = @bitCast(@as(u64, 1) << @intCast(ign));
             mailbox_vec = @select(u8, ignore_mask, @as(Byteboard, @splat(EMPTY_BIT)), mailbox_vec);
         }
-        const pieces = simd.vpermb(perm.indices, mailbox_vec);
+        return mailbox_vec;
+    }
+
+    inline fn broadcast16(v: Half, comptime hi: bool) Half {
+        const mask = comptime blk: {
+            var m: [32]i32 = undefined;
+            const base: i32 = if (hi) 16 else 0;
+            for (0..32) |i| m[i] = base + @as(i32, @intCast(i % 16));
+            break :blk m;
+        };
+        return @shuffle(u8, v, undefined, mask);
+    }
+
+    inline fn permuteMailboxVec(board: *const Board, focus: u8, ignore: ?u8) RayVector {
+        const perm = PERMUTATION_TABLE[focus];
+        const mailbox: [2]Half = @bitCast(maskedMailbox(board, ignore));
+        const c0 = broadcast16(mailbox[0], false);
+        const c1 = broadcast16(mailbox[0], true);
+        const c2 = broadcast16(mailbox[1], false);
+        const c3 = broadcast16(mailbox[1], true);
+        const lut: [2]Half = @bitCast(PIECE_TO_BIT_LUT);
+        const idx: [2]Half = @bitCast(perm.indices);
+
+        var pieces: [2]Half = undefined;
+        var bits: [2]Half = undefined;
+        inline for (0..2) |h| {
+            const lane_in = idx[h] & @as(Half, @splat(0x0F));
+            const bit4 = (idx[h] & @as(Half, @splat(0x10))) != @as(Half, @splat(0));
+            const bit5 = (idx[h] & @as(Half, @splat(0x20))) != @as(Half, @splat(0));
+            const lo = @select(u8, bit4, simd.pshufb(c1, lane_in), simd.pshufb(c0, lane_in));
+            const hi = @select(u8, bit4, simd.pshufb(c3, lane_in), simd.pshufb(c2, lane_in));
+            const p = @select(u8, bit5, hi, lo);
+            pieces[h] = p;
+            bits[h] = simd.pshufb(lut[0], p);
+        }
+
+        const invalid: @Vector(64, bool) = (perm.indices & @as(Byteboard, @splat(INVALID_SQ))) != ZERO;
+        return .{
+            .perm = perm.indices,
+            .pieces = @bitCast(pieces),
+            .bits = @select(u8, invalid, ZERO, @as(Byteboard, @bitCast(bits))),
+        };
+    }
+
+    inline fn permuteMailboxVbmi(board: *const Board, focus: u8, ignore: ?u8) RayVector {
+        const perm = PERMUTATION_TABLE[focus];
+        const pieces = simd.vpermb(perm.indices, maskedMailbox(board, ignore));
         const bits = simd.vpshufbMask(pieces, PIECE_TO_BIT_LUT, perm.valid);
         return .{ .perm = perm.indices, .pieces = pieces, .bits = bits };
     }
 
-    inline fn permuteMailboxScalar(board: *const Board, focus: u8, ignore: ?u8) RayVector {
+    inline fn permuteMailboxNeon(board: *const Board, focus: u8, ignore: ?u8) RayVector {
+        const Quad = @Vector(16, u8);
         const perm = PERMUTATION_TABLE[focus];
-        const perm_arr: [64]u8 = perm.indices;
-        var pieces: Byteboard = undefined;
-        var bits: Byteboard = undefined;
-        for (0..64) |i| {
-            const sq = perm_arr[i];
-            if (sq == INVALID_SQ or (ignore != null and sq == ignore.?)) {
-                pieces[i] = INVALID_SQ;
-                bits[i] = 0;
-            } else {
-                const raw = board.mailbox[sq];
-                if (raw & EMPTY_BIT != 0) {
-                    pieces[i] = INVALID_SQ;
-                    bits[i] = 0;
-                } else {
-                    pieces[i] = raw;
-                    bits[i] = PIECE_TO_BIT[raw];
-                }
-            }
+        const mb: [4]Quad = @bitCast(maskedMailbox(board, ignore));
+        const idx: [4]Quad = @bitCast(perm.indices);
+        const lut: Quad = PIECE_TO_BIT;
+
+        var pieces: [4]Quad = undefined;
+        var bits: [4]Quad = undefined;
+        inline for (0..4) |q| {
+            const p = simd.tbl4(mb[0], mb[1], mb[2], mb[3], idx[q]);
+            pieces[q] = p;
+            bits[q] = simd.tbl1(lut, p);
         }
-        return .{ .perm = perm.indices, .pieces = pieces, .bits = bits };
+
+        const invalid: @Vector(64, bool) = (perm.indices & @as(Byteboard, @splat(INVALID_SQ))) != ZERO;
+        return .{
+            .perm = perm.indices,
+            .pieces = @bitCast(pieces),
+            .bits = @select(u8, invalid, ZERO, @as(Byteboard, @bitCast(bits))),
+        };
     }
 
     inline fn occupiedMask(bits: Byteboard) Bitrays {
@@ -780,7 +830,10 @@ const byte_ray = struct {
     }
 };
 
-const backend = if (has_vbmi) byte_ray else scalar;
+const backend = switch (simd.TARGET) {
+    .avx512vbmi, .avx512, .avx2, .aarch64 => byte_ray,
+    else => scalar,
+};
 
 pub fn onChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
     backend.doOnChange(buf, stacks, board, piece, sq, is_add);
