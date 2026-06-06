@@ -303,7 +303,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
     self.eval_context.prepareChild(self.ply, &new_stack_entry.board);
     const new_handle = self.eval_context.handle(self.ply);
     self.pvs[self.ply].len = 0;
-    new_stack_entry.board.makeMove(stm, move, new_handle);
+    new_stack_entry.board.makeMoveInternal(stm, move, new_handle);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
 

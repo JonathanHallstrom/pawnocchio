@@ -597,7 +597,7 @@ fn datagenWorker(
             }
             switch (board.stm) {
                 inline else => |stm| {
-                    board.makeMove(stm, search_move, root.evaluation.noHandle());
+                    board.makeMoveInternal(stm, search_move, root.evaluation.noHandle());
                 },
             }
             var repetitions: u8 = 0;

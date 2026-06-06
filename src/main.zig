@@ -672,6 +672,54 @@ pub fn main(init: std.process.Init) !void {
             write("raw eval: {}\n", .{raw_eval});
             write("scaled eval: {}\n", .{scaled});
             write("scaled and normalized eval: {}\n", .{normalized});
+        } else if (std.ascii.eqlIgnoreCase(command, "eval")) {
+            if (parts.peek()) |p| {
+                if (std.ascii.eqlIgnoreCase(p, "position")) _ = parts.next();
+            }
+            if (parts.peek()) |p| {
+                if (std.ascii.eqlIgnoreCase(p, "fen")) _ = parts.next();
+            }
+            const rest = parts.rest();
+            var b = board;
+            if (Board.parseFen(rest, true)) |nb| {
+                b = nb;
+            } else |_| {}
+            const raw_eval = root.evaluation.evalPosition(&b);
+            write("{}\n", .{raw_eval});
+        } else if (std.ascii.eqlIgnoreCase(command, "genlabels")) {
+            if (parts.peek()) |p| {
+                if (std.ascii.eqlIgnoreCase(p, "fen")) _ = parts.next();
+            }
+            const rest = parts.rest();
+            var split = std.mem.tokenizeSequence(u8, rest, " moves ");
+
+            const fen_part = split.next() orelse continue;
+            const moves_part = split.next() orelse continue;
+
+            const ctx = &struct {
+                var c: root.evaluation.Context = undefined;
+            }.c;
+            const initialised = &struct {
+                var i: bool = false;
+            }.i;
+            if (!(initialised.*)) {
+                initialised.* = true;
+                ctx.initForThread(0);
+            }
+
+            var b = Board.parseFen(fen_part, true) catch continue;
+            ctx.initRoot(&b);
+            const handle = ctx.handle(0);
+            var move_iter = std.mem.tokenizeScalar(u8, moves_part, ' ');
+            while (move_iter.next()) |move_str| {
+                write("{} ", .{handle.eval(&b)});
+                const move = b.parseMoveStr(move_str) catch |e| {
+                    writeLog("invalid move {s} in position {s}, error: {}\n", .{ move_str, b.toFen().slice(), e });
+                    break;
+                };
+                b.makeMove(move, handle);
+            }
+            write("\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
             for ([_][]const u8{
                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",

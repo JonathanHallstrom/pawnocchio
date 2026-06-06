@@ -1202,12 +1202,20 @@ test givesCheck {
 pub fn makeMoveSimple(noalias self: *Board, move: Move) void {
     switch (self.stm) {
         inline else => |stm| {
-            makeMove(self, stm, move, root.evaluation.noHandle());
+            makeMoveInternal(self, stm, move, root.evaluation.noHandle());
         },
     }
 }
 
-pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
+pub fn makeMove(noalias self: *Board, move: Move, eval_state: anytype) void {
+    switch (self.stm) {
+        inline else => |stm| {
+            makeMoveInternal(self, stm, move, eval_state);
+        },
+    }
+}
+
+pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;
     var updated_castling_rights = self.castling_rights;
@@ -1330,9 +1338,7 @@ pub inline fn parseMoveStr(self: *const Board, str: []const u8) !Move {
 
 pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
     const move = try self.parseMoveStr(str);
-    switch (self.stm) {
-        inline else => |stm| self.makeMove(stm, move, root.evaluation.noHandle()),
-    }
+    self.makeMove(move, root.evaluation.noHandle());
 }
 
 pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
@@ -1842,7 +1848,7 @@ fn perft_impl(
     } else {
         for (movelist.vals.slice()) |move| {
             var cp = self.*;
-            cp.makeMove(stm, move, root.evaluation.noHandle());
+            cp.makeMoveInternal(stm, move, root.evaluation.noHandle());
             if (is_root and !quiet) {
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
@@ -1896,7 +1902,7 @@ pub fn perftVerify(
 
 test "basic makemove" {
     var board = startpos();
-    board.makeMove(.white, Move.quiet(.e2, .e4), root.evaluation.noHandle());
+    board.makeMoveInternal(.white, Move.quiet(.e2, .e4), root.evaluation.noHandle());
     try std.testing.expectEqual(@as(u8, ColouredPieceType.white_pawn.toInt()), board.mailbox[Square.e4.toInt()]);
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e4.toBitboard(), Square.e4.toBitboard());
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e2.toBitboard(), 0);

@@ -102,7 +102,7 @@ pub const Weights = extern struct {
             res += arch.totalElements(field.type);
             size += arch.totalElements(field.type) * @sizeOf(arch.UltimateChild(field.type));
         }
-        std.debug.assert(size == SIZE_BYTES);
+        std.debug.assert(std.mem.alignForward(usize, size, 64) == SIZE_BYTES);
         break :blk res;
     };
 };

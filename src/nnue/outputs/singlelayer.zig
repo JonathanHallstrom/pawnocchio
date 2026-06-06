@@ -21,10 +21,13 @@ pub const Weights = extern struct {
 
     pub const SIZE_BYTES = @sizeOf(Weights);
     pub const WEIGHT_COUNT = blk: {
-        var res: usize = 0;
+        var size = 0;
+        var res = 0;
         for (std.meta.fields(Weights)) |field| {
-            res += @typeInfo(field.type).array.len;
+            res += arch.totalElements(field.type);
+            size += arch.totalElements(field.type) * @sizeOf(arch.UltimateChild(field.type));
         }
+        std.debug.assert(std.mem.alignForward(usize, size, 64) == SIZE_BYTES);
         break :blk res;
     };
 };

@@ -98,9 +98,7 @@ fn printParsedGameLine(game: *const Game, error_ctx: *const ErrorContext) void {
     for (game.moves.items) |move_eval| {
         const move = move_eval.move.toMove(&board);
         std.debug.print(" {s}({})", .{ move.toString(&board).slice(), move_eval.eval.toNative() });
-        switch (board.stm) {
-            inline else => |stm| board.makeMove(stm, move, root.evaluation.noHandle()),
-        }
+        board.makeMoveSimple(move);
     }
     if (error_ctx.move()) |move| {
         if (error_ctx.score) |score| {
@@ -257,7 +255,7 @@ fn parseSingleGame(
                     return error.MoveNotLegal;
                 }
 
-                board.makeMove(stm, move, root.evaluation.noHandle());
+                board.makeMoveInternal(stm, move, root.evaluation.noHandle());
                 game.addMove(move, move_eval.eval.toNative()) catch |e| {
                     error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
                     return e;
