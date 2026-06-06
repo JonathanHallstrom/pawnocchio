@@ -299,6 +299,22 @@ pub const Context = struct {
         return n;
     }
 
+    fn writePairIndices(fixed_id: u8, fixed_sq: Square, friendly_bb: u64, enemy_bb: u64, sq_mask: u8, out: []u16) usize {
+        const band = arch.PP_MASK[fixed_sq.toInt()];
+        var n: usize = 0;
+        var friendly = Bitboard.iterator(friendly_bb & band);
+        while (friendly.next()) |sq| {
+            out[n] = ppIndex(fixed_id, pawnId(sq, 0, sq_mask));
+            n += 1;
+        }
+        var enemy = Bitboard.iterator(enemy_bb & band);
+        while (enemy.next()) |sq| {
+            out[n] = ppIndex(fixed_id, pawnId(sq, PAWN_SQUARES, sq_mask));
+            n += 1;
+        }
+        return n;
+    }
+
     inline fn perspectiveBB(bb: anytype, sq_mask: u8) @TypeOf(bb) {
         var res = bb;
         if (sq_mask & 7 != 0) {
@@ -604,6 +620,35 @@ pub const Context = struct {
             mid_i | r0_ex_i << shift, mid_n + r0_ex_n,
             mid_i | a_ex_i << shift,  mid_n + a_ex_n,
         };
+    }
+
+    // reference impl
+    fn computePairsSimple(board: *const Board, col: Colour, dp: *const DirtyPawns, sq_mask: u8, r0_id: u8, r1_id: u8, a_id: u8, add_out: []u16, sub_out: []u16) PPCounts {
+        const r0 = dp.removed[0];
+        const r1 = dp.removed[1];
+        const a = dp.added;
+        const friendly_bb = board.pawnsFor(col) & ~dp.exclude;
+        const enemy_bb = board.pawnsFor(col.flipped()) & ~dp.exclude;
+
+        var n_subs: usize = 0;
+        var n_adds: usize = 0;
+        if (dp.n_removed >= 1) {
+            n_subs = writePairIndices(r0_id, r0.sq, friendly_bb, enemy_bb, sq_mask, sub_out);
+            if (dp.n_removed >= 2) {
+                n_subs += writePairIndices(r1_id, r1.sq, friendly_bb, enemy_bb, sq_mask, sub_out[n_subs..]);
+
+                // technically not necessary with 3wide masks
+                if (arch.PP_MASK[r0.sq.toInt()] >> @intCast(r1.sq.toInt()) & 1 != 0) {
+                    sub_out[n_subs] = ppIndex(r0_id, r1_id);
+                    n_subs += 1;
+                }
+            }
+        }
+
+        if (dp.n_added != 0) {
+            n_adds = writePairIndices(a_id, a.sq, friendly_bb, enemy_bb, sq_mask, add_out);
+        }
+        return .{ .n_adds = n_adds, .n_subs = n_subs };
     }
 
     inline fn computePairsScalar(board: *const Board, col: Colour, dp: *const DirtyPawns, sq_mask: u8, r0_id: u8, r1_id: u8, a_id: u8, add_out: []u16, sub_out: []u16) PPCounts {
