@@ -844,7 +844,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         &done,
     });
     for (parsed.inputs) |input_path| {
-        try futures.append(try io.concurrent(struct {
+        try futures.append(io.async(struct {
             fn impl(
                 input_path_: []const u8,
                 io_: std.Io,

@@ -157,6 +157,19 @@ pub fn main(init: std.process.Init) !void {
             continue; // empty command
         };
 
+        const eval_ctx = struct {
+            var ctx: root.evaluation.Context = undefined;
+            var initialised: bool = false;
+
+            fn get() *root.evaluation.Context {
+                if (!initialised) {
+                    initialised = true;
+                    ctx.initForThread(0);
+                }
+                return &ctx;
+            }
+        };
+
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             write("id name pawnocchio {s}\n", .{version});
             write("id author Jonathan Hallström\n", .{});
@@ -652,11 +665,14 @@ pub fn main(init: std.process.Init) !void {
             var abs_sum: i64 = 0;
             var count: i64 = 0;
 
+            const ctx = eval_ctx.get();
             while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
                 const end = std.mem.indexOfScalar(u8, data_line, '[') orelse data_line.len;
                 const fen = data_line[0..end];
 
-                const raw_eval = try root.evaluation.evalFen(fen);
+                const b = try Board.parseFen(fen, true);
+                ctx.initRoot(&b);
+                const raw_eval = ctx.handle(0).eval(&b);
                 sum += raw_eval;
                 abs_sum += @abs(raw_eval);
                 count += 1;
@@ -665,6 +681,36 @@ pub fn main(init: std.process.Init) !void {
             const abs_average = @as(f64, @floatFromInt(abs_sum)) / @as(f64, @floatFromInt(count));
             std.debug.print("sum: {} sum abs: {}\n", .{ sum, abs_sum });
             std.debug.print("average: {d:.4} average abs: {d:.4}\n", .{ average, abs_average });
+        } else if (std.ascii.eqlIgnoreCase(command, "get_error2")) {
+            const SIGMOID_SCALE: f64 = 400.0;
+            const filename = parts.next() orelse "";
+            var file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+            defer file.close(io);
+
+            var reader_buf: [4096]u8 = undefined;
+            var file_reader = file.readerStreaming(io, &reader_buf);
+
+            var sum_sq: f64 = 0;
+            var count: u64 = 0;
+
+            const ctx = eval_ctx.get();
+            while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
+                const open = std.mem.indexOfScalar(u8, data_line, '[') orelse continue;
+                const close = std.mem.indexOfScalarPos(u8, data_line, open, ']') orelse continue;
+                const fen = std.mem.trim(u8, data_line[0..open], &std.ascii.whitespace);
+                const result = std.fmt.parseFloat(f64, data_line[open + 1 .. close]) catch continue;
+
+                const b = Board.parseFen(fen, true) catch continue;
+                ctx.initRoot(&b);
+                const stm_eval = ctx.handle(0).eval(&b);
+                const white_eval: f64 = @floatFromInt(if (b.stm == .white) stm_eval else -stm_eval);
+                const pred = 1.0 / (1.0 + @exp(-white_eval / SIGMOID_SCALE));
+                const err = pred - result;
+                sum_sq += err * err;
+                count += 1;
+            } else |_| {}
+            std.debug.print("count: {}\n", .{count});
+            std.debug.print("MSE: {d:.8}\n", .{sum_sq / @as(f64, @floatFromInt(count))});
         } else if (root.evaluation.EVAL_MODE == .nnue and std.ascii.eqlIgnoreCase(command, "nneval")) {
             const raw_eval = root.nnue.evalPosition(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
@@ -684,7 +730,9 @@ pub fn main(init: std.process.Init) !void {
             if (Board.parseFen(rest, true)) |nb| {
                 b = nb;
             } else |_| {}
-            const raw_eval = root.evaluation.evalPosition(&b);
+            const ctx = eval_ctx.get();
+            ctx.initRoot(&b);
+            const raw_eval = ctx.handle(0).eval(&b);
             write("{}\n", .{raw_eval});
         } else if (std.ascii.eqlIgnoreCase(command, "genlabels")) {
             if (parts.peek()) |p| {
@@ -696,17 +744,7 @@ pub fn main(init: std.process.Init) !void {
             const fen_part = split.next() orelse continue;
             const moves_part = split.next() orelse continue;
 
-            const ctx = &struct {
-                var c: root.evaluation.Context = undefined;
-            }.c;
-            const initialised = &struct {
-                var i: bool = false;
-            }.i;
-            if (!(initialised.*)) {
-                initialised.* = true;
-                ctx.initForThread(0);
-            }
-
+            const ctx = eval_ctx.get();
             var b = Board.parseFen(fen_part, true) catch continue;
             ctx.initRoot(&b);
             const handle = ctx.handle(0);
