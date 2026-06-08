@@ -33,6 +33,25 @@ const material = @import("material_eval.zig");
 
 pub const Context = impl.Context;
 
+pub const globalCtx = struct {
+    var ctx: Context = undefined;
+    var initialised: bool = false;
+    var mutex: std.atomic.Mutex = .unlocked;
+
+    pub fn lock() *Context {
+        while (!mutex.tryLock()) std.atomic.spinLoopHint();
+        if (!initialised) {
+            initialised = true;
+            ctx.initForThread(0);
+        }
+        return &ctx;
+    }
+
+    pub fn release() void {
+        mutex.unlock();
+    }
+};
+
 pub fn Handle(comptime T: type) type {
     return struct {
         inner: T,

@@ -153,21 +153,8 @@ pub fn main(init: std.process.Init) !void {
         var parts = std.mem.tokenizeScalar(u8, line, ' ');
 
         const command = parts.next() orelse {
-            try std.Thread.yield();
+            std.atomic.spinLoopHint();
             continue; // empty command
-        };
-
-        const eval_ctx = struct {
-            var ctx: root.evaluation.Context = undefined;
-            var initialised: bool = false;
-
-            fn get() *root.evaluation.Context {
-                if (!initialised) {
-                    initialised = true;
-                    ctx.initForThread(0);
-                }
-                return &ctx;
-            }
         };
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
@@ -378,8 +365,8 @@ pub fn main(init: std.process.Init) !void {
                     continue :loop;
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "evalbench") and root.evaluation.EVAL_MODE == .nnue) {
-                    var ctx: root.evaluation.Context = undefined;
-                    ctx.initForThread(0);
+                    const ctx = root.evaluation.globalCtx.lock();
+                    defer root.evaluation.globalCtx.release();
                     ctx.initRoot(&board);
                     const handle = ctx.handle(0);
 
@@ -665,7 +652,8 @@ pub fn main(init: std.process.Init) !void {
             var abs_sum: i64 = 0;
             var count: i64 = 0;
 
-            const ctx = eval_ctx.get();
+            const ctx = root.evaluation.globalCtx.lock();
+            defer root.evaluation.globalCtx.release();
             while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
                 const end = std.mem.indexOfScalar(u8, data_line, '[') orelse data_line.len;
                 const fen = data_line[0..end];
@@ -692,7 +680,8 @@ pub fn main(init: std.process.Init) !void {
 
             var sum_sq: f64 = 0;
             var count: u64 = 0;
-            const ctx = eval_ctx.get();
+            const ctx = root.evaluation.globalCtx.lock();
+            defer root.evaluation.globalCtx.release();
 
             if (std.mem.endsWith(u8, filename, ".vf")) {
                 const stat = try file.stat(io);
@@ -777,7 +766,8 @@ pub fn main(init: std.process.Init) !void {
             if (Board.parseFen(rest, true)) |nb| {
                 b = nb;
             } else |_| {}
-            const ctx = eval_ctx.get();
+            const ctx = root.evaluation.globalCtx.lock();
+            defer root.evaluation.globalCtx.release();
             ctx.initRoot(&b);
             const raw_eval = ctx.handle(0).eval(&b);
             write("{}\n", .{raw_eval});
@@ -791,7 +781,8 @@ pub fn main(init: std.process.Init) !void {
             const fen_part = split.next() orelse continue;
             const moves_part = split.next() orelse continue;
 
-            const ctx = eval_ctx.get();
+            const ctx = root.evaluation.globalCtx.lock();
+            defer root.evaluation.globalCtx.release();
             var b = Board.parseFen(fen_part, true) catch continue;
             ctx.initRoot(&b);
             var ply: u16 = 0;

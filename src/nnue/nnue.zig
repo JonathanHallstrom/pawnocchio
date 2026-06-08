@@ -40,9 +40,8 @@ pub const Context = struct {
 };
 
 pub fn evalPosition(board: *const Board) i16 {
-    const ctx = std.heap.page_allocator.create(Context) catch @panic("OOM");
-    defer std.heap.page_allocator.destroy(ctx);
-    ctx.initForThread(0);
+    const ctx = evaluation.globalCtx.lock();
+    defer evaluation.globalCtx.release();
     ctx.initRoot(board);
     return ctx.handle(0).eval(board);
 }

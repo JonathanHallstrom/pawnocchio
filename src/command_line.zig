@@ -1123,8 +1123,8 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
 
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
 
-    var ctx: root.evaluation.Context = undefined;
-    ctx.initForThread(0);
+    const ctx = root.evaluation.globalCtx.lock();
+    defer root.evaluation.globalCtx.release();
     ctx.initRoot(&Board.startpos());
 
     const start_time = std.Io.Timestamp.now(io, .awake);
@@ -1145,15 +1145,25 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
         record.setOutCome(game.outcome);
 
         var it = game.iter();
-        while (try it.next()) |ply| {
-            const board = ply.board;
-            ctx.initRoot(board);
-            const stm_eval = ctx.handle(0).eval(board);
-            const eval = if (board.stm == .white) stm_eval else -stm_eval;
+        ctx.initRoot(&it.board);
+        var ply: u16 = 0;
+        var scored = try it.next();
+        while (scored) |sp| {
+            const stm_eval = ctx.handle(ply).eval(&it.board);
+            const eval = if (it.board.stm == .white) stm_eval else -stm_eval;
 
-            try record.addMove(ply.move, eval);
+            try record.addMove(sp.move, eval);
 
             position_count += 1;
+
+            const child = ply + 1;
+            ctx.prepareChild(child, &it.board);
+            scored = try it.nextHandle(ctx.handle(child));
+            ply = child;
+            if (ply + 1 >= root.SEARCH_MAX_PLY) {
+                ctx.initRoot(&it.board);
+                ply = 0;
+            }
         }
         try record.serializeInto(&bw.interface);
     }
