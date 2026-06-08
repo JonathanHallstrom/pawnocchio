@@ -885,6 +885,7 @@ fn search(
     {
         depth += 1;
     }
+    var corrhists_squared: ?i64 = null;
 
     if (!is_pv and
         !evaluation.isMateScore(alpha) and
@@ -894,7 +895,6 @@ fn search(
     {
         // reverse futility pruning (rfp)
         if (eval >= beta - TUNABLES.rfp_min_margin) {
-            const corrplexity = self.correction_histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             const opponent_has_easy_capture = board.occupancyFor(stm) & board.lesserThreatsFor(stm.flipped()) != 0;
             const conditional_margin =
                 TUNABLES.rfp_improving_margin * @intFromBool(improving) +
@@ -903,12 +903,13 @@ fn search(
                 TUNABLES.rfp_worsening_margin * @intFromBool(opponent_worsening) +
                 TUNABLES.rfp_cutnode_margin * @intFromBool(cutnode);
             const history_mult = if (cur.move_is_noisy) TUNABLES.rfp_noisy_history_mult else TUNABLES.rfp_history_mult;
+            corrhists_squared = self.correction_histories.squaredCorrectionTerms(board, cur.move, cur.prev);
             const rfp_margin =
                 @divTrunc(
                     TUNABLES.rfp_base +
                         TUNABLES.rfp_mult * depth +
                         TUNABLES.rfp_quad * depth * depth +
-                        (corrplexity * TUNABLES.rfp_corrplexity_mult >> 22) +
+                        (corrhists_squared.? * TUNABLES.rfp_corrplexity_mult >> 22) +
                         @divTrunc(cur.history_score * history_mult, 16),
                     1024,
                 ) - conditional_margin;
@@ -1330,8 +1331,7 @@ fn search(
             defer if (is_root) {
                 self.node_counts[move.from().toInt()][move.to().toInt()] += self.nodes - node_count_before;
             };
-
-            const corrhists_squared = self.correction_histories.squaredCorrectionTerms(board, cur.move, cur.prev);
+            corrhists_squared = corrhists_squared orelse self.correction_histories.squaredCorrectionTerms(board, cur.move, cur.prev);
 
             var s: i16 = 0;
             var new_depth = depth + extension - 1;
@@ -1339,7 +1339,7 @@ fn search(
                 const history_lmr_mult: i64 = if (is_quiet) TUNABLES.lmr_quiet_history_mult else TUNABLES.lmr_noisy_history_mult;
                 var reduction = calculateBaseLMR(depth, num_searched, is_quiet);
                 reduction -= @intCast(history_lmr_mult * lmr_hist_score >> 13);
-                reduction -= @intCast(TUNABLES.lmr_corrhist_mult * corrhists_squared >> 32);
+                reduction -= @intCast(TUNABLES.lmr_corrhist_mult * corrhists_squared.? >> 32);
                 reduction += getFactorised(tuning.FACTORIZED_LMR, 9, .{
                     is_pv,
                     cutnode,
