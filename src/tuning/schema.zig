@@ -369,8 +369,8 @@ pub const SCHEMA = .{
 
     .see_quiet_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 20 }),
     .see_noisy_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 5 }),
-    .see_quiet_pruning_mult = scalar(.{ .c_end = 5 }),
-    .see_noisy_pruning_mult = scalar(.{ .c_end = 5 }),
+    .see_quiet_pruning_mult = scalar(.{ .c_end = 5, .min = -20, .max = 20 }),
+    .see_noisy_pruning_mult = scalar(.{ .c_end = 5, .min = -20, .max = 20 }),
     .see_quiet_pruning_quad = scalar(.{}),
     .see_noisy_pruning_quad = scalar(.{}),
     .see_pv_offs = scalar(.{}),
@@ -412,6 +412,7 @@ pub const SCHEMA = .{
     .lmp_improving_linear_mult = scalar(.{ .min = -1024, .max = 1024, .c_end = 50 }),
     .lmp_standard_quadratic_mult = scalar(.{ .min = -10, .max = 2177, .c_end = 40 }),
     .lmp_improving_quadratic_mult = scalar(.{ .min = -10, .max = 2717, .c_end = 100 }),
+    .lmp_direct_check_bonus = scalar(.{ .default = 1024, .min = 0, .max = 4096, .c_end = 128 }),
 
     .good_noisy_ordering_base = scalar(.{ .min = -2048, .max = 2048, .c_end = 32 }),
     .good_noisy_ordering_mult = scalar(.{ .min = -10, .max = 2570, .c_end = 102 }),
