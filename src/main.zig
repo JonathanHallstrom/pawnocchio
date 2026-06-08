@@ -687,29 +687,76 @@ pub fn main(init: std.process.Init) !void {
             var file = try std.Io.Dir.cwd().openFile(io, filename, .{});
             defer file.close(io);
 
-            var reader_buf: [4096]u8 = undefined;
+            var reader_buf: [1 << 16]u8 = undefined;
             var file_reader = file.readerStreaming(io, &reader_buf);
 
             var sum_sq: f64 = 0;
             var count: u64 = 0;
-
             const ctx = eval_ctx.get();
-            while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
-                const open = std.mem.indexOfScalar(u8, data_line, '[') orelse continue;
-                const close = std.mem.indexOfScalarPos(u8, data_line, open, ']') orelse continue;
-                const fen = std.mem.trim(u8, data_line[0..open], &std.ascii.whitespace);
-                const result = std.fmt.parseFloat(f64, data_line[open + 1 .. close]) catch continue;
 
-                const b = Board.parseFen(fen, true) catch continue;
-                ctx.initRoot(&b);
-                const stm_eval = ctx.handle(0).eval(&b);
-                const white_eval: f64 = @floatFromInt(if (b.stm == .white) stm_eval else -stm_eval);
-                const pred = 1.0 / (1.0 + @exp(-white_eval / SIGMOID_SCALE));
-                const err = pred - result;
-                sum_sq += err * err;
-                count += 1;
-            } else |_| {}
-            std.debug.print("count: {}\n", .{count});
+            if (std.mem.endsWith(u8, filename, ".vf")) {
+                const stat = try file.stat(io);
+                const start_time = std.Io.Timestamp.now(io, .awake);
+                var vf = root.viriformat.scoredPlyReader(&file_reader.interface, allocator);
+                defer vf.deinit();
+                var seen: u64 = 0;
+                while (try vf.next()) |game| {
+                    const target: f64 = @as(f64, @floatFromInt(game.outcome.toInt())) / 2.0;
+                    var it = game.iter();
+                    ctx.initRoot(&it.board);
+                    var ply: u16 = 0;
+                    var scored = try it.next();
+                    while (scored) |sp| {
+                        const stm_eval = ctx.handle(ply).eval(&it.board);
+                        const white_eval: f64 = @floatFromInt(if (it.board.stm == .white) stm_eval else -stm_eval);
+                        const pred = 1.0 / (1.0 + @exp(-white_eval / SIGMOID_SCALE));
+                        const err = pred - target;
+
+                        seen += 1;
+                        if (seen % 16384 == 0) {
+                            const now = std.Io.Timestamp.now(io, .awake);
+                            const elapsed = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
+                            std.debug.print("\rprogress: {}% (evals/s: {})", .{
+                                @as(u128, file_reader.logicalPos() * 100) / stat.size,
+                                seen * 1_000_000_000 / @max(1, elapsed),
+                            });
+                        }
+
+                        const noisy = it.board.isNoisy(sp.move);
+
+                        const child = ply + 1;
+                        ctx.prepareChild(child, &it.board);
+                        scored = try it.nextHandle(ctx.handle(child));
+                        const gives_check = it.board.checkers != 0;
+                        if (!noisy and !gives_check) {
+                            sum_sq += err * err;
+                            count += 1;
+                        }
+                        ply = child;
+                        if (ply + 1 >= root.SEARCH_MAX_PLY) {
+                            ctx.initRoot(&it.board);
+                            ply = 0;
+                        }
+                    }
+                }
+            } else {
+                while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
+                    const open = std.mem.indexOfScalar(u8, data_line, '[') orelse continue;
+                    const close = std.mem.indexOfScalarPos(u8, data_line, open, ']') orelse continue;
+                    const fen = std.mem.trim(u8, data_line[0..open], &std.ascii.whitespace);
+                    const result = std.fmt.parseFloat(f64, data_line[open + 1 .. close]) catch continue;
+
+                    const b = Board.parseFen(fen, true) catch continue;
+                    ctx.initRoot(&b);
+                    const stm_eval = ctx.handle(0).eval(&b);
+                    const white_eval: f64 = @floatFromInt(if (b.stm == .white) stm_eval else -stm_eval);
+                    const pred = 1.0 / (1.0 + @exp(-white_eval / SIGMOID_SCALE));
+                    const err = pred - result;
+                    sum_sq += err * err;
+                    count += 1;
+                } else |_| {}
+            }
+            std.debug.print("\ncount: {}\n", .{count});
             std.debug.print("MSE: {d:.8}\n", .{sum_sq / @as(f64, @floatFromInt(count))});
         } else if (root.evaluation.EVAL_MODE == .nnue and std.ascii.eqlIgnoreCase(command, "nneval")) {
             const raw_eval = root.nnue.evalPosition(&board);
@@ -747,15 +794,22 @@ pub fn main(init: std.process.Init) !void {
             const ctx = eval_ctx.get();
             var b = Board.parseFen(fen_part, true) catch continue;
             ctx.initRoot(&b);
-            const handle = ctx.handle(0);
+            var ply: u16 = 0;
             var move_iter = std.mem.tokenizeScalar(u8, moves_part, ' ');
             while (move_iter.next()) |move_str| {
-                write("{} ", .{handle.eval(&b)});
+                write("{} ", .{ctx.handle(ply).eval(&b)});
                 const move = b.parseMoveStr(move_str) catch |e| {
                     writeLog("invalid move {s} in position {s}, error: {}\n", .{ move_str, b.toFen().slice(), e });
                     break;
                 };
-                b.makeMove(move, handle);
+                const child = ply + 1;
+                ctx.prepareChild(child, &b);
+                b.makeMove(move, ctx.handle(child));
+                ply = child;
+                if (ply + 1 >= root.SEARCH_MAX_PLY) {
+                    ctx.initRoot(&b);
+                    ply = 0;
+                }
             }
             write("\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "bullet_evals")) {
@@ -845,21 +899,15 @@ pub fn main(init: std.process.Init) !void {
             write("{}\n", .{hce.evalPosition(&board)});
         } else if (std.ascii.eqlIgnoreCase(command, "GenerateRandomDfrcPerft")) {
             var prng = std.Random.DefaultPrng.init(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(io, .awake).nanoseconds))));
-            var mutex = std.atomic.Mutex.unlocked;
-            var threads = std.array_list.Managed(std.Thread).init(allocator);
-            defer {
-                for (threads.items) |t| t.join();
-                threads.deinit();
-            }
+            var indices: [960 * 960]u20 = undefined;
+            for (&indices, 0..) |*e, i| e.* = @intCast(i);
+            prng.random().shuffle(u20, &indices);
 
-            for (0..1024) |_| {
+            var group = std.Io.Group.init;
+            for (0..1024) |i| {
                 const worker_fn = struct {
-                    fn impl(rng: std.Random, m: *std.atomic.Mutex) void {
-                        while (!m.tryLock()) {
-                            std.Thread.yield() catch {};
-                        }
-                        var b = Board.dfrcPosition(rng.uintLessThan(u20, 960 * 960));
-                        m.unlock();
+                    fn impl(idx: u20) void {
+                        var b = Board.dfrcPosition(idx);
                         b.frc = true;
                         var buf: [256]u8 = undefined;
                         var fbs = std.Io.Writer.fixed(&buf);
@@ -872,15 +920,12 @@ pub fn main(init: std.process.Init) !void {
                             b.perft(true, 5),
                             b.perft(true, 6),
                         }) catch unreachable;
-                        while (!m.tryLock()) {
-                            std.Thread.yield() catch {};
-                        }
-                        root.write("{s}", .{fbs.buffer[0..fbs.end]});
-                        m.unlock();
+                        write("{s}", .{fbs.buffer[0..fbs.end]});
                     }
                 }.impl;
-                try threads.append(try std.Thread.spawn(.{}, worker_fn, .{ prng.random(), &mutex }));
+                group.async(io, worker_fn, .{indices[i]});
             }
+            try group.await(io);
         } else {
             const started_with_position = std.ascii.eqlIgnoreCase(command, "position");
             const sub_command = parts.next() orelse "";
