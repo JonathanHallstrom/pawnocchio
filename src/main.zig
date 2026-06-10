@@ -134,7 +134,14 @@ pub fn main(init: std.process.Init) !void {
     var minimal: bool = false;
     var normalize: bool = true;
     var softnodes: bool = false;
-    var weird_tcs: bool = false;
+
+    const IS_POTENTIAL_ANDROID_BUILD = comptime blk: {
+        const builtin = @import("builtin");
+
+        break :blk builtin.target.os.tag == .linux and builtin.cpu.arch.isAARCH64();
+    };
+
+    var weird_tcs: bool = IS_POTENTIAL_ANDROID_BUILD;
     var show_wdl: bool = false;
     loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
@@ -163,17 +170,17 @@ pub fn main(init: std.process.Init) !void {
             write("id author Jonathan Hallström\n", .{});
             write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
-            write("option name Move Overhead type spin default 10 min 1 max 10000\n", .{});
-            write("option name Contempt type spin default 0 min -10000 max 10000\n", .{});
+            write("option name Move Overhead type spin default {} min 1 max 10000\n", .{overhead});
+            write("option name Contempt type spin default {} min -10000 max 10000\n", .{contempt});
             write("option name UCI_Chess960 type check default false\n", .{});
-            write("option name MinDepth type spin default 0 min 0 max 255\n", .{});
+            write("option name MinDepth type spin default {} min 0 max 255\n", .{min_depth});
             write("option name SyzygyPath type string default <empty>\n", .{});
-            write("option name SyzygyProbeDepth type spin default 1 min 1 max 255\n", .{});
-            write("option name NormalizeEval type check default true\n", .{});
-            write("option name Minimal type check default false\n", .{});
-            write("option name SoftNodes type check default false\n", .{});
-            write("option name EnableWeirdTCs type check default false\n", .{});
-            write("option name UCI_ShowWDL type check default false\n", .{});
+            write("option name SyzygyProbeDepth type spin default {} min 1 max 255\n", .{syzygy_depth});
+            write("option name NormalizeEval type check default {}\n", .{normalize});
+            write("option name Minimal type check default {}\n", .{minimal});
+            write("option name SoftNodes type check default {}\n", .{softnodes});
+            write("option name EnableWeirdTCs type check default {}\n", .{weird_tcs});
+            write("option name UCI_ShowWDL type check default {}\n", .{show_wdl});
             if (root.tuning.DO_TUNING or root.tuning.DO_FACTORIZED_TUNING) {
                 writeTuningOptions();
             }
