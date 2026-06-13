@@ -1082,6 +1082,7 @@ fn search(
     var searched_noisies: BoundedArray(TypedMove, 8) = .{};
     var num_searched_quiets: u8 = 0;
     var score_type: ScoreType = .upper;
+
     var num_searched: u8 = 0;
     self.stackEntry(1).failhighs = 0;
     var num_legal: u8 = 0;
@@ -1157,11 +1158,12 @@ fn search(
             var reduction = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             reduction -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
             var lmr_depth: i32 = (depth << 10) - reduction;
-            const lmp_margin = @divTrunc(lmp_base_margin, 1024) + @as(i32, @intFromBool(direct_check));
+            const lmp_check_bonus: i32 = if (direct_check) TUNABLES.lmp_direct_check_bonus else 0;
+            const lmp_margin = lmp_base_margin + lmp_check_bonus;
             std.debug.assert(lmp_margin > 0);
 
             if (!is_pv and
-                num_searched >= lmp_margin)
+                @as(i32, num_searched) << 10 >= lmp_margin)
             {
                 mp.skip_quiets = true;
                 if (is_quiet) {
