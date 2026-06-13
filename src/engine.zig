@@ -517,7 +517,12 @@ fn datagenWorker(
     @memset(std.mem.asBytes(searcher), 0);
     searcher.correction_histories = thread_pool.correctionHistoriesForThread(i);
     searcher.eval_context.initForThread(i);
-    searcher.tt = std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster)) catch std.debug.panic("allocation failed\n", .{});
+    var tts: [2][]root.TTCluster = undefined;
+    for (&tts) |*tt| {
+        tt.* = @import("ThreadPool.zig").allocTT(std.heap.page_allocator, 16 << 20) catch std.debug.panic("allocation failed\n", .{});
+    }
+    defer for (tts) |tt| std.heap.page_allocator.free(tt);
+    searcher.tt = tts[0];
     const viriformat = root.viriformat;
     var seed: u64 = 0;
     _ = std.os.linux.getrandom(std.mem.asBytes(&seed).ptr, std.mem.asBytes(&seed).len, 0);
@@ -554,7 +559,15 @@ fn datagenWorker(
             limits.soft_nodes = node_count;
             limits.hard_nodes = 100 * node_count;
             limits.min_depth = min_depth;
-            board.hash ^= 13345022705723281337; // hack to make tt not shared
+            const keep_moves = @max(
+                @as(usize, @min(board.halfmove, root.SEARCH_MAX_HALFMOVE)),
+                root.history.CONTHIST_OFFSETS.len,
+            );
+            const have: usize = previous_moves.len;
+            const drop = have - @min(have, keep_moves);
+            previous_moves.replaceRange(0, drop, &.{}) catch unreachable;
+            previous_positions.replaceRange(0, drop, &.{}) catch unreachable;
+            searcher.tt = tts[move_idx % 2];
             searcher.startSearch(
                 root.Searcher.Params{
                     .board = board,

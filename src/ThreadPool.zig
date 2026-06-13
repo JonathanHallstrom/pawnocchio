@@ -40,6 +40,13 @@ fn adviseHugePages(p: anytype) !void {
     }
 }
 
+pub fn allocTT(allocator: std.mem.Allocator, bytes: usize) ![]align(MAX_ALIGN) TTCluster {
+    const slice = try allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), bytes / @sizeOf(TTCluster));
+    try adviseHugePages(slice);
+    @memset(std.mem.sliceAsBytes(slice), 0);
+    return slice;
+}
+
 const ThreadAction = enum {
     sleep,
     search,
@@ -291,11 +298,7 @@ pub const ThreadPool = struct {
         if (self.tt.len > 0) {
             self.allocator.free(self.tt);
         }
-        const num_clusters = size_mb * (1024 * 1024) / @sizeOf(TTCluster);
-
-        const slice = try self.allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), num_clusters);
-        self.tt = slice;
-        try adviseHugePages(self.tt);
+        self.tt = try allocTT(self.allocator, size_mb * (1024 * 1024));
 
         for (self.searchers.items) |s| {
             s.tt = self.tt;
