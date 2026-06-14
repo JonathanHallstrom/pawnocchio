@@ -107,11 +107,35 @@ pub fn PerNode(comptime T: type) type {
                 errdefer freeOnNode(T, ptr);
 
                 const dst_bytes: [*]u8 = @ptrCast(ptr);
-                @memcpy(dst_bytes[0..@sizeOf(T)], source_bytes[0..@sizeOf(T)]);
+                memcpyFirstTouchAware(node_idx, dst_bytes, source_bytes, @sizeOf(T));
                 self.items.appendAssumeCapacity(ptr);
             }
         }
     };
+}
+
+fn memcpyFirstTouchAware(node_idx: usize, dst: [*]u8, src: [*]const u8, n: usize) void {
+    const Ctx = struct {
+        node_idx: usize,
+        dst: [*]u8,
+        src: [*]const u8,
+        n: usize,
+        fn worker(ctx: @This()) void {
+            std.os.linux.sched_setaffinity(0, &cpu_masks.items[ctx.node_idx]) catch {};
+            @memcpy(ctx.dst[0..ctx.n], ctx.src[0..ctx.n]);
+        }
+    };
+
+    const t = std.Thread.spawn(.{}, Ctx.worker, .{Ctx{
+        .node_idx = node_idx,
+        .dst = dst,
+        .src = src,
+        .n = n,
+    }}) catch {
+        @memcpy(dst[0..n], src[0..n]);
+        return;
+    };
+    t.join();
 }
 
 pub fn init() !void {
