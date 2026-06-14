@@ -721,6 +721,8 @@ fn search(
     var alpha = alpha_original;
     var beta = beta_original;
 
+    self.pvs[self.ply].len = 0;
+
     self.nodes += 1;
     if (self.checkSearch(is_root)) {
         self.stop.store(true, .release);
@@ -1572,8 +1574,9 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
         }
         var board = root_board;
         for (self.pvs[0].slice()) |pv_move| {
+            if (board.halfmove >= 100 or !board.isLegalSimple(pv_move)) break;
             fixed_buffer_pv_writer.print("{s} ", .{pv_move.toString(&board).slice()}) catch unreachable;
-            board.stm = board.stm.flipped();
+            board.makeMoveSimple(pv_move);
         }
     }
     var hashfull: usize = 0;
