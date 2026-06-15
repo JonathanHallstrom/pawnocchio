@@ -23,8 +23,9 @@ pub const parseTarget = simd.parseTarget;
 pub const inputs = @import("inputs/psq_threats.zig");
 pub const outputs = @import("outputs/multilayer.zig");
 
-pub const TOTAL_THREATS = 59808;
-pub const TOTAL_PAWN_PAIRS = 96 * 95 / 2;
+pub const PAWN_PAIR_INPUTS = true;
+pub const TOTAL_THREATS = if (PAWN_PAIR_INPUTS) 59808 else 60144;
+pub const TOTAL_PAWN_PAIRS = if (PAWN_PAIR_INPUTS) 96 * 95 / 2 else 0;
 
 // [0..8) and [56..64) must be zero, cant have pawns there
 pub const PP_MASK_BAND: [64]u64 = blk: {

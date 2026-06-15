@@ -316,6 +316,7 @@ pub const Context = struct {
     }
 
     fn collectAllPawnPairs(out: []u16, board: *const Board, col: Colour) usize {
+        if (!arch.PAWN_PAIR_INPUTS) comptime unreachable;
         const sq_mask = ppSqMask(board, col);
         const total: usize = @popCount(board.pawns());
         const all_mask: u64 = simd.prefixMask(16, total);
@@ -378,7 +379,7 @@ pub const Context = struct {
         var indices: [256]u16 = undefined;
 
         var n = nnue_threats.collectRefreshThreats(&indices, board, col);
-        n += collectAllPawnPairs(indices[n..], board, col);
+        if (arch.PAWN_PAIR_INPUTS) n += collectAllPawnPairs(indices[n..], board, col);
         applyAllRowsZeroed(buf, weights, indices[0..n]);
     }
 
@@ -397,8 +398,8 @@ pub const Context = struct {
         const adds_raw = tf.threat_updates.addSlice(&self.threat_add_stack);
         const subs_raw = tf.threat_updates.subSlice(&self.threat_sub_stack);
 
-        const dp = dirtyPawns(self.psq.frames[ply].dirty_piece, col);
-        const has_pp = dp.n_removed + dp.n_added > 0;
+        const dp = if (arch.PAWN_PAIR_INPUTS) dirtyPawns(self.psq.frames[ply].dirty_piece, col) else undefined;
+        const has_pp = arch.PAWN_PAIR_INPUTS and (dp.n_removed + dp.n_added > 0);
 
         if (adds_raw.len == 0 and subs_raw.len == 0 and !has_pp) {
             tf.threatHalf(col).* = parent_tf.threatHalf(col).*;
@@ -536,6 +537,7 @@ pub const Context = struct {
     const PPCounts = struct { n_adds: usize, n_subs: usize };
 
     fn computePairs(board: *const Board, col: Colour, dp: *const DirtyPawns, add_out: []u16, sub_out: []u16) PPCounts {
+        if (!arch.PAWN_PAIR_INPUTS) comptime unreachable;
         const sq_mask = ppSqMask(board, col);
         const r0_id = pawnId(dp.removed[0].sq, dp.removed[0].enemy_offset, sq_mask);
         const r1_id = pawnId(dp.removed[1].sq, dp.removed[1].enemy_offset, sq_mask);

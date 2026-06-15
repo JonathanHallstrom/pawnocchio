@@ -30,8 +30,15 @@ const File = root.File;
 const TOTAL_THREATS = arch.TOTAL_THREATS;
 const IdxType = if (TOTAL_THREATS + arch.TOTAL_PAWN_PAIRS < std.math.maxInt(u16)) u16 else u32;
 
-const PIECE_TARGET_MAP: [6][6]i32 = .{
+const PIECE_TARGET_MAP: [6][6]i32 = if (arch.PAWN_PAIR_INPUTS) .{
     .{ -1, 0, -1, 1, -1, -1 },
+    .{ 0, 1, 2, 3, 4, -1 },
+    .{ 0, 1, 2, 3, -1, -1 },
+    .{ 0, 1, 2, 3, -1, -1 },
+    .{ 0, 1, 2, 3, 4, -1 },
+    .{ -1, -1, -1, -1, -1, -1 },
+} else .{
+    .{ 0, 1, -1, 2, -1, -1 },
     .{ 0, 1, 2, 3, 4, -1 },
     .{ 0, 1, 2, 3, -1, -1 },
     .{ 0, 1, 2, 3, -1, -1 },
