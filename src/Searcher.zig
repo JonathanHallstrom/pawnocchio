@@ -733,9 +733,6 @@ fn search(
     const prev: *StackEntry = self.stackEntry(-1);
     const board: *const Board = &cur.board;
     const is_in_check = board.checkers != 0;
-    if (depth <= 0 and !is_in_check) {
-        return self.qsearch(is_root, is_pv, stm, alpha, beta);
-    }
 
     if (!is_root) {
         if (alpha < 0 and self.hasUpcomingRepetition()) {
@@ -771,6 +768,10 @@ fn search(
         } else {
             return self.drawScore(stm);
         }
+    }
+
+    if (depth <= 0 and !is_in_check) {
+        return self.qsearch(is_root, is_pv, stm, alpha, beta);
     }
 
     const is_singular_search = !cur.excluded.isNull();
