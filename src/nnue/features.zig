@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-const root = @import("root.zig");
+const root = @import("../root.zig");
 
 pub const FeatureKind = enum {
     psqt,
@@ -30,6 +30,10 @@ pub const PSQTFeature = struct {
 
     pub fn piece(self: PSQTFeature) root.PieceType {
         return self.c.toPieceType();
+    }
+
+    pub fn colouredPiece(self: PSQTFeature) root.ColouredPieceType {
+        return self.c;
     }
 
     pub fn square(self: PSQTFeature) root.Square {

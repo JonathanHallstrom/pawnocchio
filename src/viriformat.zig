@@ -329,12 +329,16 @@ pub const ScoredPlyReader = struct {
         exhausted: bool = false,
 
         pub fn next(self: *Iter) !?ScoredPly {
+            return self.nextHandle(root.evaluation.noHandle());
+        }
+
+        pub fn nextHandle(self: *Iter, eval_state: anytype) !?ScoredPly {
             if (self.exhausted) {
                 return null;
             }
 
             if (self.pending) |move| {
-                self.board.makeMoveSimple(move);
+                self.board.makeMove(move, eval_state);
             }
 
             var move_eval_pair: MoveEvalPair = undefined;

@@ -197,10 +197,14 @@ pub inline fn isSquareEmpty(self: *const Board, sq: Square) bool {
     return !Bitboard.contains(self.occupancy(), sq);
 }
 
+pub inline fn colouredPieceOnUnchecked(self: *const Board, sq: Square) ColouredPieceType {
+    return .fromInt(self.mailbox[sq.toInt()]);
+}
+
 pub inline fn colouredPieceOn(self: *const Board, sq: Square) ?ColouredPieceType {
     const raw = self.mailbox[sq.toInt()];
     if (mailboxIsEmpty(raw)) return null;
-    return ColouredPieceType.fromInt(raw);
+    return .fromInt(raw);
 }
 
 pub fn sumPieces(self: *const Board, values: anytype) std.meta.Child(@TypeOf(values)) {
@@ -1198,12 +1202,20 @@ test givesCheck {
 pub fn makeMoveSimple(noalias self: *Board, move: Move) void {
     switch (self.stm) {
         inline else => |stm| {
-            makeMove(self, stm, move, NullEvalState{});
+            makeMoveInternal(self, stm, move, root.evaluation.noHandle());
         },
     }
 }
 
-pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
+pub fn makeMove(noalias self: *Board, move: Move, eval_state: anytype) void {
+    switch (self.stm) {
+        inline else => |stm| {
+            makeMoveInternal(self, stm, move, eval_state);
+        },
+    }
+}
+
+pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;
     var updated_castling_rights = self.castling_rights;
@@ -1231,8 +1243,11 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
                 @branchHint(.unlikely);
                 updated_halfmove = 0;
                 updated_castling_rights.updateSquare(to, stm.flipped());
+                const captured_piece = ColouredPieceType.fromPieceType(cap, stm.flipped());
+                eval_state.threatOnChange(self, ColouredPieceType.fromPieceType(pt, stm), from, false);
                 self.removePiece(stm.flipped(), cap, to);
                 self.addPiece(stm, to_pt, to);
+                eval_state.threatOnMutate(self, captured_piece, ColouredPieceType.fromPieceType(to_pt, stm), to);
                 eval_state.addSubSub(
                     .init(stm, to_pt, to),
                     .init(stm, pt, from),
@@ -1240,6 +1255,7 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
                 );
             } else {
                 self.addPiece(stm, to_pt, to);
+                eval_state.threatOnMove(self, ColouredPieceType.fromPieceType(pt, stm), from, ColouredPieceType.fromPieceType(to_pt, stm), to);
                 eval_state.addSub(
                     .init(stm, to_pt, to),
                     .init(stm, pt, from),
@@ -1261,14 +1277,16 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
         },
         .ep => {
             @branchHint(.unlikely);
-            const target = move.getEnPassantPawnSquare();
+            const ep_target = move.getEnPassantPawnSquare();
             updated_halfmove = 0;
-            self.removePiece(stm.flipped(), .pawn, target);
             self.addPiece(stm, .pawn, to);
+            eval_state.threatOnMove(self, ColouredPieceType.fromPieceType(.pawn, stm), from, ColouredPieceType.fromPieceType(.pawn, stm), to);
+            self.removePiece(stm.flipped(), .pawn, ep_target);
+            eval_state.threatOnChange(self, ColouredPieceType.fromPieceType(.pawn, stm.flipped()), ep_target, false);
             eval_state.addSubSub(
                 .init(stm, .pawn, to),
                 .init(stm, .pawn, from),
-                .init(stm.flipped(), .pawn, target),
+                .init(stm.flipped(), .pawn, ep_target),
             );
         },
         .castling => {
@@ -1276,9 +1294,13 @@ pub fn makeMove(noalias self: *Board, comptime stm: Colour, move: Move, eval_sta
             const king_to = CastlingRights.castlingKingDestFor(move, stm);
             const rook_from = to;
             const rook_to = CastlingRights.castlingRookDestFor(move, stm);
+            eval_state.threatOnChange(self, ColouredPieceType.fromPieceType(.king, stm), from, false);
             self.removePiece(stm, .rook, rook_from);
+            eval_state.threatOnChange(self, ColouredPieceType.fromPieceType(.rook, stm), rook_from, false);
             self.addPiece(stm, .king, king_to);
+            eval_state.threatOnChange(self, ColouredPieceType.fromPieceType(.king, stm), king_to, true);
             self.addPiece(stm, .rook, rook_to);
+            eval_state.threatOnChange(self, ColouredPieceType.fromPieceType(.rook, stm), rook_to, true);
             eval_state.addAddSubSub(
                 .init(stm, .king, king_to),
                 .init(stm, .rook, rook_to),
@@ -1316,9 +1338,7 @@ pub inline fn parseMoveStr(self: *const Board, str: []const u8) !Move {
 
 pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
     const move = try self.parseMoveStr(str);
-    switch (self.stm) {
-        inline else => |stm| self.makeMove(stm, move, NullEvalState{}),
-    }
+    self.makeMove(move, root.evaluation.noHandle());
 }
 
 pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
@@ -1673,42 +1693,6 @@ pub inline fn roughHashAfter(self: *const Board, move: Move, comptime include_ha
     return res;
 }
 
-pub const NullEvalState = struct {
-    pub inline fn init(board: *const Board) NullEvalState {
-        _ = board;
-        return .{};
-    }
-
-    pub inline fn initInPlace(self: @This(), board: *const Board) void {
-        _ = self;
-        _ = board;
-    }
-
-    pub inline fn update(self: @This(), _: anytype, _: anytype) void {
-        _ = self;
-    }
-
-    pub inline fn add(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
-        _ = self;
-        _ = col;
-        _ = pt;
-        _ = square;
-    }
-
-    pub inline fn sub(self: @This(), comptime col: Colour, pt: PieceType, square: Square) void {
-        _ = self;
-        _ = col;
-        _ = pt;
-        _ = square;
-    }
-
-    pub inline fn addSub(_: @This(), _: PSQTFeature, _: PSQTFeature) void {}
-
-    pub inline fn addSubSub(_: @This(), _: PSQTFeature, _: PSQTFeature, _: PSQTFeature) void {}
-
-    pub inline fn addAddSubSub(_: @This(), _: PSQTFeature, _: PSQTFeature, _: PSQTFeature, _: PSQTFeature) void {}
-};
-
 // const HashPair = struct {
 //     zobrist: u64 = 0,
 //     crc: u128 = 0,
@@ -1864,7 +1848,7 @@ fn perft_impl(
     } else {
         for (movelist.vals.slice()) |move| {
             var cp = self.*;
-            cp.makeMove(stm, move, NullEvalState{});
+            cp.makeMoveInternal(stm, move, root.evaluation.noHandle());
             if (is_root and !quiet) {
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
@@ -1918,7 +1902,7 @@ pub fn perftVerify(
 
 test "basic makemove" {
     var board = startpos();
-    board.makeMove(.white, Move.quiet(.e2, .e4), Board.NullEvalState{});
+    board.makeMoveInternal(.white, Move.quiet(.e2, .e4), root.evaluation.noHandle());
     try std.testing.expectEqual(@as(u8, ColouredPieceType.white_pawn.toInt()), board.mailbox[Square.e4.toInt()]);
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e4.toBitboard(), Square.e4.toBitboard());
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e2.toBitboard(), 0);

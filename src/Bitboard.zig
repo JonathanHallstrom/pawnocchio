@@ -165,8 +165,9 @@ pub fn rankBB(rank: root.Rank) u64 {
     return first_rank << @intCast(rank.toInt() * 8);
 }
 
+const HAS_BMI2 = std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2);
 pub fn pext(src: u64, mask: u64) u64 {
-    if (@inComptime() or !std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2)) {
+    if (@inComptime() or !HAS_BMI2) {
         var res: u64 = 0;
         var i: u6, var m: u64 = .{ 0, mask };
         while (m != 0) {
@@ -175,15 +176,14 @@ pub fn pext(src: u64, mask: u64) u64 {
             m &= m - 1;
         }
         return res;
-    } else return asm ("pextq %[mask], %[src], %[res]"
-        : [res] "=r" (-> u64),
-        : [src] "r" (src),
-          [mask] "r" (mask),
-    );
+    }
+    return @extern(*const fn (u64, u64) callconv(.c) u64, .{
+        .name = "llvm.x86.bmi.pext.64",
+    }).*(src, mask);
 }
 
 pub fn pdep(src: u64, mask: u64) u64 {
-    if (@inComptime() or !std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2)) {
+    if (@inComptime() or !HAS_BMI2) {
         var res: u64 = 0;
         var bit: u6 = 0;
         var m: u64 = mask;
@@ -195,11 +195,10 @@ pub fn pdep(src: u64, mask: u64) u64 {
             bit += 1;
         }
         return res;
-    } else return asm ("pdepq %[mask], %[src], %[res]"
-        : [res] "=r" (-> u64),
-        : [src] "r" (src),
-          [mask] "r" (mask),
-    );
+    }
+    return @extern(*const fn (u64, u64) callconv(.c) u64, .{
+        .name = "llvm.x86.bmi.pdep.64",
+    }).*(src, mask);
 }
 
 pub fn contains(bitboard: u64, square: Square) bool {

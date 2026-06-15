@@ -27,7 +27,7 @@ const mman_c = if (IS_LINUX_LIBC) @cImport({
 }) else void;
 const evaluation = root.evaluation;
 const numa = @import("numa.zig");
-const nnue = if (evaluation.eval_mode == .nnue) @import("nnue.zig") else void;
+const nnue = root.nnue;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
@@ -38,6 +38,13 @@ fn adviseHugePages(p: anytype) !void {
         const ptr = @as([*]align(4096) u8, @alignCast(bytes.ptr));
         try std.posix.madvise(ptr, bytes.len, @as(u32, @intCast(mman_c.MADV_HUGEPAGE)));
     }
+}
+
+pub fn allocTT(allocator: std.mem.Allocator, bytes: usize) ![]align(MAX_ALIGN) TTCluster {
+    const slice = try allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), bytes / @sizeOf(TTCluster));
+    try adviseHugePages(slice);
+    @memset(std.mem.sliceAsBytes(slice), 0);
+    return slice;
 }
 
 const ThreadAction = enum {
@@ -150,13 +157,7 @@ const Thread = struct {
                 .reset => {
                     @memset(std.mem.asBytes(self.searcher), 0);
                     self.searcher.correction_histories = self.correction_histories;
-                    if (root.evaluation.EVAL_MODE == .nnue) {
-                        const weights = if (root.numa.enabled) nnue.weightsForNode(numa.nodeForThread(self.idx)) else nnue.weightsForNode(0);
-                        if (root.numa.enabled) {
-                            self.searcher.nnue_weights = weights;
-                        }
-                        self.searcher.refresh_cache.initInPlace(weights);
-                    }
+                    self.searcher.eval_context.initForThread(self.idx);
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
                     if (self.reset_tt_slice.len > 0) {
@@ -297,11 +298,7 @@ pub const ThreadPool = struct {
         if (self.tt.len > 0) {
             self.allocator.free(self.tt);
         }
-        const num_clusters = size_mb * (1024 * 1024) / @sizeOf(TTCluster);
-
-        const slice = try self.allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), num_clusters);
-        self.tt = slice;
-        try adviseHugePages(self.tt);
+        self.tt = try allocTT(self.allocator, size_mb * (1024 * 1024));
 
         for (self.searchers.items) |s| {
             s.tt = self.tt;

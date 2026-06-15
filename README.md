@@ -46,7 +46,7 @@ The search is a standard alpha-beta search with many enhancements.
 
 ### Evaluation
 The evaluation is done using a neural net trained on self play games from zero knowledge, as well as games played by [Vine](https://github.com/vine-chess/vine), the MCTS Chess engine that [@aronpetko](https://github.com/aronpetko) and I have been working on.
-The networks are trained using the excellent open source [bullet](https://github.com/jw1912/bullet) neural network trainer. For specifics about the network please see [src/nnue.zig](src/nnue.zig).
+The networks are trained using the excellent open source [bullet](https://github.com/jw1912/bullet) neural network trainer. For specifics about the network please see [src/nnue/arch.zig](src/nnue/arch.zig).
 
 ## Build instructions
 1. Get the network with `git submodule update --init --depth 1`
@@ -59,6 +59,7 @@ The Makefile is only intended to be used for testing on Openbench.
  - The assets are licensed under the CC-BY-ND 4.0 license. Full text can be found in assets/LICENSE
 
 ## Credit
+ - Many strong open source chess engines, but above all [Stormphrax](https://github.com/Ciekce/Stormphrax/) has been a massive source of inspiration
  - [Pyrrhic](https://github.com/JonathanHallstrom/Pyrrhic/tree/patch-1) by [Andrew Grant](https://github.com/AndyGrant) for tablebase probing, under the MIT license.
  - [src/bounded_array.zig](src/bounded_array.zig) from the [zig standard library](https://github.com/ziglang/zig/blob/6d1f0eca773e688c802e441589495b7bde2f9e3f/lib/std/bounded_array.zig) under the MIT License with some minor modifications.
  - [Jackal](https://github.com/TomaszJaworski777/Jackal) by [snekkers](https://github.com/TomaszJaworski777) for inspiration for styling this readme

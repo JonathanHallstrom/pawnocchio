@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const EvalMode = @import("../src/eval_mode.zig").EvalMode;
-const nnue_arch = @import("../src/nnue_arch.zig");
+const nnue_arch = @import("../src/nnue/arch.zig");
 
 pub const Input = union(enum) {
     hce,
@@ -21,7 +21,7 @@ pub fn addTransformTool(b: *std.Build) *std.Build.Step.Compile {
         }),
     });
     exe.root_module.addImport("nnue_arch", b.createModule(.{
-        .root_source_file = b.path("src/nnue_arch.zig"),
+        .root_source_file = b.path("src/build_arch.zig"),
     }));
     return exe;
 }

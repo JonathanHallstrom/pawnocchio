@@ -98,10 +98,10 @@ inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) v
         const lo_count: usize = @popCount(lo);
         const hi_count: usize = @popCount(hi);
         if (lo_count != 0) {
-            receiver.receiveMany(simd.vpcompressw(template[0..32].*, lo), lo_count);
+            receiver.receiveMany(simd.vpcompress(@as(@Vector(32, u16), template[0..32].*), lo), lo_count);
         }
         if (hi_count != 0) {
-            receiver.receiveMany(simd.vpcompressw(template[32..64].*, hi), hi_count);
+            receiver.receiveMany(simd.vpcompress(@as(@Vector(32, u16), template[32..64].*), hi), hi_count);
         }
     } else {
         var it = Bitboard.iterator(bb);

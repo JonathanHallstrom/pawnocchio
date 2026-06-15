@@ -366,6 +366,18 @@ fn resolveTuning(params_text: []const u8) !ResolvedTuning {
         if (std.meta.stringToEnum(TuningSchemaField, line_name)) |field| {
             switch (resolved.getPtr(field).*) {
                 .Scalar => |*spec| {
+                    if (spec.min) |min| {
+                        if (value < min) {
+                            std.log.err("parsed value {} less than specified min {} for {s}", .{ value, min, line_name });
+                            return error.ValueOutOfRange;
+                        }
+                    }
+                    if (spec.max) |max| {
+                        if (value > max) {
+                            std.log.err("parsed value {} greater than specified max {} for {s}", .{ value, max, line_name });
+                            return error.ValueOutOfRange;
+                        }
+                    }
                     spec.default = value;
                     continue;
                 },

@@ -19,9 +19,8 @@ const build_options = @import("build_options");
 const EvalMode = @import("eval_mode.zig").EvalMode;
 
 const root = @import("root.zig");
-const nnue_arch = @import("nnue_arch.zig");
-
 const Board = root.Board;
+
 pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, build_options.eval).?;
 pub const eval_mode: EvalMode = EVAL_MODE;
 const impl = switch (EVAL_MODE) {
@@ -30,19 +29,100 @@ const impl = switch (EVAL_MODE) {
     .nnue => root.nnue,
 };
 
-pub const Context = switch (EVAL_MODE) {
-    .nnue => struct {
-        weights: *const nnue_arch.Weights,
-        refresh_cache: *root.refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT),
-        accumulator_stack: [][2]root.nnue.Accumulator,
-    },
-    inline else => struct {},
+const material = @import("material_eval.zig");
+
+pub const Context = impl.Context;
+
+pub const globalCtx = struct {
+    var ctx: Context = undefined;
+    var initialised: bool = false;
+    var mutex: std.atomic.Mutex = .unlocked;
+
+    pub fn lock() *Context {
+        while (!mutex.tryLock()) std.atomic.spinLoopHint();
+        if (!initialised) {
+            initialised = true;
+            ctx.initForThread(0);
+        }
+        return &ctx;
+    }
+
+    pub fn release() void {
+        mutex.unlock();
+    }
 };
 
-pub const State = impl.State;
+pub fn Handle(comptime T: type) type {
+    return struct {
+        inner: T,
 
-pub inline fn evaluate(board: *const Board, state: *State, ctx: Context) i16 {
-    return impl.evaluate(board, state, ctx);
+        const Self = @This();
+        const Child = switch (@typeInfo(T)) {
+            .pointer => |ptr| ptr.child,
+            else => T,
+        };
+
+        inline fn hasMethod(comptime name: []const u8) bool {
+            comptime return T != void and @hasDecl(Child, name);
+        }
+
+        pub inline fn addSub(self: Self, add: root.PSQTFeature, sub: root.PSQTFeature) void {
+            if (hasMethod("addSub")) return self.inner.addSub(add, sub);
+
+            if (hasMethod("add") and hasMethod("sub")) {
+                self.inner.add(add);
+                self.inner.sub(sub);
+            }
+        }
+
+        pub inline fn addSubSub(self: Self, add: root.PSQTFeature, sub1: root.PSQTFeature, sub2: root.PSQTFeature) void {
+            if (hasMethod("addSubSub")) return self.inner.addSubSub(add, sub1, sub2);
+
+            if (hasMethod("add") and hasMethod("sub")) {
+                self.inner.add(add);
+                self.inner.sub(sub1);
+                self.inner.sub(sub2);
+            }
+        }
+
+        pub inline fn addAddSubSub(self: Self, add1: root.PSQTFeature, add2: root.PSQTFeature, sub1: root.PSQTFeature, sub2: root.PSQTFeature) void {
+            if (hasMethod("addAddSubSub")) return self.inner.addAddSubSub(add1, add2, sub1, sub2);
+
+            if (hasMethod("add") and hasMethod("sub")) {
+                self.inner.add(add1);
+                self.inner.sub(sub1);
+                self.inner.add(add2);
+                self.inner.sub(sub2);
+            }
+        }
+
+        pub inline fn threatOnChange(self: Self, board: *const Board, piece: root.ColouredPieceType, sq: root.Square, comptime is_add: bool) void {
+            if (comptime hasMethod("threatOnChange")) self.inner.threatOnChange(board, piece, sq, is_add);
+        }
+
+        pub inline fn threatOnMove(self: Self, board: *const Board, old_piece: root.ColouredPieceType, src: root.Square, new_piece: root.ColouredPieceType, dst: root.Square) void {
+            if (comptime hasMethod("threatOnMove")) self.inner.threatOnMove(board, old_piece, src, new_piece, dst);
+        }
+
+        pub inline fn threatOnMutate(self: Self, board: *const Board, old_piece: root.ColouredPieceType, new_piece: root.ColouredPieceType, sq: root.Square) void {
+            if (comptime hasMethod("threatOnMutate")) self.inner.threatOnMutate(board, old_piece, new_piece, sq);
+        }
+
+        pub inline fn eval(self: Self, board: *const Board) i16 {
+            if (hasMethod("eval")) return self.inner.eval(board);
+            return 0;
+        }
+    };
+}
+
+pub inline fn wrapHandle(inner: anytype) Handle(@TypeOf(inner)) {
+    return .{ .inner = inner };
+}
+
+pub const NullHandle = Handle(void);
+
+pub inline fn noHandle() NullHandle {
+    return .{ .inner = void{} };
 }
 
 pub fn evalPosition(board: *const Board) i16 {

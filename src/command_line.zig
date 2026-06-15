@@ -17,7 +17,6 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const root = @import("root.zig");
-const nnue_arch = @import("nnue_arch.zig");
 const arg_parser = @import("arg_parser.zig");
 const edit_distance = @import("edit_distance.zig");
 const HyperLogLog = @import("HyperLogLog.zig");
@@ -858,7 +857,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         &done,
     });
     for (parsed.inputs) |input_path| {
-        try futures.append(try io.concurrent(struct {
+        try futures.append(io.async(struct {
             fn impl(
                 input_path_: []const u8,
                 io_: std.Io,
@@ -1137,20 +1136,9 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
 
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
 
-    const nnue = root.nnue;
-    const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue_arch.HORIZONTAL_MIRRORING, nnue_arch.INPUT_BUCKET_COUNT);
-    const weights = nnue.weightsForNode(0);
-    var rc: RefreshCache = undefined;
-    rc.initInPlace(weights);
-
-    var acc: nnue.State = undefined;
-    var accumulator_stack = root.nnue.accumulatorStack(1);
-    const ctx: root.evaluation.Context = .{
-        .weights = weights,
-        .refresh_cache = &rc,
-        .accumulator_stack = &accumulator_stack,
-    };
-    acc.initInPlace(&Board.startpos(), weights, ctx);
+    const ctx = root.evaluation.globalCtx.lock();
+    defer root.evaluation.globalCtx.release();
+    ctx.initRoot(&Board.startpos());
 
     const start_time = std.Io.Timestamp.now(io, .awake);
     while (try reader.next()) |game| {
@@ -1170,18 +1158,25 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
         record.setOutCome(game.outcome);
 
         var it = game.iter();
-        while (try it.next()) |ply| {
-            const board = ply.board;
-            acc.refreshHalf(ctx, .white, board);
-            acc.refreshHalf(ctx, .black, board);
-            acc.markClean(board);
+        ctx.initRoot(&it.board);
+        var ply: u16 = 0;
+        var scored = try it.next();
+        while (scored) |sp| {
+            const stm_eval = ctx.handle(ply).eval(&it.board);
+            const eval = if (it.board.stm == .white) stm_eval else -stm_eval;
 
-            const stm_eval = acc.forward(board, ctx);
-            const eval = if (board.stm == .white) stm_eval else -stm_eval;
-
-            try record.addMove(ply.move, eval);
+            try record.addMove(sp.move, eval);
 
             position_count += 1;
+
+            const child = ply + 1;
+            ctx.prepareChild(child, &it.board);
+            scored = try it.nextHandle(ctx.handle(child));
+            ply = child;
+            if (ply + 1 >= root.SEARCH_MAX_PLY) {
+                ctx.initRoot(&it.board);
+                ply = 0;
+            }
         }
         try record.serializeInto(&bw.interface);
     }

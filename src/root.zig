@@ -17,7 +17,6 @@
 const std = @import("std");
 
 test {
-    _ = pyrrhic;
     std.testing.refAllDecls(@This());
 }
 
@@ -38,7 +37,7 @@ pub const EvalMode = @import("eval_mode.zig").EvalMode;
 pub const numa = @import("numa.zig");
 pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, @import("build_options").eval) orelse unreachable;
 pub const eval_mode: EvalMode = EVAL_MODE;
-pub const nnue = if (EVAL_MODE == .nnue) @import("nnue.zig") else void;
+pub const nnue = if (EVAL_MODE == .nnue) @import("nnue/nnue.zig") else void;
 pub const simd = @import("simd.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const cuckoo = @import("cuckoo.zig");
@@ -66,7 +65,7 @@ pub const pgn = @import("pgn.zig");
 pub const dynamic_reader = @import("dynamic_reader.zig");
 pub const owning_reader = @import("owning_reader.zig");
 pub const wdl = @import("wdl.zig");
-pub const input_features = @import("input_features.zig");
+pub const input_features = @import("nnue/features.zig");
 pub const PSQTFeature = input_features.PSQTFeature;
 pub const FeatureKind = input_features.FeatureKind;
 
@@ -322,6 +321,10 @@ pub const PieceType = enum(u8) {
             else => null,
         };
     }
+
+    pub inline fn withColour(self: PieceType, col: Colour) ColouredPieceType {
+        return ColouredPieceType.fromPieceType(self, col);
+    }
 };
 
 pub const ColouredPieceType = enum(u8) {
@@ -342,6 +345,8 @@ pub const ColouredPieceType = enum(u8) {
 
     white_king = 10,
     black_king = 11,
+
+    none = 12,
 
     pub inline fn fromInt(i: u8) ColouredPieceType {
         return @enumFromInt(i);
@@ -378,6 +383,10 @@ pub const ColouredPieceType = enum(u8) {
     pub inline fn toAsciiLetter(self: ColouredPieceType) u8 {
         const pt_char = self.toPieceType().toAsciiLetter();
         return if (self.toColour() == .white) std.ascii.toUpper(pt_char) else std.ascii.toLower(pt_char);
+    }
+
+    pub fn flipColor(self: ColouredPieceType) ColouredPieceType {
+        return .fromInt(self.toInt() ^ 1);
     }
 };
 
@@ -621,7 +630,7 @@ comptime {
     assert(@sizeOf(TTCluster) == 32);
 }
 
-var io: std.Io = undefined;
+pub var io: std.Io = undefined;
 var stdout_wrapper: std.Io.File.Writer = undefined;
 pub var stdout_writer: *std.Io.Writer = undefined;
 var stdout_buf: [4096]u8 = undefined;
