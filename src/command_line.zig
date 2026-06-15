@@ -300,7 +300,7 @@ fn handleHelp(version: []const u8, threads: usize) void {
         , .{ BENCH_DEPTH_DEFAULT, threads, DATAGEN_NODES_DEFAULT });
     }
     std.debug.print(
-        \\  pgntovf --input <INPUT.pgn> [<INPUT.pgn> (positional)] [--skip-broken-games] [--allow-non-pgn-extension] [--allow-overwrite] [--output <OUTPUT>]
+        \\  pgntovf --input <INPUT.pgn> [<INPUT.pgn> (positional)] [--skip-broken-games] [--allow-non-pgn-extension] [--allow-overwrite] [--output <OUTPUT>] [--fill-missing-evals <i16|prev|next>]
         \\      convert PGN to viriformat. default output: <INPUT>.vf
         \\
         \\  epdtovf --input <INPUT.epd> [<INPUT.epd> (positional)] [--skip-broken-games] [--white-relative] [--allow-overwrite] [--output <OUTPUT>]
@@ -412,11 +412,13 @@ fn handlePgntovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
             @"skip-broken-games": bool = false,
             @"allow-non-pgn-extension": bool = false,
             @"allow-overwrite": bool = false,
+            @"fill-missing-evals": ?[]const u8 = null,
         },
         .{
             .allow_implied = true,
             .usage_descriptions = &.{
                 .{ .field = "output", .default_text = "<INPUT>.vf" },
+                .{ .field = "fill-missing-evals", .text = "--fill-missing-evals <VALUE|prev|next>" },
             },
         },
         "pgntovf",
@@ -431,6 +433,16 @@ fn handlePgntovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     if (allow_non_pgn_extension) {
         std.debug.print("allowing non pgn extension\n", .{});
     }
+
+    const fill: @import("pgn_to_vf.zig").MissingEvalFill = if (parsed.@"fill-missing-evals") |spec| blk: {
+        if (std.ascii.eqlIgnoreCase(spec, "prev")) break :blk .prev;
+        if (std.ascii.eqlIgnoreCase(spec, "next")) break :blk .next;
+        const value = std.fmt.parseInt(i16, spec, 10) catch {
+            writeLog("invalid --fill-missing-evals value '{s}'; expected an integer (i16), 'prev', or 'next'\n", .{spec});
+            return error.InvalidValue;
+        };
+        break :blk .{ .value = value };
+    } else .none;
 
     if (!allow_non_pgn_extension and !std.mem.endsWith(u8, input, ".pgn")) {
         const len = std.mem.lastIndexOf(u8, input, ".") orelse input.len;
@@ -461,6 +473,7 @@ fn handlePgntovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         &input_reader.interface,
         &output_writer.interface,
         skip_broken_games,
+        fill,
     );
 }
 
