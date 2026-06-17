@@ -1594,12 +1594,12 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
         }
     }
 
-    const normalized_score = if (self.normalize and evaluation.EVAL_MODE == .nnue) root.wdl.normalize(score, root_board.classicalMaterial()) else score;
+    const normalized_score = if (self.normalize and evaluation.EVAL_MODE == .nnue) root.wdl.normalize(score, &root_board) else score;
 
     var wdl_buf: [16]u8 = undefined;
     var wdl_writer = std.Io.Writer.fixed(&wdl_buf);
     if (self.show_wdl) {
-        const w, const d, const l = root.wdl.wdlModel(score, root_board.classicalMaterial());
+        const w, const d, const l = root.wdl.wdlModel(score, &root_board);
         wdl_writer.print(" wdl {} {} {}", .{ w, d, l }) catch unreachable;
     }
 
@@ -1900,7 +1900,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                     const stabilised_score = if (@abs(score) < 2) 0 else score;
 
                     self.full_width_score = stabilised_score;
-                    self.full_width_score_normalized = root.wdl.normalize(stabilised_score, self.searchStackRoot()[0].board.classicalMaterial());
+                    self.full_width_score_normalized = root.wdl.normalize(stabilised_score, &self.searchStackRoot()[0].board);
                     break;
                 }
             },

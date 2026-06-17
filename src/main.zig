@@ -757,7 +757,7 @@ pub fn main(init: std.process.Init) !void {
         } else if (root.evaluation.EVAL_MODE == .nnue and std.ascii.eqlIgnoreCase(command, "nneval")) {
             const raw_eval = root.nnue.evalPosition(&board);
             const scaled = root.history.HistoryTable.scaleEval(&board, raw_eval);
-            const normalized = root.wdl.normalize(scaled, board.classicalMaterial());
+            const normalized = root.wdl.normalize(scaled, &board);
             write("raw eval: {}\n", .{raw_eval});
             write("scaled eval: {}\n", .{scaled});
             write("scaled and normalized eval: {}\n", .{normalized});
