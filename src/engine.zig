@@ -520,6 +520,7 @@ fn datagenWorker(
     var tts: [2][]root.TTCluster = undefined;
     for (&tts) |*tt| {
         tt.* = @import("ThreadPool.zig").allocTT(std.heap.page_allocator, 16 << 20) catch std.debug.panic("allocation failed\n", .{});
+        @memset(tt.*, std.mem.zeroes(root.TTCluster));
     }
     defer for (tts) |tt| std.heap.page_allocator.free(tt);
     searcher.tt = tts[0];

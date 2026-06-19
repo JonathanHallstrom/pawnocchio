@@ -43,7 +43,6 @@ fn adviseHugePages(p: anytype) !void {
 pub fn allocTT(allocator: std.mem.Allocator, bytes: usize) ![]align(MAX_ALIGN) TTCluster {
     const slice = try allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), bytes / @sizeOf(TTCluster));
     try adviseHugePages(slice);
-    @memset(std.mem.sliceAsBytes(slice), 0);
     return slice;
 }
 
