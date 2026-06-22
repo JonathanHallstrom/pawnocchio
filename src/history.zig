@@ -517,7 +517,7 @@ pub const CorrectionHistoryTable = struct {
         board: *const Board,
         prev: TypedMove,
         followup: TypedMove,
-        static_eval: i16,
+        scaled: i16,
     ) struct { i16, i16 } {
         const pawn_correction = self.pawn_corrhist.read(board);
         const major_correction = self.major_corrhist.read(board);
@@ -534,8 +534,6 @@ pub const CorrectionHistoryTable = struct {
             TUNABLES.corrhist_followup_weight * followup_correction +
             TUNABLES.corrhist_major_weight * major_correction +
             TUNABLES.corrhist_minor_weight * minor_correction) >> 18;
-
-        const scaled = HistoryTable.scaleEval(board, static_eval);
 
         return .{ @intCast(correction), evaluation.clampScore(scaled + correction) };
     }

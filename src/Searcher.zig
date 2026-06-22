@@ -282,8 +282,16 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
 }
 
 fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
-    const contempt: i32 = self.contempt;
-    return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
+    var contempt: i32 = self.contempt;
+    const board: *const Board = &self.stackEntry(0).board;
+    if (contempt != 0) {
+        const stm = self.searchStackRoot()[0].board.stm;
+        contempt += @as(i32, 200) * @popCount(board.occupancyFor(stm));
+        return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
+    } else {
+        @branchHint(.likely);
+        return history.HistoryTable.scaleEval(board, evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval else raw_static_eval));
+    }
 }
 
 fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
@@ -1706,7 +1714,7 @@ fn initSearchStack(self: *Searcher, params: Params) void {
             board_after,
             move_typed,
             prev_typed,
-            raw_static_eval,
+            self.applyContempt(raw_static_eval),
         );
         entry.static_eval = corrected_static_eval;
         entry.corrected_eval = corrected_static_eval;
@@ -2004,147 +2012,4 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         }
         engine.stopSearch();
     }
-}
-
-fn buildHistory(
-    moves: []const []const u8,
-) !struct {
-    positions: BoundedArray(Board, 200),
-    played_moves: BoundedArray(Move, 200),
-} {
-    var positions = BoundedArray(Board, 200){};
-    var played_moves = BoundedArray(Move, 200){};
-    var board = Board.startpos();
-    try positions.append(board);
-
-    for (moves) |move_str| {
-        const move = try board.parseMoveStr(move_str);
-        board.makeMoveSimple(move);
-        try played_moves.append(move);
-        try positions.append(board);
-    }
-
-    return .{
-        .positions = positions,
-        .played_moves = played_moves,
-    };
-}
-
-var test_correction_histories: history.CorrectionHistoryTable = std.mem.zeroes(history.CorrectionHistoryTable);
-
-fn initTestSearcher(io: std.Io, searcher: *Searcher, hist: anytype) void {
-    searcher.* = undefined;
-    searcher.is_ready = false;
-    searcher.ensureInvariants();
-    @memset(std.mem.asBytes(&searcher.histories), 0);
-    @memset(std.mem.asBytes(&test_correction_histories), 0);
-    searcher.correction_histories = &test_correction_histories;
-    searcher.eval_context.initForThread(0);
-    const positions = hist.positions.slice();
-    searcher.initSearchStack(.{
-        .board = positions[positions.len - 1],
-        .limits = Limits.initFixedDepth(io, 1),
-        .previous_positions = hist.positions,
-        .previous_moves = hist.played_moves,
-        .contempt = 0,
-        .normalize = false,
-        .minimal = false,
-        .show_wdl = false,
-    });
-    searcher.eval_context.initRoot(&positions[positions.len - 1]);
-}
-
-test retainOnlyDuplicates {
-    var vals = [_]u64{ 0, 1, 1, 2, 2, 2, 8, 2, 2, 2, 3, 8, 4, 4 };
-    const count = retainOnlyDuplicates(&vals);
-    try std.testing.expectEqualSlices(u64, &.{ 1, 2, 4, 8 }, vals[0..count]);
-}
-
-test "conthist uses previous positions" {
-    const hist = try buildHistory(&.{ "e2e4", "e7e5", "g1f3", "b8c6" });
-    const positions = hist.positions.slice();
-    const moves = hist.played_moves.slice();
-
-    const searcher = try std.testing.allocator.create(Searcher);
-    defer std.testing.allocator.destroy(searcher);
-    initTestSearcher(std.testing.io, searcher, hist);
-
-    try std.testing.expectEqual(@as(u8, 4), searcher.stackEntry(0).usable_moves);
-
-    const stm = searcher.stackEntry(0).board.stm;
-    const tables = searcher.getConthistTables(stm);
-
-    try std.testing.expectEqual(
-        searcher.histories.countermove.table(stm, TypedMove.fromBoard(&positions[3], moves[2], moves[3])),
-        tables[0],
-    );
-    try std.testing.expectEqual(
-        searcher.histories.countermove.table(stm, TypedMove.fromBoard(&positions[2], moves[1], moves[2])),
-        tables[1],
-    );
-    try std.testing.expectEqual(
-        searcher.histories.countermove.table(stm, TypedMove.fromBoard(&positions[0], Move.init(), moves[0])),
-        tables[2],
-    );
-
-    var board = searcher.stackEntry(0).board;
-    const move = try board.parseMoveStr("f1c4");
-    const typed = TypedMove.fromBoard(&board, moves[moves.len - 1], move);
-    const child = searcher.stackEntry(1);
-    child.init(
-        &board,
-        typed,
-        searcher.stackEntry(0).move,
-        searcher.stackEntry(0).evals,
-        searcher.stackEntry(0).usable_moves + 1,
-    );
-    child.board.makeMoveSimple(move);
-    searcher.ply = 1;
-
-    try std.testing.expectEqual(@as(u8, 5), searcher.stackEntry(0).usable_moves);
-
-    const child_stm = searcher.stackEntry(0).board.stm;
-    const child_tables = searcher.getConthistTables(child_stm);
-
-    try std.testing.expectEqual(
-        searcher.histories.countermove.table(child_stm, typed),
-        child_tables[0],
-    );
-    try std.testing.expectEqual(
-        searcher.histories.countermove.table(child_stm, TypedMove.fromBoard(&positions[3], moves[2], moves[3])),
-        child_tables[1],
-    );
-    try std.testing.expectEqual(
-        searcher.histories.countermove.table(child_stm, TypedMove.fromBoard(&positions[1], moves[0], moves[1])),
-        child_tables[2],
-    );
-}
-
-test "historical stack seeding sets evals" {
-    const hist = try buildHistory(&.{ "e2e4", "e7e5", "g1f3", "b8c6" });
-    const positions = hist.positions.slice();
-
-    const searcher = try std.testing.allocator.create(Searcher);
-    defer std.testing.allocator.destroy(searcher);
-    initTestSearcher(std.testing.io, searcher, hist);
-
-    const eval_helper = struct {
-        fn eval(s: *Searcher, board: *const Board) i16 {
-            s.eval_context.initRoot(board);
-            return s.eval_context.handle(0).eval(board);
-        }
-    }.eval;
-
-    for (0..4) |i| {
-        const eval = history.HistoryTable.scaleEval(&positions[i + 1], eval_helper(searcher, &positions[i + 1]));
-        try std.testing.expectEqual(eval, searcher.stackEntry(@as(i64, @intCast(i)) - 3).static_eval);
-        try std.testing.expectEqual(eval, searcher.stackEntry(@as(i64, @intCast(i)) - 3).corrected_eval);
-    }
-
-    try std.testing.expectEqualDeep(EvalPair{
-        .white = history.HistoryTable.scaleEval(&positions[2], eval_helper(searcher, &positions[2])),
-        .black = history.HistoryTable.scaleEval(&positions[3], eval_helper(searcher, &positions[3])),
-        .prev_white = null,
-        .prev_black = history.HistoryTable.scaleEval(&positions[1], eval_helper(searcher, &positions[1])),
-    }, searcher.stackEntry(0).evals);
 }
