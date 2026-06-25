@@ -566,8 +566,7 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
 
         var it = game.iter();
         while (try it.next()) |ply| {
-            const board = ply.board;
-            board.makeMoveSimple(ply.move);
+            const board = ply.board.*;
             const eval = ply.whiteEval().?;
 
             if (parsed.@"sigmoid-scores") {
