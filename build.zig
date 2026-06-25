@@ -6,7 +6,7 @@ const build_tuning = @import("build/tuning.zig");
 const EvalMode = @import("src/eval_mode.zig").EvalMode;
 
 const BASE_VERSION = "2.0";
-const DEFAULT_NET_PATH = "pawnocchio-nets/networks/pp_new.nnue";
+const DEFAULT_NET_PATH = "pawnocchio-nets/networks/pp_new2.nnue";
 
 fn gitShortHash(b: *std.Build) ?[]const u8 {
     var exit_code: u8 = undefined;
