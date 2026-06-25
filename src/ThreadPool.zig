@@ -53,55 +53,59 @@ const ThreadAction = enum {
     exit,
 };
 
-const CorrHistStore = struct {
-    single: ?*history.CorrectionHistoryTable = null,
-    per_node: numa.PerNode(history.CorrectionHistoryTable) = .{},
+fn SharedStore(comptime T: type) type {
+    return struct {
+        const Self = @This();
 
-    fn init(allocator: std.mem.Allocator) !CorrHistStore {
-        var self: CorrHistStore = .{};
-        if (root.numa.enabled) {
-            try self.per_node.allocUndefinedToAll();
-            for (self.per_node.items.items) |ptr| {
+        single: ?*T = null,
+        per_node: numa.PerNode(T) = .{},
+
+        fn init(allocator: std.mem.Allocator) !Self {
+            var self: Self = .{};
+            if (root.numa.enabled) {
+                try self.per_node.allocUndefinedToAll();
+                for (self.per_node.items.items) |ptr| {
+                    ptr.reset();
+                }
+            } else {
+                const ptr = try allocator.create(T);
+                ptr.reset();
+                self.single = ptr;
+            }
+
+            return self;
+        }
+
+        fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            if (self.single) |ptr| {
+                allocator.destroy(ptr);
+            }
+            self.single = null;
+            self.per_node.deinit();
+        }
+
+        fn get(self: *Self, thread_idx: usize) *T {
+            if (root.numa.enabled) {
+                return self.per_node.get(numa.nodeForThread(thread_idx)) orelse unreachable;
+            }
+
+            return self.single orelse unreachable;
+        }
+
+        fn reset(self: *Self) void {
+            if (root.numa.enabled) {
+                for (self.per_node.items.items) |ptr| {
+                    ptr.reset();
+                }
+                return;
+            }
+
+            if (self.single) |ptr| {
                 ptr.reset();
             }
-        } else {
-            const ptr = try allocator.create(history.CorrectionHistoryTable);
-            ptr.reset();
-            self.single = ptr;
         }
-
-        return self;
-    }
-
-    fn deinit(self: *CorrHistStore, allocator: std.mem.Allocator) void {
-        if (self.single) |ptr| {
-            allocator.destroy(ptr);
-        }
-        self.single = null;
-        self.per_node.deinit();
-    }
-
-    fn get(self: *CorrHistStore, thread_idx: usize) *history.CorrectionHistoryTable {
-        if (root.numa.enabled) {
-            return self.per_node.get(numa.nodeForThread(thread_idx)) orelse unreachable;
-        }
-
-        return self.single orelse unreachable;
-    }
-
-    fn reset(self: *CorrHistStore) void {
-        if (root.numa.enabled) {
-            for (self.per_node.items.items) |ptr| {
-                ptr.reset();
-            }
-            return;
-        }
-
-        if (self.single) |ptr| {
-            ptr.reset();
-        }
-    }
-};
+    };
+}
 
 const Thread = struct {
     mutex: std.Io.Mutex = .init,
@@ -120,6 +124,7 @@ const Thread = struct {
     reset_tt_slice: []TTCluster = &.{},
     idx: usize,
     correction_histories: *history.CorrectionHistoryTable = undefined,
+    pawn_histories: *history.PawnHistory = undefined,
     io: std.Io,
 
     pub fn init(allocator: std.mem.Allocator, searcher: *Searcher, idx: usize, io: std.Io) !*Thread {
@@ -156,6 +161,7 @@ const Thread = struct {
                 .reset => {
                     @memset(std.mem.asBytes(self.searcher), 0);
                     self.searcher.correction_histories = self.correction_histories;
+                    self.searcher.histories.pawn = self.pawn_histories;
                     self.searcher.eval_context.initForThread(self.idx);
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
@@ -208,14 +214,16 @@ pub const ThreadPool = struct {
     threads: std.ArrayListUnmanaged(*Thread) = .empty,
     searchers: std.ArrayListUnmanaged(*Searcher) = .empty,
     tt: []align(std.atomic.cache_line) TTCluster = &.{},
-    corrhists: CorrHistStore = .{},
+    corrhists: SharedStore(history.CorrectionHistoryTable) = .{},
+    pawn_histories: SharedStore(history.PawnHistory) = .{},
     allocator: std.mem.Allocator,
     io: std.Io,
     stop_searching: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io) !ThreadPool {
         return .{
-            .corrhists = try CorrHistStore.init(allocator),
+            .corrhists = try SharedStore(history.CorrectionHistoryTable).init(allocator),
+            .pawn_histories = try SharedStore(history.PawnHistory).init(allocator),
             .allocator = allocator,
             .io = io,
         };
@@ -226,6 +234,7 @@ pub const ThreadPool = struct {
         self.threads.deinit(self.allocator);
         self.searchers.deinit(self.allocator);
         self.corrhists.deinit(self.allocator);
+        self.pawn_histories.deinit(self.allocator);
         if (self.tt.len > 0) {
             self.allocator.free(self.tt);
         }
@@ -249,6 +258,7 @@ pub const ThreadPool = struct {
         const thread = try Thread.init(self.allocator, searcher, self.threads.items.len, self.io);
         thread.tt = self.tt;
         thread.correction_histories = self.corrhists.get(self.threads.items.len);
+        thread.pawn_histories = self.pawn_histories.get(self.threads.items.len);
         try self.threads.append(self.allocator, thread);
         try self.searchers.append(self.allocator, searcher);
         thread.wake(.reset);
@@ -286,10 +296,12 @@ pub const ThreadPool = struct {
             s.search_id = id;
             s.tt = self.tt;
             s.correction_histories = self.corrhists.get(i);
+            s.histories.pawn = self.pawn_histories.get(i);
         }
         for (self.threads.items, 0..) |t, i| {
             t.tt = self.tt;
             t.correction_histories = self.corrhists.get(i);
+            t.pawn_histories = self.pawn_histories.get(i);
         }
     }
 
@@ -310,6 +322,7 @@ pub const ThreadPool = struct {
 
     pub fn reset(self: *ThreadPool) void {
         self.corrhists.reset();
+        self.pawn_histories.reset();
         const num_threads = self.threads.items.len;
         if (num_threads == 0) {
             if (self.tt.len > 0) {
