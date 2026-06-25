@@ -169,7 +169,7 @@ pub const QuietHistory = struct {
 
 pub const PawnHistory = struct {
     const HashSize = 2048;
-    vals: [HashSize][2][6][64]i16,
+    vals: [HashSize][2][6][64]std.atomic.Value(i16),
 
     fn bonus(depth: i32) i16 {
         return @intCast(@min(
@@ -185,7 +185,7 @@ pub const PawnHistory = struct {
         ));
     }
 
-    inline fn reset(self: *PawnHistory) void {
+    pub inline fn reset(self: *PawnHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
@@ -193,13 +193,15 @@ pub const PawnHistory = struct {
         self: anytype,
         board: *const Board,
         move: TypedMove,
-    ) root.inheritConstness(@TypeOf(self), *i16) {
+    ) root.inheritConstness(@TypeOf(self), *std.atomic.Value(i16)) {
         const hash_offs: usize = @intCast(board.pawn_hash % HashSize);
         return &self.vals[hash_offs][board.stm.toInt()][move.tp.toInt()][move.move.to().toInt()];
     }
 
     pub inline fn updateRaw(self: *PawnHistory, board: *const Board, move: TypedMove, upd: i32) void {
-        gravityUpdate(self.entry(board, move), upd);
+        const e = self.entry(board, move);
+        const cur: i32 = e.load(.monotonic);
+        e.store(gravityImpl(cur, cur, upd), .monotonic);
     }
 
     inline fn update(
@@ -214,7 +216,7 @@ pub const PawnHistory = struct {
     }
 
     inline fn read(self: *const PawnHistory, board: *const Board, move: TypedMove) i16 {
-        return self.entry(board, move).*;
+        return self.entry(board, move).load(.monotonic);
     }
 };
 
@@ -541,13 +543,12 @@ pub const CorrectionHistoryTable = struct {
 
 pub const HistoryTable = struct {
     quiet: QuietHistory,
-    pawn: PawnHistory,
+    pawn: *PawnHistory,
     noisy: NoisyHistory,
     countermove: ContHistory,
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
-        self.pawn.reset();
         self.noisy.reset();
         self.countermove.reset();
     }
