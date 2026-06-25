@@ -168,7 +168,7 @@ pub const QuietHistory = struct {
 };
 
 pub const PawnHistory = struct {
-    const HashSize = 2048;
+    const HashSize = 8192;
     vals: [HashSize][2][6][64]std.atomic.Value(i16),
 
     fn bonus(depth: i32) i16 {
