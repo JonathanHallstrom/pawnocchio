@@ -30,6 +30,8 @@ const Colour = root.Colour;
 const Rank = root.Rank;
 const File = root.File;
 const WDL = root.WDL;
+const dataformat = root.dataformat;
+const ScoredPly = dataformat.ScoredPly;
 const CastlingRights = root.CastlingRights;
 
 pub const Error = error{
@@ -41,7 +43,7 @@ pub const Error = error{
 };
 
 fn LittleEndian(comptime T: type) type {
-    return packed struct {
+    return packed struct(T) {
         val: T,
 
         const Self = @This();
@@ -96,7 +98,7 @@ pub const MarlinPackedBoard = extern struct {
                 else => undefined,
             };
             switch (col) {
-                inline else => |ccol| res.addPiece(ccol, pt, sq, Board.NullEvalState{}),
+                inline else => |ccol| res.addPiece(ccol, pt, sq),
             }
         }
         if (@popCount(res.kingFor(.white)) != 1 or @popCount(res.kingFor(.black)) != 1) {
@@ -217,7 +219,7 @@ pub const MarlinPackedBoard = extern struct {
     }
 };
 
-pub const ViriMove = struct {
+pub const ViriMove = extern struct {
     const promo_flag_bits: u16 = 0b1100_0000_0000_0000;
     const ep_flag_bits: u16 = 0b0100_0000_0000_0000;
     const castle_flag_bits: u16 = 0b1000_0000_0000_0000;
@@ -272,23 +274,6 @@ pub const ViriMove = struct {
         return new(move.from(), move.to());
     }
 
-    // pub fn toMove(self: Self, board: *const Board) Move {
-    //     var moves = root.movegen.MoveListReceiver{};
-    //     root.movegen.generateAll(board, &moves);
-    //
-    //     var correct: Move = .init();
-    //     for (moves.vals.slice()) |move| {
-    //         if (ViriMove.fromMove(move).data == self.data) {
-    //             correct = move;
-    //         }
-    //     }
-    //     const res = self.toMoveImpl(board);
-    //
-    //     if (res != correct) {
-    //         std.debug.print("{s} {s} {s}\n", .{ board.toFen().slice(), res.toString(board).slice(), correct.toString(board).slice() });
-    //     }
-    //     return res;
-    // }
     pub fn toMove(self: Self, board: *const Board) Move {
         if (self.isPromo()) {
             const promo_type = PieceType.fromInt(@intCast(1 + ((self.data & ~promo_flag_bits) >> 12)));
@@ -313,59 +298,188 @@ pub const ViriMove = struct {
     }
 };
 
-pub const MoveEvalPair = struct {
+pub const MoveEvalPair = extern struct {
     move: ViriMove,
     eval: LittleEndian(i16),
 };
 
-pub const Game = struct {
+pub const ScoredPlyReader = struct {
+    reader: *std.Io.Reader,
+    allocator: std.mem.Allocator,
+    move_buffer: std.ArrayListUnmanaged(root.dataformat.ScoredMove),
+    initial_board: Board,
+
+    pub const GameView = struct {
+        reader: *std.Io.Reader,
+        board: Board,
+        outcome: WDL,
+
+        pub fn iter(self: @This()) Iter {
+            return .{
+                .reader = self.reader,
+                .board = self.board,
+            };
+        }
+    };
+
+    pub const Iter = struct {
+        reader: *std.Io.Reader,
+        board: Board,
+        pending: ?Move = null,
+        exhausted: bool = false,
+
+        pub fn next(self: *Iter) !?ScoredPly {
+            return self.nextHandle(root.evaluation.noHandle());
+        }
+
+        pub fn nextHandle(self: *Iter, eval_state: anytype) !?ScoredPly {
+            if (self.exhausted) {
+                return null;
+            }
+
+            if (self.pending) |move| {
+                self.board.makeMove(move, eval_state);
+            }
+
+            var move_eval_pair: MoveEvalPair = undefined;
+            self.reader.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| switch (e) {
+                error.EndOfStream => return null,
+                else => return e,
+            };
+
+            if (move_eval_pair.move.data == 0) {
+                self.exhausted = true;
+                return null;
+            }
+
+            const move = move_eval_pair.move.toMove(&self.board);
+            const eval = move_eval_pair.eval.toNative();
+
+            self.pending = move;
+
+            return ScoredPly{
+                .board = &self.board,
+                .move = move,
+                ._eval = eval,
+            };
+        }
+    };
+
+    pub fn next(self: *ScoredPlyReader) !?GameView {
+        var initial_position: MarlinPackedBoard = undefined;
+        self.reader.readSliceAll(std.mem.asBytes(&initial_position)) catch |e| switch (e) {
+            error.EndOfStream => return null,
+            else => return e,
+        };
+
+        const board = try initial_position.toBoard();
+        return .{
+            .reader = self.reader,
+            .board = board,
+            .outcome = @enumFromInt(initial_position.wdl),
+        };
+    }
+
+    pub fn toDynamic(self: *ScoredPlyReader) root.dynamic_reader.DynamicReader {
+        return .{
+            .ptr = @ptrCast(self),
+            .vtable = &vf_reader_vtable,
+        };
+    }
+
+    pub fn deinit(self: *ScoredPlyReader) void {
+        self.move_buffer.deinit(self.allocator);
+    }
+};
+
+const DynamicReader = root.dynamic_reader.DynamicReader;
+const DynamicGameView = root.dynamic_reader.DynamicGameView;
+
+const vf_reader_vtable: DynamicReader.VTable = .{
+    .next = vfReaderNext,
+    .deinit = vfReaderDeinit,
+};
+
+fn vfReaderNext(ptr: *anyopaque) !?DynamicGameView {
+    const reader: *ScoredPlyReader = @ptrCast(@alignCast(ptr));
+    const game = try reader.next() orelse return null;
+
+    reader.initial_board = game.board;
+    reader.move_buffer.clearRetainingCapacity();
+
+    var it = game.iter();
+    while (try it.next()) |ply| {
+        try reader.move_buffer.append(reader.allocator, .{
+            .move = ply.move,
+            .score = ply.whiteEval(),
+        });
+    }
+
+    return DynamicGameView{
+        .initial_board = &reader.initial_board,
+        .outcome = game.outcome,
+        .moves = reader.move_buffer.items,
+    };
+}
+
+fn vfReaderDeinit(ptr: *anyopaque) void {
+    const reader: *ScoredPlyReader = @ptrCast(@alignCast(ptr));
+    reader.deinit();
+}
+
+pub fn scoredPlyReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) ScoredPlyReader {
+    return .{
+        .reader = reader,
+        .allocator = allocator,
+        .move_buffer = .empty,
+        .initial_board = undefined,
+    };
+}
+
+pub const GameRecord = struct {
     initial_position: MarlinPackedBoard,
     moves: std.array_list.Managed(MoveEvalPair),
 
-    pub fn serializeInto(self: Game, writer: *std.Io.Writer) !void {
-        // std.debug.print("{any}\n", .{std.mem.asBytes(&self.initial_position)});
+    pub fn serializeInto(self: GameRecord, writer: *std.Io.Writer) !void {
         try writer.writeAll(std.mem.asBytes(&self.initial_position));
         for (self.moves.items) |move_eval_pair| {
-            // std.debug.print("{} {}\n", .{ Square.fromInt(@intCast(move_eval_pair.move.data % (1 << 6))), Square.fromInt(@intCast((move_eval_pair.move.data >> 6) % (1 << 6))) });
             if (move_eval_pair.move.data == 0) {
                 @panic("NULL MOVE IN GAME");
-                // break;
             }
-            try writer.writeAll(std.mem.asBytes(&std.mem.nativeToLittle(u16, move_eval_pair.move.data)));
-            try writer.writeAll(std.mem.asBytes(&move_eval_pair.eval.val));
+            try writer.writeAll(std.mem.asBytes(&move_eval_pair));
         }
         try writer.writeAll(&(.{0} ** @sizeOf(MoveEvalPair)));
     }
 
-    pub fn bytesRequiredToSerialize(self: Game) usize {
+    pub fn bytesRequiredToSerialize(self: GameRecord) usize {
         return @sizeOf(MarlinPackedBoard) + @sizeOf(MoveEvalPair) * (1 + self.moves.items.len);
     }
 
     /// WDL has to be from whites perspective
     /// if white won its .win
     /// if black won its .loss
-    pub fn setOutCome(self: *Game, wdl: WDL) void {
+    pub fn setOutCome(self: *GameRecord, wdl: WDL) void {
         self.initial_position.wdl = wdl.toInt();
     }
 
-    pub fn reset(self: *Game, board: Board) void {
+    pub fn reset(self: *GameRecord, board: Board) void {
         self.initial_position = .from(board, 1, 0);
         self.moves.clearRetainingCapacity();
     }
 
-    pub fn from(board: Board, allocator: Allocator) Game {
-        return Game{
+    pub fn from(board: Board, allocator: Allocator) GameRecord {
+        return GameRecord{
             .initial_position = .from(board, 1, 0),
             .moves = .init(allocator),
         };
     }
 
-    fn deinit(self: Game) void {
+    pub fn deinit(self: GameRecord) void {
         self.moves.deinit();
     }
 
     /// score has to be from whites perspective
-    pub fn addMove(self: *Game, move: Move, score: i16) !void {
+    pub fn addMove(self: *GameRecord, move: Move, score: i16) !void {
         try self.moves.append(MoveEvalPair{
             .eval = LittleEndian(i16).fromNative(score),
             .move = ViriMove.fromMove(move),
@@ -379,7 +493,7 @@ comptime {
 }
 
 fn viriformatTest(fen: []const u8, move: Move, expected: u32) !void {
-    var game = Game.from(try Board.parseFen(fen, true), std.testing.allocator);
+    var game = GameRecord.from(try Board.parseFen(fen, true), std.testing.allocator);
     defer game.deinit();
     try game.addMove(move, 0);
     var buf: [40]u8 = undefined;
@@ -389,7 +503,7 @@ fn viriformatTest(fen: []const u8, move: Move, expected: u32) !void {
 }
 
 test "viriformat moves" {
-    root.init();
+    root.init(std.testing.io);
     try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Move.quiet(.e2, .e4), 0x070c);
     try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1", Move.castlingKingside(.white, .e1, .h1), 0x81c4);
     try viriformatTest("8/6P1/8/8/1k6/4K3/8/8 w - - 0 1", Move.promo(.g7, .g8, .queen), 0xffb6);
@@ -397,8 +511,8 @@ test "viriformat moves" {
 }
 
 test "all edge cases i could think of in one position" {
-    root.init();
-    var game = Game.from(try Board.parseFen("4k3/P4p2/8/6P1/8/8/8/R3K2R w Q - 0 1", false), std.testing.allocator);
+    root.init(std.testing.io);
+    var game = GameRecord.from(try Board.parseFen("4k3/P4p2/8/6P1/8/8/8/R3K2R w Q - 0 1", false), std.testing.allocator);
     defer game.deinit();
     try game.addMove(Move.castlingQueenside(.white, .e1, .a1), 0);
     try game.addMove(Move.quiet(.f7, .f5), 0);
@@ -409,10 +523,6 @@ test "all edge cases i could think of in one position" {
     var buf: [64]u8 = undefined;
     var fbs = std.Io.Writer.fixed(&buf);
     try game.serializeInto(&fbs);
-
-    // var file = try std.fs.cwd().createFile("tmp.bin", .{});
-    // defer file.close();
-    // try file.writeAll(fbs.getWritten());
 
     try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.buffered());
 }

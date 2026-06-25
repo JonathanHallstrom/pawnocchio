@@ -38,11 +38,11 @@ The search is a standard alpha-beta search with many enhancements.
 
 ### Evaluation
 The evaluation is done using a neural net trained on self play games from zero knowledge, as well as games played by [Vine](https://github.com/vine-chess/vine), the MCTS Chess engine that [@aronpetko](https://github.com/aronpetko) and I have been working on.
-The networks are trained using the excellent open source [bullet](https://github.com/jw1912/bullet) neural network trainer. For specifics about the network please see [src/nnue.zig](src/nnue.zig).
+The networks are trained using the excellent open source [bullet](https://github.com/jw1912/bullet) neural network trainer. For specifics about the network please see [src/nnue/arch.zig](src/nnue/arch.zig).
 
 ## Build instructions
 1. Get the network with `git submodule update --init --depth 1`
-2. Install zig (0.15.2)
+2. Install zig (0.16.0)
 3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
 The Makefile is only intended to be used for testing on Openbench.
 

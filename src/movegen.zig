@@ -17,9 +17,11 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const root = @import("root.zig");
+const simd = @import("simd.zig");
 
 const BoundedArray = root.BoundedArray;
 const Board = root.Board;
+const CastlingRights = root.CastlingRights;
 const Colour = root.Colour;
 const Move = root.Move;
 const Bitboard = root.Bitboard;
@@ -84,14 +86,6 @@ fn offsetMoveTemplate(comptime from_rank_delta: i8, comptime from_file_delta: i8
     return table;
 }
 
-fn vpcompressw(src: @Vector(32, u16), mask: u32) @Vector(32, u16) {
-    return asm ("vpcompressw %[src], %[ret] {%[mask]} {z}"
-        : [ret] "=x" (-> @Vector(32, u16)),
-        : [src] "x" (src),
-          [mask] "{k1}" (mask),
-    );
-}
-
 inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) void {
     const ReceiverType = @TypeOf(receiver.*);
     if (ReceiverType == CountReceiver) {
@@ -104,10 +98,10 @@ inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) v
         const lo_count: usize = @popCount(lo);
         const hi_count: usize = @popCount(hi);
         if (lo_count != 0) {
-            receiver.receiveMany(vpcompressw(template[0..32].*, lo), lo_count);
+            receiver.receiveMany(simd.vpcompress(@as(@Vector(32, u16), template[0..32].*), lo), lo_count);
         }
         if (hi_count != 0) {
-            receiver.receiveMany(vpcompressw(template[32..64].*, hi), hi_count);
+            receiver.receiveMany(simd.vpcompress(@as(@Vector(32, u16), template[32..64].*), hi), hi_count);
         }
     } else {
         var it = Bitboard.iterator(bb);
@@ -230,7 +224,7 @@ pub inline fn getAttacks(comptime col: Colour, pt: PieceType, square: Square, oc
         .bishop => attacks.bishopAttacks(square, occ),
         .knight => Bitboard.knightMoves(square),
         .rook => attacks.rookAttacks(square, occ),
-        .queen => attacks.bishopAttacks(square, occ) | attacks.rookAttacks(square, occ),
+        .queen => attacks.queenAttacks(square, occ),
         .king => Bitboard.kingMoves(square),
     };
 }
@@ -252,7 +246,7 @@ pub inline fn generatePawnQuiets(comptime stm: Colour, noalias board: *const Boa
     const d_rank = if (stm == .white) 1 else -1;
 
     const double_move_mask: u64 = Bitboard.rankBB(if (stm == .white) .fourth else .fifth);
-    const promo_mask: u64 = Bitboard.rankBB(board.startingRankFor(stm.flipped()));
+    const promo_mask: u64 = Bitboard.rankBB(CastlingRights.startingRankFor(stm.flipped()));
 
     const pawns = board.pawnsFor(stm);
     const occ = board.occupancy();
@@ -282,7 +276,7 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
     const ReceiverType = @TypeOf(move_receiver.*);
     const d_rank = if (stm == .white) 1 else -1;
 
-    const promo_mask: u64 = Bitboard.rankBB(board.startingRankFor(stm.flipped()));
+    const promo_mask: u64 = Bitboard.rankBB(CastlingRights.startingRankFor(stm.flipped()));
 
     const pawns = board.pawnsFor(stm);
     const them = board.occupancyFor(stm.flipped());
@@ -389,7 +383,7 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
     emitBB(king_sq, Bitboard.kingMoves(king_sq) & ~occ & ~their_threats, move_receiver);
 
     if (board.checkers == 0) {
-        const home_rank: Rank = board.startingRankFor(stm);
+        const home_rank: Rank = CastlingRights.startingRankFor(stm);
 
         const kingside_rook_file = board.castling_rights.kingsideRookFileFor(stm);
         const queenside_rook_file = board.castling_rights.queensideRookFileFor(stm);
@@ -522,7 +516,7 @@ pub inline fn generateSliderNoisies(comptime stm: Colour, noalias board: *const 
 }
 
 test "startpos 16 pawn moves" {
-    root.init();
+    root.init(std.testing.io);
     var rec = MoveListReceiver{};
     const board = Board.startpos();
     const full_mask = ~@as(u64, 0);
@@ -533,7 +527,7 @@ test "startpos 16 pawn moves" {
 }
 
 test "startpos 20 moves" {
-    root.init();
+    root.init(std.testing.io);
     var rec = MoveListReceiver{};
     const board = Board.startpos();
     generateAllQuiets(.white, &board, &rec);
@@ -545,7 +539,7 @@ test "startpos 20 moves" {
 }
 
 test "kiwipete 48 moves" {
-    root.init();
+    root.init(std.testing.io);
     var rec = MoveListReceiver{};
     const board = try Board.parseFen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - ", false);
     generateAllNoisies(.white, &board, &rec);
@@ -556,7 +550,7 @@ test "kiwipete 48 moves" {
 }
 
 test "pos5 44 moves" {
-    root.init();
+    root.init(std.testing.io);
     var rec = MoveListReceiver{};
     const board = try Board.parseFen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", false);
     generateAllNoisies(.white, &board, &rec);

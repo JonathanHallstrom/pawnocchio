@@ -19,6 +19,7 @@ const build_options = @import("build_options");
 const root = @import("root.zig");
 const arg_parser = @import("arg_parser.zig");
 const edit_distance = @import("edit_distance.zig");
+const HyperLogLog = @import("HyperLogLog.zig");
 const write = root.write;
 const writeLog = std.debug.print;
 const Board = root.Board;
@@ -121,7 +122,7 @@ fn logUnknownCommand(command_token: []const u8, suggestion: ?CommandSuggestion) 
     writeLog("unknown command '{s}'. pass 'help' for usage\n", .{command_token});
 }
 
-fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime options: arg_parser.Options, comptime command_name: []const u8) !arg_parser.ParsedType(spec_or_type, options) {
+fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime options: arg_parser.Options, comptime command_name: []const u8, allocator: std.mem.Allocator) !arg_parser.ParsedType(spec_or_type, options) {
     const parse_options: arg_parser.Options = .{
         .allow_implied = options.allow_implied,
         .default_int_type = options.default_int_type,
@@ -142,7 +143,7 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
     };
 
     var tracked_args = ArgTracker{ .inner = args };
-    return arg_parser.parse(&tracked_args, spec_or_type, parse_options) catch |e| {
+    return arg_parser.parse(&tracked_args, spec_or_type, parse_options, allocator) catch |e| {
         if (e == error.HelpRequested) {
             const usage = arg_parser.fullUsage(spec_or_type, parse_options);
             if (usage.len > 0) {
@@ -175,25 +176,25 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
     };
 }
 
-fn openInputFile(path: []const u8) !std.fs.File {
+fn openInputFile(io: std.Io, path: []const u8) !std.Io.File {
     const open_result = if (std.fs.path.isAbsolute(path))
-        std.fs.openFileAbsolute(path, .{})
+        std.Io.Dir.openFileAbsolute(io, path, .{})
     else
-        std.fs.cwd().openFile(path, .{});
+        std.Io.Dir.cwd().openFile(io, path, .{});
     return open_result catch |e| {
         writeLog("opening file '{s}' gave: '{}'\n", .{ path, e });
         return e;
     };
 }
 
-fn createOutputFile(path: []const u8, allow_overwrite: bool) !std.fs.File {
-    const flags: std.fs.File.CreateFlags = .{
+fn createOutputFile(io: std.Io, path: []const u8, allow_overwrite: bool) !std.Io.File {
+    const flags: std.Io.Dir.CreateFileOptions = .{
         .exclusive = !allow_overwrite,
     };
     const create_result = if (std.fs.path.isAbsolute(path))
-        std.fs.createFileAbsolute(path, flags)
+        std.Io.Dir.createFileAbsolute(io, path, flags)
     else
-        std.fs.cwd().createFile(path, flags);
+        std.Io.Dir.cwd().createFile(io, path, flags);
     return create_result catch |e| {
         if (e == error.PathAlreadyExists and !allow_overwrite) {
             writeLog("refusing to overwrite existing file '{s}' (pass --allow-overwrite)\n", .{path});
@@ -204,19 +205,19 @@ fn createOutputFile(path: []const u8, allow_overwrite: bool) !std.fs.File {
     };
 }
 
-fn ensureTbPathExists(tb_path: []const u8) !void {
+fn ensureTbPathExists(io: std.Io, tb_path: []const u8) !void {
     const access_result = if (std.fs.path.isAbsolute(tb_path))
-        std.fs.accessAbsolute(tb_path, .{})
+        std.Io.Dir.accessAbsolute(io, tb_path, .{})
     else
-        std.fs.cwd().access(tb_path, .{});
+        std.Io.Dir.cwd().access(io, tb_path, .{});
     return access_result catch |e| {
         writeLog("tb path '{s}' is not accessible: '{}'\n", .{ tb_path, e });
         return e;
     };
 }
 
-pub fn handle(allocator: std.mem.Allocator, version: []const u8) !bool {
-    var args = try std.process.argsWithAllocator(allocator);
+pub fn handle(init: std.process.Init, version: []const u8) !bool {
+    var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
 
     _ = args.next() orelse "pawnocchio";
@@ -228,10 +229,9 @@ pub fn handle(allocator: std.mem.Allocator, version: []const u8) !bool {
             return true;
         }
 
-        var tokens = std.mem.tokenizeScalar(u8, arg, ' ');
-        const command_token = tokens.next() orelse "";
-        if (std.meta.stringToEnum(Command, command_token)) |command| {
-            (switch (command) {
+        const cmd_raw = std.mem.trim(u8, arg, "-");
+        if (std.meta.stringToEnum(Command, cmd_raw)) |command| {
+            switch (command) {
                 .help => {
                     handleHelp(version, threads);
                     return true;
@@ -239,34 +239,26 @@ pub fn handle(allocator: std.mem.Allocator, version: []const u8) !bool {
                 .datagen => if (TOOLS_ONLY) {
                     writeLog("datagen is unavailable in this build\n", .{});
                 } else {
-                    try handleDatagen(&args, threads);
+                    try handleDatagen(init.io, init.gpa, &args, threads);
                 },
                 .genfens => if (TOOLS_ONLY) {
                     writeLog("genfens is unavailable in this build\n", .{});
                 } else {
-                    try handleGenfens(arg, allocator);
+                    try handleGenfens(init.io, init.gpa, &args);
                 },
-                .pgntovf => handlePgnToVf(&args, allocator),
-                .epdtovf => handleEpdToVf(&args, allocator),
-                .vftotxt => handleVfToTxt(&args),
-                .analyse => handleAnalyse(&args, allocator),
-                .@"relabel-tb" => handleRelabelTb(&args, allocator),
-                .@"relabel-chonker" => handleRelabelChonker(&args, allocator),
-                .sanitise => handleSanitise(&args, allocator),
-                .bench => if (TOOLS_ONLY) {
-                    writeLog("bench is unavailable in this build\n", .{});
-                } else {
-                    try handleBench(&args);
-                },
-            }) catch |e| {
-                if (e != error.HelpRequested) {
-                    return e;
-                }
-            };
+                .pgntovf => try handlePgntovf(init.io, init.gpa, &args),
+                .epdtovf => try handleEpdtovf(init.io, init.gpa, &args),
+                .vftotxt => try handleVftotxt(init.io, init.gpa, &args),
+                .analyse => try handleAnalyse(init.io, init.gpa, &args),
+                .@"relabel-tb" => try handleRelabelTb(init.io, init.gpa, &args),
+                .@"relabel-chonker" => try handleRelabelChonker(init.io, init.gpa, &args),
+                .sanitise => try handleSanitise(init.io, init.gpa, &args),
+                .bench => try handleBench(init.io, init.gpa, &args),
+            }
             return true;
         }
 
-        logUnknownCommand(command_token, suggestCommand(command_token));
+        logUnknownCommand(arg, suggestCommand(arg));
         return true;
     }
 
@@ -308,7 +300,7 @@ fn handleHelp(version: []const u8, threads: usize) void {
         , .{ BENCH_DEPTH_DEFAULT, threads, DATAGEN_NODES_DEFAULT });
     }
     std.debug.print(
-        \\  pgntovf --input <INPUT.pgn> [<INPUT.pgn> (positional)] [--skip-broken-games] [--allow-non-pgn-extension] [--allow-overwrite] [--output <OUTPUT>]
+        \\  pgntovf --input <INPUT.pgn> [<INPUT.pgn> (positional)] [--skip-broken-games] [--allow-non-pgn-extension] [--allow-overwrite] [--output <OUTPUT>] [--fill-missing-evals <i16|prev|next>]
         \\      convert PGN to viriformat. default output: <INPUT>.vf
         \\
         \\  epdtovf --input <INPUT.epd> [<INPUT.epd> (positional)] [--skip-broken-games] [--white-relative] [--allow-overwrite] [--output <OUTPUT>]
@@ -317,11 +309,11 @@ fn handleHelp(version: []const u8, threads: usize) void {
         \\  vftotxt --input <INPUT.vf> [<INPUT.vf> (positional)]
         \\      convert viriformat binary file to <FEN> | <SCORE> | <WDL>
         \\
-        \\  sanitise --input <INPUT.vf> [<INPUT.vf> (positional)] [--print-errors] [--allow-overwrite] [--output <OUTPUT>]
-        \\      sanitise a viriformat file. default output: <INPUT>_sanitised
+        \\  sanitise --input <INPUT.vf> [<INPUT.vf> (positional)] [--print-errors] [--check-only] [--allow-overwrite] [--output <OUTPUT>]
+        \\      sanitise a viriformat file. default output: <INPUT>_sanitised unless --check-only is used
         \\
-        \\  analyse --input <INPUT.vf> [<INPUT.vf> (positional)] [--approximate] [--tb-path <TB_PATH>] [--allow-overwrite]
-        \\      analyze a dataset file
+        \\  analyse --inputs <FILE> [<FILE>...] [--approximate] [--tb-path <TB_PATH>] [--allow-overwrite]
+        \\      analyze one or more dataset files
         \\      --approximate: use HyperLogLog for faster unique count
         \\      --tb-path: required for TB statistics
         \\      score distribution output: score_distribution.txt
@@ -358,17 +350,18 @@ fn handleHelp(version: []const u8, threads: usize) void {
     }
 }
 
-fn handleBench(args: anytype) !void {
+fn handleBench(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     const bench_args = try parseCommandArgs(
         args,
         .{ .depth = BENCH_DEPTH_DEFAULT },
         .{ .allow_implied = true },
         "bench",
+        allocator,
     );
-    try runBench(bench_args.depth);
+    try runBench(io, bench_args.depth);
 }
 
-fn handleDatagen(args: anytype, default_threads: usize) !void {
+fn handleDatagen(io: std.Io, allocator: std.mem.Allocator, args: anytype, default_threads: usize) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -378,40 +371,39 @@ fn handleDatagen(args: anytype, default_threads: usize) !void {
         },
         .{},
         "datagen",
+        allocator,
     );
 
     const datagen_threads = parsed.threads orelse default_threads;
     std.debug.print("datagenning with {} threads\n", .{datagen_threads});
     try root.engine.setThreadCount(datagen_threads);
-    try root.engine.datagen(parsed.nodes, parsed.positions);
+    try root.engine.datagen(io, parsed.nodes, parsed.positions);
 }
 
-fn handleGenfens(arg: []const u8, allocator: std.mem.Allocator) !void {
+fn handleGenfens(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     var seed: u64 = 0;
     var count: usize = 0;
     var book: ?[]const u8 = null;
-    var tokens = std.mem.tokenizeScalar(u8, arg, ' ');
-    _ = tokens.next(); // discard "genfens"
-    count = std.fmt.parseInt(usize, tokens.next() orelse "", 10) catch |e| {
+    count = std.fmt.parseInt(usize, args.next() orelse "", 10) catch |e| {
         writeLog("invalid fen count, error: '{}'\n", .{e});
         return e;
     };
-    _ = tokens.next(); // discard "seed"
-    seed = std.fmt.parseInt(u64, tokens.next() orelse "", 10) catch |e| {
+    _ = args.next(); // discard "seed"
+    seed = std.fmt.parseInt(u64, args.next() orelse "", 10) catch |e| {
         writeLog("invalid seed, error: '{}'\n", .{e});
         return e;
     };
-    _ = tokens.next(); // discard "book"
+    _ = args.next(); // discard "book"
 
-    if (tokens.next()) |path| {
+    if (args.next()) |path| {
         if (!std.ascii.eqlIgnoreCase(path, "none")) {
             book = path;
         }
     }
-    try root.engine.genfens(book, count, seed, &root.stdout_writer, allocator);
+    try root.engine.genfens(io, book, count, seed, root.stdout_writer, allocator);
 }
 
-fn handlePgnToVf(args: anytype, allocator: std.mem.Allocator) !void {
+fn handlePgntovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -420,14 +412,17 @@ fn handlePgnToVf(args: anytype, allocator: std.mem.Allocator) !void {
             @"skip-broken-games": bool = false,
             @"allow-non-pgn-extension": bool = false,
             @"allow-overwrite": bool = false,
+            @"fill-missing-evals": ?[]const u8 = null,
         },
         .{
             .allow_implied = true,
             .usage_descriptions = &.{
                 .{ .field = "output", .default_text = "<INPUT>.vf" },
+                .{ .field = "fill-missing-evals", .text = "--fill-missing-evals <VALUE|prev|next>" },
             },
         },
         "pgntovf",
+        allocator,
     );
     const input = parsed.input;
     const skip_broken_games = parsed.@"skip-broken-games";
@@ -438,6 +433,16 @@ fn handlePgnToVf(args: anytype, allocator: std.mem.Allocator) !void {
     if (allow_non_pgn_extension) {
         std.debug.print("allowing non pgn extension\n", .{});
     }
+
+    const fill: @import("pgn_to_vf.zig").MissingEvalFill = if (parsed.@"fill-missing-evals") |spec| blk: {
+        if (std.ascii.eqlIgnoreCase(spec, "prev")) break :blk .prev;
+        if (std.ascii.eqlIgnoreCase(spec, "next")) break :blk .next;
+        const value = std.fmt.parseInt(i16, spec, 10) catch {
+            writeLog("invalid --fill-missing-evals value '{s}'; expected an integer (i16), 'prev', or 'next'\n", .{spec});
+            return error.InvalidValue;
+        };
+        break :blk .{ .value = value };
+    } else .none;
 
     if (!allow_non_pgn_extension and !std.mem.endsWith(u8, input, ".pgn")) {
         const len = std.mem.lastIndexOf(u8, input, ".") orelse input.len;
@@ -450,27 +455,29 @@ fn handlePgnToVf(args: anytype, allocator: std.mem.Allocator) !void {
         try std.fmt.allocPrint(allocator, "{s}.vf", .{input});
     defer if (parsed.output == null) allocator.free(output);
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
+    var input_file = try openInputFile(io, input);
+    defer input_file.close(io);
 
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
+    defer output_file.close(io);
 
     var input_buf: [4096]u8 = undefined;
     var output_buf: [4096]u8 = undefined;
 
-    var input_reader = input_file.reader(&input_buf);
-    var output_writer = output_file.writer(&output_buf);
+    var input_reader = input_file.readerStreaming(io, &input_buf);
+    var output_writer = output_file.writerStreaming(io, &output_buf);
 
     try @import("pgn_to_vf.zig").convert(
+        io,
+        allocator,
         &input_reader.interface,
         &output_writer.interface,
         skip_broken_games,
-        std.heap.smp_allocator,
+        fill,
     );
 }
 
-fn handleEpdToVf(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleEpdtovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -487,6 +494,7 @@ fn handleEpdToVf(args: anytype, allocator: std.mem.Allocator) !void {
             },
         },
         "epdtovf",
+        allocator,
     );
     const input = parsed.input;
     const skip_broken_games = parsed.@"skip-broken-games";
@@ -504,28 +512,29 @@ fn handleEpdToVf(args: anytype, allocator: std.mem.Allocator) !void {
         try std.fmt.allocPrint(allocator, "{s}.vf", .{input});
     defer if (parsed.output == null) allocator.free(output);
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
+    var input_file = try openInputFile(io, input);
+    defer input_file.close(io);
 
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
+    defer output_file.close(io);
 
     var input_buf: [4096]u8 = undefined;
     var output_buf: [4096]u8 = undefined;
 
-    var input_reader = input_file.reader(&input_buf);
-    var output_writer = output_file.writer(&output_buf);
+    var input_reader = input_file.readerStreaming(io, &input_buf);
+    var output_writer = output_file.writerStreaming(io, &output_buf);
 
     try @import("epd_to_vf.zig").convert(
+        io,
+        allocator,
         &input_reader.interface,
         &output_writer.interface,
         skip_broken_games,
         white_relative,
-        std.heap.smp_allocator,
     );
 }
 
-fn handleVfToTxt(args: anytype) !void {
+fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -534,28 +543,19 @@ fn handleVfToTxt(args: anytype) !void {
         },
         .{ .allow_implied = true },
         "vftotxt",
+        allocator,
     );
     const input = parsed.input;
 
-    var file = try openInputFile(input);
-    defer file.close();
+    var file = try openInputFile(io, input);
+    defer file.close(io);
 
     var buf: [4096]u8 = undefined;
-    var br = file.reader(&buf);
+    var br = file.readerStreaming(io, &buf);
 
-    const viriformat = root.viriformat;
-    while (!br.atEnd()) {
-        var marlin_board: viriformat.MarlinPackedBoard = undefined;
-        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
-            if (e == error.EndOfStream) {
-                break;
-            } else {
-                return e;
-            }
-        };
-
-        var board = try marlin_board.toBoard();
-        const wdl = @as(f64, @floatFromInt(marlin_board.wdl)) / 2.0;
+    var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
+    while (try reader.next()) |game| {
+        const wdl = @as(f64, @floatFromInt(@intFromEnum(game.outcome))) / 2.0;
         const sigmoid = struct {
             fn impl(score: i16) f64 {
                 const f: f64 = @floatFromInt(score);
@@ -564,61 +564,226 @@ fn handleVfToTxt(args: anytype) !void {
             }
         }.impl;
 
-        // var chosen_board: Board = undefined;
-        // var chosen_eval: i16 = undefined;
-
-        for (0..std.math.maxInt(usize)) |_| {
-            var move_eval_pair: viriformat.MoveEvalPair = undefined;
-            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
-                if (e == error.EndOfStream) {
-                    break;
-                } else {
-                    return e;
-                }
-            };
-            const viri_move = move_eval_pair.move;
-
-            if (viri_move.data == 0) {
-                break;
-            }
-
-            const move = viri_move.toMove(&board);
-
-            switch (board.stm) {
-                inline else => |stm| {
-                    board.makeMove(stm, move, Board.NullEvalState{});
-                },
-            }
+        var it = game.iter();
+        while (try it.next()) |ply| {
+            const board = ply.board;
+            board.makeMoveSimple(ply.move);
+            const eval = ply.whiteEval().?;
 
             if (parsed.@"sigmoid-scores") {
-                write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(move_eval_pair.eval.toNative()), wdl });
+                write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(eval), wdl });
             } else {
-                write("{s} | {d:.10} | {d}\n", .{ board.toFen().slice(), move_eval_pair.eval.toNative(), wdl });
+                write("{s} | {d} | {d}\n", .{ board.toFen().slice(), eval, wdl });
             }
-            // if (rng.random().int(u32) % (i + 1) == 0) {
-            //     chosen_board = board;
-            //     chosen_eval = move_eval_pair.eval.toNative();
-            // }
         }
-        // write("{s} | {d:.10} | {d:.1}\n", .{ chosen_board.toFen().slice(), sigmoid(chosen_eval), wdl });
     }
 }
 
-fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
+const PieceCountTable = std.enums.EnumArray(PieceType, [11]u64);
+
+const AnalysisStats = struct {
+    sum_exits: i64 = 0,
+    game_count: u64 = 0,
+    position_count: u64 = 0,
+    wins: u64 = 0,
+    draws: u64 = 0,
+    losses: u64 = 0,
+    tb_results: std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64)) = std.mem.zeroes(std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64))),
+    king_pos: [64]u64 = @splat(0),
+    score_counts: []u64 = &.{},
+    total_piece_counts: [33]u64 = @splat(0),
+    phase_counts: [25]u64 = @splat(0),
+    piece_counts: [2]PieceCountTable = @splat(PieceCountTable.initFill(@splat(0))),
+    tracker: UniqueTracker = .{ .exact = .empty },
+
+    fn init(approximate: bool, allocator: std.mem.Allocator) !AnalysisStats {
+        var stats: AnalysisStats = .{};
+        stats.tracker = try UniqueTracker.init(approximate, allocator);
+        errdefer stats.tracker.deinit(allocator);
+        stats.score_counts = try allocator.alloc(u64, 1 + std.math.maxInt(u16));
+        @memset(stats.score_counts, 0);
+        return stats;
+    }
+
+    fn deinit(self: *AnalysisStats, allocator: std.mem.Allocator) void {
+        allocator.free(self.score_counts);
+        self.tracker.deinit(allocator);
+    }
+
+    fn add(self: *AnalysisStats, other: *const AnalysisStats, allocator: std.mem.Allocator) !void {
+        self.sum_exits += other.sum_exits;
+        self.game_count += other.game_count;
+        self.position_count += other.position_count;
+        self.wins += other.wins;
+        self.draws += other.draws;
+        self.losses += other.losses;
+        inline for (std.meta.fields(root.WDL)) |gf| {
+            inline for (std.meta.fields(root.WDL)) |tf| {
+                self.tb_results.getPtr(@field(root.WDL, gf.name)).getPtr(@field(root.WDL, tf.name)).* +=
+                    other.tb_results.get(@field(root.WDL, gf.name)).get(@field(root.WDL, tf.name));
+            }
+        }
+        for (&self.king_pos, other.king_pos) |*dst, src| dst.* += src;
+        for (self.score_counts, other.score_counts) |*dst, src| dst.* += src;
+        for (&self.total_piece_counts, other.total_piece_counts) |*dst, src| dst.* += src;
+        for (&self.phase_counts, other.phase_counts) |*dst, src| dst.* += src;
+        for (0..2) |ci| {
+            for (PieceType.all) |pt| {
+                for (self.piece_counts[ci].getPtr(pt), other.piece_counts[ci].get(pt)) |*dst, src| dst.* += src;
+            }
+        }
+        try self.tracker.merge(&other.tracker, allocator);
+    }
+};
+
+const UniqueTracker = union(enum) {
+    exact: std.AutoArrayHashMapUnmanaged(u64, void),
+    approx: HyperLogLog,
+
+    fn init(approximate: bool, allocator: std.mem.Allocator) !UniqueTracker {
+        return if (approximate)
+            .{ .approx = try HyperLogLog.init(20, allocator) }
+        else
+            .{ .exact = .empty };
+    }
+
+    fn deinit(self: *UniqueTracker, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .exact => |*s| s.deinit(allocator),
+            .approx => |a| a.deinit(allocator),
+        }
+    }
+
+    fn track(self: *UniqueTracker, allocator: std.mem.Allocator, hash: u64) !void {
+        switch (self.*) {
+            .exact => |*s| try s.put(allocator, hash, {}),
+            .approx => |*a| a.add(hash),
+        }
+    }
+
+    fn count(self: *const UniqueTracker) u64 {
+        return switch (self.*) {
+            .exact => |s| s.count(),
+            .approx => |*a| a.count(),
+        };
+    }
+
+    fn merge(self: *UniqueTracker, other: *const UniqueTracker, allocator: std.mem.Allocator) !void {
+        switch (self.*) {
+            .exact => |*s| {
+                for (other.exact.keys()) |key| try s.put(allocator, key, {});
+            },
+            .approx => |*a| {
+                for (a.m, other.approx.m) |*dst, src| dst.* = @max(dst.*, src);
+            },
+        }
+    }
+};
+
+fn analyseFile(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    file: std.Io.File,
+    format: root.dataformat.FileFormat,
+    use_tbs: bool,
+    approximate: bool,
+    bytes_done: *std.atomic.Value(u64),
+) !AnalysisStats {
+    var stats = try AnalysisStats.init(approximate, allocator);
+    errdefer stats.deinit(allocator);
+
+    var buf: [4096]u8 = undefined;
+    var br = file.readerStreaming(io, &buf);
+    var ply_reader = try root.owning_reader.OwningReader.init(format, &br.interface, allocator);
+    defer ply_reader.deinit();
+
+    var prev_pos = br.logicalPos();
+    while (try (&ply_reader).next()) |game| {
+        stats.game_count += 1;
+        switch (@intFromEnum(game.outcome)) {
+            0 => stats.losses += 1,
+            1 => stats.draws += 1,
+            2 => stats.wins += 1,
+            else => unreachable,
+        }
+
+        if (stats.game_count % 16 == 0) {
+            const new_pos = br.logicalPos();
+            _ = bytes_done.fetchAdd(new_pos - prev_pos, .acq_rel);
+            prev_pos = new_pos;
+        }
+
+        var had_tb_win = false;
+        var had_tb_draw = false;
+        var had_tb_loss = false;
+        var board = game.initial_board.*;
+        for (game.moves, 0..) |ply, move_idx| {
+            if (move_idx == 0) {
+                if (ply.stmEval(board.stm)) |ev| {
+                    stats.sum_exits += ev;
+                }
+            }
+
+            var king: root.Square = .fromBitboard(board.kingFor(board.stm));
+            if (board.stm == .black) {
+                king = king.flipRank();
+            }
+            stats.king_pos[king.toInt()] += 1;
+
+            if (use_tbs) {
+                if (root.pyrrhic.probeWDL(&board)) |res| {
+                    switch (if (board.stm == .black) res.flipped() else res) {
+                        .loss => had_tb_loss = true,
+                        .draw => had_tb_draw = true,
+                        .win => had_tb_win = true,
+                    }
+                }
+            }
+            stats.total_piece_counts[@popCount(board.occupancy())] += 1;
+            stats.phase_counts[@min(24, board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 }))] += 1;
+            inline for (.{ Colour.white, Colour.black }) |col| {
+                for (PieceType.all) |pt| {
+                    const cnt = @popCount(board.pieceFor(col, pt));
+                    stats.piece_counts[col.toInt()].getPtr(pt)[cnt] += 1;
+                }
+            }
+            if (ply.whiteEval()) |ev| {
+                stats.score_counts[@intCast(@as(isize, ev) - std.math.minInt(i16))] += 1;
+            }
+            try stats.tracker.track(allocator, board.hash);
+            stats.position_count += 1;
+            board.makeMoveSimple(ply.move);
+        }
+        if (had_tb_loss)
+            stats.tb_results.getPtr(game.outcome).getPtr(.loss).* += 1;
+        if (had_tb_draw)
+            stats.tb_results.getPtr(game.outcome).getPtr(.draw).* += 1;
+        if (had_tb_win)
+            stats.tb_results.getPtr(game.outcome).getPtr(.win).* += 1;
+    }
+
+    return stats;
+}
+
+fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
-            input: []const u8,
+            inputs: []const []const u8,
             approximate: bool = false,
+            verbose: bool = false,
             @"tb-path": ?[]const u8 = null,
             @"allow-overwrite": bool = false,
+            format: root.dataformat.FileFormat = .viriformat,
         },
-        .{ .allow_implied = true },
+        .{ .allow_implied = false },
         "analyse",
+        allocator,
     );
-    const input = parsed.input;
+    defer allocator.free(parsed.inputs);
+    const verbose = parsed.verbose;
     if (!parsed.@"allow-overwrite") {
-        if (std.fs.cwd().access("score_distribution.txt", .{})) {
+        if (std.Io.Dir.cwd().access(io, "score_distribution.txt", .{})) |_| {
             writeLog("refusing to overwrite existing file 'score_distribution.txt' (pass --allow-overwrite)\n", .{});
             return error.PathAlreadyExists;
         } else |e| switch (e) {
@@ -632,7 +797,7 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
 
     var use_tbs = false;
     if (parsed.@"tb-path") |tb_path| {
-        try ensureTbPathExists(tb_path);
+        try ensureTbPathExists(io, tb_path);
         const null_terminated = try allocator.dupeZ(u8, tb_path);
         defer allocator.free(null_terminated);
         try root.pyrrhic.init(null_terminated);
@@ -649,161 +814,127 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         std.debug.print("unique count is using a hashset, for better performance try --approximate\n", .{});
     }
 
-    var file = try openInputFile(input);
-    defer file.close();
-    const stat = try file.stat();
+    var total_size: u64 = 0;
+    for (parsed.inputs) |input_path| {
+        var f = try openInputFile(io, input_path);
+        defer f.close(io);
+        total_size += (try f.stat(io)).size;
+    }
 
-    var buf: [4096]u8 = undefined;
-    var br = file.reader(&buf);
+    var combined = try AnalysisStats.init(approximate, allocator);
+    defer combined.deinit(allocator);
 
-    var sum_exits: i64 = 0;
-    var game_count: u64 = 0;
-    var position_count: u64 = 0;
-    var wins: u64 = 0;
-    var draws: u64 = 0;
-    var losses: u64 = 0;
-    var tb_results = std.mem.zeroes([3][3]u64);
-    var king_pos: [64]u64 = .{0} ** 64;
-    var zobrist_set: std.AutoArrayHashMap(u64, void) = .init(allocator);
-    defer zobrist_set.deinit();
-    var score_counts: []u64 = try allocator.alloc(u64, 1 + std.math.maxInt(u16));
-    defer allocator.free(score_counts);
-    var total_piece_counts: [33]u64 = @splat(0);
-    var phase_counts: [25]u64 = @splat(0);
-
-    const PieceCountTable = std.EnumArray(PieceType, [11]u64);
-    var piece_counts: [2]std.EnumArray(PieceType, [11]u64) = @splat(PieceCountTable.initFill(@splat(0)));
     if (!approximate) {
-        try zobrist_set.ensureTotalCapacity(@intCast((stat.size + 3) / 4));
+        try combined.tracker.exact.ensureTotalCapacity(allocator, @intCast((total_size + 3) / 4));
     }
 
-    var approximator = if (approximate) try @import("HyperLogLog.zig").init(20, allocator) else undefined;
-    defer if (approximate) approximator.deinit(allocator);
+    var bytes_done: std.atomic.Value(u64) = .init(0);
+    var merge_lock = std.Io.Mutex.init;
+    var futures = std.array_list.Managed(std.Io.Future(anyerror!void)).init(allocator);
+    defer futures.deinit();
 
-    const viriformat = root.viriformat;
-    while (!br.atEnd()) {
-        var marlin_board: viriformat.MarlinPackedBoard = undefined;
-        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
-            if (e == error.EndOfStream) {
-                break;
-            } else {
-                return e;
+    var done = std.atomic.Value(bool).init(false);
+    var progress_future = try io.concurrent(struct {
+        fn impl(
+            io_: std.Io,
+            bytes_done_: *const std.atomic.Value(u64),
+            total_size_: u64,
+            done_: *const std.atomic.Value(bool),
+        ) !void {
+            while (!done_.load(.seq_cst)) {
+                try io_.sleep(.fromMilliseconds(100), .awake);
+                std.debug.print("\rprogress: {d:.2}%", .{
+                    @as(f64, @floatFromInt(100 * bytes_done_.load(.acquire))) /
+                        @as(f64, @floatFromInt(total_size_)),
+                });
             }
-        };
-
-        game_count += 1;
-        switch (marlin_board.wdl) {
-            0 => losses += 1,
-            1 => draws += 1,
-            2 => wins += 1,
-            else => unreachable,
+            std.debug.print("\n", .{});
         }
+    }.impl, .{
+        io,
+        &bytes_done,
+        total_size,
+        &done,
+    });
+    for (parsed.inputs) |input_path| {
+        try futures.append(io.async(struct {
+            fn impl(
+                input_path_: []const u8,
+                io_: std.Io,
+                allocator_: std.mem.Allocator,
+                format: root.dataformat.FileFormat,
+                use_tbs_: bool,
+                approximate_: bool,
+                bytes_done_: *std.atomic.Value(u64),
+                combined_: *AnalysisStats,
+                merge_lock_: *std.Io.Mutex,
+            ) anyerror!void {
+                var file = try openInputFile(io_, input_path_);
+                defer file.close(io_);
 
-        if (game_count % 16384 == 0) {
-            const unique_count = if (approximate) approximator.count() else zobrist_set.count();
-            write("\rprogress: {}% average exit so far: {d:.2} unique positions: {}/{} ({}%)", .{
-                @as(u128, br.logicalPos() * 100) / @max(@as(u64, 1), stat.size),
-                @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
-                unique_count,
-                position_count,
-                @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
-            });
-        }
-        var board = try marlin_board.toBoard();
-        var had_tb_win = false;
-        var had_tb_draw = false;
-        var had_tb_loss = false;
-        for (0..std.math.maxInt(usize)) |move_idx| {
-            var move_eval_pair: viriformat.MoveEvalPair = undefined;
-            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
-                if (e == error.EndOfStream) {
-                    break;
-                } else {
-                    return e;
-                }
-            };
-            const viri_move = move_eval_pair.move;
-
-            if (move_idx == 0) {
-                const exit = if (board.stm == .white) move_eval_pair.eval.toNative() else -@as(i32, move_eval_pair.eval.toNative());
-
-                sum_exits += exit;
+                var file_stats = try analyseFile(io_, allocator_, file, format, use_tbs_, approximate_, bytes_done_);
+                defer file_stats.deinit(allocator_);
+                try merge_lock_.lock(io_);
+                defer merge_lock_.unlock(io_);
+                try combined_.add(&file_stats, allocator_);
             }
-
-            if (viri_move.data == 0) {
-                break;
-            }
-
-            const move = viri_move.toMove(&board);
-
-            switch (board.stm) {
-                inline else => |stm| {
-                    @setEvalBranchQuota(1 << 30);
-                    board.makeMove(stm, move, Board.NullEvalState{});
-                },
-            }
-            var king: root.Square = .fromBitboard(board.kingFor(board.stm));
-            if (board.stm == .black) {
-                king = king.flipRank();
-            }
-            king_pos[king.toInt()] += 1;
-
-            if (use_tbs) {
-                if (root.pyrrhic.probeWDL(&board)) |res| {
-                    switch (if (board.stm == .black) res.flipped() else res) {
-                        .loss => had_tb_loss = true,
-                        .draw => had_tb_draw = true,
-                        .win => had_tb_win = true,
-                    }
-                }
-            }
-            total_piece_counts[@popCount(board.occupancy())] += 1;
-            phase_counts[@min(24, board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 }))] += 1;
-            inline for (.{
-                Colour.white,
-                Colour.black,
-            }) |col| {
-                for (PieceType.all) |pt| {
-                    const count = @popCount(board.pieceFor(col, pt));
-                    piece_counts[col.toInt()].getPtr(pt)[count] += 1;
-                }
-            }
-            score_counts[@intCast(@as(isize, move_eval_pair.eval.toNative()) - std.math.minInt(i16))] += 1;
-            if (approximate) {
-                approximator.add(board.hash);
-            } else {
-                try zobrist_set.put(board.hash, void{});
-            }
-            position_count += 1;
-        }
-        if (had_tb_loss)
-            tb_results[marlin_board.wdl][0] += 1;
-        if (had_tb_draw)
-            tb_results[marlin_board.wdl][1] += 1;
-        if (had_tb_win)
-            tb_results[marlin_board.wdl][2] += 1;
+        }.impl, .{
+            input_path,
+            io,
+            allocator,
+            parsed.format,
+            use_tbs,
+            approximate,
+            &bytes_done,
+            &combined,
+            &merge_lock,
+        }));
     }
+    for (futures.items) |*f| {
+        try f.await(io);
+    }
+    done.store(true, .seq_cst);
+    try progress_future.await(io);
 
-    const unique_count = if (approximate) approximator.count() else zobrist_set.count();
+    const unique_count = combined.tracker.count();
 
     var total_tb: u64 = 0;
-    for (tb_results) |tb_arr| for (tb_arr) |tb_count| {
-        total_tb += tb_count;
-    };
-    const incorrect_tb = total_tb - (tb_results[0][0] + tb_results[1][1] + tb_results[2][2]);
+    var tb_outer_iter = combined.tb_results.iterator();
+    while (tb_outer_iter.next()) |a| {
+        var tb_inner_iter = a.value.iterator();
+        while (tb_inner_iter.next()) |e| {
+            total_tb += e.value.*;
+        }
+    }
+    const correct_tb =
+        combined.tb_results.get(.loss).get(.loss) +
+        combined.tb_results.get(.draw).get(.draw) +
+        combined.tb_results.get(.win).get(.win);
+    const incorrect_tb = total_tb - correct_tb;
+    const positions_per_game = @as(f64, @floatFromInt(combined.position_count)) / @as(f64, @floatFromInt(@max(@as(u64, 1), combined.game_count)));
     write(
         \\
         \\games: {}
         \\positions: {}
+        \\positions/game: {d:.2}
         \\average exit: {d:.2}
         \\unique positions: {}/{} ({}%)
-        \\piece count distribution: {f}
-        \\phase distribution: {f}
-        \\white piece distribution: {f}
-        \\black piece distribution: {f}
-        \\king pos distribution: {f}
-        \\tb results: {f}
-        \\games whose outcome do not match TBs: {d:.2}%
+    , .{
+        combined.game_count,
+        combined.position_count,
+        positions_per_game,
+        @as(f64, @floatFromInt(combined.sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), combined.game_count))),
+        unique_count,
+        combined.position_count,
+        @as(u64, unique_count) * 100 / @max(@as(u64, 1), combined.position_count),
+    });
+
+    if (use_tbs) {
+        write("\ngames whose outcome do not match TBs: {d:.2}%", .{@as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb)))});
+    }
+
+    write(
+        \\
         \\wins: {} ({}%)
         \\draws: {} ({}%)
         \\losses: {} ({}%)
@@ -811,41 +942,50 @@ fn handleAnalyse(args: anytype, allocator: std.mem.Allocator) !void {
         \\{f}
         \\king bucket distr (mirrored):
         \\{f}
+        \\
     , .{
-        game_count,
-        position_count,
-        @as(f64, @floatFromInt(sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), game_count))),
-        unique_count,
-        position_count,
-        @as(u64, unique_count) * 100 / @max(@as(u64, 1), position_count),
-        formatValue(total_piece_counts),
-        formatValue(phase_counts),
-        formatEnumArray(PieceType, piece_counts[Colour.white.toInt()]),
-        formatEnumArray(PieceType, piece_counts[Colour.black.toInt()]),
-        formatArrayNewline(@as([8][8]u64, @bitCast(king_pos))),
-        formatArrayNewline(tb_results),
-        @as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb))),
-        wins,
-        100 * wins / @max(@as(u64, 1), game_count),
-        draws,
-        100 * draws / @max(@as(u64, 1), game_count),
-        losses,
-        100 * losses / @max(@as(u64, 1), game_count),
-        formatPositionCounts(false, king_pos),
-        formatPositionCounts(true, king_pos),
+        combined.wins,
+        100 * combined.wins / @max(@as(u64, 1), combined.game_count),
+        combined.draws,
+        100 * combined.draws / @max(@as(u64, 1), combined.game_count),
+        combined.losses,
+        100 * combined.losses / @max(@as(u64, 1), combined.game_count),
+        formatPositionCounts(false, combined.king_pos),
+        formatPositionCounts(true, combined.king_pos),
     });
 
-    write("writing score distribution to 'score_distribution.txt'\n", .{});
-    var score_distr_file = try createOutputFile("score_distribution.txt", parsed.@"allow-overwrite");
-    defer score_distr_file.close();
+    if (verbose) {
+        write(
+            \\
+            \\piece count distribution: {f}
+            \\phase distribution: {f}
+            \\white piece distribution: {f}
+            \\black piece distribution: {f}
+            \\king pos distribution: {f}
+        , .{
+            formatValue(combined.total_piece_counts),
+            formatValue(combined.phase_counts),
+            formatEnumArray(PieceType, combined.piece_counts[Colour.white.toInt()]),
+            formatEnumArray(PieceType, combined.piece_counts[Colour.black.toInt()]),
+            formatArrayNewline(@as([8][8]u64, @bitCast(combined.king_pos))),
+        });
+        if (use_tbs) {
+            write("\ntb results: {f}", .{formatWdlMatrix(combined.tb_results)});
+        }
+        write("\n", .{});
+    }
 
-    // its fine to reuse the buffer since we finished reading the file
-    var writer = score_distr_file.writer(&buf);
-    try writer.interface.print("{any}\n", .{score_counts});
+    write("writing score distribution to 'score_distribution.txt'\n", .{});
+    var score_distr_file = try createOutputFile(io, "score_distribution.txt", parsed.@"allow-overwrite");
+    defer score_distr_file.close(io);
+
+    var buf: [4096]u8 = undefined;
+    var writer = score_distr_file.writerStreaming(io, &buf);
+    try writer.interface.print("{any}\n", .{combined.score_counts});
     try writer.interface.flush();
 }
 
-fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
@@ -861,44 +1001,36 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
             },
         },
         "relabel-tb",
+        allocator,
     );
     const input = parsed.input;
-    try ensureTbPathExists(parsed.@"tb-path");
+    try ensureTbPathExists(io, parsed.@"tb-path");
     const null_terminated = try allocator.dupeZ(u8, parsed.@"tb-path");
     defer allocator.free(null_terminated);
     try root.pyrrhic.init(null_terminated);
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
-    const stat = try input_file.stat();
+    var input_file = try openInputFile(io, input);
+    defer input_file.close(io);
+    const stat = try input_file.stat(io);
 
     var name_writer = std.Io.Writer.Allocating.init(allocator);
     defer name_writer.deinit();
     try name_writer.writer.print("{s}_relabeled", .{input});
     const output = parsed.output orelse name_writer.written();
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
+    defer output_file.close(io);
 
     var input_buf: [4096]u8 = undefined;
-    var br = input_file.reader(&input_buf);
+    var br = input_file.readerStreaming(io, &input_buf);
     var output_buf: [4096]u8 = undefined;
-    var bw = output_file.writer(&output_buf);
+    var bw = output_file.writerStreaming(io, &output_buf);
 
     var game_count: u64 = 0;
     var position_count: u64 = 0;
     var incorrect_wdl_count: u64 = 0;
 
-    const viriformat = root.viriformat;
-    while (!br.atEnd()) {
-        var marlin_board: viriformat.MarlinPackedBoard = undefined;
-        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
-            if (e == error.EndOfStream) {
-                break;
-            } else {
-                return e;
-            }
-        };
-
+    var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
+    while (try reader.next()) |game| {
         game_count += 1;
 
         if (game_count % 16384 == 0) {
@@ -906,51 +1038,35 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
                 @as(u128, br.logicalPos() * 100) / stat.size,
             });
         }
-        var board = try marlin_board.toBoard();
-        var game = viriformat.Game.from(board, allocator);
-        game.initial_position = marlin_board;
-        defer game.moves.deinit();
+
+        var record = root.viriformat.GameRecord.from(game.board, allocator);
+        defer record.deinit();
+        record.setOutCome(game.outcome);
+
         var skipping = false;
         var final_correct_wdl_idx: ?usize = null;
-        for (0..std.math.maxInt(usize)) |move_idx| {
-            var move_eval_pair: viriformat.MoveEvalPair = undefined;
-            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
-                if (e == error.EndOfStream) {
-                    break;
-                } else {
-                    return e;
-                }
-            };
-            const viri_move = move_eval_pair.move;
-
-            if (viri_move.data == 0) {
-                break;
-            }
-
-            const move = viri_move.toMove(&board);
-            if (!skipping) {
-                try game.addMove(move, move_eval_pair.eval.toNative());
-            }
-
-            switch (board.stm) {
-                inline else => |stm| {
-                    @setEvalBranchQuota(1 << 30);
-                    board.makeMove(stm, move, Board.NullEvalState{});
-                },
-            }
+        var it = game.iter();
+        var move_idx: usize = 0;
+        while (try it.next()) |ply| : (move_idx += 1) {
+            const eval = ply.whiteEval().?;
 
             if (!skipping) {
-                if (root.pyrrhic.probeWDL(&board)) |res| {
+                try record.addMove(ply.move, eval);
+
+                var board = ply.board;
+                board.makeMoveSimple(ply.move);
+
+                if (root.pyrrhic.probeWDL(board)) |res| {
                     const white_relative_result = if (board.stm == .black) res.flipped() else res;
-                    const game_result: root.WDL = @enumFromInt(marlin_board.wdl);
+                    const game_result = game.outcome;
                     if (white_relative_result != game_result) {
                         if (final_correct_wdl_idx) |final_corr_idx| {
-                            while (game.moves.items.len > final_corr_idx + 1) {
-                                _ = game.moves.pop();
+                            while (record.moves.items.len > final_corr_idx + 1) {
+                                _ = record.moves.pop();
                             }
                         } else {
                             incorrect_wdl_count += 1;
-                            game.setOutCome(white_relative_result);
+                            record.setOutCome(white_relative_result);
                         }
                         skipping = true;
                     } else {
@@ -961,7 +1077,7 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
             position_count += 1;
         }
         if (!skipping) {
-            try game.serializeInto(&bw.interface);
+            try record.serializeInto(&bw.interface);
         }
     }
     try bw.interface.flush();
@@ -976,7 +1092,7 @@ fn handleRelabelTb(args: anytype, allocator: std.mem.Allocator) !void {
     });
 }
 
-fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     if (root.EVAL_MODE != .nnue) {
         return error.NNUENotEnabled;
     }
@@ -995,95 +1111,74 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
             },
         },
         "relabel-chonker",
+        allocator,
     );
     const input = parsed.input;
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
-    const stat = try input_file.stat();
+    var input_file = try openInputFile(io, input);
+    defer input_file.close(io);
+    const stat = try input_file.stat(io);
 
     var name_writer = std.Io.Writer.Allocating.init(allocator);
     defer name_writer.deinit();
     try name_writer.writer.print("{s}_evals_relabeled", .{input});
     const output = parsed.output orelse name_writer.written();
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
+    defer output_file.close(io);
 
     var input_buf: [4096]u8 = undefined;
-    var br = input_file.reader(&input_buf);
+    var br = input_file.readerStreaming(io, &input_buf);
     var output_buf: [4096]u8 = undefined;
-    var bw = output_file.writer(&output_buf);
+    var bw = output_file.writerStreaming(io, &output_buf);
 
     var game_count: u64 = 0;
     var position_count: u64 = 0;
 
-    const viriformat = root.viriformat;
-    const nnue = root.nnue;
-    const RefreshCache = @import("refresh_cache.zig").refreshCache(nnue.HORIZONTAL_MIRRORING, nnue.INPUT_BUCKET_COUNT);
-    var rc: RefreshCache = undefined;
-    rc.initInPlace();
+    var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
 
-    var acc: nnue.Accumulator = undefined;
-    acc.initInPlace(&Board.startpos());
+    const ctx = root.evaluation.globalCtx.lock();
+    defer root.evaluation.globalCtx.release();
+    ctx.initRoot(&Board.startpos());
 
-    var timer = try std.time.Timer.start();
-    while (!br.atEnd()) {
-        var marlin_board: viriformat.MarlinPackedBoard = undefined;
-        br.interface.readSliceAll(std.mem.asBytes(&marlin_board)) catch |e| {
-            if (e == error.EndOfStream) {
-                break;
-            } else {
-                return e;
-            }
-        };
-
+    const start_time = std.Io.Timestamp.now(io, .awake);
+    while (try reader.next()) |game| {
         game_count += 1;
 
         if (position_count % 16384 == 0) {
+            const now = std.Io.Timestamp.now(io, .awake);
+            const elapsed = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
             write("\rprogress: {}% (evals/s: {})", .{
                 @as(u128, br.logicalPos() * 100) / stat.size,
-                position_count * 1000_000_000 / timer.read(),
+                position_count * 1000_000_000 / @max(1, elapsed),
             });
         }
-        var board = try marlin_board.toBoard();
-        var game = viriformat.Game.from(board, allocator);
-        game.initial_position = marlin_board;
-        defer game.moves.deinit();
 
-        for (0..std.math.maxInt(usize)) |_| {
-            var move_eval_pair: viriformat.MoveEvalPair = undefined;
-            br.interface.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| {
-                if (e == error.EndOfStream) {
-                    break;
-                } else {
-                    return e;
-                }
-            };
-            const viri_move = move_eval_pair.move;
+        var record = root.viriformat.GameRecord.from(game.board, allocator);
+        defer record.deinit();
+        record.setOutCome(game.outcome);
 
-            if (viri_move.data == 0) {
-                break;
-            }
+        var it = game.iter();
+        ctx.initRoot(&it.board);
+        var ply: u16 = 0;
+        var scored = try it.next();
+        while (scored) |sp| {
+            const stm_eval = ctx.handle(ply).eval(&it.board);
+            const eval = if (it.board.stm == .white) stm_eval else -stm_eval;
 
-            const move = viri_move.toMove(&board);
-
-            rc.refresh(.white, &board, &acc.white);
-            rc.refresh(.black, &board, &acc.black);
-            acc.pending_parent = false;
-            acc.dirty_piece = .clean;
-            acc.board_ref = &board;
-
-            const eval = switch (board.stm) {
-                .white => acc.forward(.white, &board, &rc),
-                .black => -acc.forward(.black, &board, &rc),
-            };
-
-            board.makeMoveSimple(move);
-            try game.addMove(move, eval);
+            try record.addMove(sp.move, eval);
 
             position_count += 1;
+
+            const child = ply + 1;
+            ctx.prepareChild(child, &it.board);
+            scored = try it.nextHandle(ctx.handle(child));
+            ply = child;
+            if (ply + 1 >= root.SEARCH_MAX_PLY) {
+                ctx.initRoot(&it.board);
+                ply = 0;
+            }
         }
-        try game.serializeInto(&bw.interface);
+        try record.serializeInto(&bw.interface);
     }
     try bw.interface.flush();
 
@@ -1094,12 +1189,13 @@ fn handleRelabelChonker(args: anytype, allocator: std.mem.Allocator) !void {
     , .{});
 }
 
-fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
+fn handleSanitise(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
     const parsed = try parseCommandArgs(
         args,
         struct {
             input: []const u8,
             @"print-errors": bool = false,
+            @"check-only": bool = false,
             @"allow-overwrite": bool = false,
             output: ?[]const u8 = null,
             @"sp-stalemate-fix": bool = false,
@@ -1111,44 +1207,59 @@ fn handleSanitise(args: anytype, allocator: std.mem.Allocator) !void {
             },
         },
         "sanitise",
+        allocator,
     );
     const input = parsed.input;
 
-    var input_file = try openInputFile(input);
-    defer input_file.close();
+    var input_file = try openInputFile(io, input);
+    defer input_file.close(io);
 
-    var name_writer = std.Io.Writer.Allocating.init(allocator);
-    defer name_writer.deinit();
+    const mapped = try @import("MappedFile.zig").init(input_file, io);
+    defer mapped.deinit(io);
 
-    try name_writer.writer.print("{s}_sanitised", .{input});
-    const output = parsed.output orelse name_writer.written();
+    const missing_null_terminator =
+        mapped.data.len < 4 or
+        !std.mem.eql(u8, mapped.data[mapped.data.len - 4 ..], &[4]u8{ 0, 0, 0, 0 });
+    if (parsed.@"print-errors" and missing_null_terminator) {
+        std.debug.print("warning: file does not end with null terminator\n", .{});
+    }
 
-    var output_file = try createOutputFile(output, parsed.@"allow-overwrite");
-    defer output_file.close();
+    var output_file: ?std.Io.File = null;
+    defer if (output_file) |*file| file.close(io);
 
-    const mapped = try @import("MappedFile.zig").init(input_file);
-    defer mapped.deinit();
+    var name_writer: ?std.Io.Writer.Allocating = null;
+    defer if (name_writer) |*writer| writer.deinit();
 
     var output_buf: [4096]u8 = undefined;
-    var bw = output_file.writer(&output_buf);
+    var output_writer: ?std.Io.File.Writer = null;
+    if (!parsed.@"check-only") {
+        name_writer = std.Io.Writer.Allocating.init(allocator);
+        try name_writer.?.writer.print("{s}_sanitised", .{input});
+        const output = parsed.output orelse name_writer.?.written();
 
-    try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(
+        output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
+        output_writer = output_file.?.writerStreaming(io, &output_buf);
+    }
+
+    const skipped = try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(
         mapped.data,
-        &bw.interface,
+        if (output_writer) |*writer| &writer.interface else null,
         allocator,
         .{
             .print_errors = parsed.@"print-errors",
             .sp_stalemate_fix = parsed.@"sp-stalemate-fix",
         },
     );
-
-    try bw.interface.flush();
+    if (parsed.@"check-only" and (skipped > 0 or missing_null_terminator)) {
+        std.process.exit(1);
+    }
 }
 
-fn runBench(bench_depth: i32) !void {
+fn runBench(io: std.Io, bench_depth: i32) !void {
+    if (root.engine == void) return error.EngineMissing;
     defer root.engine.printDebugStats();
     var total_nodes: u64 = 0;
-    var timer = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start\n", .{});
+    const start_time = std.Io.Timestamp.now(io, .awake);
     root.engine.reset();
     for ([_][]const u8{
         "1B6/4R1p1/1p4kp/p7/r7/8/5P2/5K2 w - - 2 42",
@@ -1255,23 +1366,24 @@ fn runBench(bench_depth: i32) !void {
         root.engine.startSearch(.{
             .search_params = .{
                 .board = try Board.parseFen(fen, false),
-                .limits = root.Limits.initFixedDepth(bench_depth),
+                .limits = root.Limits.initFixedDepth(io, bench_depth),
                 .previous_positions = .{},
                 .previous_moves = .{},
+                .contempt = 0,
                 .normalize = false,
                 .minimal = false,
+                .show_wdl = false,
             },
             .quiet = true,
         });
         root.engine.waitUntilDoneSearching();
-        total_nodes += root.engine.querySearchedNodes();
+        const node_count = root.engine.querySearchedNodes();
+        total_nodes += node_count;
     }
-    // in the event that bench *somehow* takes 0ns lets still not divide by 0
-    // more realistically this would indicate that the timer is broken
-    const elapsed = @max(1, timer.read());
-    write("{} nodes {} nps\n", .{ total_nodes, @as(u256, total_nodes) * std.time.ns_per_s / elapsed });
+    const now = std.Io.Timestamp.now(io, .awake);
+    const elapsed = @max(1, @as(u64, @intCast(start_time.durationTo(now).nanoseconds)));
+    write("{} nodes {} nps\n", .{ total_nodes, @as(u128, total_nodes) * std.time.ns_per_s / elapsed });
 }
-
 fn EnumArrayFormatter(comptime Enum: type, comptime Table: type) type {
     return struct {
         table: Table,
@@ -1294,6 +1406,36 @@ fn formatEnumArray(
     comptime Enum: type,
     table: anytype,
 ) EnumArrayFormatter(Enum, @TypeOf(table)) {
+    return .{ .table = table };
+}
+
+fn WdlMatrixFormatter() type {
+    return struct {
+        table: std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64)),
+
+        pub fn format(
+            self: @This(),
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            try writer.writeAll("{\n");
+            inline for (std.meta.fields(root.WDL)) |game_field| {
+                const outcome: root.WDL = @field(root.WDL, game_field.name);
+                const row = self.table.get(outcome);
+                try writer.print("\t{s}: [", .{game_field.name});
+                inline for (std.meta.fields(root.WDL), 0..) |tb_field, i| {
+                    if (i != 0) try writer.writeAll(", ");
+                    try writer.print("{}", .{row.get(@field(root.WDL, tb_field.name))});
+                }
+                try writer.writeAll("],\n");
+            }
+            try writer.writeAll("}");
+        }
+    };
+}
+
+fn formatWdlMatrix(
+    table: std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64)),
+) WdlMatrixFormatter() {
     return .{ .table = table };
 }
 
@@ -1360,6 +1502,16 @@ fn formatArray(
     return .{ .table = table };
 }
 
+fn isEnumArray(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct" => @hasDecl(T, "Key") and
+            @hasDecl(T, "Value") and
+            @hasDecl(T, "get") and
+            @hasField(T, "values"),
+        else => false,
+    };
+}
+
 fn ValueFormatter(comptime T: type) type {
     return struct {
         value: T,
@@ -1368,6 +1520,11 @@ fn ValueFormatter(comptime T: type) type {
             self: @This(),
             writer: *std.Io.Writer,
         ) std.Io.Writer.Error!void {
+            if (comptime isEnumArray(T)) {
+                try writer.print("{f}", .{formatEnumArray(T.Key, self.value)});
+                return;
+            }
+
             switch (@typeInfo(T)) {
                 .array => try writer.print("{f}", .{formatArray(self.value)}),
                 else => try writer.print("{any}", .{self.value}),

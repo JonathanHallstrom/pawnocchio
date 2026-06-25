@@ -17,7 +17,6 @@
 const std = @import("std");
 
 test {
-    _ = pyrrhic;
     std.testing.refAllDecls(@This());
 }
 
@@ -35,11 +34,11 @@ pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 pub const pyrrhic = @import("pyrrhic.zig");
 pub const evaluation = @import("evaluation.zig");
 pub const EvalMode = @import("eval_mode.zig").EvalMode;
+pub const numa = @import("numa.zig");
 pub const EVAL_MODE: EvalMode = std.meta.stringToEnum(EvalMode, @import("build_options").eval) orelse unreachable;
-pub const nnue = if (EVAL_MODE == .hce)
-    @compileError("cannot use NNUE in HCE build mode")
-else
-    @import("nnue.zig");
+pub const eval_mode: EvalMode = EVAL_MODE;
+pub const nnue = if (EVAL_MODE == .nnue) @import("nnue/nnue.zig") else void;
+pub const simd = @import("simd.zig");
 pub const Bitboard = @import("Bitboard.zig");
 pub const cuckoo = @import("cuckoo.zig");
 pub const Board = @import("Board.zig");
@@ -60,8 +59,15 @@ pub const tuning = @import("tuning.zig");
 pub const TUNABLE_CONSTANTS = tuning.TUNABLE_CONSTANTS;
 pub const SEE = @import("SEE.zig");
 pub const refreshCache = @import("refresh_cache.zig").refreshCache;
+pub const dataformat = @import("dataformat.zig");
 pub const viriformat = @import("viriformat.zig");
+pub const pgn = @import("pgn.zig");
+pub const dynamic_reader = @import("dynamic_reader.zig");
+pub const owning_reader = @import("owning_reader.zig");
 pub const wdl = @import("wdl.zig");
+pub const input_features = @import("nnue/features.zig");
+pub const PSQTFeature = input_features.PSQTFeature;
+pub const FeatureKind = input_features.FeatureKind;
 
 const assert = std.debug.assert;
 
@@ -95,31 +101,51 @@ pub const Colour = enum(u8) {
     }
 };
 
-fn initImpl() void {
-    stdout = std.fs.File.stdout();
-    stdout_writer = stdout.writerStreaming(&stdout_buf);
+fn initImpl(io_init: std.Io) void {
+    io = io_init;
+    stdout = std.Io.File.stdout();
+    stdout_wrapper = stdout.writerStreaming(io, &stdout_buf);
+    stdout_writer = &stdout_wrapper.interface;
     attacks.init();
     cuckoo.init();
+    numa.init() catch |e| std.debug.panic("Fatal: couldn't initialize NUMA support, error: {}\n", .{e});
+    if (EVAL_MODE == .nnue) {
+        nnue.init() catch |e| std.debug.panic("Fatal: couldn't initialize NNUE state, error: {}\n", .{e});
+    }
     if (!TOOLS_ONLY) {
-        engine.init() catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
+        engine.init(io_init) catch |e| std.debug.panic("Fatal: couldn't initialize the engine, error: {}\n", .{e});
     }
 }
 
-var init_once = std.once(initImpl);
+var init_mutex: std.Io.Mutex = .init;
+var inited = false;
 
-pub fn init() void {
-    init_once.call();
+pub fn init(io_init: std.Io) void {
+    init_mutex.lockUncancelable(io_init);
+    defer init_mutex.unlock(io_init);
+    if (inited) return;
+    initImpl(io_init);
+    inited = true;
 }
 
 fn deinitImpl() void {
     pyrrhic.deinit();
-    stdout_writer.interface.flush() catch std.debug.panic("failed to flush stdout", .{});
+    if (EVAL_MODE == .nnue) {
+        nnue.deinit();
+    }
+    numa.deinit();
+    stdout_writer.flush() catch std.debug.panic("failed to flush stdout", .{});
 }
 
-var deinit_once = std.once(deinitImpl);
+var deinit_mutex: std.Io.Mutex = .init;
+var deinited = false;
 
 pub fn deinit() void {
-    deinit_once.call();
+    deinit_mutex.lockUncancelable(io);
+    defer deinit_mutex.unlock(io);
+    if (deinited) return;
+    deinitImpl();
+    deinited = true;
 }
 
 pub const Square = enum(u8) {
@@ -295,6 +321,10 @@ pub const PieceType = enum(u8) {
             else => null,
         };
     }
+
+    pub inline fn withColour(self: PieceType, col: Colour) ColouredPieceType {
+        return ColouredPieceType.fromPieceType(self, col);
+    }
 };
 
 pub const ColouredPieceType = enum(u8) {
@@ -315,6 +345,8 @@ pub const ColouredPieceType = enum(u8) {
 
     white_king = 10,
     black_king = 11,
+
+    none = 12,
 
     pub inline fn fromInt(i: u8) ColouredPieceType {
         return @enumFromInt(i);
@@ -351,6 +383,10 @@ pub const ColouredPieceType = enum(u8) {
     pub inline fn toAsciiLetter(self: ColouredPieceType) u8 {
         const pt_char = self.toPieceType().toAsciiLetter();
         return if (self.toColour() == .white) std.ascii.toUpper(pt_char) else std.ascii.toLower(pt_char);
+    }
+
+    pub fn flipColor(self: ColouredPieceType) ColouredPieceType {
+        return .fromInt(self.toInt() ^ 1);
     }
 };
 
@@ -485,7 +521,7 @@ pub const TTEntry = extern struct {
             TUNABLE_CONSTANTS.ttpick_upper_weight,
             TUNABLE_CONSTANTS.ttpick_exact_weight,
         };
-        const type_val = (&TYPE_VALS)[@intFromEnum(self.flags.getScoreType())];
+        const type_val = TYPE_VALS[@intFromEnum(self.flags.getScoreType())];
         const move_val = TUNABLE_CONSTANTS.ttpick_move_weight * @intFromBool(!self.move.isNull());
         // _ = engine.dbg("tt value", depth_val - age_val + pv_val + move_val);
         // _ = engine.dbg("age", (32 + cur_age - self.flags.getAge() & 31));
@@ -544,8 +580,8 @@ pub const TTCluster = extern struct {
 
     inline fn proxy(self: *TTCluster, idx: usize) TTProxy {
         return .{
-            .entry = &(&self.entries)[idx],
-            .hash = &(&self.hashes)[idx],
+            .entry = &self.entries[idx],
+            .hash = &self.hashes[idx],
         };
     }
 
@@ -564,7 +600,7 @@ pub const TTCluster = extern struct {
         const data: TTEntry = if (idx == 3)
             .{}
         else
-            (&self.entries)[idx];
+            self.entries[idx];
         return .{ data, idx != 3 };
     }
 
@@ -575,7 +611,7 @@ pub const TTCluster = extern struct {
         }
 
         var best_entry: u32 = 0;
-        var best_value: i32 = (&self.entries)[best_entry].getValue(cur_age);
+        var best_value: i32 = self.entries[best_entry].getValue(cur_age);
 
         inline for (&self.entries, 0..) |*entry, i| {
             const value = entry.getValue(cur_age);
@@ -594,18 +630,20 @@ comptime {
     assert(@sizeOf(TTCluster) == 32);
 }
 
-pub var stdout_writer: std.fs.File.Writer = undefined;
+pub var io: std.Io = undefined;
+var stdout_wrapper: std.Io.File.Writer = undefined;
+pub var stdout_writer: *std.Io.Writer = undefined;
 var stdout_buf: [4096]u8 = undefined;
-var stdout: std.fs.File = undefined;
-var write_mutex: std.Thread.Mutex = .{};
+var stdout: std.Io.File = undefined;
+var write_mutex: std.Io.Mutex = .init;
 pub fn write(comptime fmt: []const u8, args: anytype) void {
-    write_mutex.lock();
-    defer write_mutex.unlock();
+    write_mutex.lockUncancelable(io);
+    defer write_mutex.unlock(io);
 
-    stdout_writer.interface.print(fmt, args) catch |e| {
+    stdout_writer.print(fmt, args) catch |e| {
         std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
     };
-    stdout_writer.interface.flush() catch |e| {
+    stdout_writer.flush() catch |e| {
         std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
     };
 }
@@ -618,7 +656,13 @@ pub fn isConstPointer(comptime T: type) bool {
 }
 
 pub fn inheritConstness(comptime Base: type, comptime Pointer: type) type {
-    comptime var ptr_attrs = @typeInfo(Pointer).pointer;
-    ptr_attrs.is_const = @typeInfo(Base).pointer.is_const;
-    return @Type(.{ .pointer = ptr_attrs });
+    const info = @typeInfo(Pointer).pointer;
+    const is_const = if (@typeInfo(Base) == .pointer) @typeInfo(Base).pointer.is_const else false;
+    return @Pointer(info.size, .{
+        .@"const" = is_const,
+        .@"volatile" = info.is_volatile,
+        .@"allowzero" = info.is_allowzero,
+        .@"align" = info.alignment,
+        .@"addrspace" = info.address_space,
+    }, info.child, info.sentinel());
 }

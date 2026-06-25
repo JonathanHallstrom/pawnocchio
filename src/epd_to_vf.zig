@@ -19,7 +19,7 @@ const std = @import("std");
 const root = @import("root.zig");
 const Board = root.Board;
 const viriformat = root.viriformat;
-const Game = viriformat.Game;
+const Game = viriformat.GameRecord;
 const File = root.File;
 const Rank = root.Rank;
 const Square = root.Square;
@@ -71,22 +71,25 @@ inline fn parseLine(line: []const u8) !struct { Board, i16, WDL } {
 }
 
 pub fn convert(
+    io: std.Io,
+    allocator: std.mem.Allocator,
     input: *std.Io.Reader,
     output: *std.Io.Writer,
     skip_broken_games: bool,
     white_relative_scores: bool,
-    allocator: std.mem.Allocator,
 ) !void {
     var position_count: u64 = 0;
-    var timer = try std.time.Timer.start();
-    var game: viriformat.Game = .from(Board{}, allocator);
+    const start_time = std.Io.Timestamp.now(io, .awake);
+    var game: viriformat.GameRecord = .from(Board{}, allocator);
     var board: Board = .{};
     var num_broken_games: u64 = 0;
     var num_okay_games: u64 = 0;
     // var previous_hashes = root.BoundedArray(u64, 200){};
     while (try input.takeDelimiter('\n')) |line| {
         if (position_count % 1000 == 0) {
-            std.debug.print("{}pos/s {}pos        \r", .{ position_count * std.time.ns_per_s / timer.read(), position_count });
+            const now = std.Io.Timestamp.now(io, .awake);
+            const elapsed_time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
+            std.debug.print("{}pos/s {}pos        \r", .{ position_count * std.time.ns_per_s / @max(1, elapsed_time), position_count });
         }
         const parsed_board, const score, const wdl = parseLine(line) catch |e| if (skip_broken_games) {
             std.debug.print("skipping '{s}'\n", .{line});
@@ -97,34 +100,16 @@ pub fn convert(
 
         defer board = parsed_board;
         if (getConnectingMove(&board, &parsed_board)) |connecting_move| {
-            // root.engine.searchers[0].tt = root.engine.tt;
-            // root.engine.searchers[0].startSearch(.{
-            //     .board = parsed_board,
-            //     .limits = .initFixedDepth(3),
-            //     .needs_full_reset = true,
-            //     .minimal = true,
-            //     .normalize = true,
-            //     .previous_hashes = .{},
-            // }, true, true);
             const white_relative_score = if (white_relative_scores)
                 score
             else
                 (if (parsed_board.stm == .white) score else -score);
             try game.addMove(connecting_move, white_relative_score);
-            // if (board.isNoisy(connecting_move) or board.pieceOn(connecting_move.to()) == .pawn) {
-            //     previous_hashes.clear();
-            // }
-            // previous_hashes.appendAssumeCapacity(parsed_board.hash);
-            // const pawnocchio_score =
-            //     root.engine.searchers[0].full_width_score_normalized;
-            // std.debug.print("{} {}\n", .{ stm_score, pawnocchio_score });
         } else {
             num_okay_games += 1;
             if (game.moves.items.len > 0) {
                 try game.serializeInto(output);
             }
-            // previous_hashes.clear();
-            // previous_hashes.appendAssumeCapacity(parsed_board.hash);
             game.reset(parsed_board);
             game.setOutCome(wdl);
         }
@@ -134,7 +119,8 @@ pub fn convert(
         num_okay_games += 1;
     }
 
-    const elapsed = timer.read();
+    const now = std.Io.Timestamp.now(io, .awake);
+    const elapsed_time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
 
     try output.flush();
     std.debug.print(
@@ -143,7 +129,7 @@ pub fn convert(
         \\parsed games: {}
         \\total games: {}
         \\total positions: {}
-        \\time taken: {D}
+        \\time taken: {}ns
         \\positions/s: {}
         \\
     , .{
@@ -151,7 +137,7 @@ pub fn convert(
         num_okay_games,
         num_broken_games + num_okay_games,
         position_count,
-        elapsed,
-        position_count * @as(u128, std.time.ns_per_s) / elapsed,
+        elapsed_time,
+        position_count * @as(u128, std.time.ns_per_s) / @max(1, elapsed_time),
     });
 }

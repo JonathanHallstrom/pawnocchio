@@ -14,13 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const cpu = @import("builtin").cpu;
-const LLVM_NAME = cpu.model.llvm_name orelse "";
-const USE_PEXT = std.Target.x86.featureSetHas(cpu.model.features, .bmi2) and
-    !std.mem.eql(u8, "znver1", LLVM_NAME) and
-    !std.mem.eql(u8, "znver2", LLVM_NAME);
-pub const attack_impl = if (USE_PEXT)
+const simd = @import("simd.zig");
+pub const attack_impl = if (simd.HAS_PEXT)
     @import("pext.zig")
 else
     @import("magics.zig");
@@ -28,3 +23,7 @@ pub const AttackEntry = attack_impl.AttackEntry;
 pub const init = attack_impl.init;
 pub const bishopAttacks = attack_impl.getBishopAttacks;
 pub const rookAttacks = attack_impl.getRookAttacks;
+
+pub inline fn queenAttacks(square: anytype, blockers: u64) u64 {
+    return bishopAttacks(square, blockers) | rookAttacks(square, blockers);
+}

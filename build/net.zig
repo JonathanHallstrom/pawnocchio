@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const EvalMode = @import("../src/eval_mode.zig").EvalMode;
-const nnue_arch = @import("../src/nnue_arch.zig");
+const nnue_arch = @import("../src/nnue/arch.zig");
 
 pub const Input = union(enum) {
     hce,
@@ -21,7 +21,7 @@ pub fn addTransformTool(b: *std.Build) *std.Build.Step.Compile {
         }),
     });
     exe.root_module.addImport("nnue_arch", b.createModule(.{
-        .root_source_file = b.path("src/nnue_arch.zig"),
+        .root_source_file = b.path("src/build_arch.zig"),
     }));
     return exe;
 }
@@ -49,6 +49,7 @@ pub fn addOptions(
     b: *std.Build,
     version: []const u8,
     use_tbs: bool,
+    use_numa: bool,
     tools_only: bool,
     eval_mode: EvalMode,
     input: Input,
@@ -56,6 +57,7 @@ pub fn addOptions(
     const options = b.addOptions();
     options.addOption([]const u8, "version_string", version);
     options.addOption(bool, "use_tbs", use_tbs);
+    options.addOption(bool, "use_numa", use_numa);
     options.addOption(bool, "tools_only", tools_only);
     options.addOption([]const u8, "eval", @tagName(eval_mode));
     options.addOption([]const u8, "eval_identifier", switch (input) {

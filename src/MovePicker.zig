@@ -17,6 +17,7 @@
 const std = @import("std");
 
 const root = @import("root.zig");
+const simd = root.simd;
 
 const Move = root.Move;
 const Board = root.Board;
@@ -42,6 +43,7 @@ skip_quiets: bool,
 ttmove: Move,
 prev_move: Move,
 last_bad_noisy: usize = 0,
+probcut_threshold: ?i32,
 
 pub const Stage = enum {
     tt,
@@ -77,6 +79,7 @@ pub fn init(
         .skip_quiets = false,
         .ttmove = ttmove_,
         .prev_move = prev_move_,
+        .probcut_threshold = null,
     };
 }
 
@@ -104,6 +107,29 @@ pub fn initQs(
         .skip_quiets = skip_quiets,
         .ttmove = ttmove_,
         .prev_move = prev_move_,
+        .probcut_threshold = null,
+    };
+}
+
+pub fn initProbcut(
+    movelist_: *MoveReceiver,
+    scores_: [*]i32,
+    ttmove_: Move,
+    prev_move_: Move,
+    threshold: i32,
+) MovePicker {
+    movelist_.vals.len = 0;
+    const stage: Stage = if (ttmove_.isNull()) .generate_noisies else .tt;
+    return .{
+        .movelist = movelist_,
+        .scores = scores_,
+        .first = 0,
+        .last = 0,
+        .stage = stage,
+        .skip_quiets = true,
+        .ttmove = ttmove_,
+        .prev_move = prev_move_,
+        .probcut_threshold = threshold,
     };
 }
 
@@ -111,44 +137,45 @@ pub fn deinit(self: MovePicker) void {
     self.movelist.vals.len = 0;
 }
 
-fn packScore(score: i32, idx: usize) u32 {
-    const score_u32: u32 = @intCast(score + (1 << 20));
-    return @intCast(score_u32 << 8 | idx);
+fn packScore(score: i32, idx: u32) i32 {
+    return score << 8 | @as(i32, @intCast(idx));
 }
 
-fn packScores(comptime N: usize, scores: @Vector(N, i32), indices: @Vector(N, u32)) @Vector(N, u32) {
-    const offset: @Vector(N, i32) = @splat(1 << 20);
-    const scores_u32: @Vector(N, u32) = @intCast(scores + offset);
-    return scores_u32 << @splat(8) | indices;
+fn packScores(comptime N: usize, scores: @Vector(N, i32), indices: @Vector(N, i32)) @Vector(N, i32) {
+    return scores << @splat(8) | indices;
 }
 
 noinline fn findBest(noalias self: *MovePicker) usize {
     const moves = self.movelist.vals.slice()[self.first..self.last];
-    const scores = self.scores[self.first..self.last];
+    const len = self.last - self.first;
+    const scores = self.scores[self.first..];
 
-    const UNROLL = std.simd.suggestVectorLength(u32) orelse 1;
-    var best_vec: @Vector(UNROLL, u32) = @splat(0);
+    var best: i32 = std.math.minInt(i32);
 
-    var i: u32 = 0;
-    var indices = std.simd.iota(u32, UNROLL);
-    while (i + UNROLL <= scores.len) : ({
-        i += UNROLL;
-        indices += @splat(UNROLL);
-    }) {
-        best_vec = @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices));
+    if (std.simd.suggestVectorLength(i32)) |UNROLL| {
+        var best_vec: @Vector(UNROLL, i32) = @splat(std.math.minInt(i32));
+        var iter = simd.indexedChunkIter(i32, UNROLL, scores[0..len]);
+        while (iter.fullChunk()) |c| {
+            best_vec = @max(best_vec, packScores(UNROLL, c.data, c.indices));
+        }
+        {
+            var c = iter.tail();
+            c.data = packScores(UNROLL, c.data, c.indices);
+            best_vec = @max(best_vec, c.select(best_vec));
+        }
+        best = @reduce(.Max, best_vec) & 0xff;
+    } else {
+        var i: usize = 0;
+        while (i < len) : (i += 1) {
+            best = @max(best, packScore(scores[i], i));
+        }
     }
 
-    var best: u32 = @reduce(.Max, best_vec);
-    while (i < scores.len) : (i += 1) {
-        best = @max(best, packScore(scores[i], i));
-    }
+    const best_idx: usize = @intCast(best);
 
-    const best_idx: usize = best & 0xff;
+    std.mem.swap(Move, &moves[0], &moves[best_idx]);
+    std.mem.swap(i32, &scores[0], &scores[best_idx]);
 
-    if (best_idx != 0) {
-        std.mem.swap(Move, &moves[0], &moves[best_idx]);
-        std.mem.swap(i32, &scores[0], &scores[best_idx]);
-    }
     const res = self.first;
     self.first += 1;
     return res;
@@ -176,28 +203,47 @@ inline fn quietValue(
     typed: TypedMove,
     danger_squares: *const [6]u64,
 ) i32 {
+    const from_danger_bonus = [6]i32{
+        root.TUNABLE_CONSTANTS.ord_from_danger_pawn_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_knight_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_bishop_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_rook_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_queen_bonus,
+        root.TUNABLE_CONSTANTS.ord_from_danger_king_bonus,
+    };
+    const to_danger_penalty = [6]i32{
+        root.TUNABLE_CONSTANTS.ord_to_danger_pawn_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_knight_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_bishop_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_rook_penalty,
+        root.TUNABLE_CONSTANTS.ord_to_danger_queen_penalty,
+        0,
+    };
+
     const terms = histories.readMoveTerms(board, typed, conthist_tables, true);
     var res = tuning.histQ(terms, tuning.quietHistoryWeights("ord"));
+    const piece_idx = typed.tp.toInt();
 
-    if (board.isDirectCheck(typed.move)) {
-        res += 5000;
+    if (board.givesDirectCheck(typed.move)) {
+        @branchHint(.unpredictable);
+        res += root.TUNABLE_CONSTANTS.ord_direct_check_bonus;
     }
 
-    const danger = danger_squares[typed.tp.toInt()];
+    const danger = danger_squares[piece_idx];
+    const danger_bonus = from_danger_bonus[piece_idx];
+    const danger_penalty = to_danger_penalty[piece_idx];
     if (root.Bitboard.contains(danger, typed.move.from())) {
         @branchHint(.unpredictable);
-        res += @max(2, typed.tp.toInt()) * @as(i32, 2000);
+        res += danger_bonus;
     }
 
     if (root.Bitboard.contains(danger, typed.move.to())) {
         @branchHint(.unpredictable);
-        res -= @max(2, typed.tp.toInt()) * @as(i32, 1000);
+        res -= danger_penalty;
     }
 
     return res;
 }
-
-const call_modifier: std.builtin.CallModifier = if (@import("builtin").mode == .Debug or @import("builtin").cpu.arch.isPowerPC()) .auto else .always_tail;
 
 pub fn next(
     noalias self: *MovePicker,
@@ -240,6 +286,13 @@ pub fn next(
                 continue :sw .good_noisies;
             }
             const res = TypedMove.fromBoard(board, self.prev_move, move);
+            if (self.probcut_threshold) |threshold| {
+                if (SEE.scoreMove(board, res.move, threshold, .pruning)) {
+                    return res;
+                }
+                continue :sw .good_noisies;
+            }
+
             const history_score = histories.readNoisy(board, res);
             const margin = @divTrunc(-history_score * root.TUNABLE_CONSTANTS.good_noisy_ordering_mult, 32768) +
                 root.tuning.TUNABLE_CONSTANTS.good_noisy_ordering_base;
@@ -260,6 +313,9 @@ pub fn next(
             self.first = self.movelist.vals.len;
             movegen.generateAllQuiets(stm, board, self.movelist);
 
+            const all_threats = board.threatsFor(stm.flipped());
+            const defended = board.threatsFor(stm);
+            const undefended_threats = all_threats & ~defended;
             const pawn = board.threatsBy(stm.flipped(), .pawn);
             const knight = board.threatsBy(stm.flipped(), .knight);
             const bishop = board.threatsBy(stm.flipped(), .bishop);
@@ -268,12 +324,12 @@ pub fn next(
             const minor = pawn | knight | bishop;
             const major = minor | rook;
             const danger_squares: [6]u64 = .{
-                0,
+                undefended_threats,
                 pawn,
                 pawn,
                 minor,
                 major,
-                0,
+                all_threats,
             };
             for (self.movelist.vals.slice()[self.first..], 0..) |move, i| {
                 self.scores[self.first + i] = quietValue(

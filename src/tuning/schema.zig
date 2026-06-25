@@ -60,12 +60,45 @@ pub const ScalarTunable = struct {
             return m;
         }
         const range: f64 = @floatFromInt(self.getMax() - self.getMin());
-        return @max(0.5, range / 20.0);
+        return range / 20.0;
     }
 };
 
+pub const Literal = struct {
+    name: []const u8,
+    negated: bool = false,
+};
+
+pub const Constraint = struct {
+    lhs: Literal,
+    rhs: Literal,
+};
+
+fn asLiteral(value: anytype) Literal {
+    const T = @TypeOf(value);
+    return switch (T) {
+        Literal => value,
+        else => switch (@typeInfo(T)) {
+            .pointer, .array => .{ .name = value },
+            else => @compileError("expected a string-like value, Literal, or *const Literal"),
+        },
+    };
+}
+
+pub fn not(comptime name: []const u8) Literal {
+    return .{ .name = name, .negated = true };
+}
+
+pub fn implies(lhs: anytype, rhs: anytype) Constraint {
+    return .{
+        .lhs = asLiteral(lhs),
+        .rhs = asLiteral(rhs),
+    };
+}
+
 pub const FactorizedTunable = struct {
     inputs: []const []const u8,
+    constraints: []const Constraint = &.{},
     max_order: usize,
     min: i32,
     max: i32,
@@ -121,6 +154,15 @@ pub fn factorizedOrderFieldName(comptime order: usize) [:0]const u8 {
     return name[0..name.len :0];
 }
 
+pub fn factorizedInputIndex(spec: FactorizedTunable, name: []const u8) usize {
+    for (spec.inputs, 0..) |input, i| {
+        if (std.mem.eql(u8, input, name)) {
+            return i;
+        }
+    }
+    std.debug.panic("unknown factorized input '{s}'", .{name});
+}
+
 fn choose(n: usize, k: usize) usize {
     var result: usize = 1;
     for (0..@min(k, n - k)) |i| {
@@ -145,6 +187,12 @@ pub const SCHEMA = .{
             "givescheck",
             "root",
             "2failhighs",
+        },
+        .constraints = &.{
+            implies("pv", "ttpv"),
+            implies("pv", not("cutnode")),
+            implies("cutnode", not("pv")),
+            implies("root", "pv"),
         },
         .max_order = 3,
         .min = -2048,
@@ -206,40 +254,52 @@ pub const SCHEMA = .{
     .ord_cont1_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
     .ord_cont2_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
     .ord_cont4_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .ord_direct_check_bonus = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
+    .ord_from_danger_pawn_bonus = scalar(.{ .min = 0, .max = 16384, .c_end = 512 }),
+    .ord_from_danger_knight_bonus = scalar(.{ .min = 0, .max = 16384, .c_end = 512 }),
+    .ord_from_danger_bishop_bonus = scalar(.{ .min = 0, .max = 16384, .c_end = 512 }),
+    .ord_from_danger_rook_bonus = scalar(.{ .min = 0, .max = 16384, .c_end = 512 }),
+    .ord_from_danger_queen_bonus = scalar(.{ .min = 0, .max = 16384, .c_end = 512 }),
+    .ord_from_danger_king_bonus = scalar(.{ .min = 0, .max = 16384, .c_end = 512 }),
+    .ord_to_danger_pawn_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
+    .ord_to_danger_knight_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
+    .ord_to_danger_bishop_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
+    .ord_to_danger_rook_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
+    .ord_to_danger_queen_penalty = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
 
-    .rfp_hist_quiet_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .rfp_hist_pawn_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .rfp_hist_cont1_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .rfp_hist_cont2_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .rfp_hist_cont4_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .rfp_hist_noisy_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
+    .rfp_hist_quiet_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .rfp_hist_pawn_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .rfp_hist_cont1_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .rfp_hist_cont2_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .rfp_hist_cont4_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .rfp_hist_noisy_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
 
-    .lmr_depth_hist_quiet_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_depth_hist_pawn_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_depth_hist_cont1_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_depth_hist_cont2_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_depth_hist_cont4_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_depth_hist_noisy_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
+    .lmr_depth_hist_quiet_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_depth_hist_pawn_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_depth_hist_cont1_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_depth_hist_cont2_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_depth_hist_cont4_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_depth_hist_noisy_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
 
-    .lmr_hist_quiet_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_hist_pawn_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_hist_cont1_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_hist_cont2_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_hist_cont4_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .lmr_hist_noisy_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
+    .lmr_hist_quiet_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_hist_pawn_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_hist_cont1_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_hist_cont2_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_hist_cont4_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .lmr_hist_noisy_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
 
-    .fp_hist_quiet_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .fp_hist_pawn_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .fp_hist_cont1_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .fp_hist_cont2_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .fp_hist_cont4_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
+    .fp_hist_quiet_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .fp_hist_pawn_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .fp_hist_cont1_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .fp_hist_cont2_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .fp_hist_cont4_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
 
-    .hp_hist_quiet_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .hp_hist_pawn_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .hp_hist_cont1_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .hp_hist_cont2_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .hp_hist_cont4_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
-    .hp_hist_noisy_weight = scalar(.{ .min = -2048, .max = 2048, .c_end = 128 }),
+    .hp_hist_quiet_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .hp_hist_pawn_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .hp_hist_cont1_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .hp_hist_cont2_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .hp_hist_cont4_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
+    .hp_hist_noisy_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
 
     .rfp_min_margin = scalar(.{}),
     .rfp_base = scalar(.{}),
@@ -280,6 +340,7 @@ pub const SCHEMA = .{
     .lmr_ttpv_score = scalar(.{}),
     .lmr_dodeeper_margin = scalar(.{}),
     .lmr_dodeeper_mult = scalar(.{}),
+    .lmr_do_even_deeper_margin = scalar(.{}),
     .lmr_doshallower_margin = scalar(.{}),
     .lmr_doshallower_mult = scalar(.{}),
 
@@ -288,6 +349,10 @@ pub const SCHEMA = .{
     .nmp_margin_mult = scalar(.{}),
     .nmp_base = scalar(.{}),
     .nmp_mult = scalar(.{}),
+
+    .probcut_margin = scalar(.{}),
+    .probcut_improving_margin = scalar(.{}),
+    .probcut_see_mult = scalar(.{}),
 
     .fp_depth_limit = scalar(.{}),
     .fp_base = scalar(.{}),
@@ -300,12 +365,12 @@ pub const SCHEMA = .{
     .bnfp_depth_limit = scalar(.{}),
     .bnfp_base = scalar(.{}),
     .bnfp_mult = scalar(.{}),
-    .bnfp_captured = scalar(.{ .default = 1024 }),
+    .bnfp_captured = scalar(.{}),
 
     .see_quiet_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 20 }),
     .see_noisy_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 5 }),
-    .see_quiet_pruning_mult = scalar(.{ .c_end = 5 }),
-    .see_noisy_pruning_mult = scalar(.{ .min = -10, .max = 10, .c_end = 5 }),
+    .see_quiet_pruning_mult = scalar(.{ .c_end = 5, .min = -20, .max = 20 }),
+    .see_noisy_pruning_mult = scalar(.{ .c_end = 5, .min = -20, .max = 20 }),
     .see_quiet_pruning_quad = scalar(.{}),
     .see_noisy_pruning_quad = scalar(.{}),
     .see_pv_offs = scalar(.{}),
@@ -316,15 +381,15 @@ pub const SCHEMA = .{
     .razoring_easy_capture = scalar(.{ .min = -1024, .max = 1024, .c_end = 10 }),
 
     .history_pruning_depth_limit = scalar(.{}),
-    .history_pruning_offs = scalar(.{ .min = -2048, .max = 1024, .c_end = 128 }),
-    .history_pruning_mult = scalar(.{ .min = -7382, .max = 9, .c_end = 294 }),
+    .history_pruning_offs = scalar(.{}),
+    .history_pruning_mult = scalar(.{}),
 
     .noisy_history_pruning_depth_limit = scalar(.{}),
-    .noisy_history_pruning_offs = scalar(.{ .min = -2048, .max = 1024, .c_end = 128 }),
+    .noisy_history_pruning_offs = scalar(.{}),
     .noisy_history_pruning_mult = scalar(.{}),
 
-    .qs_futility_margin = scalar(.{ .min = -10, .max = 305, .c_end = 11 }),
-    .qs_hp_margin = scalar(.{ .min = -6000, .max = 0, .c_end = 400 }),
+    .qs_futility_margin = scalar(.{}),
+    .qs_hp_margin = scalar(.{}),
     .qs_see_threshold = scalar(.{}),
     .qs_alpha_eval_diff_mult = scalar(.{ .default = 128, .min = -1024, .max = 1024, .c_end = 64 }),
 
@@ -347,6 +412,7 @@ pub const SCHEMA = .{
     .lmp_improving_linear_mult = scalar(.{ .min = -1024, .max = 1024, .c_end = 50 }),
     .lmp_standard_quadratic_mult = scalar(.{ .min = -10, .max = 2177, .c_end = 40 }),
     .lmp_improving_quadratic_mult = scalar(.{ .min = -10, .max = 2717, .c_end = 100 }),
+    .lmp_direct_check_bonus = scalar(.{ .default = 1024, .min = 0, .max = 4096, .c_end = 128 }),
 
     .good_noisy_ordering_base = scalar(.{ .min = -2048, .max = 2048, .c_end = 32 }),
     .good_noisy_ordering_mult = scalar(.{ .min = -10, .max = 2570, .c_end = 102 }),
@@ -370,27 +436,24 @@ pub const SCHEMA = .{
     .material_scaling_bishop = scalar(.{}),
     .material_scaling_rook = scalar(.{}),
     .material_scaling_queen = scalar(.{}),
-    .optimism_root_mult = scalar(.{}),
-    .optimism_root_offs = scalar(.{}),
-    .optimism_eval_base = scalar(.{}),
-    .optimism_eval_material_mult = scalar(.{}),
 
     .rfp_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .tt_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .qs_tt_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .standpat_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .qs_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
+    .probcut_fail_medium = scalar(.{ .min = 0, .max = 1024, .c_end = 128 }),
     .nodetm_base = scalar(.{ .min = 1024, .c_end = 40 }),
     .nodetm_mult = scalar(.{ .min = 10, .c_end = 25 }),
 
     .eval_stab_margin = scalar(.{ .min = 1, .c_end = 0.5 }),
     .eval_stab_base = scalar(.{ .min = 10, .c_end = 30 }),
-    .eval_stab_offs = scalar(.{ .min = 10, .c_end = 1 }),
+    .eval_stab_offs = scalar(.{ .min = 10, .c_end = 2.5 }),
     .eval_stab_lim = scalar(.{ .min = 10, .c_end = 20 }),
     .move_stab_base = scalar(.{ .min = 10, .c_end = 30 }),
-    .move_stab_offs = scalar(.{ .min = 10, .c_end = 1 }),
+    .move_stab_offs = scalar(.{ .min = 10, .c_end = 2.5 }),
     .move_stab_lim = scalar(.{ .min = 10, .c_end = 20 }),
-    .soft_limit_base = scalar(.{ .min = 10, .c_end = 1 }),
+    .soft_limit_base = scalar(.{ .min = 10, .c_end = 2.5 }),
     .soft_limit_incr = scalar(.{ .min = 10, .c_end = 15 }),
     .hard_limit_phase_mult = scalar(.{ .min = 10, .c_end = 3 }),
     .hard_limit_base = scalar(.{ .min = 10, .c_end = 5 }),
@@ -400,12 +463,12 @@ pub const SCHEMA = .{
     .singular_beta_ttpv_mult = scalar(.{ .min = 10, .max = 992, .c_end = 39 }),
     .singular_depth_mult = scalar(.{ .min = 10, .max = 1565, .c_end = 62 }),
     .singular_depth_offs = scalar(.{ .min = 10, .max = 1837, .c_end = 73 }),
-    .singular_dext_margin_quiet = scalar(.{ .min = 0, .max = 17, .c_end = 1 }),
-    .singular_dext_margin_noisy = scalar(.{ .min = 0, .max = 15, .c_end = 1 }),
-    .singular_dext_pv_margin = scalar(.{ .min = 0, .max = 23, .c_end = 1 }),
-    .singular_text_margin_quiet = scalar(.{ .min = 0, .max = 74, .c_end = 5 }),
-    .singular_text_margin_noisy = scalar(.{ .min = 0, .max = 81, .c_end = 5 }),
-    .singular_text_pv_margin = scalar(.{ .min = 0, .max = 508, .c_end = 25 }),
+    .singular_dext_margin_quiet = scalar(.{ .min = 0, .max = 16, .c_end = 1 }),
+    .singular_dext_margin_noisy = scalar(.{ .min = 0, .max = 14, .c_end = 1 }),
+    .singular_dext_pv_margin = scalar(.{ .min = 0, .max = 22, .c_end = 1 }),
+    .singular_text_margin_quiet = scalar(.{ .min = 0, .max = 70, .c_end = 5 }),
+    .singular_text_margin_noisy = scalar(.{ .min = 0, .max = 76, .c_end = 5 }),
+    .singular_text_pv_margin = scalar(.{ .min = 0, .max = 507, .c_end = 25 }),
 
     .ttpick_depth_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
     .ttpick_age_weight = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),

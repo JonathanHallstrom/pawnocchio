@@ -22,6 +22,7 @@ const Rank = root.Rank;
 const File = root.File;
 const Square = root.Square;
 const Colour = root.Colour;
+const Move = root.Move;
 
 raw: u16,
 
@@ -31,6 +32,15 @@ pub const WHITE_KINGSIDE_CASTLE: u8 = 1;
 pub const BLACK_KINGSIDE_CASTLE: u8 = 2;
 pub const WHITE_QUEENSIDE_CASTLE: u8 = 4;
 pub const BLACK_QUEENSIDE_CASTLE: u8 = 8;
+
+pub const KINGSIDE_KING_FILE = File.g;
+pub const QUEENSIDE_KING_FILE = File.c;
+pub const KINGSIDE_ROOK_FILE = File.f;
+pub const QUEENSIDE_ROOK_FILE = File.d;
+
+const KINGSIDE_MASK: u16 = 0b0011;
+const QUEENSIDE_MASK: u16 = 0b1100;
+const BOTH_MASK: u16 = 0b0101;
 
 pub fn init() CastlingRights {
     return .{
@@ -100,12 +110,12 @@ pub fn queensideRookFileFor(self: CastlingRights, col: Colour) File {
     }
 }
 
-pub inline fn startingRankFor(_: CastlingRights, col: Colour) Rank {
+pub inline fn startingRankFor(col: Colour) Rank {
     return if (col == .white) .first else .eighth;
 }
 
 pub inline fn kingMoved(self: *CastlingRights, col: Colour) void {
-    self.raw &= ~(@as(u16, 0b101) << @intCast(col.toInt()));
+    self.raw &= ~(@as(u16, BOTH_MASK) << @intCast(col.toInt()));
 }
 
 pub inline fn updateSquare(
@@ -113,8 +123,8 @@ pub inline fn updateSquare(
     sq: Square,
     col: Colour,
 ) void {
-    const queenside_rook_sq = Square.fromRankFile(self.startingRankFor(col), self.queensideRookFileFor(col));
-    const kingside_rook_sq = Square.fromRankFile(self.startingRankFor(col), self.kingsideRookFileFor(col));
+    const queenside_rook_sq = Square.fromRankFile(startingRankFor(col), self.queensideRookFileFor(col));
+    const kingside_rook_sq = Square.fromRankFile(startingRankFor(col), self.kingsideRookFileFor(col));
 
     var kingside_rook_mask: u16 = @intFromBool(sq == kingside_rook_sq);
     kingside_rook_mask <<= @intCast(col.toInt());
@@ -123,4 +133,43 @@ pub inline fn updateSquare(
     queenside_rook_mask <<= @intCast(col.toInt() + 2);
 
     self.raw &= ~(kingside_rook_mask | queenside_rook_mask);
+}
+
+pub inline fn startingRankSquare(col: Colour, f: File) Square {
+    var res = Square.fromRankFile(startingRankFor(.black), f);
+    if (col == .white) {
+        @branchHint(.unpredictable);
+        res = Square.fromRankFile(startingRankFor(.white), f);
+    }
+    return res;
+}
+
+pub inline fn kingsideKingDestFor(col: Colour) Square {
+    return startingRankSquare(col, KINGSIDE_KING_FILE);
+}
+
+pub inline fn queensideKingDestFor(col: Colour) Square {
+    return startingRankSquare(col, QUEENSIDE_KING_FILE);
+}
+
+pub inline fn castlingKingDestFor(move: Move, col: Colour) Square {
+    return Square.fromRankFile(
+        startingRankFor(col),
+        if (move.isMoveLeft()) QUEENSIDE_KING_FILE else KINGSIDE_KING_FILE,
+    );
+}
+
+pub inline fn kingsideRookDestFor(col: Colour) Square {
+    return startingRankSquare(col, KINGSIDE_ROOK_FILE);
+}
+
+pub inline fn queensideRookDestFor(col: Colour) Square {
+    return startingRankSquare(col, QUEENSIDE_ROOK_FILE);
+}
+
+pub inline fn castlingRookDestFor(move: Move, col: Colour) Square {
+    return Square.fromRankFile(
+        startingRankFor(col),
+        if (move.isMoveLeft()) QUEENSIDE_ROOK_FILE else KINGSIDE_ROOK_FILE,
+    );
 }

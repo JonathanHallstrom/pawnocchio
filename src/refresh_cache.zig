@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-const std = @import("std");
 const root = @import("root.zig");
 const Board = root.Board;
 const Square = root.Square;
@@ -23,27 +22,16 @@ const Bitboard = root.Bitboard;
 const Colour = root.Colour;
 const nnue = root.nnue;
 
-inline fn copyAccumulator(noalias dst: [*]i16, noalias src: *const [nnue.L1_SIZE]i16) void {
-    const Vec = @Vector(nnue.vecSize(i16), i16);
-    const vec_len = nnue.L1_SIZE / nnue.vecSize(i16);
-    const src_vec: *const [vec_len]Vec = @ptrCast(@alignCast(src));
-    const dst_vec: *[vec_len]Vec = @ptrCast(@alignCast(dst));
-
-    for (0..vec_len) |i| {
-        dst_vec[i] = src_vec[i];
-    }
-}
-
 const NNCacheEntry = struct {
-    accumulator: [nnue.L1_SIZE]i16 align(64),
+    accumulator: nnue.Accumulator,
     pieces: [6]u64,
     sides: [2]u64,
 
-    fn refresh(noalias self: *NNCacheEntry, comptime stm: Colour, board: *const Board, noalias acc: [*]i16, mirror: nnue.MirroringType) void {
+    fn refresh(noalias self: *NNCacheEntry, weights: *const nnue.arch.Weights, stm: Colour, board: *const Board, mirror: nnue.MirroringType) *const nnue.Accumulator {
         const us_king = Square.fromBitboard(board.kingFor(stm));
-        var adds: [64]usize = undefined;
+        var adds: [32]*const nnue.arch.RawAccumulator = undefined;
         var num_adds: usize = 0;
-        var subs: [64]usize = undefined;
+        var subs: [32]*const nnue.arch.RawAccumulator = undefined;
         var num_subs: usize = 0;
         for (PieceType.all) |pt| {
             inline for ([2]Colour{ .white, .black }) |col| {
@@ -53,54 +41,23 @@ const NNCacheEntry = struct {
                 {
                     var iter = Bitboard.iterator(current & ~cached);
                     while (iter.next()) |sq| {
-                        const add_idx = nnue.idx(stm, col, us_king, pt, sq, mirror);
-                        adds[num_adds] = add_idx;
+                        adds[num_adds] = nnue.feature(weights, stm, us_king, .psqt, .init(col, pt, sq), mirror);
                         num_adds += 1;
                     }
                 }
                 {
                     var iter = Bitboard.iterator(~current & cached);
                     while (iter.next()) |sq| {
-                        const sub_idx = nnue.idx(stm, col, us_king, pt, sq, mirror);
-                        subs[num_subs] = sub_idx;
+                        subs[num_subs] = nnue.feature(weights, stm, us_king, .psqt, .init(col, pt, sq), mirror);
                         num_subs += 1;
                     }
                 }
             }
         }
-        while (num_adds >= 4) : (num_adds -= 4) {
-            for (0..nnue.L1_SIZE) |i| {
-                self.accumulator[i] +=
-                    (&nnue.weights.ft_w)[adds[num_adds - 4] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[adds[num_adds - 3] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[adds[num_adds - 2] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[adds[num_adds - 1] * nnue.L1_SIZE + i];
-            }
-        }
-        while (num_adds >= 1) : (num_adds -= 1) {
-            for (0..nnue.L1_SIZE) |i| {
-                self.accumulator[i] +=
-                    (&nnue.weights.ft_w)[adds[num_adds - 1] * nnue.L1_SIZE + i];
-            }
-        }
-        while (num_subs >= 4) : (num_subs -= 4) {
-            for (0..nnue.L1_SIZE) |i| {
-                self.accumulator[i] -=
-                    (&nnue.weights.ft_w)[subs[num_subs - 4] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[subs[num_subs - 3] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[subs[num_subs - 2] * nnue.L1_SIZE + i] +
-                    (&nnue.weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
-            }
-        }
-        while (num_subs >= 1) : (num_subs -= 1) {
-            for (0..nnue.L1_SIZE) |i| {
-                self.accumulator[i] -=
-                    (&nnue.weights.ft_w)[subs[num_subs - 1] * nnue.L1_SIZE + i];
-            }
-        }
+        self.accumulator.addSubInPlace(adds[0..num_adds], subs[0..num_subs]);
         self.pieces = board.pieceBBs().*;
         self.sides = .{ board.white(), board.black() };
-        copyAccumulator(acc, &self.accumulator);
+        return &self.accumulator;
     }
 };
 
@@ -110,13 +67,15 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
         const Self = @This();
 
         data: if (empty) void else [2][@as(usize, 1) + @intFromBool(mirrored)][bucket_count]NNCacheEntry,
+        generation: [2]nnue.AccumulatorHalf.Generation,
 
-        pub fn initInPlace(self: *Self) void {
+        pub fn initInPlace(self: *Self, weights: *const nnue.arch.Weights) void {
+            self.generation = .{ 0, 0 };
             if (empty) return;
             for (&self.data) |*stm| {
                 for (stm) |*subarray| {
                     for (subarray) |*e| {
-                        @memcpy(&e.accumulator, &nnue.weights.ft_b);
+                        @memcpy(&e.accumulator.data, &weights.input.ft_b);
                         @memset(&e.pieces, 0);
                         @memset(&e.sides, 0);
                     }
@@ -124,13 +83,22 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             }
         }
 
-        pub inline fn refresh(noalias self: *Self, comptime stm: Colour, board: *const Board, acc: [*]i16) void {
-            if (empty) return;
-            const bucket = nnue.whichInputBucket(stm, Square.fromBitboard(board.kingFor(stm)));
+        pub inline fn refresh(noalias self: *Self, weights: *const nnue.arch.Weights, stm: Colour, board: *const Board) nnue.AccumulatorHalf {
+            if (empty) unreachable;
+            self.generation[stm.toInt()] += 1;
+            const king_sq = Square.fromBitboard(board.kingFor(stm));
+            const bucket = nnue.arch.whichInputBucket((if (stm == .white) king_sq else king_sq.flipRank()).toInt());
             var mirror: nnue.MirroringType = undefined;
             mirror.write(Square.fromBitboard(board.kingFor(stm)).getFile().toInt() >= 4);
             const mirror_idx = if (mirrored) @intFromBool(mirror.read()) else 0;
-            return (&self.data)[stm.toInt()][mirror_idx][bucket].refresh(stm, board, acc, mirror);
+            return .{
+                .ptr = self.data[stm.toInt()][mirror_idx][bucket].refresh(weights, stm, board, mirror),
+                .generation = self.generation[stm.toInt()],
+            };
+        }
+
+        pub inline fn currentGeneration(self: *const Self, stm: Colour) nnue.AccumulatorHalf.Generation {
+            return self.generation[stm.toInt()];
         }
     };
 }

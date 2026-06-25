@@ -18,20 +18,32 @@ const std = @import("std");
 const root = @import("root.zig");
 const Searcher = root.Searcher;
 const TTCluster = root.TTCluster;
+const history = root.history;
+
+const IS_LINUX_LIBC = @import("builtin").os.tag == .linux and @import("builtin").link_libc;
+const mman_c = if (IS_LINUX_LIBC) @cImport({
+    @cDefine("_GNU_SOURCE", "");
+    @cInclude("sys/mman.h");
+}) else void;
 const evaluation = root.evaluation;
+const numa = @import("numa.zig");
+const nnue = root.nnue;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
 fn adviseHugePages(p: anytype) !void {
     const bytes = std.mem.sliceAsBytes(p);
-    if (@import("builtin").os.tag == .linux and @import("builtin").link_libc) {
+    if (IS_LINUX_LIBC) {
         const ptr = @as([*]align(4096) u8, @alignCast(bytes.ptr));
-        try std.posix.madvise(ptr, bytes.len, @cImport({
-            @cDefine("_GNU_SOURCE", "");
-            @cInclude("sys/mman.h");
-        }).MADV_HUGEPAGE);
+        try std.posix.madvise(ptr, bytes.len, @as(u32, @intCast(mman_c.MADV_HUGEPAGE)));
     }
+}
+
+pub fn allocTT(allocator: std.mem.Allocator, bytes: usize) ![]align(MAX_ALIGN) TTCluster {
+    const slice = try allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), bytes / @sizeOf(TTCluster));
+    try adviseHugePages(slice);
+    return slice;
 }
 
 const ThreadAction = enum {
@@ -41,23 +53,59 @@ const ThreadAction = enum {
     exit,
 };
 
-fn pinCurrentThread(cpu: usize) !void {
-    if (@import("builtin").os.tag == .linux) {
-        var set: std.os.linux.cpu_set_t = std.mem.zeroes(std.os.linux.cpu_set_t);
+const CorrHistStore = struct {
+    single: ?*history.CorrectionHistoryTable = null,
+    per_node: numa.PerNode(history.CorrectionHistoryTable) = .{},
 
-        const word_bits = @bitSizeOf(usize);
-        const idx = cpu / word_bits;
-        const bit = cpu % word_bits;
+    fn init(allocator: std.mem.Allocator) !CorrHistStore {
+        var self: CorrHistStore = .{};
+        if (root.numa.enabled) {
+            try self.per_node.allocUndefinedToAll();
+            for (self.per_node.items.items) |ptr| {
+                ptr.reset();
+            }
+        } else {
+            const ptr = try allocator.create(history.CorrectionHistoryTable);
+            ptr.reset();
+            self.single = ptr;
+        }
 
-        set[idx] |= (@as(usize, 1) << @intCast(bit));
-
-        try std.os.linux.sched_setaffinity(0, &set);
+        return self;
     }
-}
+
+    fn deinit(self: *CorrHistStore, allocator: std.mem.Allocator) void {
+        if (self.single) |ptr| {
+            allocator.destroy(ptr);
+        }
+        self.single = null;
+        self.per_node.deinit();
+    }
+
+    fn get(self: *CorrHistStore, thread_idx: usize) *history.CorrectionHistoryTable {
+        if (root.numa.enabled) {
+            return self.per_node.get(numa.nodeForThread(thread_idx)) orelse unreachable;
+        }
+
+        return self.single orelse unreachable;
+    }
+
+    fn reset(self: *CorrHistStore) void {
+        if (root.numa.enabled) {
+            for (self.per_node.items.items) |ptr| {
+                ptr.reset();
+            }
+            return;
+        }
+
+        if (self.single) |ptr| {
+            ptr.reset();
+        }
+    }
+};
 
 const Thread = struct {
-    mutex: std.Thread.Mutex = .{},
-    cond: std.Thread.Condition = .{},
+    mutex: std.Io.Mutex = .init,
+    cond: std.Io.Condition = .init,
     action: ThreadAction = .sleep,
     exited: bool = false,
     tt: []TTCluster = &.{},
@@ -71,26 +119,33 @@ const Thread = struct {
 
     reset_tt_slice: []TTCluster = &.{},
     idx: usize,
+    correction_histories: *history.CorrectionHistoryTable = undefined,
+    io: std.Io,
 
-    pub fn init(allocator: std.mem.Allocator, searcher: *Searcher, idx: usize) !*Thread {
+    pub fn init(allocator: std.mem.Allocator, searcher: *Searcher, idx: usize, io: std.Io) !*Thread {
         const self = try allocator.create(Thread);
         self.* = .{
             .searcher = searcher,
             .thread = undefined,
             .idx = idx,
+            .io = io,
         };
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
         return self;
     }
 
     fn loop(self: *Thread) void {
+        numa.bindCurrentThread(self.idx) catch |err| {
+            std.log.debug("failed to bind search thread {} to NUMA node: {}", .{ self.idx, err });
+        };
+
         while (true) {
-            self.mutex.lock();
+            self.mutex.lockUncancelable(self.io);
             while (self.action == .sleep) {
-                self.cond.wait(&self.mutex);
+                self.cond.waitUncancelable(self.io, &self.mutex);
             }
             const action = self.action;
-            self.mutex.unlock();
+            self.mutex.unlock(self.io);
 
             if (action == .exit) break;
 
@@ -99,10 +154,9 @@ const Thread = struct {
                     self.searcher.startSearch(self.search_params, self.search_main, self.search_quiet);
                 },
                 .reset => {
-                    // pinCurrentThread(self.idx) catch {};
                     @memset(std.mem.asBytes(self.searcher), 0);
-                    if (root.evaluation.EVAL_MODE == .nnue)
-                        self.searcher.refresh_cache.initInPlace();
+                    self.searcher.correction_histories = self.correction_histories;
+                    self.searcher.eval_context.initForThread(self.idx);
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
                     if (self.reset_tt_slice.len > 0) {
@@ -112,54 +166,58 @@ const Thread = struct {
                 else => {},
             }
 
-            self.mutex.lock();
+            self.mutex.lockUncancelable(self.io);
             self.action = .sleep;
-            self.cond.signal();
-            self.mutex.unlock();
+            self.cond.signal(self.io);
+            self.mutex.unlock(self.io);
         }
 
-        self.mutex.lock();
+        self.mutex.lockUncancelable(self.io);
         self.exited = true;
-        self.cond.signal();
-        self.mutex.unlock();
+        self.cond.signal(self.io);
+        self.mutex.unlock(self.io);
     }
 
     pub fn wake(self: *Thread, action: ThreadAction) void {
-        self.mutex.lock();
+        self.mutex.lockUncancelable(self.io);
         self.action = action;
-        self.mutex.unlock();
-        self.cond.signal();
+        self.mutex.unlock(self.io);
+        self.cond.signal(self.io);
     }
 
     pub fn blockUntilSleep(self: *Thread) void {
-        self.mutex.lock();
+        self.mutex.lockUncancelable(self.io);
         while (self.action != .sleep) {
-            self.cond.wait(&self.mutex);
+            self.cond.waitUncancelable(self.io, &self.mutex);
         }
-        self.mutex.unlock();
+        self.mutex.unlock(self.io);
     }
 
     pub fn signalAndAwaitShutdown(self: *Thread) void {
         self.wake(.exit);
-        self.mutex.lock();
+        self.mutex.lockUncancelable(self.io);
         while (!self.exited) {
-            self.cond.wait(&self.mutex);
+            self.cond.waitUncancelable(self.io, &self.mutex);
         }
-        self.mutex.unlock();
+        self.mutex.unlock(self.io);
         self.thread.join();
     }
 };
 
 pub const ThreadPool = struct {
-    threads: std.ArrayListUnmanaged(*Thread) = .{},
-    searchers: std.ArrayListUnmanaged(*Searcher) = .{},
+    threads: std.ArrayListUnmanaged(*Thread) = .empty,
+    searchers: std.ArrayListUnmanaged(*Searcher) = .empty,
     tt: []align(std.atomic.cache_line) TTCluster = &.{},
+    corrhists: CorrHistStore = .{},
     allocator: std.mem.Allocator,
+    io: std.Io,
     stop_searching: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
-    pub fn init(allocator: std.mem.Allocator) ThreadPool {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io) !ThreadPool {
         return .{
+            .corrhists = try CorrHistStore.init(allocator),
             .allocator = allocator,
+            .io = io,
         };
     }
 
@@ -167,6 +225,7 @@ pub const ThreadPool = struct {
         self.abort();
         self.threads.deinit(self.allocator);
         self.searchers.deinit(self.allocator);
+        self.corrhists.deinit(self.allocator);
         if (self.tt.len > 0) {
             self.allocator.free(self.tt);
         }
@@ -187,17 +246,13 @@ pub const ThreadPool = struct {
             searcher = @ptrCast(ptr);
             try adviseHugePages(ptr);
         }
-        @memset(std.mem.asBytes(searcher), 0);
-        if (evaluation.EVAL_MODE == .nnue) {
-            searcher.refresh_cache.initInPlace();
-        }
-        searcher.histories.reset();
-        searcher.tt = self.tt;
-
-        const thread = try Thread.init(self.allocator, searcher, self.threads.items.len);
+        const thread = try Thread.init(self.allocator, searcher, self.threads.items.len, self.io);
         thread.tt = self.tt;
+        thread.correction_histories = self.corrhists.get(self.threads.items.len);
         try self.threads.append(self.allocator, thread);
         try self.searchers.append(self.allocator, searcher);
+        thread.wake(.reset);
+        thread.blockUntilSleep();
     }
 
     pub fn removeThread(self: *ThreadPool) void {
@@ -224,11 +279,17 @@ pub const ThreadPool = struct {
         while (self.threads.items.len > count) {
             self.removeThread();
         }
-        for (self.searchers.items) |s| {
+        const age = self.searchers.items[0].ttage;
+        const id = self.searchers.items[0].search_id;
+        for (self.searchers.items, 0..) |s, i| {
+            s.ttage = age;
+            s.search_id = id;
             s.tt = self.tt;
+            s.correction_histories = self.corrhists.get(i);
         }
-        for (self.threads.items) |t| {
+        for (self.threads.items, 0..) |t, i| {
             t.tt = self.tt;
+            t.correction_histories = self.corrhists.get(i);
         }
     }
 
@@ -236,11 +297,7 @@ pub const ThreadPool = struct {
         if (self.tt.len > 0) {
             self.allocator.free(self.tt);
         }
-        const num_clusters = size_mb * (1024 * 1024) / @sizeOf(TTCluster);
-
-        const slice = try self.allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), num_clusters);
-        self.tt = slice;
-        try adviseHugePages(self.tt);
+        self.tt = try allocTT(self.allocator, size_mb * (1024 * 1024));
 
         for (self.searchers.items) |s| {
             s.tt = self.tt;
@@ -252,6 +309,7 @@ pub const ThreadPool = struct {
     }
 
     pub fn reset(self: *ThreadPool) void {
+        self.corrhists.reset();
         const num_threads = self.threads.items.len;
         if (num_threads == 0) {
             if (self.tt.len > 0) {
@@ -268,6 +326,10 @@ pub const ThreadPool = struct {
             t.wake(.reset);
         }
         self.blockUntilReady();
+    }
+
+    pub fn correctionHistoriesForThread(self: *ThreadPool, thread_idx: usize) *history.CorrectionHistoryTable {
+        return self.corrhists.get(thread_idx);
     }
 
     pub fn startSearch(self: *ThreadPool, params: Searcher.Params, quiet: bool) void {

@@ -21,12 +21,19 @@ const root = @import("root.zig");
 const Move = root.Move;
 const TUNABLE_CONSTANTS = root.TUNABLE_CONSTANTS;
 
-hard_time: u64 = 0, // must always have a hard time limit
+io: std.Io,
+hard_time: u64 = 0, // absolute nanoseconds
 soft_time: ?u64 = null,
 max_depth: ?i32 = null,
 soft_nodes: u64 = std.math.maxInt(u64),
 hard_nodes: u64 = std.math.maxInt(u64),
-timer: std.time.Timer,
+time: [2]u64 = .{std.math.maxInt(u64)} ** 2,
+inc: [2]u64 = .{0} ** 2,
+movestogo: ?u32 = null,
+nodes: ?u64 = null,
+movetime: ?u64 = null,
+infinite: bool = false,
+start_timestamp: std.Io.Timestamp,
 last_aspiration_print: u64 = 0,
 root_depth: i32 = 0,
 min_depth: i32 = 0,
@@ -35,36 +42,42 @@ min_score: i16 = std.math.minInt(i16),
 
 const Limits = @This();
 
-pub fn initStandard(board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
-    var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
-    const start_time = t.read();
+pub fn elapsed(self: *const Limits) u64 {
+    const now = std.Io.Timestamp.now(self.io, .awake);
+    const duration = self.start_timestamp.durationTo(now);
+    return @intCast(duration.nanoseconds);
+}
+
+pub fn initStandard(io: std.Io, board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
+    const start_time = std.Io.Timestamp.now(io, .awake);
     const hard_time = (remaining_ns -| overhead_ns) * @as(u128, @min(
         @as(u128, @intCast(TUNABLE_CONSTANTS.hard_limit_base + (TUNABLE_CONSTANTS.hard_limit_phase_mult * (32 -| board.phase()) >> 6))),
         1024,
     )) >> 10;
     const soft_time = (remaining_ns -| overhead_ns) * @as(u128, @intCast(TUNABLE_CONSTANTS.soft_limit_base)) + increment_ns * @as(u128, @intCast(TUNABLE_CONSTANTS.soft_limit_incr)) >> 10;
     return Limits{
-        .hard_time = @intCast(start_time + hard_time),
-        .soft_time = @intCast(start_time + soft_time),
-        .timer = t,
+        .io = io,
+        .hard_time = @intCast(hard_time),
+        .soft_time = @intCast(soft_time),
+        .start_timestamp = start_time,
     };
 }
 
-pub fn initFixedTime(ns: u64) Limits {
-    var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
-    const start_time = t.read();
+pub fn initFixedTime(io: std.Io, ns: u64) Limits {
+    const start_time = std.Io.Timestamp.now(io, .awake);
     return Limits{
-        .hard_time = start_time + ns,
-        .timer = t,
+        .io = io,
+        .hard_time = ns,
+        .start_timestamp = start_time,
     };
 }
 
-pub fn initFixedDepth(max_depth_: i32) Limits {
-    var t = std.time.Timer.start() catch std.debug.panic("Fatal: timer failed to start", .{});
-    const start_time = t.read();
+pub fn initFixedDepth(io: std.Io, max_depth_: i32) Limits {
+    const start_time = std.Io.Timestamp.now(io, .awake);
     return Limits{
-        .hard_time = start_time + std.time.ns_per_hour,
-        .timer = t,
+        .io = io,
+        .hard_time = std.time.ns_per_hour,
+        .start_timestamp = start_time,
         .max_depth = max_depth_,
     };
 }
@@ -77,7 +90,7 @@ pub inline fn checkSearch(self: *Limits, nodes: u64) bool {
         if (root.engine.shouldStopSearching()) {
             return true;
         }
-        if (self.timer.read() >= self.hard_time) {
+        if (self.elapsed() >= self.hard_time) {
             return true;
         }
     }
@@ -117,7 +130,7 @@ pub fn checkRoot(
             return true;
         }
     }
-    const curr_time = self.timer.read();
+    const curr_time = self.elapsed();
     if (curr_time >= self.hard_time) {
         return true;
     }
@@ -134,7 +147,7 @@ pub fn checkRootTime(
     best_move_count: u64,
     total_nodes: u64,
 ) bool {
-    const curr_time = self.timer.read();
+    const curr_time = self.elapsed();
     if (curr_time >= self.hard_time) {
         return true;
     }
@@ -145,16 +158,6 @@ pub fn checkRootTime(
         if (curr_time >= adjusted_limit) {
             return true;
         }
-    }
-    return false;
-}
-
-pub fn shouldPrintInfoInAspiration(self: *Limits) bool {
-    const cur_time = self.timer.read();
-    const elapsed_since_print = cur_time -| self.last_aspiration_print;
-    if (elapsed_since_print > std.time.ns_per_s) {
-        self.last_aspiration_print = cur_time;
-        return true;
     }
     return false;
 }

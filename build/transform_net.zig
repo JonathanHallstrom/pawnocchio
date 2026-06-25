@@ -5,8 +5,8 @@ fn usage() noreturn {
     std.process.fatal("usage: transform_net <target> <endian> <input> <output>", .{});
 }
 
-pub fn main() !void {
-    var args = try std.process.argsWithAllocator(std.heap.page_allocator);
+pub fn main(init: std.process.Init) !void {
+    var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
 
     _ = args.next() orelse unreachable;
@@ -23,21 +23,21 @@ pub fn main() !void {
         std.process.fatal("unknown endian '{s}'", .{endian_name});
     };
 
-    var input = try std.fs.cwd().openFile(input_path, .{});
-    defer input.close();
+    var input = try std.Io.Dir.cwd().openFile(init.io, input_path, .{});
+    defer input.close(init.io);
 
-    const weights = try std.heap.page_allocator.create(nnue_arch.Weights);
-    defer std.heap.page_allocator.destroy(weights);
+    const weights = try init.gpa.create(nnue_arch.Weights);
+    defer init.gpa.destroy(weights);
 
     const weights_bytes = std.mem.asBytes(weights);
-    const bytes_read = try input.readAll(weights_bytes);
+    const bytes_read = try input.readPositionalAll(init.io, weights_bytes, 0);
     if (bytes_read != weights_bytes.len) {
         std.process.fatal("short read from '{s}'", .{input_path});
     }
 
     nnue_arch.transformNetFor(target_kind, endian, weights);
 
-    var output = try std.fs.cwd().createFile(output_path, .{ .truncate = true });
-    defer output.close();
-    try output.writeAll(weights_bytes);
+    var output = try std.Io.Dir.cwd().createFile(init.io, output_path, .{ .truncate = true });
+    defer output.close(init.io);
+    try output.writeStreamingAll(init.io, weights_bytes);
 }

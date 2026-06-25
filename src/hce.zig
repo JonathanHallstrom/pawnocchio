@@ -336,11 +336,11 @@ pub inline fn readPieceSquareTable(col: Colour, pt: PieceType, square: Square) P
     return PACKED_TABLE[@as(usize, pt.toInt()) * 2 + col.toInt()][square.toInt()];
 }
 
-pub const State = struct {
+const Frame = struct {
     state: Packed,
     phase: u8,
 
-    pub fn init(board: *const Board) State {
+    pub fn init(board: *const Board) Frame {
         var state = Packed.from(0, 0);
 
         for (PieceType.all) |pt| {
@@ -356,59 +356,56 @@ pub const State = struct {
         };
     }
 
-    pub fn initInPlace(noalias self: *State, board: *const Board) void {
+    pub fn initInPlace(noalias self: *Frame, board: *const Board) void {
         self.* = init(board);
     }
 
-    pub fn update(self: *State, other: *const State, _: *const Board, _: anytype) void {
+    pub fn update(self: *Frame, other: *const Frame) void {
         self.* = other.*;
     }
 
-    pub fn add(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
-        self.state = self.state.add(readPieceSquareTable(col, pt, square));
-        self.phase += GAMEPHASE_INC[pt.toInt()];
+    pub fn add(self: *Frame, a: root.PSQTFeature) void {
+        self.state = self.state.add(readPieceSquareTable(a.col(), a.piece(), a.square()));
+        self.phase += GAMEPHASE_INC[a.piece().toInt()];
     }
 
-    pub fn sub(self: *State, comptime col: Colour, pt: PieceType, square: Square) void {
-        self.state = self.state.sub(readPieceSquareTable(col, pt, square));
-        self.phase -= GAMEPHASE_INC[pt.toInt()];
+    pub fn sub(self: *Frame, s: root.PSQTFeature) void {
+        self.state = self.state.sub(readPieceSquareTable(s.col(), s.piece(), s.square()));
+        self.phase -= GAMEPHASE_INC[s.piece().toInt()];
     }
 
-    pub fn addSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub_col: Colour, sub_pt: PieceType, sub_square: Square) void {
-        self.add(add_col, add_pt, add_square);
-        self.sub(sub_col, sub_pt, sub_square);
-    }
-
-    pub fn addSubSub(self: *State, comptime add_col: Colour, add_pt: PieceType, add_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
-        self.add(add_col, add_pt, add_square);
-        self.sub(sub1_col, sub1_pt, sub1_square);
-        self.sub(sub2_col, sub2_pt, sub2_square);
-    }
-
-    pub fn addAddSubSub(self: *State, comptime add1_col: Colour, add1_pt: PieceType, add1_square: Square, comptime add2_col: Colour, add2_pt: PieceType, add2_square: Square, comptime sub1_col: Colour, sub1_pt: PieceType, sub1_square: Square, comptime sub2_col: Colour, sub2_pt: PieceType, sub2_square: Square) void {
-        self.add(add1_col, add1_pt, add1_square);
-        self.add(add2_col, add2_pt, add2_square);
-        self.sub(sub1_col, sub1_pt, sub1_square);
-        self.sub(sub2_col, sub2_pt, sub2_square);
-    }
-
-    pub fn eval(self: State) i16 {
+    pub fn eval(self: Frame, board: *const Board) i16 {
         const mg_phase: i32 = @min(self.phase, MAX_PHASE);
         const eg_phase = MAX_PHASE - mg_phase;
 
-        return @intCast(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), MAX_PHASE));
+        var res = evaluation.clampScore(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), MAX_PHASE));
+        if (board.stm == .black) res = -res;
+        return res;
     }
 };
 
-pub fn evaluate(comptime stm: Colour, _: *const Board, state: *State, _: anytype) i16 {
-    var res = evaluation.clampScore(state.eval());
-    if (stm == .black) res = -res;
-    return res;
-}
+pub const Context = struct {
+    frames: [root.SEARCH_MAX_PLY]Frame = undefined,
+
+    pub fn initForThread(_: *Context, _: usize) void {}
+
+    pub fn initRoot(self: *Context, board: *const Board) void {
+        self.frames[0].initInPlace(board);
+    }
+
+    pub fn prepareChild(self: *Context, child_ply: usize, child_board: *const Board) void {
+        _ = child_board;
+        self.frames[child_ply].update(&self.frames[child_ply - 1]);
+    }
+
+    pub fn handle(self: *Context, ply: usize) evaluation.Handle(*Frame) {
+        return evaluation.wrapHandle(&self.frames[ply]);
+    }
+};
 
 pub fn evalPosition(board: *const Board) i16 {
-    const state = State.init(board);
-    var res = evaluation.clampScore(state.eval());
-    if (board.stm == .black) res = -res;
-    return res;
+    const ctx = evaluation.globalCtx.lock();
+    defer evaluation.globalCtx.release();
+    ctx.initRoot(board);
+    return ctx.handle(0).eval(board);
 }

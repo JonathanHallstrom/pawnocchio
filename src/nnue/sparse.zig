@@ -15,14 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
-const attack_array_generation = @import("attack_array_generation.zig");
-const root = @import("root.zig");
-const Square = root.Square;
-const Bitboard = root.Bitboard;
+const root = @import("../root.zig");
+const arch = @import("arch.zig");
+const simd = root.simd;
 
-const nnue = root.nnue;
-
-const L1_SIZE = nnue.L1_SIZE;
+const L1_SIZE = arch.L1_SIZE;
 
 const NONZERO_INDICES = blk: {
     var res: [256]@Vector(8, u16) = @splat(@splat(0));
@@ -40,10 +37,9 @@ const NONZERO_INDICES = blk: {
     break :blk res;
 };
 
-fn getMask(vals: @Vector(nnue.vecSize(u8), u8)) std.meta.Int(.unsigned, nnue.vecSize(i32)) {
-    const as_i32: @Vector(nnue.vecSize(i32), i32) = @bitCast(vals);
-    const zero: @Vector(nnue.vecSize(i32), i32) = @splat(0);
-
+fn getMask(vals: simd.Vector(u8)) simd.MaskInt(simd.Vector(i32)) {
+    const as_i32: simd.Vector(i32) = @bitCast(vals);
+    const zero: simd.Vector(i32) = @splat(0);
     return @bitCast(as_i32 != zero);
 }
 
@@ -58,15 +54,15 @@ pub inline fn findNonZeroIndices(
     var base: @Vector(8, u16) = @splat(0);
 
     var i: usize = 0;
-    const UNROLL = @max(1, 8 / nnue.vecSize(i32));
-    while (i < nnue.L1_SIZE) {
+    const UNROLL = @max(1, 8 / simd.vecSize(i32));
+    while (i < L1_SIZE) {
         var mask: u64 = 0;
         for (0..UNROLL) |j| {
-            mask |= @as(u64, getMask(ft[i..][0..nnue.vecSize(i8)].*)) << @intCast(j * nnue.vecSize(i32));
-            i += nnue.vecSize(i8);
+            mask |= @as(u64, getMask(ft[i..][0..simd.vecSize(i8)].*)) << @intCast(j * simd.vecSize(i32));
+            i += simd.vecSize(i8);
         }
 
-        inline for (0..UNROLL * nnue.vecSize(i32) / 8) |j| {
+        inline for (0..UNROLL * simd.vecSize(i32) / 8) |j| {
             const byte = mask >> (8 * j) & 0xff;
 
             const mask_indices = NONZERO_INDICES[byte];

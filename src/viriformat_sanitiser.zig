@@ -20,7 +20,7 @@ const root = @import("root.zig");
 const BoundedArray = root.BoundedArray;
 const Board = root.Board;
 const viriformat = root.viriformat;
-const Game = viriformat.Game;
+const Game = viriformat.GameRecord;
 const File = root.File;
 const Rank = root.Rank;
 const Square = root.Square;
@@ -98,9 +98,7 @@ fn printParsedGameLine(game: *const Game, error_ctx: *const ErrorContext) void {
     for (game.moves.items) |move_eval| {
         const move = move_eval.move.toMove(&board);
         std.debug.print(" {s}({})", .{ move.toString(&board).slice(), move_eval.eval.toNative() });
-        switch (board.stm) {
-            inline else => |stm| board.makeMove(stm, move, Board.NullEvalState{}),
-        }
+        board.makeMoveSimple(move);
     }
     if (error_ctx.move()) |move| {
         if (error_ctx.score) |score| {
@@ -257,7 +255,7 @@ fn parseSingleGame(
                     return error.MoveNotLegal;
                 }
 
-                board.makeMove(stm, move, Board.NullEvalState{});
+                board.makeMoveInternal(stm, move, root.evaluation.noHandle());
                 game.addMove(move, move_eval.eval.toNative()) catch |e| {
                     error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
                     return e;
@@ -275,10 +273,10 @@ pub const Config = struct {
 
 pub fn sanitiseBufferToFile(
     input: []const u8,
-    output: *std.Io.Writer,
+    output: ?*std.Io.Writer,
     allocator: std.mem.Allocator,
     config: Config,
-) !void {
+) !usize {
     var game: Game = .from(.startpos(), allocator);
     defer game.moves.deinit();
 
@@ -318,8 +316,13 @@ pub fn sanitiseBufferToFile(
         };
         i += bytes_used;
         parsed += 1;
-        try game.serializeInto(output);
+        if (output) |writer| {
+            try game.serializeInto(writer);
+        }
     }
-    try output.flush();
+    if (output) |writer| {
+        try writer.flush();
+    }
     std.debug.print("\nparsed {} games and skipped {} bytes\n", .{ parsed, skipped });
+    return skipped;
 }

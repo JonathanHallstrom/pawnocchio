@@ -6,7 +6,7 @@ const build_tuning = @import("build/tuning.zig");
 const EvalMode = @import("src/eval_mode.zig").EvalMode;
 
 const BASE_VERSION = "2.0";
-const DEFAULT_NET_PATH = "pawnocchio-nets/networks/mixed_data_chonked5.nnue";
+const DEFAULT_NET_PATH = "pawnocchio-nets/networks/pp_chonked.nnue";
 
 fn gitShortHash(b: *std.Build) ?[]const u8 {
     var exit_code: u8 = undefined;
@@ -14,7 +14,7 @@ fn gitShortHash(b: *std.Build) ?[]const u8 {
         &[_][]const u8{ "git", "-C", build_root_path, "rev-parse", "--short=7", "HEAD" }
     else
         &[_][]const u8{ "git", "rev-parse", "--short=7", "HEAD" };
-    const stdout = b.runAllowFail(argv, &exit_code, .Ignore) catch return null;
+    const stdout = b.runAllowFail(argv, &exit_code, .ignore) catch return null;
     const short_sha = std.mem.trim(u8, stdout, &std.ascii.whitespace);
     if (short_sha.len == 0) {
         return null;
@@ -38,6 +38,7 @@ const ExecutableOptions = struct {
     link_mode: ?std.builtin.LinkMode = null,
     emit_symbols: bool = false,
     use_tbs: bool = true,
+    use_numa: bool = false,
     tools_only: bool = false,
 };
 
@@ -54,22 +55,22 @@ fn prepareInputs(
     eval_mode: EvalMode,
     net_override: ?std.Build.LazyPath,
 ) !Inputs {
-    if (eval_mode == .hce and net_override != null) {
-        std.log.err("build cannot set both -Deval=hce and -Dnet\n", .{});
+    if (eval_mode != .nnue and net_override != null) {
+        std.log.err("cannot set net when eval mode is not nnue\n", .{});
         return error.IncompatibleFlags;
     }
 
     const generated_files = b.addWriteFiles();
     const tuning_generated_file = try build_tuning.prepareGeneratedTuning(b, generated_files);
-    const input: build_net.Input = if (eval_mode == .hce)
-        .hce
-    else
+    const input: build_net.Input = if (eval_mode == .nnue)
         try build_net.prepareNet(
             b,
             transform_tool,
             target.result.cpu,
             net_override orelse b.path(DEFAULT_NET_PATH),
-        );
+        )
+    else
+        .hce;
     return .{
         .generated_files = generated_files,
         .tuning_generated_file = tuning_generated_file,
@@ -90,6 +91,7 @@ fn configureArtifact(
             b,
             options.version,
             options.use_tbs,
+            options.use_numa,
             options.tools_only,
             options.eval_mode,
             inputs.input,
@@ -118,22 +120,24 @@ fn addExecutable(
             .optimize = options.optimize,
             .omit_frame_pointer = minimal_executable,
             .strip = minimal_executable,
-            .link_libc = options.target.result.os.tag == .windows or options.use_tbs,
+            .link_libc = options.target.result.os.tag == .windows or options.use_tbs or options.use_numa,
         }),
         .use_llvm = true,
         .linkage = options.link_mode,
     });
     configureArtifact(b, exe, options, inputs);
+    if (options.use_numa) {
+        exe.root_module.linkSystemLibrary("numa", .{});
+    }
     if (options.use_tbs) {
-        exe.addCSourceFile(.{
+        exe.root_module.addCSourceFile(.{
             .file = b.path("src/Pyrrhic/tbprobe.c"),
             .flags = &.{
-                "-fno-sanitize=undefined",
                 "-O3",
             },
             .language = .c,
         });
-        exe.addIncludePath(b.path("src/Pyrrhic/"));
+        exe.root_module.addIncludePath(b.path("src/Pyrrhic/"));
     }
 
     return exe;
@@ -147,6 +151,7 @@ fn addBuildStep(
     transform_tool: *std.Build.Step.Compile,
     config: build_release.Config,
     tools_only: bool,
+    use_numa: bool,
 ) !void {
     const step = b.step(step_name, description);
     for (config.specs) |spec| {
@@ -159,6 +164,7 @@ fn addBuildStep(
             .optimize = config.optimize,
             .eval_mode = config.eval_mode,
             .link_mode = spec.link_mode,
+            .use_numa = use_numa,
             .tools_only = tools_only or config.tools_only,
         }, inputs);
         const install_artifact = b.addInstallArtifact(exe, .{});
@@ -176,7 +182,12 @@ pub fn build(b: *std.Build) !void {
     const link_mode = b.option(std.builtin.LinkMode, "link_mode", "set linkage mode");
     const emit_symbols = b.option(bool, "emit_symbols", "keep debug symbols") orelse false;
     const use_tbs = b.option(bool, "use_tbs", "enable tablebases") orelse true;
+    const use_numa = b.option(bool, "use_numa", "link to libnuma for NUMA aware resource management") orelse false;
     const tools_only = b.option(bool, "tools_only", "disable UCI, datagen, bench, and genfens to minimize tool binaries") orelse false;
+    if (use_numa and target.result.os.tag != .linux) {
+        std.log.err("build cannot use numa on non linux targets\n", .{});
+        return error.IncompatibleFlags;
+    }
     const transform_tool = build_net.addTransformTool(b);
     const inputs = try prepareInputs(b, transform_tool, target, eval_mode, net_override);
 
@@ -189,6 +200,7 @@ pub fn build(b: *std.Build) !void {
         .link_mode = link_mode,
         .emit_symbols = emit_symbols,
         .use_tbs = use_tbs,
+        .use_numa = use_numa,
         .tools_only = tools_only,
     }, inputs);
     b.installArtifact(exe);
@@ -208,6 +220,7 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/root.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = use_numa,
         }),
         .use_llvm = true,
     });
@@ -218,8 +231,12 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
         .eval_mode = eval_mode,
         .use_tbs = false,
+        .use_numa = use_numa,
         .tools_only = tools_only,
     }, inputs);
+    if (use_numa) {
+        unit_tests.root_module.linkSystemLibrary("numa", .{});
+    }
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const test_step = b.step("test", "run unit tests");
@@ -228,6 +245,6 @@ pub fn build(b: *std.Build) !void {
     const check_step = b.step("check", "check if project compiles");
     check_step.dependOn(&exe.step);
 
-    try addBuildStep(b, "tool_builds", "build tool artifacts", version, transform_tool, build_release.TOOLS, tools_only);
-    try addBuildStep(b, "release_builds", "build release artifacts", version, transform_tool, build_release.RELEASE, tools_only);
+    try addBuildStep(b, "tool_builds", "build tool artifacts", version, transform_tool, build_release.TOOLS, tools_only, use_numa);
+    try addBuildStep(b, "release_builds", "build release artifacts", version, transform_tool, build_release.RELEASE, tools_only, use_numa);
 }

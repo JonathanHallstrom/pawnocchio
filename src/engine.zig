@@ -19,47 +19,103 @@ const root = @import("root.zig");
 const ThreadPool = @import("ThreadPool.zig").ThreadPool;
 const Searcher = root.Searcher;
 const debug_stats_mod = @import("debug_stats.zig");
+const numa = @import("numa.zig");
+const nnue = root.nnue;
 
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
 pub var thread_pool: ThreadPool = undefined;
 
-pub var debug_stats_lock: std.Thread.Mutex = .{};
+pub var debug_stats_lock: std.Io.Mutex = .init;
 pub var debug_stats: std.StringHashMap(debug_stats_mod.Scalar) = .init(std.heap.page_allocator);
+pub var debug_bool_stats: std.StringHashMap(debug_stats_mod.BoolStat) = .init(std.heap.page_allocator);
+pub var debug_corr_stats: std.StringHashMap(debug_stats_mod.Correlation) = .init(std.heap.page_allocator);
 pub var debug_range_stats: std.StringHashMap(debug_stats_mod.Range) = .init(std.heap.page_allocator);
 pub var debug_rng: std.Random.DefaultPrng = undefined;
 
+fn castDebugValue(value: anytype) i64 {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .int, .comptime_int => @as(i64, @intCast(value)),
+        .bool => @intFromBool(value),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(value))})),
+    };
+}
+
+fn castDebugInt(comptime label: []const u8, value: anytype) i64 {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .int, .comptime_int => @as(i64, @intCast(value)),
+        else => @compileError(std.fmt.comptimePrint("unsupported {s} type {s}", .{ label, @typeName(@TypeOf(value)) })),
+    };
+}
+
+fn castDebugFloat(value: anytype) f64 {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .int, .comptime_int => @floatFromInt(value),
+        .float, .comptime_float => @as(f64, value),
+        .bool => @floatFromInt(@intFromBool(value)),
+        else => @compileError(std.fmt.comptimePrint("unsupported correlation type {s}", .{@typeName(@TypeOf(value))})),
+    };
+}
+
+fn fillDebugCorrValues(comptime expected_len: usize, values: anytype, out: *[expected_len]f64) void {
+    switch (@typeInfo(@TypeOf(values))) {
+        .pointer => |pointer| switch (pointer.size) {
+            .one => fillDebugCorrValues(expected_len, values.*, out),
+            .slice => {
+                std.debug.assert(values.len == expected_len);
+                for (values, 0..) |value, i| {
+                    out[i] = castDebugFloat(value);
+                }
+            },
+            else => @compileError("dbgCorr values pointer must be one-item or slice"),
+        },
+        .array => |array| {
+            comptime {
+                std.debug.assert(array.len == expected_len);
+            }
+            for (values, 0..) |value, i| {
+                out[i] = castDebugFloat(value);
+            }
+        },
+        .@"struct" => |struct_info| {
+            if (!struct_info.is_tuple) {
+                @compileError("dbgCorr values must be a tuple, array, or pointer to either");
+            }
+            comptime {
+                std.debug.assert(struct_info.fields.len == expected_len);
+            }
+            inline for (struct_info.fields, 0..) |field, i| {
+                out[i] = castDebugFloat(@field(values, field.name));
+            }
+        },
+        else => @compileError("dbgCorr values must be a tuple, array, or pointer to either"),
+    }
+}
+
 pub fn dbg(name: []const u8, x: anytype) @TypeOf(x) {
     switch (@typeInfo(@TypeOf(x))) {
-        .int => dbgImpl(name, x),
-        .bool => dbgImpl(name, @intFromBool(x)),
+        .int, .comptime_int => dbgImpl(name, @as(i64, @intCast(x))),
+        .bool => dbgBoolImpl(name, x),
         else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(x))})),
     }
     return x;
 }
 
 pub fn dbgRange(name: []const u8, index: anytype, x: anytype, granularity: anytype) @TypeOf(x) {
-    const index_i64 = switch (@typeInfo(@TypeOf(index))) {
-        .int, .comptime_int => @as(i64, @intCast(index)),
-        else => @compileError(std.fmt.comptimePrint("unsupported index type {s}", .{@typeName(@TypeOf(index))})),
-    };
-    const granularity_i64 = switch (@typeInfo(@TypeOf(granularity))) {
-        .int, .comptime_int => @as(i64, @intCast(granularity)),
-        else => @compileError(std.fmt.comptimePrint("unsupported granularity type {s}", .{@typeName(@TypeOf(granularity))})),
-    };
-
-    switch (@typeInfo(@TypeOf(x))) {
-        .int => dbgRangeImpl(name, index_i64, x, granularity_i64),
-        .bool => dbgRangeImpl(name, index_i64, @intFromBool(x), granularity_i64),
-        else => @compileError(std.fmt.comptimePrint("unsupported type {s}", .{@typeName(@TypeOf(x))})),
-    }
+    dbgRangeImpl(name, castDebugInt("index", index), castDebugValue(x), castDebugInt("granularity", granularity));
     return x;
 }
 
+pub fn dbgCorr(name: []const u8, comptime names: []const []const u8, values: anytype) void {
+    var normalized_values: [names.len]f64 = undefined;
+    fillDebugCorrValues(names.len, values, &normalized_values);
+    dbgCorrImpl(name, names, &normalized_values);
+}
+
 fn dbgImpl(name: []const u8, value: i64) void {
-    debug_stats_lock.lock();
-    defer debug_stats_lock.unlock();
+    debug_stats_lock.lockUncancelable(root.io);
+    defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_stats.getOrPut(name) catch unreachable;
     if (!gp.found_existing) {
@@ -69,11 +125,37 @@ fn dbgImpl(name: []const u8, value: i64) void {
     gp.value_ptr.add(value, debug_rng.random());
 }
 
+fn dbgBoolImpl(name: []const u8, value: bool) void {
+    debug_stats_lock.lockUncancelable(root.io);
+    defer debug_stats_lock.unlock(root.io);
+
+    const gp = debug_bool_stats.getOrPut(name) catch unreachable;
+    if (!gp.found_existing) {
+        gp.value_ptr.* = .{};
+        gp.key_ptr.* = std.heap.page_allocator.dupe(u8, name) catch @panic("OOM");
+    }
+    gp.value_ptr.add(value);
+}
+
+fn dbgCorrImpl(name: []const u8, comptime names: []const []const u8, values: []const f64) void {
+    debug_stats_lock.lockUncancelable(root.io);
+    defer debug_stats_lock.unlock(root.io);
+
+    const gp = debug_corr_stats.getOrPut(name) catch unreachable;
+    if (!gp.found_existing) {
+        gp.value_ptr.* = debug_stats_mod.Correlation.init(std.heap.page_allocator, names);
+        gp.key_ptr.* = std.heap.page_allocator.dupe(u8, name) catch @panic("OOM");
+    } else {
+        gp.value_ptr.assertNames(names);
+    }
+    gp.value_ptr.add(values);
+}
+
 fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void {
     std.debug.assert(granularity > 0);
 
-    debug_stats_lock.lock();
-    defer debug_stats_lock.unlock();
+    debug_stats_lock.lockUncancelable(root.io);
+    defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_range_stats.getOrPut(name) catch unreachable;
     if (!gp.found_existing) {
@@ -82,14 +164,192 @@ fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void
     } else {
         std.debug.assert(gp.value_ptr.granularity == granularity);
     }
-    gp.value_ptr.add(index, value, debug_rng.random());
+    gp.value_ptr.add(index, value);
+}
+
+pub const TIMING_ENABLED = false;
+
+const TimerSlot = struct {
+    hash: u64 = 0,
+    group: []const u8 = "",
+    part: []const u8 = "",
+    cycles: u64 = 0,
+    hits: u64 = 0,
+
+    pub fn nameLen(self: TimerSlot) usize {
+        var res = self.group.len;
+        if (self.part.len > 0) {
+            res += self.part.len + 1;
+        }
+        return res;
+    }
+
+    pub fn cost(self: TimerSlot) f64 {
+        return @as(f64, @floatFromInt(self.cycles)) / @as(f64, @floatFromInt(@max(1, self.hits)));
+    }
+};
+
+const TimerInfo = struct {
+    slot: TimerSlot,
+    group_cycles: u64,
+
+    pub fn order(_: void, a: TimerInfo, b: TimerInfo) bool {
+        const ag = timerHash(a.slot.group);
+        const bg = timerHash(b.slot.group);
+        if (ag != bg) {
+            if (a.group_cycles != b.group_cycles) return a.group_cycles > b.group_cycles;
+            return ag < bg;
+        }
+        return a.slot.cycles > b.slot.cycles;
+    }
+};
+
+var timer_table: []TimerSlot = &.{};
+var timer_mask: u64 = 0;
+
+inline fn timerHash(name: []const u8) u64 {
+    return std.hash.Fnv1a_64.hash(name);
+}
+
+inline fn rdtscp() u64 {
+    var hi: u32 = undefined;
+    var lo: u32 = undefined;
+    asm volatile ("rdtscp"
+        : [hi] "={edx}" (hi),
+          [lo] "={eax}" (lo),
+        :
+        : .{ .ecx = true });
+    return (@as(u64, hi) << 32) | lo;
+}
+
+noinline fn registerTimer(h: u64, group: []const u8, part: []const u8) void {
+    var saved: [256]TimerSlot = undefined;
+    var n: usize = 0;
+    for (timer_table) |e| if (e.hash != 0) {
+        saved[n] = e;
+        n += 1;
+    };
+    saved[n] = .{ .hash = h, .group = group, .part = part };
+    n += 1;
+    var cap: usize = 16;
+    while (cap < n * 2) cap *= 2;
+    while (true) {
+        const fresh = std.heap.page_allocator.alloc(TimerSlot, cap) catch @panic("OOM");
+        @memset(fresh, .{});
+        const mask = cap - 1;
+        var ok = true;
+        for (saved[0..n]) |e| {
+            const idx = e.hash & mask;
+            if (fresh[idx].hash != 0) {
+                ok = false;
+                break;
+            }
+            fresh[idx] = e;
+        }
+        if (ok) {
+            if (timer_table.len != 0) std.heap.page_allocator.free(timer_table);
+            timer_table = fresh;
+            timer_mask = mask;
+            return;
+        }
+        std.heap.page_allocator.free(fresh);
+        cap *= 2;
+    }
+}
+
+pub const ScopedTimer = struct {
+    start: u64,
+    hash: u64,
+    pub inline fn register(self: ScopedTimer) void {
+        if (comptime !TIMING_ENABLED) return;
+        const elapsed = rdtscp() -% self.start;
+        const slot = &timer_table[self.hash & timer_mask];
+        slot.cycles +%= elapsed;
+        slot.hits +%= 1;
+    }
+};
+
+pub inline fn timeGrouped(comptime group: []const u8, comptime part: []const u8) ScopedTimer {
+    if (comptime !TIMING_ENABLED) return .{ .start = 0, .hash = 0 };
+    const h = comptime timerHash(group ++ "\x00" ++ part);
+    if (timer_table.len == 0 or timer_table[h & timer_mask].hash != h) registerTimer(h, group, part);
+    return .{ .start = rdtscp(), .hash = h };
+}
+
+pub inline fn time(comptime name: []const u8) ScopedTimer {
+    return timeGrouped(name, "");
+}
+
+fn timerPct(x: u64, total: u64) f64 {
+    return if (total == 0) 0 else @as(f64, @floatFromInt(x)) * 100.0 / @as(f64, @floatFromInt(total));
+}
+
+fn printTimers(writer: *std.Io.Writer) void {
+    if (comptime !TIMING_ENABLED) return;
+    var infos: [256]TimerInfo = undefined;
+    var n: usize = 0;
+    var total_cycles: u64 = 0;
+    for (timer_table) |e| {
+        if (e.hash == 0 or e.hits == 0) continue;
+        var group_cycles: u64 = 0;
+        for (timer_table) |o| {
+            if (o.hash != 0 and o.hits != 0 and std.mem.eql(u8, o.group, e.group)) group_cycles += o.cycles;
+        }
+        infos[n] = .{ .slot = e, .group_cycles = group_cycles };
+        n += 1;
+        total_cycles += e.cycles;
+    }
+    if (total_cycles == 0) return;
+
+    std.mem.sort(TimerInfo, infos[0..n], {}, TimerInfo.order);
+
+    writer.print("raw:\n", .{}) catch unreachable;
+    for (infos[0..n]) |info| {
+        const e = info.slot;
+        var name_buf: [64]u8 = undefined;
+        const sep: []const u8 = if (e.part.len > 0) " " else "";
+        const label = std.fmt.bufPrint(&name_buf, "{s}{s}{s}", .{ e.group, sep, e.part }) catch "[?]";
+        writer.print("  {s: <26} cyc={d: >14} hits={d: >12} cyc/hit={d: >8.2}\n", .{ label, e.cycles, e.hits, e.cost() }) catch unreachable;
+    }
+
+    writer.print("summary:\n", .{}) catch unreachable;
+    var i: usize = 0;
+    while (i < n) {
+        const g = infos[i].slot.group;
+        const gtot = infos[i].group_cycles;
+        writer.print("  {s: <26}{d: >6.2}%\n", .{ g, timerPct(gtot, total_cycles) }) catch unreachable;
+        while (i < n and std.mem.eql(u8, infos[i].slot.group, g)) : (i += 1) {
+            const e = infos[i].slot;
+            if (e.part.len == 0) continue;
+            writer.print("    {s: <24}{d: >6.2}%  {d: >5.1}%\n", .{ e.part, timerPct(e.cycles, total_cycles), timerPct(e.cycles, gtot) }) catch unreachable;
+        }
+    }
+}
+
+fn resetTimers() void {
+    for (timer_table) |*e| {
+        e.cycles = 0;
+        e.hits = 0;
+    }
 }
 
 pub fn printDebugStats() void {
-    var writer = &root.stdout_writer.interface;
+    const writer = root.stdout_writer;
 
     var iter = debug_stats.iterator();
     while (iter.next()) |entry| {
+        writer.print("{s}\n", .{entry.key_ptr.*}) catch unreachable;
+        entry.value_ptr.format(writer) catch unreachable;
+    }
+
+    var bool_iter = debug_bool_stats.iterator();
+    while (bool_iter.next()) |entry| {
+        writer.print("{s} (bool)\n", .{entry.key_ptr.*}) catch unreachable;
+        entry.value_ptr.format(writer) catch unreachable;
+    }
+
+    var corr_iter = debug_corr_stats.iterator();
+    while (corr_iter.next()) |entry| {
         writer.print("{s}\n", .{entry.key_ptr.*}) catch unreachable;
         entry.value_ptr.format(writer) catch unreachable;
     }
@@ -100,12 +360,24 @@ pub fn printDebugStats() void {
         entry.value_ptr.format(writer) catch unreachable;
     }
 
+    printTimers(writer);
     writer.flush() catch unreachable;
 }
 
 pub fn resetDebugStats() void {
+    resetTimers();
     var iter = debug_stats.valueIterator();
     while (iter.next()) |e| {
+        e.reset();
+    }
+
+    var bool_iter = debug_bool_stats.valueIterator();
+    while (bool_iter.next()) |e| {
+        e.reset();
+    }
+
+    var corr_iter = debug_corr_stats.valueIterator();
+    while (corr_iter.next()) |e| {
         e.reset();
     }
 
@@ -115,18 +387,26 @@ pub fn resetDebugStats() void {
     }
 }
 
-pub fn init() !void {
-    thread_pool = ThreadPool.init(std.heap.page_allocator);
+pub fn init(io: std.Io) !void {
+    thread_pool = try ThreadPool.init(std.heap.page_allocator, io);
     try thread_pool.setTTSize(16);
     try thread_pool.setThreadCount(1);
     debug_stats = .init(std.heap.page_allocator); // yes its inefficient no i don't care
+    debug_bool_stats = .init(std.heap.page_allocator);
+    debug_corr_stats = .init(std.heap.page_allocator);
     debug_range_stats = .init(std.heap.page_allocator);
-    debug_rng.seed(@bitCast(std.time.microTimestamp()));
+    debug_rng.seed(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(io, .awake).nanoseconds))));
 }
 
 pub fn deinit() void {
     thread_pool.deinit();
     printDebugStats();
+
+    var debug_values = debug_stats.valueIterator();
+    while (debug_values.next()) |value| {
+        value.deinit();
+    }
+
     var keys = debug_stats.keyIterator();
 
     while (keys.next()) |key| {
@@ -134,6 +414,30 @@ pub fn deinit() void {
     }
 
     debug_stats.deinit();
+
+    var bool_values = debug_bool_stats.valueIterator();
+    while (bool_values.next()) |value| {
+        value.deinit();
+    }
+
+    var bool_keys = debug_bool_stats.keyIterator();
+    while (bool_keys.next()) |key| {
+        std.heap.page_allocator.free(key.*);
+    }
+
+    debug_bool_stats.deinit();
+
+    var corr_values = debug_corr_stats.valueIterator();
+    while (corr_values.next()) |value| {
+        value.deinit();
+    }
+
+    var corr_keys = debug_corr_stats.keyIterator();
+    while (corr_keys.next()) |key| {
+        std.heap.page_allocator.free(key.*);
+    }
+
+    debug_corr_stats.deinit();
 
     var range_values = debug_range_stats.valueIterator();
     while (range_values.next()) |value| {
@@ -193,31 +497,36 @@ const DatagenStats = struct {
 };
 
 fn datagenWorker(
+    io: std.Io,
     i: usize,
     random_move_count_low: u8,
     random_move_count_high: u8,
     min_depth: i32,
     node_count: u64,
-    writer: anytype,
-    writer_mutex: *std.Thread.Mutex,
+    writer_wrapper: *std.Io.File.Writer,
+    writer_mutex: *std.atomic.Mutex,
     stats: *DatagenStats,
 ) void {
+    numa.bindCurrentThread(i) catch |err| {
+        std.log.debug("failed to bind datagen thread {} to NUMA node: {}", .{ i, err });
+    };
+
     const searcher = thread_pool.searchers.items[i];
     const old_tt = searcher.tt;
     defer searcher.tt = old_tt;
     @memset(std.mem.asBytes(searcher), 0);
-    searcher.tt = std.heap.page_allocator.alloc(root.TTCluster, (16 << 20) / @sizeOf(root.TTCluster)) catch std.debug.panic("allocation failed\n", .{});
+    searcher.correction_histories = thread_pool.correctionHistoriesForThread(i);
+    searcher.eval_context.initForThread(i);
+    var tts: [2][]root.TTCluster = undefined;
+    for (&tts) |*tt| {
+        tt.* = @import("ThreadPool.zig").allocTT(std.heap.page_allocator, 16 << 20) catch std.debug.panic("allocation failed\n", .{});
+        @memset(tt.*, std.mem.zeroes(root.TTCluster));
+    }
+    defer for (tts) |tt| std.heap.page_allocator.free(tt);
+    searcher.tt = tts[0];
     const viriformat = root.viriformat;
     var seed: u64 = 0;
-    std.posix.getrandom(std.mem.asBytes(&seed)) catch {
-        const globals = struct {
-            var fallback_datagen_seed_counter = std.atomic.Value(u64).init(0);
-        };
-        var seed_prng = std.Random.DefaultCsprng.init(.{0} ** 32);
-        seed_prng.addEntropy(std.mem.asBytes(&globals.fallback_datagen_seed_counter.fetchAdd(1, .seq_cst)));
-        seed_prng.addEntropy(std.mem.asBytes(&std.time.nanoTimestamp()));
-        seed_prng.fill(std.mem.asBytes(&seed));
-    };
+    _ = std.os.linux.getrandom(std.mem.asBytes(&seed).ptr, std.mem.asBytes(&seed).len, 0);
     var rng = std.Random.DefaultPrng.init(seed);
     var alloc_buffer: [1 << 20]u8 = undefined;
     var num_positions_written: usize = 0;
@@ -242,16 +551,24 @@ fn datagenWorker(
             previous_moves.append(move) catch @panic("failed to append move");
             previous_positions.append(board) catch @panic("failed to append position");
         }
-        var game: viriformat.Game = viriformat.Game.from(board, fba.allocator());
+        var game: viriformat.GameRecord = viriformat.GameRecord.from(board, fba.allocator());
         var num_adj_win: u8 = 0;
         var num_adj_draw: u8 = 0;
         var num_adj_loss: u8 = 0;
         game_loop: for (0..2000) |move_idx| {
-            var limits = root.Limits.initFixedTime(std.time.ns_per_s);
+            var limits = root.Limits.initFixedTime(io, std.time.ns_per_s);
             limits.soft_nodes = node_count;
             limits.hard_nodes = 100 * node_count;
             limits.min_depth = min_depth;
-            board.hash ^= 13345022705723281337; // hack to make tt not shared
+            const keep_moves = @max(
+                @as(usize, @min(board.halfmove, root.SEARCH_MAX_HALFMOVE)),
+                root.history.CONTHIST_OFFSETS.len,
+            );
+            const have: usize = previous_moves.len;
+            const drop = have - @min(have, keep_moves);
+            previous_moves.replaceRange(0, drop, &.{}) catch unreachable;
+            previous_positions.replaceRange(0, drop, &.{}) catch unreachable;
+            searcher.tt = tts[move_idx % 2];
             searcher.startSearch(
                 root.Searcher.Params{
                     .board = board,
@@ -259,8 +576,10 @@ fn datagenWorker(
                     .needs_full_reset = false,
                     .previous_positions = previous_positions,
                     .previous_moves = previous_moves,
+                    .contempt = 0,
                     .normalize = false,
                     .minimal = false,
+                    .show_wdl = false,
                 },
                 false,
                 true,
@@ -292,7 +611,7 @@ fn datagenWorker(
             }
             switch (board.stm) {
                 inline else => |stm| {
-                    board.makeMove(stm, search_move, root.Board.NullEvalState{});
+                    board.makeMoveInternal(stm, search_move, root.evaluation.noHandle());
                 },
             }
             var repetitions: u8 = 0;
@@ -344,8 +663,10 @@ fn datagenWorker(
             2 => stats.wins.fetchAdd(1, .seq_cst),
             else => {},
         };
-        writer_mutex.lock();
-        game.serializeInto(&writer.interface) catch @panic("failed to write game");
+        while (!writer_mutex.tryLock()) {
+            std.Thread.yield() catch {};
+        }
+        game.serializeInto(&writer_wrapper.interface) catch @panic("failed to write game");
 
         writer_mutex.unlock();
     }
@@ -355,7 +676,7 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
     var fbs = std.Io.Writer.fixed(buf);
 
     var random_buf: [32]u8 align(32) = undefined;
-    try std.posix.getrandom(&random_buf);
+    _ = std.os.linux.getrandom(std.mem.asBytes(&random_buf).ptr, std.mem.asBytes(&random_buf).len, 0);
 
     const build_options = @import("build_options");
     var eval_identifier = build_options.eval_identifier;
@@ -367,14 +688,16 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
     return fbs.buffered();
 }
 
-pub fn datagen(num_nodes: u64, positions: u64) !void {
+pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
     var buf: [4096]u8 = undefined;
-    var timer = try std.time.Timer.start();
-    var out_file = try std.fs.cwd().createFile(try getFileName(num_nodes, &buf), .{});
+    const start_time = std.Io.Timestamp.now(io, .awake);
+    var out_file = try std.Io.Dir.cwd().createFile(io, try getFileName(num_nodes, &buf), .{ .truncate = true });
+    defer out_file.close(io);
 
-    var writer = out_file.writer(&buf);
+    var writer_wrapper = out_file.writerStreaming(io, &buf);
+    var writer = &writer_wrapper.interface;
 
-    var writer_mutex = std.Thread.Mutex{};
+    var writer_mutex = std.atomic.Mutex.unlocked;
     var stats = DatagenStats{};
 
     var threads = try std.ArrayList(std.Thread).initCapacity(std.heap.page_allocator, thread_pool.threads.items.len);
@@ -384,36 +707,37 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     }
 
     for (0..thread_pool.threads.items.len) |i| {
-        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ i, 6, 10, 0, num_nodes, &writer, &writer_mutex, &stats }));
+        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ io, i, 6, 10, 0, num_nodes, &writer_wrapper, &writer_mutex, &stats }));
     }
     defer for (0..thread_pool.threads.items.len) |i| {
         std.heap.page_allocator.free(thread_pool.searchers.items[i].tt);
     };
     var prev_positions: usize = 0;
-    var prev_time = timer.read();
+    var prev_time: u64 = 0;
     var pps_ema_opt: ?u64 = null;
     while (true) {
-        std.Thread.sleep(std.time.ns_per_s);
+        std.Io.sleep(io, std.Io.Duration.fromNanoseconds(std.time.ns_per_s), .awake) catch {};
         if (!writer_mutex.tryLock()) {
-            std.Thread.sleep(std.time.ns_per_ms);
+            std.Io.sleep(io, std.Io.Duration.fromNanoseconds(std.time.ns_per_ms), .awake) catch {};
             continue;
         }
-        try writer.interface.flush();
+        try writer.flush();
         writer_mutex.unlock();
         const cur_positions = stats.positions.load(.seq_cst);
         if (cur_positions >= positions) {
             std.process.exit(0);
         }
-        const time = timer.read();
+        const now = std.Io.Timestamp.now(io, .awake);
+        const elapsed_ns = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
         if (cur_positions == prev_positions) {
             continue;
         }
         defer {
             prev_positions = cur_positions;
-            prev_time = time;
+            prev_time = elapsed_ns;
         }
         // u64 because if we're able to generate >2^64 positions per second then this program makes no sense
-        const pps: u64 = @intCast(@as(u128, cur_positions - prev_positions) * std.time.ns_per_s / @max(1, time - prev_time));
+        const pps: u64 = @intCast(@as(u128, cur_positions - prev_positions) * std.time.ns_per_s / @max(1, elapsed_ns - prev_time));
         const lower_bound = if (pps_ema_opt) |pps_ema| pps_ema / 2 -| 1000 else pps;
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
@@ -429,7 +753,7 @@ pub fn datagen(num_nodes: u64, positions: u64) !void {
     }
 }
 
-pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allocator: std.mem.Allocator) !void {
+pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: anytype, allocator: std.mem.Allocator) !void {
     var rng = std.Random.DefaultPrng.init(seed);
     var fens = std.array_list.Managed([]const u8).init(allocator);
     defer fens.deinit();
@@ -437,23 +761,23 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allo
         allocator.free(fen);
     };
     if (path) |p| {
-        var f = try std.fs.cwd().openFile(p, .{});
-        defer f.close();
+        var f = try std.Io.Dir.cwd().openFile(io, p, .{});
+        defer f.close(io);
         var reader_buf: [4096]u8 = undefined;
-        var reader = f.reader(&reader_buf);
+        var reader = f.readerStreaming(io, &reader_buf);
 
         var line_buf: [128]u8 = undefined;
         var line_writer = std.Io.Writer.fixed(&line_buf);
 
-        while (reader.interface.streamDelimiter(&line_writer, '\n')) |fen_size| {
+        while (reader.interface.streamDelimiter(&line_writer, '\n') catch null) |fen_size| {
             std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
-            std.debug.assert(line_writer.buffered().len == fen_size);
+            std.debug.assert(line_writer.end == fen_size);
 
-            try fens.append(try allocator.dupe(u8, line_writer.buffered()));
+            try fens.append(try allocator.dupe(u8, line_writer.buffer[0..line_writer.end]));
             const dfrc_pos = rng.random().uintLessThan(u20, 960 * 960);
             try fens.append(try allocator.dupe(u8, root.Board.dfrcPosition(dfrc_pos).toFen().slice()));
             _ = line_writer.consumeAll();
-        } else |_| {}
+        }
     }
     rng.random().shuffle([]const u8, fens.items);
 
@@ -480,7 +804,7 @@ pub fn genfens(path: ?[]const u8, count: usize, seed: u64, writer: anytype, allo
             continue :fen_loop;
         }
 
-        try writer.interface.print("info string genfens {s}\n", .{board.toFen().slice()});
+        try writer.print("info string genfens {s}\n", .{board.toFen().slice()});
         remaining -= 1;
     }
 }
