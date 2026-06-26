@@ -26,8 +26,8 @@ pub fn wdlParams(board: *const Board) struct { f64, f64 } {
     const x: f64 = @as(f64, @floatFromInt(material)) / 58;
     const y: f64 = @as(f64, @floatFromInt(move)) / 32;
 
-    const p_a = 170.267570 + 219.411757 * x - 109.342795 * x * x + 52.799724 * y + 2.766119 * y * y - 53.723544 * x * y;
-    const p_b = 33.280341 - 0.265123 * x + 26.285731 * x * x + 7.220614 * y + 1.585810 * y * y - 8.606530 * x * y;
+    const p_a = 237.12953685 + 44.90698791 * y + 91.06850910 * x + -7.15217681 * y * y + -36.74902578 * x * y + -39.99297198 * x * x;
+    const p_b = 94.99523877 + -50.60915179 * y + -55.02231007 * x + 11.49863200 * y * y + 4.21120174 * x * y + 43.89888051 * x * x;
 
     return .{ p_a, p_b };
 }
