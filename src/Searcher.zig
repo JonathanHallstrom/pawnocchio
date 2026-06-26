@@ -311,7 +311,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
     self.eval_context.prepareChild(self.ply, &new_stack_entry.board);
     const new_handle = self.eval_context.handle(self.ply);
     self.pvs[self.ply].len = 0;
-    new_stack_entry.board.makeMoveInternal(stm, move, new_handle);
+    new_stack_entry.board.makeMoveInternal(stm, move, new_handle, true);
     self.hashes[self.ply] = new_stack_entry.board.hash;
 }
 
@@ -608,6 +608,8 @@ fn qsearch(
         return if (is_in_check) 0 else static_eval;
     }
 
+    cur.board.ensureThreats();
+
     var best_score = static_eval;
     var best_move = Move.init();
     var score_type: ScoreType = .upper;
@@ -771,11 +773,11 @@ fn search(
     }
 
     if (!is_root and (board.halfmove >= 100 or self.isRepetition(board))) {
-        if (board.halfmove >= 100 and is_in_check and !board.hasLegalMove()) {
-            return evaluation.matedIn(self.ply);
-        } else {
-            return self.drawScore(stm);
+        if (board.halfmove >= 100 and is_in_check) {
+            cur.board.ensureThreats();
+            if (!board.hasLegalMove()) return evaluation.matedIn(self.ply);
         }
+        return self.drawScore(stm);
     }
 
     if (depth <= 0 and !is_in_check) {
@@ -806,6 +808,7 @@ fn search(
 
     // tb probing
     if (!is_root and cur.excluded.isNull() and depth >= self.syzygy_depth) {
+        cur.board.ensureThreats();
         if (root.pyrrhic.probeWDL(board)) |result| {
             @branchHint(.unlikely);
             self.tbhits += 1;
@@ -897,6 +900,8 @@ fn search(
         depth += 1;
     }
     var corrhists_squared: ?i64 = null;
+
+    cur.board.ensureThreats();
 
     if (!is_pv and
         !evaluation.isMateScore(alpha) and

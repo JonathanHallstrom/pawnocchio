@@ -255,7 +255,7 @@ fn parseSingleGame(
                     return error.MoveNotLegal;
                 }
 
-                board.makeMoveInternal(stm, move, root.evaluation.noHandle());
+                board.makeMoveInternal(stm, move, root.evaluation.noHandle(), false);
                 game.addMove(move, move_eval.eval.toNative()) catch |e| {
                     error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
                     return e;

@@ -60,6 +60,7 @@ checking_squares: [6]u64 = @splat(0),
 threats: [2]u64 = @splat(0),
 threats_by: [2][PieceType.all.len]u64 = @splat(@splat(0)),
 lesser_threats: [2]u64 = @splat(0),
+threats_valid: bool = false,
 
 pub inline fn white(self: *const Board) u64 {
     return self.bbs[6];
@@ -102,14 +103,17 @@ pub inline fn occupancy(self: *const Board) u64 {
 }
 
 pub inline fn threatsFor(self: *const Board, col: Colour) u64 {
+    std.debug.assert(self.threats_valid);
     return self.threats[col.toInt()];
 }
 
 pub inline fn threatsBy(self: *const Board, col: Colour, pt: PieceType) u64 {
+    std.debug.assert(self.threats_valid);
     return self.threats_by[col.toInt()][pt.toInt()];
 }
 
 pub inline fn lesserThreatsFor(self: *const Board, col: Colour) u64 {
+    std.debug.assert(self.threats_valid);
     return self.lesser_threats[col.toInt()];
 }
 
@@ -795,7 +799,7 @@ inline fn removePiece(self: *Board, col: Colour, pt: PieceType, sq: Square) void
     self.mailbox[sq.toInt()] = MAILBOX_EMPTY;
 }
 
-pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
+pub fn updateThreatsFor(noalias self: *Board, col: Colour) void {
     const occ = self.occupancy() ^ self.kingFor(col.flipped());
     const pawn_threats = Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
     const knight_threats = Bitboard.knightMoveBitBoardSetwise(self.knightsFor(col));
@@ -838,9 +842,22 @@ pub inline fn updateThreats(noalias self: *Board, comptime col: Colour) void {
     self.lesser_threats[col.toInt()] = lesser_threatened;
 }
 
+pub fn updateThreats(self: *Board) void {
+    self.updateThreatsFor(.white);
+    self.updateThreatsFor(.black);
+    self.threats_valid = true;
+}
+
+pub fn ensureThreats(self: *Board) void {
+    if (self.threats_valid) {
+        @branchHint(.likely);
+        return;
+    }
+    self.updateThreats();
+}
+
 pub fn updateMasks(self: *Board, col: Colour) void {
-    self.updateThreats(.white);
-    self.updateThreats(.black);
+    self.updateThreats();
     switch (col) {
         inline else => |stm| self.updateKingThreats(stm),
     }
@@ -1202,7 +1219,7 @@ test givesCheck {
 pub fn makeMoveSimple(noalias self: *Board, move: Move) void {
     switch (self.stm) {
         inline else => |stm| {
-            makeMoveInternal(self, stm, move, root.evaluation.noHandle());
+            makeMoveInternal(self, stm, move, root.evaluation.noHandle(), false);
         },
     }
 }
@@ -1210,12 +1227,12 @@ pub fn makeMoveSimple(noalias self: *Board, move: Move) void {
 pub fn makeMove(noalias self: *Board, move: Move, eval_state: anytype) void {
     switch (self.stm) {
         inline else => |stm| {
-            makeMoveInternal(self, stm, move, eval_state);
+            makeMoveInternal(self, stm, move, eval_state, false);
         },
     }
 }
 
-pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype) void {
+pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype, comptime defer_threats: bool) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;
     var updated_castling_rights = self.castling_rights;
@@ -1315,7 +1332,12 @@ pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, 
     self.stm = stm.flipped();
     self.fullmove += stm.toInt();
 
-    self.updateMasks(stm.flipped());
+    if (defer_threats) {
+        self.updateKingThreats(stm.flipped());
+        self.threats_valid = false;
+    } else {
+        self.updateMasks(stm.flipped());
+    }
     self.updateTurnHash();
 }
 
@@ -1848,7 +1870,7 @@ fn perft_impl(
     } else {
         for (movelist.vals.slice()) |move| {
             var cp = self.*;
-            cp.makeMoveInternal(stm, move, root.evaluation.noHandle());
+            cp.makeMoveInternal(stm, move, root.evaluation.noHandle(), false);
             if (is_root and !quiet) {
                 std.debug.print("{s}: ", .{move.toString(self).slice()});
             }
@@ -1902,7 +1924,7 @@ pub fn perftVerify(
 
 test "basic makemove" {
     var board = startpos();
-    board.makeMoveInternal(.white, Move.quiet(.e2, .e4), root.evaluation.noHandle());
+    board.makeMoveInternal(.white, Move.quiet(.e2, .e4), root.evaluation.noHandle(), false);
     try std.testing.expectEqual(@as(u8, ColouredPieceType.white_pawn.toInt()), board.mailbox[Square.e4.toInt()]);
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e4.toBitboard(), Square.e4.toBitboard());
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e2.toBitboard(), 0);
