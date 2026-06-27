@@ -273,13 +273,13 @@ pub const NoisyHistory = struct {
 
 pub const ContHistory = struct {
     pub const ContHistTable = struct {
-        vals: [2][6][64]i16,
+        vals: [2][6][64]std.atomic.Value(i16),
 
         inline fn entry(
             self: anytype,
             col: Colour,
             move: TypedMove,
-        ) root.inheritConstness(@TypeOf(self), *i16) {
+        ) root.inheritConstness(@TypeOf(self), *std.atomic.Value(i16)) {
             return &self.vals[col.toInt()][move.tp.toInt()][move.move.to().toInt()];
         }
 
@@ -298,7 +298,7 @@ pub const ContHistory = struct {
             col: Colour,
             move: TypedMove,
         ) i16 {
-            return self.entry(col, move).*;
+            return self.entry(col, move).load(.monotonic);
         }
     };
 
@@ -354,7 +354,7 @@ pub const ContHistory = struct {
         ));
     }
 
-    inline fn reset(self: *ContHistory) void {
+    pub fn reset(self: *ContHistory) void {
         @memset(std.mem.asBytes(&self.vals), 0);
     }
 
@@ -545,12 +545,11 @@ pub const HistoryTable = struct {
     quiet: QuietHistory,
     pawn: *PawnHistory,
     noisy: NoisyHistory,
-    countermove: ContHistory,
+    countermove: *ContHistory,
 
     pub fn reset(self: *HistoryTable) void {
         self.quiet.reset();
         self.noisy.reset();
-        self.countermove.reset();
     }
 
     pub fn age(self: *HistoryTable) void {
@@ -677,8 +676,9 @@ inline fn gravityImpl(current_value: i32, total: i64, adjustment: anytype) i16 {
     ));
 }
 
-fn gravityUpdateCont(entry: *i16, total: i64, adjustment: anytype) void {
-    entry.* = gravityImpl(entry.*, total, adjustment);
+fn gravityUpdateCont(entry: *std.atomic.Value(i16), total: i64, adjustment: anytype) void {
+    const cur: i32 = entry.load(.monotonic);
+    entry.store(gravityImpl(cur, total, adjustment), .monotonic);
 }
 
 fn gravityUpdate(entry: *i16, adjustment: anytype) void {

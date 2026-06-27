@@ -125,6 +125,7 @@ const Thread = struct {
     idx: usize,
     correction_histories: *history.CorrectionHistoryTable = undefined,
     pawn_histories: *history.PawnHistory = undefined,
+    countermove_histories: *history.ContHistory = undefined,
     io: std.Io,
 
     pub fn init(allocator: std.mem.Allocator, searcher: *Searcher, idx: usize, io: std.Io) !*Thread {
@@ -162,6 +163,7 @@ const Thread = struct {
                     @memset(std.mem.asBytes(self.searcher), 0);
                     self.searcher.correction_histories = self.correction_histories;
                     self.searcher.histories.pawn = self.pawn_histories;
+                    self.searcher.histories.countermove = self.countermove_histories;
                     self.searcher.eval_context.initForThread(self.idx);
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
@@ -214,8 +216,9 @@ pub const ThreadPool = struct {
     threads: std.ArrayListUnmanaged(*Thread) = .empty,
     searchers: std.ArrayListUnmanaged(*Searcher) = .empty,
     tt: []align(std.atomic.cache_line) TTCluster = &.{},
-    corrhists: SharedStore(history.CorrectionHistoryTable) = .{},
-    pawn_histories: SharedStore(history.PawnHistory) = .{},
+    corrhists: SharedStore(history.CorrectionHistoryTable),
+    pawn_histories: SharedStore(history.PawnHistory),
+    countermove_histories: SharedStore(history.ContHistory),
     allocator: std.mem.Allocator,
     io: std.Io,
     stop_searching: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
@@ -224,6 +227,7 @@ pub const ThreadPool = struct {
         return .{
             .corrhists = try SharedStore(history.CorrectionHistoryTable).init(allocator),
             .pawn_histories = try SharedStore(history.PawnHistory).init(allocator),
+            .countermove_histories = try SharedStore(history.ContHistory).init(allocator),
             .allocator = allocator,
             .io = io,
         };
@@ -235,6 +239,7 @@ pub const ThreadPool = struct {
         self.searchers.deinit(self.allocator);
         self.corrhists.deinit(self.allocator);
         self.pawn_histories.deinit(self.allocator);
+        self.countermove_histories.deinit(self.allocator);
         if (self.tt.len > 0) {
             self.allocator.free(self.tt);
         }
@@ -259,6 +264,7 @@ pub const ThreadPool = struct {
         thread.tt = self.tt;
         thread.correction_histories = self.corrhists.get(self.threads.items.len);
         thread.pawn_histories = self.pawn_histories.get(self.threads.items.len);
+        thread.countermove_histories = self.countermove_histories.get(self.threads.items.len);
         try self.threads.append(self.allocator, thread);
         try self.searchers.append(self.allocator, searcher);
         thread.wake(.reset);
@@ -297,11 +303,13 @@ pub const ThreadPool = struct {
             s.tt = self.tt;
             s.correction_histories = self.corrhists.get(i);
             s.histories.pawn = self.pawn_histories.get(i);
+            s.histories.countermove = self.countermove_histories.get(i);
         }
         for (self.threads.items, 0..) |t, i| {
             t.tt = self.tt;
             t.correction_histories = self.corrhists.get(i);
             t.pawn_histories = self.pawn_histories.get(i);
+            t.countermove_histories = self.countermove_histories.get(i);
         }
     }
 
@@ -323,6 +331,7 @@ pub const ThreadPool = struct {
     pub fn reset(self: *ThreadPool) void {
         self.corrhists.reset();
         self.pawn_histories.reset();
+        self.countermove_histories.reset();
         const num_threads = self.threads.items.len;
         if (num_threads == 0) {
             if (self.tt.len > 0) {
