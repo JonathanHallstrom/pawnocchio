@@ -1302,7 +1302,7 @@ fn search(
 
                 // _ = engine.dbg("correction", correction);
                 // _ = engine.dbg("double before", s_score < s_beta - double_ext_margin);
-                double_ext_margin -= (@abs(correction) - 48) >> 3;
+                // double_ext_margin -= @abs(correction) >> 3;
                 // _ = engine.dbg("double after", s_score < s_beta - double_ext_margin);
 
                 if (s_score < s_beta - double_ext_margin) {
@@ -1317,7 +1317,7 @@ fn search(
                     }
 
                     // _ = engine.dbg("triple before", s_score < s_beta - triple_ext_margin);
-                    triple_ext_margin -= (@abs(correction) - 48) >> 3;
+                    triple_ext_margin -= @abs(correction) >> 3;
                     // _ = engine.dbg("triple after", s_score < s_beta - triple_ext_margin);
 
                     if (s_score < s_beta - triple_ext_margin) {
