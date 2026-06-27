@@ -1931,7 +1931,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         previous_score = score;
         previous_move = self.root_move;
 
-        average_score = if (d == 1) score else @divTrunc(average_score + @as(i64, score) * score, 2);
+        average_score = if (d == 1) score * @as(i64, score) else @divTrunc(average_score + @as(i64, score) * score, 2);
 
         completed_depth = depth;
         if (is_main_thread) {
