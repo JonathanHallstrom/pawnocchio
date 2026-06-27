@@ -825,7 +825,8 @@ fn search(
     }
 
     const has_tt_move = tt_hit and !tt_entry.move.isNull();
-    const tt_pv = is_pv or (tt_hit and tt_entry.flags.getPV());
+    const tt_was_pv = tt_hit and tt_entry.flags.getPV();
+    const tt_pv = is_pv or tt_was_pv;
 
     // internal iterative reduction (iir)
     if (depth >= 4 + (if (is_pv) 4 else 0) and
@@ -1298,6 +1299,10 @@ fn search(
                     TUNABLES.singular_dext_margin_noisy;
                 if (is_pv) {
                     double_ext_margin += TUNABLES.singular_dext_pv_margin;
+
+                    if (!tt_was_pv) {
+                        double_ext_margin += 40;
+                    }
                 }
 
                 if (s_score < s_beta - double_ext_margin) {
@@ -1309,6 +1314,10 @@ fn search(
                         TUNABLES.singular_text_margin_noisy;
                     if (is_pv) {
                         triple_ext_margin += TUNABLES.singular_text_pv_margin;
+
+                        if (!tt_was_pv) {
+                            triple_ext_margin += 40;
+                        }
                     }
 
                     if (s_score < s_beta - triple_ext_margin) {
