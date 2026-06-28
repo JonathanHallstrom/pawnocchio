@@ -219,7 +219,7 @@ move_stab_base, 1424
 move_stab_offs, 47
 move_stab_lim, 932
 soft_limit_base, 56
-soft_limit_incr, 790
+soft_limit_incr, 900 
 hard_limit_phase_mult, 113
 hard_limit_base, 500
 singular_beta_mult, 488
