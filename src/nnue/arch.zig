@@ -150,7 +150,7 @@ pub const ThreatWeightVec = @Vector(simd.vecSize(i16), i8);
 pub const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / simd.vecSize(i16);
 
 pub const ACCUMULATOR_TILE = @min(ACCUMULATOR_VECTOR_COUNT, switch (simd.TARGET) {
-    .avx512vbmi, .avx512 => 16,
+    .avx512vbmi, .avx512 => 32,
     else => 8,
 });
 
