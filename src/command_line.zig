@@ -1257,6 +1257,7 @@ fn handleSanitise(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void
 fn runBench(io: std.Io, bench_depth: i32) !void {
     if (root.engine == void) return error.EngineMissing;
     defer root.engine.printDebugStats();
+    defer @import("SEE.zig").printPieceCounts();
     var total_nodes: u64 = 0;
     const start_time = std.Io.Timestamp.now(io, .awake);
     root.engine.reset();

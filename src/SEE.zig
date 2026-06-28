@@ -84,6 +84,56 @@ const pickFirst = switch (std.simd.suggestVectorLength(u64) orelse 0) {
     else => pickFirstVectorized,
 };
 
+fn pack(piece_counts: [6]i8) u48 {
+    return @bitCast(piece_counts);
+}
+
+fn unpack(piece_counts: u48) [6]i8 {
+    return @bitCast(piece_counts);
+}
+
+pub var piece_count_set = std.AutoHashMap(u48, u64).init(std.heap.smp_allocator);
+
+pub fn printPieceCounts() void {
+    var iter = piece_count_set.iterator();
+
+    const P = struct { u64, [6]i8 };
+    var list = std.array_list.Managed(P).init(std.heap.smp_allocator);
+    defer list.deinit();
+
+    while (iter.next()) |e| {
+        const piece_counts = unpack(e.key_ptr.*);
+        const count = e.value_ptr.*;
+
+        list.append(.{ count, piece_counts }) catch @panic("oom");
+    }
+
+    std.mem.sort(P, list.items, void{}, struct {
+        fn impl(_: void, a: P, b: P) bool {
+            return a.@"0" > b.@"0";
+        }
+    }.impl);
+
+    for (list.items) |e| {
+        const count, const piece_counts = e;
+
+        for (piece_counts, root.PieceType.all) |c, pt| {
+            if (c <= 0) continue;
+            if (c != 1) std.debug.print("{}", .{c});
+            std.debug.print("{c} ", .{pt.toAsciiLetter()});
+        }
+
+        std.debug.print("- ", .{});
+
+        for (piece_counts, root.PieceType.all) |c, pt| {
+            if (c >= 0) continue;
+            if (c != -1) std.debug.print("{}", .{-c});
+            std.debug.print("{c} ", .{pt.toAsciiLetter()});
+        }
+        std.debug.print(": {}\n", .{count});
+    }
+}
+
 pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, comptime mode: Mode) bool {
     const from = move.from();
     const to = move.to();
@@ -139,6 +189,11 @@ pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, compt
     attackers &= allowed & occ;
 
     var attacker: PieceType = undefined;
+
+    var piece_counts: [7]i8 = @splat(0);
+    var sign: i8 = -1;
+
+    var previous_attacker: u8 = if (captured_type) |c| c.toInt() else 6;
     while (true) {
         if (attackers & board.occupancyFor(stm) == 0) {
             break;
@@ -162,6 +217,9 @@ pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, compt
         }
 
         attackers &= occ;
+        piece_counts[previous_attacker] += sign;
+        previous_attacker = attacker.toInt();
+        sign = -sign;
         score = -score - 1 - value(attacker, mode);
         stm = stm.flipped();
 
@@ -169,6 +227,17 @@ pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, compt
             break;
         }
     }
+    var s: i8 = 1;
+    for (piece_counts) |p| {
+        s *= @as(i8, @intFromBool(p >= 0)) - @as(i8, @intFromBool(p < 0));
+    }
+
+    for (&piece_counts) |*p| p.* *= s;
+
+    const gop = piece_count_set.getOrPut(pack(piece_counts[0..6].*)) catch @panic("oom");
+    if (!gop.found_existing) gop.value_ptr.* = 0;
+    gop.value_ptr.* += 1;
+
     return stm != board.stm;
 }
 

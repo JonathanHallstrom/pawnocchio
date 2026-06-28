@@ -639,10 +639,12 @@ pub fn main(init: std.process.Init) !void {
                 },
             });
         } else if (std.ascii.eqlIgnoreCase(command, "stop")) {
+            @import("SEE.zig").printPieceCounts();
             root.engine.printDebugStats();
             root.engine.resetDebugStats();
             root.engine.stopSearch();
         } else if (std.ascii.eqlIgnoreCase(command, "quit")) {
+            @import("SEE.zig").printPieceCounts();
             root.engine.printDebugStats();
             return;
         } else if (std.ascii.eqlIgnoreCase(command, "wait")) {
