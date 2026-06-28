@@ -159,7 +159,7 @@ pub const PSQTWeight = [ACCUMULATOR_VECTOR_COUNT]PSQTWeightVec;
 pub const ThreatWeight = [ACCUMULATOR_VECTOR_COUNT]ThreatWeightVec;
 
 pub const HORIZONTAL_MIRRORING = true;
-pub const INPUT_BUCKET_COUNT: usize = 16;
+pub const INPUT_BUCKET_COUNT: usize = 32;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
 pub const L1_SIZE: usize = 768;
 pub const L2_SIZE: usize = 16;
@@ -171,12 +171,12 @@ pub const Q = 64;
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     0,  1,  2,  3,  3,  2,  1,  0,
     4,  5,  6,  7,  7,  6,  5,  4,
-    8,  8,  9,  9,  9,  9,  8,  8,
-    10, 10, 11, 11, 11, 11, 10, 10,
-    12, 12, 13, 13, 13, 13, 12, 12,
-    12, 12, 13, 13, 13, 13, 12, 12,
-    14, 14, 15, 15, 15, 15, 14, 14,
-    14, 14, 15, 15, 15, 15, 14, 14,
+    8,  9,  10, 11, 11, 10, 9,  8,
+    12, 13, 14, 15, 15, 14, 13, 12,
+    16, 17, 18, 19, 19, 18, 17, 16,
+    20, 21, 22, 23, 23, 22, 21, 20,
+    24, 25, 26, 27, 27, 26, 25, 24,
+    28, 29, 30, 31, 31, 30, 29, 28,
 };
 
 pub inline fn whichInputBucket(sq_idx: usize) usize {
