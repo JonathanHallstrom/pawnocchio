@@ -13,7 +13,8 @@ MV=mv ./zig-out/bin/pawnocchio $(EXE)
 endif
 
 net:
-	-git submodule update --init --recursive --depth 1
+	wget https://github.com/JonathanHallstrom/pawnocchio-nets/releases/download/pp_big.nnue/pp_big.nnue
+	# -git submodule update --init --recursive --depth 1
 
 ifdef EVALFILE
 NET_SPECIFIER=-Dnet=$(EVALFILE)
@@ -22,5 +23,5 @@ NET_SPECIFIER=
 endif
 
 default: net
-	zig build --release=fast install $(NET_SPECIFIER)
+	zig build --release=fast install -Dnet=pp_big.nnue
 	@$(MV)
