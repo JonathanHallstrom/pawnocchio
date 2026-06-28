@@ -1255,6 +1255,7 @@ fn search(
             }
 
             if (!skip_see_pruning and
+                @abs(alpha) < 2000 and
                 !SEE.scoreMove(board, move, @intCast(see_pruning_thresh), .pruning))
             {
                 continue;
