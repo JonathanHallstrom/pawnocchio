@@ -83,6 +83,7 @@ const HAS_AVX512_VNNI = @import("builtin").cpu.has(.x86, .avx512vnni);
 const HAS_AVX_VNNI = @import("builtin").cpu.has(.x86, .avxvnni);
 const HAS_VNNI = HAS_AVX512_VNNI or HAS_AVX_VNNI;
 const HAS_I8MM = @import("builtin").cpu.has(.aarch64, .i8mm);
+pub const HAS_VBMI2 = @import("builtin").cpu.has(.x86, .avx512vbmi2);
 
 const x86 = @import("simd/x86.zig");
 const avx512 = @import("simd/avx512.zig");
