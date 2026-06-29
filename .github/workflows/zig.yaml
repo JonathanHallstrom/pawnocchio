@@ -8,29 +8,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 1
       - uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.16.0
+      - run: make net
       - run: zig build check
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 1
       - uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.16.0
+      - run: make net
       - run: zig build test
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 1
       - uses: goto-bus-stop/setup-zig@v2
         with:
