@@ -455,7 +455,6 @@ pub const SCHEMA = .{
     .move_stab_lim = scalar(.{ .min = 10, .c_end = 20 }),
     .soft_limit_base = scalar(.{ .min = 10, .c_end = 2.5 }),
     .soft_limit_incr = scalar(.{ .min = 10, .c_end = 15 }),
-    .hard_limit_phase_mult = scalar(.{ .min = 10, .c_end = 3 }),
     .hard_limit_base = scalar(.{ .min = 10, .c_end = 5 }),
 
     .singular_beta_mult = scalar(.{ .min = 10, .max = 992, .c_end = 39 }),
