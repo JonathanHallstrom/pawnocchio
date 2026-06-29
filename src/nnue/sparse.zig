@@ -43,7 +43,19 @@ fn getMask(vals: simd.Vector(u8)) simd.MaskInt(simd.Vector(i32)) {
     return @bitCast(as_i32 != zero);
 }
 
+const USE_VBMI2_NNZ = simd.HAS_VBMI2 and simd.vecSize(i32) == 16 and L1_SIZE % 128 == 0;
+
 pub inline fn findNonZeroIndices(
+    ft: *align(64) const [L1_SIZE]u8,
+) struct {
+    [L1_SIZE / 4]u16,
+    usize,
+} {
+    const impl = if (comptime USE_VBMI2_NNZ) findNonZeroIndicesVBMI2 else findNonZeroIndicesLUT;
+    return impl(ft);
+}
+
+fn findNonZeroIndicesLUT(
     ft: *align(64) const [L1_SIZE]u8,
 ) struct {
     [L1_SIZE / 4]u16,
@@ -73,6 +85,33 @@ pub inline fn findNonZeroIndices(
             count += @popCount(byte);
             base += @splat(8);
         }
+    }
+
+    return .{ indices, count };
+}
+
+fn findNonZeroIndicesVBMI2(
+    ft: *align(64) const [L1_SIZE]u8,
+) struct {
+    [L1_SIZE / 4]u16,
+    usize,
+} {
+    const ZERO: simd.Vector(i32) = @splat(0);
+    const groups: [*]align(64) const simd.Vector(i32) = @ptrCast(ft);
+
+    var indices: [L1_SIZE / 4]u16 = undefined;
+    var count: usize = 0;
+
+    inline for (0..L1_SIZE / 128) |i| {
+        const lo: simd.MaskInt(simd.Vector(i32)) = @bitCast(groups[2 * i] != ZERO);
+        const hi: simd.MaskInt(simd.Vector(i32)) = @bitCast(groups[2 * i + 1] != ZERO);
+        const mask: simd.MaskInt(simd.Vector(u16)) = @as(u32, lo) | @as(u32, hi) << 16;
+
+        const base: simd.Vector(u16) = std.simd.iota(u16, 32) + @as(simd.Vector(u16), @splat(32 * i));
+        const compressed: [32]u16 = simd.vpcompress(base, mask);
+        @memcpy(indices[count..][0..32], &compressed);
+
+        count += @popCount(mask);
     }
 
     return .{ indices, count };
