@@ -1292,6 +1292,8 @@ fn search(
             if (s_score < s_beta) {
                 extension += 1;
 
+                const corr_margin = @as(i32, @abs(correction) / 8) - 8;
+
                 var double_ext_margin = if (is_quiet)
                     TUNABLES.singular_dext_margin_quiet
                 else
@@ -1299,6 +1301,10 @@ fn search(
                 if (is_pv) {
                     double_ext_margin += TUNABLES.singular_dext_pv_margin;
                 }
+
+                // _ = engine.dbg("before", s_score < s_beta - double_ext_margin);
+                double_ext_margin -= corr_margin;
+                // _ = engine.dbg("after", s_score < s_beta - double_ext_margin);
 
                 if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
