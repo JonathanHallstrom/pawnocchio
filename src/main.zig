@@ -109,7 +109,11 @@ pub fn main(init: std.process.Init) !void {
     defer allocator.free(line_buf);
     var line_writer = std.Io.Writer.fixed(line_buf);
 
-    const can_print_utf8 = root.initConsole();
+    const is_tty = std.Io.File.stdout().isTty(io) catch false;
+    if (is_tty) {
+        root.initConsole();
+    }
+    const ascii_only = root.IS_WINDOWS and !is_tty;
     var stdin_buf: [4096]u8 = undefined;
     var stdin = std.Io.File.stdin();
     if (root.needsNonBlockingIo(stdin.handle)) {
@@ -165,10 +169,10 @@ pub fn main(init: std.process.Init) !void {
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             write("id name pawnocchio {s}\n", .{version});
-            if (can_print_utf8) {
-                write("id author Jonathan Hallström\n", .{});
+            if (ascii_only) {
+                write("id author Jonathan Hallstroem\n", .{});
             } else {
-                try root.writeWTF16(allocator, "id author Jonathan Hallström\n", .{});
+                try root.writeUnicode(allocator, "id author Jonathan Hallström\n", .{});
             }
             write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
@@ -187,12 +191,8 @@ pub fn main(init: std.process.Init) !void {
                 writeTuningOptions();
             }
             write("uciok\n", .{});
-        } else if (std.ascii.eqlIgnoreCase(command, "banner")) {
-            if (can_print_utf8) {
-                write("{s}\n", .{BANNER});
-            } else {
-                try root.writeWTF16(allocator, "{s}\n", .{BANNER});
-            }
+        } else if (!ascii_only and std.ascii.eqlIgnoreCase(command, "banner")) {
+            try root.writeUnicode(allocator, "{s}\n", .{BANNER});
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             writeSpsaInputs();
         } else if (std.ascii.eqlIgnoreCase(command, "print_schema")) {
