@@ -104,6 +104,10 @@ pub const Colour = enum(u8) {
 fn initImpl(io_init: std.Io) void {
     io = io_init;
     stdout = std.Io.File.stdout();
+    if (needsNonBlockingIo(stdout.handle)) {
+        stdout.flags.nonblocking = true;
+    }
+
     stdout_wrapper = stdout.writerStreaming(io, &stdout_buf);
     stdout_writer = &stdout_wrapper.interface;
     attacks.init();
@@ -636,16 +640,84 @@ pub var stdout_writer: *std.Io.Writer = undefined;
 var stdout_buf: [4096]u8 = undefined;
 var stdout: std.Io.File = undefined;
 var write_mutex: std.Io.Mutex = .init;
+
+pub const IS_WINDOWS = @import("builtin").os.tag == .windows;
+const windows_h = @cImport(@cInclude("windows.h"));
+
+pub fn initConsole() void {
+    if (IS_WINDOWS) {
+        if (windows_h.SetConsoleCP(windows_h.CP_UTF8) == 0) {
+            return;
+        }
+        if (windows_h.SetConsoleOutputCP(windows_h.CP_UTF8) == 0) {
+            return;
+        }
+    }
+}
+
+pub fn needsNonBlockingIo(handle: std.posix.fd_t) bool {
+    if (@import("builtin").os.tag != .windows) {
+        return false;
+    }
+
+    const windows = std.os.windows;
+
+    var iosb: windows.IO_STATUS_BLOCK = undefined;
+    var mode: windows.ULONG = 0;
+
+    const rc = windows.ntdll.NtQueryInformationFile(handle, &iosb, &mode, @sizeOf(windows.ULONG), .Mode);
+
+    if (rc != .SUCCESS) {
+        return false;
+    }
+
+    const flags = windows_h.FILE_SYNCHRONOUS_IO_ALERT | windows_h.FILE_SYNCHRONOUS_IO_NONALERT;
+
+    return mode & flags == 0;
+}
+
+pub fn writeUnicode(
+    allocator: std.mem.Allocator,
+    comptime fmt: []const u8,
+    args: anytype,
+) !void {
+    write_mutex.lockUncancelable(io);
+    defer write_mutex.unlock(io);
+
+    var utf8_writer = std.Io.Writer.Allocating.init(allocator);
+    defer utf8_writer.deinit();
+    try utf8_writer.writer.print(fmt, args);
+    const utf8 = utf8_writer.written();
+
+    if (IS_WINDOWS) {
+        const handle = windows_h.GetStdHandle(windows_h.STD_OUTPUT_HANDLE);
+        var console_mode: windows_h.DWORD = undefined;
+        if (windows_h.GetConsoleMode(handle, &console_mode) != 0) {
+            const wtf16_buf = try std.unicode.wtf8ToWtf16LeAlloc(allocator, utf8);
+            defer allocator.free(wtf16_buf);
+
+            stdout_writer.flush() catch |e| std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
+
+            var written: windows_h.DWORD = 0;
+            if (windows_h.WriteConsoleW(handle, wtf16_buf.ptr, @intCast(wtf16_buf.len), &written, null) == 0) {
+                std.debug.panic("WriteConsoleW failed\n", .{});
+            }
+            return;
+        }
+    }
+
+    stdout_writer.writeAll(utf8) catch |e| std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
+
+    stdout_writer.flush() catch |e| std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
+}
+
 pub fn write(comptime fmt: []const u8, args: anytype) void {
     write_mutex.lockUncancelable(io);
     defer write_mutex.unlock(io);
 
-    stdout_writer.print(fmt, args) catch |e| {
-        std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
-    };
-    stdout_writer.flush() catch |e| {
-        std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
-    };
+    stdout_writer.print(fmt, args) catch |e| std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
+
+    stdout_writer.flush() catch |e| std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
 }
 
 pub fn isConstPointer(comptime T: type) bool {
