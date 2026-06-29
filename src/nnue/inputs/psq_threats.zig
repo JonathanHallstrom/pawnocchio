@@ -622,7 +622,7 @@ pub const Context = struct {
         defer timer.register();
         const combined: [*]const arch.ThreatWeight = @ptrCast(&weights.input.pp_w);
         var i: usize = 0;
-        const TILE = arch.ACCUMULATOR_TILE;
+        const TILE = @min(16, arch.ACCUMULATOR_TILE);
         for (subs) |idx| @prefetch(&combined[idx], .{ .rw = .read });
         for (adds) |idx| @prefetch(&combined[idx], .{ .rw = .read });
         while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
@@ -640,7 +640,7 @@ pub const Context = struct {
     fn applyAllRowsZeroed(noalias dst: *Accumulator, weights: *const arch.Weights, adds: []const u16) void {
         const combined: [*]const arch.ThreatWeight = @ptrCast(&weights.input.pp_w);
         for (adds) |idx| @prefetch(&combined[idx], .{ .rw = .read });
-        const TILE = arch.ACCUMULATOR_TILE;
+        const TILE = @min(16, arch.ACCUMULATOR_TILE);
         var i: usize = 0;
         while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
             var v: [TILE]arch.AccumulatorVec = @splat(@splat(0));
