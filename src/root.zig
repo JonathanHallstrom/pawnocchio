@@ -104,6 +104,10 @@ pub const Colour = enum(u8) {
 fn initImpl(io_init: std.Io) void {
     io = io_init;
     stdout = std.Io.File.stdout();
+    if (needsNonBlockingIo(stdout.handle)) {
+        stdout.flags.nonblocking = true;
+    }
+
     stdout_wrapper = stdout.writerStreaming(io, &stdout_buf);
     stdout_writer = &stdout_wrapper.interface;
     attacks.init();
@@ -636,6 +640,78 @@ pub var stdout_writer: *std.Io.Writer = undefined;
 var stdout_buf: [4096]u8 = undefined;
 var stdout: std.Io.File = undefined;
 var write_mutex: std.Io.Mutex = .init;
+
+pub fn initConsole() bool {
+    if (@import("builtin").os.tag == .windows) {
+        const windows_h = @cImport(@cInclude("windows.h"));
+        if (windows_h.SetConsoleCP(windows_h.CP_UTF8) != 0) {
+            return false;
+        }
+        if (windows_h.SetConsoleOutputCP(windows_h.CP_UTF8) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+pub fn needsNonBlockingIo(handle: std.posix.fd_t) bool {
+    if (@import("builtin").os.tag != .windows) {
+        return false;
+    }
+
+    const windows = std.os.windows;
+
+    var iosb: windows.IO_STATUS_BLOCK = undefined;
+    var mode: windows.ULONG = 0;
+
+    const rc = windows.ntdll.NtQueryInformationFile(handle, &iosb, &mode, @sizeOf(windows.ULONG), .Mode);
+
+    if (rc != .SUCCESS) {
+        return false;
+    }
+
+    const windows_h = @cImport(@cInclude("windows.h"));
+
+    const flags = windows_h.FILE_SYNCHRONOUS_IO_ALERT | windows_h.FILE_SYNCHRONOUS_IO_NONALERT;
+
+    return mode & flags == 0;
+}
+
+pub fn writeWTF16(
+    allocator: std.mem.Allocator,
+    comptime fmt: []const u8,
+    args: anytype,
+) !void {
+    write_mutex.lockUncancelable(io);
+    defer write_mutex.unlock(io);
+
+    var utf8_writer = std.Io.Writer.Allocating.init(allocator);
+    defer utf8_writer.deinit();
+    var wtf8_writer = std.Io.Writer.Allocating.init(allocator);
+    defer wtf8_writer.deinit();
+
+    try utf8_writer.writer.print(fmt, args);
+    var utf8_view = try std.unicode.Utf8View.init(utf8_writer.written());
+    var ut8_iter = utf8_view.iterator();
+
+    while (ut8_iter.nextCodepoint()) |codepoint| {
+        var codepoint_buf: [8]u8 = undefined;
+        const bytes_taken = try std.unicode.wtf8Encode(codepoint, &codepoint_buf);
+        try wtf8_writer.writer.writeAll(codepoint_buf[0..bytes_taken]);
+    }
+
+    const wtf16_buf = try std.unicode.wtf8ToWtf16LeAlloc(allocator, wtf8_writer.written());
+    defer allocator.free(wtf16_buf);
+
+    const output: []const u8 = std.mem.sliceAsBytes(wtf16_buf);
+    stdout_writer.writeAll(output) catch |e| {
+        std.debug.panic("writing to stdout failed! Error: {}\n", .{e});
+    };
+    stdout_writer.flush() catch |e| {
+        std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
+    };
+}
+
 pub fn write(comptime fmt: []const u8, args: anytype) void {
     write_mutex.lockUncancelable(io);
     defer write_mutex.unlock(io);

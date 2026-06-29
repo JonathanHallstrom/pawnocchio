@@ -105,18 +105,17 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    if (@import("builtin").os.tag == .windows) {
-        const windows = @cImport(@cInclude("windows.h"));
-        _ = windows.SetConsoleCP(windows.CP_UTF8);
-        _ = windows.SetConsoleOutputCP(windows.CP_UTF8);
-    }
-
     const line_buf = try allocator.alloc(u8, 1 << 20);
     defer allocator.free(line_buf);
     var line_writer = std.Io.Writer.fixed(line_buf);
 
+    const can_print_utf8 = root.initConsole();
     var stdin_buf: [4096]u8 = undefined;
     var stdin = std.Io.File.stdin();
+    if (root.needsNonBlockingIo(stdin.handle)) {
+        stdin.flags.nonblocking = true;
+    }
+
     var reader = stdin.readerStreaming(io, &stdin_buf);
 
     var previous_positions = std.array_list.Managed(Board).init(allocator);
@@ -166,7 +165,11 @@ pub fn main(init: std.process.Init) !void {
 
         if (std.ascii.eqlIgnoreCase(command, "uci")) {
             write("id name pawnocchio {s}\n", .{version});
-            write("id author Jonathan Hallström\n", .{});
+            if (can_print_utf8) {
+                write("id author Jonathan Hallström\n", .{});
+            } else {
+                try root.writeWTF16(allocator, "id author Jonathan Hallström\n", .{});
+            }
             write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
             write("option name Threads type spin default 1 min 1 max 65535\n", .{});
             write("option name Move Overhead type spin default {} min 1 max 10000\n", .{overhead / std.time.ns_per_ms});
@@ -185,7 +188,11 @@ pub fn main(init: std.process.Init) !void {
             }
             write("uciok\n", .{});
         } else if (std.ascii.eqlIgnoreCase(command, "banner")) {
-            write("{s}\n", .{BANNER});
+            if (can_print_utf8) {
+                write("{s}\n", .{BANNER});
+            } else {
+                try root.writeWTF16(allocator, "{s}\n", .{BANNER});
+            }
         } else if (std.ascii.eqlIgnoreCase(command, "spsa_inputs")) {
             writeSpsaInputs();
         } else if (std.ascii.eqlIgnoreCase(command, "print_schema")) {
