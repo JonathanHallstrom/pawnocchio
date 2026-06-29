@@ -580,7 +580,6 @@ pub fn main(init: std.process.Init) !void {
 
             var limits = root.Limits.initStandard(
                 io,
-                &board,
                 my_time,
                 my_increment,
                 overhead,

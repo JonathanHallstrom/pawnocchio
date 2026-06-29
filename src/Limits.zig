@@ -48,10 +48,10 @@ pub fn elapsed(self: *const Limits) u64 {
     return @intCast(duration.nanoseconds);
 }
 
-pub fn initStandard(io: std.Io, board: *const root.Board, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
+pub fn initStandard(io: std.Io, remaining_ns: u64, increment_ns: u64, overhead_ns: u64) Limits {
     const start_time = std.Io.Timestamp.now(io, .awake);
     const hard_time = (remaining_ns -| overhead_ns) * @as(u128, @min(
-        @as(u128, @intCast(TUNABLE_CONSTANTS.hard_limit_base + (TUNABLE_CONSTANTS.hard_limit_phase_mult * (32 -| board.phase()) >> 6))),
+        @as(u128, @intCast(TUNABLE_CONSTANTS.hard_limit_base)),
         1024,
     )) >> 10;
     const soft_time = (remaining_ns -| overhead_ns) * @as(u128, @intCast(TUNABLE_CONSTANTS.soft_limit_base)) + increment_ns * @as(u128, @intCast(TUNABLE_CONSTANTS.soft_limit_incr)) >> 10;
