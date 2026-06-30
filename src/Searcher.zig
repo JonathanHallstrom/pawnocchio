@@ -1023,7 +1023,10 @@ fn search(
             else
                 Move.init();
 
-            const probcut_depth = depth - 4;
+            var probcut_depth = depth - 4;
+            if (improving) {
+                probcut_depth -= 1;
+            }
             const conthist_tables = self.getConthistTables(stm);
             var mp = MovePicker.initProbcut(
                 &cur.movelist,
