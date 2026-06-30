@@ -16,7 +16,7 @@ RM=rm -f
 RM_DIR=rm -rf
 endif
 
-DEFAULT_NET=pp_big.nnue
+DEFAULT_NET=pp_big2.nnue
 NET_URL=https://github.com/JonathanHallstrom/pawnocchio-nets/releases/download/$(DEFAULT_NET)/$(DEFAULT_NET)
 
 ifndef EVALFILE
