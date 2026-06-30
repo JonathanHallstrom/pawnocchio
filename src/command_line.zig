@@ -1382,6 +1382,34 @@ fn runBench(io: std.Io, bench_depth: i32) !void {
     const now = std.Io.Timestamp.now(io, .awake);
     const elapsed = @max(1, @as(u64, @intCast(start_time.durationTo(now).nanoseconds)));
     write("{} nodes {} nps\n", .{ total_nodes, @as(u128, total_nodes) * std.time.ns_per_s / elapsed });
+    if (root.evaluation.EVAL_MODE == .nnue) {
+        if (root.nnue.arch.outputs.GATHER_L1_STATS) {
+            const arch = root.nnue.arch;
+            var file = try createOutputFile(io, "correlations.json", true);
+            defer file.close(io);
+            var buf: [4096]u8 = undefined;
+            var writer = file.writerStreaming(io, &buf);
+            const w = &writer.interface;
+            const PAIRS = arch.L1_PAIR_COUNT;
+            try w.writeByte('[');
+            const counts = &arch.outputs.l1_stat_counts;
+            for (0..PAIRS) |i| {
+                if (i != 0) try w.writeByte(',');
+                try w.writeByte('[');
+                for (0..PAIRS) |j| {
+                    if (j != 0) try w.writeByte(',');
+                    try w.print("{d}", .{counts[i][j]});
+                }
+                try w.writeByte(']');
+            }
+            try w.writeByte(']');
+            try w.flush();
+            const active = arch.outputs.total_activated_pairs / arch.outputs.total_sparsity_samples;
+            const nnz = arch.outputs.total_nnz / arch.outputs.total_sparsity_samples;
+            write("average active pairs: {}/{} nnz: {d:.2}%\n", .{ active, PAIRS, @as(f64, @floatFromInt(nnz * 100)) / @as(f64, arch.L1_SIZE / 4) });
+            write("wrote correlations.json\n", .{});
+        }
+    }
 }
 fn EnumArrayFormatter(comptime Enum: type, comptime Table: type) type {
     return struct {

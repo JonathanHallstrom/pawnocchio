@@ -32,6 +32,10 @@ pub const Weights = extern struct {
     ft_b: [arch.L1_SIZE]i16 align(ALIGNMENT),
 
     pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian) void {
+        arch.permuteL1Neurons(&self.ft_w);
+        arch.permuteL1Neurons(&self.ft_b);
+        arch.permuteL1Neurons(&self.pp_w);
+        arch.permuteL1Neurons(&self.threat_w);
         if (arch.needsPermutingFor(target_kind)) {
             const order = arch.permuteOrderFor(target_kind);
             arch.permuteBuffer(&self.ft_w, order);
