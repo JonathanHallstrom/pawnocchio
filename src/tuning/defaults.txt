@@ -87,7 +87,7 @@ hp_hist_cont2_weight, 885
 hp_hist_cont4_weight, 445
 hp_hist_noisy_weight, 1177
 rfp_min_margin, 20
-rfp_base, 42520
+rfp_base, 40000
 rfp_mult, 30637
 rfp_quad, 5491
 rfp_improving_margin, 114
