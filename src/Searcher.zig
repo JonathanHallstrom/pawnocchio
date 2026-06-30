@@ -1142,6 +1142,20 @@ fn search(
         }
         const is_quiet = board.isQuiet(move);
         const direct_check = board.givesDirectCheck(move);
+        if (!is_root and best_score >= evaluation.matedIn(MAX_PLY)) {
+            const lmp_check_bonus: i32 = if (direct_check) TUNABLES.lmp_direct_check_bonus else 0;
+            const lmp_margin = lmp_base_margin + lmp_check_bonus;
+            std.debug.assert(lmp_margin > 0);
+
+            if (!is_pv and
+                @as(i32, num_searched) << 10 >= lmp_margin)
+            {
+                mp.skip_quiets = true;
+                if (is_quiet) {
+                    continue;
+                }
+            }
+        }
         if (std.debug.runtime_safety and
             (mp.stage == .good_noisies or mp.stage == .bad_noisies))
         {
@@ -1174,19 +1188,6 @@ fn search(
             var reduction = calculateBaseLMR(@max(1, depth), num_searched, is_quiet);
             reduction -= @intCast(lmr_history_mult * lmr_depth_hist_score >> 13);
             var lmr_depth: i32 = (depth << 10) - reduction;
-            const lmp_check_bonus: i32 = if (direct_check) TUNABLES.lmp_direct_check_bonus else 0;
-            const lmp_margin = lmp_base_margin + lmp_check_bonus;
-            std.debug.assert(lmp_margin > 0);
-
-            if (!is_pv and
-                @as(i32, num_searched) << 10 >= lmp_margin)
-            {
-                mp.skip_quiets = true;
-                if (is_quiet) {
-                    continue;
-                }
-            }
-
             if (is_quiet) {
                 if (lmr_depth <= TUNABLES.history_pruning_depth_limit and
                     hp_hist_score < depth * TUNABLES.history_pruning_mult + TUNABLES.history_pruning_offs)
