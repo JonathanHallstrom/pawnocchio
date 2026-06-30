@@ -172,8 +172,8 @@ pub fn forward(
         }
     }
 
-    const L2_UNROLL = 4;
-    var l1_intermediate: [arch.L2_SIZE / simd.vecSize(i32)][L2_UNROLL]simd.Vector(i32) = @splat(@splat(@splat(0)));
+    const L2_UNROLL = 2;
+    var l1_intermediate: [L2_UNROLL][arch.L2_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @splat(@splat(@splat(0)));
     {
         const w: [*]const i8 = &ow.l1w[output_bucket];
         const ft_i32: [*]i32 = @ptrCast(&activated_ft);
@@ -183,14 +183,14 @@ pub fn forward(
         var i_outer: usize = 0;
 
         while (i_outer + 2 * L2_UNROLL <= num_nonzero_indices) : (i_outer += 2 * L2_UNROLL) {
-            for (0..arch.L2_SIZE / simd.vecSize(i32)) |j| {
-                for (0..L2_UNROLL) |i_inner| {
-                    const i_1: u16 = nonzero_indices[i_outer + 2 * i_inner];
-                    const i_2: u16 = nonzero_indices[i_outer + 2 * i_inner + 1];
-                    const ft_vec_1: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i_1])));
-                    const ft_vec_2: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i_2])));
-                    l1_intermediate[j][i_inner] = simd.dpbusdx2(
-                        l1_intermediate[j][i_inner],
+            for (0..L2_UNROLL) |i_inner| {
+                const i_1: u16 = nonzero_indices[i_outer + 2 * i_inner];
+                const i_2: u16 = nonzero_indices[i_outer + 2 * i_inner + 1];
+                const ft_vec_1: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i_1])));
+                const ft_vec_2: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i_2])));
+                for (0..arch.L2_SIZE / simd.vecSize(i32)) |j| {
+                    l1_intermediate[i_inner][j] = simd.dpbusdx2(
+                        l1_intermediate[i_inner][j],
                         ft_vec_1,
                         w[i_1 * arch.L2_SIZE * 4 + j * simd.vecSize(i8) ..][0..simd.vecSize(i8)].*,
                         ft_vec_2,
@@ -204,8 +204,8 @@ pub fn forward(
             const ft_vec: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i])));
 
             for (0..arch.L2_SIZE / simd.vecSize(i32)) |j| {
-                l1_intermediate[j][0] = simd.dpbusd(
-                    l1_intermediate[j][0],
+                l1_intermediate[0][j] = simd.dpbusd(
+                    l1_intermediate[0][j],
                     ft_vec,
                     w[i * arch.L2_SIZE * 4 + j * simd.vecSize(i8) ..][0..simd.vecSize(i8)].*,
                 );
@@ -226,14 +226,12 @@ pub fn forward(
         const ONE: simd.Vector(i32) = @splat(1);
         const HI: simd.Vector(i32) = ONE << @splat(SHIFT + Q_BITS);
         for (0..arch.L2_SIZE / simd.vecSize(i32)) |i| {
-            const biases: simd.Vector(i32) = l1_bias_vec[i];
-
             var intermediate: simd.Vector(i32) = @splat(0);
-            for (l1_intermediate[i]) |e| {
-                intermediate += e;
+            for (0..L2_UNROLL) |j| {
+                intermediate += l1_intermediate[j][i];
             }
 
-            const biased = intermediate + biases;
+            const biased = intermediate + l1_bias_vec[i];
 
             const crelu = std.math.shr(simd.Vector(i32), std.math.clamp(biased, LO, HI), SHIFT - Q_BITS - PRECISION_MARGIN);
 
