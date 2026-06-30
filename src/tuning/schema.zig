@@ -354,17 +354,19 @@ pub const SCHEMA = .{
     .probcut_improving_margin = scalar(.{}),
     .probcut_see_mult = scalar(.{}),
 
-    .fp_depth_limit = scalar(.{}),
+    .fp_depth_offs = scalar(.{}),
     .fp_base = scalar(.{}),
     .fp_mult = scalar(.{}),
+    .fp_quad = scalar(.{}),
     .fp_pv_base = scalar(.{}),
     .fp_pv_mult = scalar(.{}),
     .fp_improving = scalar(.{}),
     .fp_hist_mult = scalar(.{}),
 
-    .bnfp_depth_limit = scalar(.{}),
+    .bnfp_depth_offs = scalar(.{}),
     .bnfp_base = scalar(.{}),
     .bnfp_mult = scalar(.{}),
+    .bnfp_quad = scalar(.{}),
     .bnfp_captured = scalar(.{}),
 
     .see_quiet_pruning_offs = scalar(.{ .min = -100, .max = 100, .c_end = 20 }),

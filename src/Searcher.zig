@@ -1195,9 +1195,11 @@ fn search(
                     continue;
                 }
 
+                const lmrd_shifted = @max(0, lmr_depth - TUNABLES.fp_depth_offs);
                 var futility_value = eval +
                     TUNABLES.fp_base +
                     @divTrunc(lmr_depth * TUNABLES.fp_mult +
+                        (lmrd_shifted * lmrd_shifted * TUNABLES.fp_quad >> 10) +
                         @divTrunc(tuning.histQ(history_terms, fp_hist_weights) * TUNABLES.fp_hist_mult, 4), 1024);
 
                 if (is_pv) {
@@ -1209,7 +1211,6 @@ fn search(
                 }
 
                 if (!is_in_check and
-                    lmr_depth <= TUNABLES.fp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
                 {
@@ -1226,14 +1227,15 @@ fn search(
                     continue;
                 }
                 const captured_value = SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
+                const lmrd_shifted = @max(0, lmr_depth - TUNABLES.bnfp_depth_offs);
                 const futility_value =
                     eval +
                     TUNABLES.bnfp_base +
+                    (lmrd_shifted * lmrd_shifted * TUNABLES.bnfp_quad >> 10) +
                     (lmr_depth * TUNABLES.bnfp_mult +
                         captured_value * TUNABLES.bnfp_captured >> 10);
                 if (mp.stage == .bad_noisies and
                     !is_in_check and
-                    lmr_depth <= TUNABLES.bnfp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
                 {
