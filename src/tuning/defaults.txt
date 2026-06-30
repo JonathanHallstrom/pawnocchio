@@ -226,9 +226,10 @@ singular_beta_pv_mult, 551
 singular_beta_ttpv_mult, 484
 singular_depth_mult, 528
 singular_depth_offs, 862
-singular_dext_margin_quiet, 15
-singular_dext_margin_noisy, 13
+singular_dext_margin_quiet, 23
+singular_dext_margin_noisy, 21
 singular_dext_pv_margin, 21
+singular_dext_corr_mult, 8
 singular_text_margin_quiet, 64
 singular_text_margin_noisy, 73
 singular_text_pv_margin, 483

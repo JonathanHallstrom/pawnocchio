@@ -1292,6 +1292,8 @@ fn search(
             if (s_score < s_beta) {
                 extension += 1;
 
+                const dext_corr_margin = @abs(correction) * TUNABLES.singular_dext_corr_mult >> 6;
+
                 var double_ext_margin = if (is_quiet)
                     TUNABLES.singular_dext_margin_quiet
                 else
@@ -1299,6 +1301,8 @@ fn search(
                 if (is_pv) {
                     double_ext_margin += TUNABLES.singular_dext_pv_margin;
                 }
+
+                double_ext_margin -= dext_corr_margin;
 
                 if (s_score < s_beta - double_ext_margin) {
                     extension += 1;
