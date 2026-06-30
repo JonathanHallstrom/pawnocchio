@@ -471,6 +471,7 @@ pub const SCHEMA = .{
     .singular_text_margin_quiet = scalar(.{ .min = 0, .max = 100, .c_end = 5 }),
     .singular_text_margin_noisy = scalar(.{ .min = 0, .max = 100, .c_end = 5 }),
     .singular_text_pv_margin = scalar(.{ .min = 0, .max = 500, .c_end = 25 }),
+    .singular_text_corr_mult = scalar(.{ .min = 0, .max = 32, .c_end = 1 }),
 
     .ttpick_depth_weight = scalar(.{ .min = 0, .max = 2048, .c_end = 128 }),
     .ttpick_age_weight = scalar(.{ .min = 0, .max = 8192, .c_end = 256 }),
