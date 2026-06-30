@@ -20,8 +20,8 @@ pub const Target = simd.Target;
 pub const target = simd.target;
 pub const parseTarget = simd.parseTarget;
 
-pub const inputs = @import("inputs/psq_threats.zig");
-pub const outputs = @import("outputs/multilayer.zig");
+pub const inputs = @import("inputs/psq.zig");
+pub const outputs = @import("outputs/singlelayer.zig");
 
 pub const PAWN_PAIR_INPUTS = true;
 pub const TOTAL_THREATS = if (PAWN_PAIR_INPUTS) 59808 else 60144;
@@ -48,7 +48,7 @@ pub const Weights = extern struct {
     output: outputs.Weights,
 
     pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian) void {
-        self.input.transform(target_kind, endian);
+        self.input.transform(target_kind, endian, outputs.NEEDS_FT_PERMUTE);
         self.output.transform(target_kind, endian);
     }
 
@@ -159,11 +159,9 @@ pub const PSQTWeight = [ACCUMULATOR_VECTOR_COUNT]PSQTWeightVec;
 pub const ThreatWeight = [ACCUMULATOR_VECTOR_COUNT]ThreatWeightVec;
 
 pub const HORIZONTAL_MIRRORING = true;
-pub const INPUT_BUCKET_COUNT: usize = 32;
+pub const INPUT_BUCKET_COUNT: usize = 16;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
-pub const L1_SIZE: usize = 1024;
-pub const L2_SIZE: usize = 32;
-pub const L3_SIZE: usize = 32;
+pub const L1_SIZE: usize = 1536;
 pub const SCALE: i64 = 400;
 pub const Q0 = 255;
 pub const Q1 = 128;
@@ -171,12 +169,12 @@ pub const Q = 64;
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     0,  1,  2,  3,  3,  2,  1,  0,
     4,  5,  6,  7,  7,  6,  5,  4,
-    8,  9,  10, 11, 11, 10, 9,  8,
-    12, 13, 14, 15, 15, 14, 13, 12,
-    16, 17, 18, 19, 19, 18, 17, 16,
-    20, 21, 22, 23, 23, 22, 21, 20,
-    24, 25, 26, 27, 27, 26, 25, 24,
-    28, 29, 30, 31, 31, 30, 29, 28,
+    8,  8,  9,  9,  9,  9,  8,  8,
+    10, 10, 11, 11, 11, 11, 10, 10,
+    12, 12, 13, 13, 13, 13, 12, 12,
+    12, 12, 13, 13, 13, 13, 12, 12,
+    14, 14, 15, 15, 15, 15, 14, 14,
+    14, 14, 15, 15, 15, 15, 14, 14,
 };
 
 pub inline fn whichInputBucket(sq_idx: usize) usize {

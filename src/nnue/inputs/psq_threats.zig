@@ -31,8 +31,8 @@ pub const Weights = extern struct {
     threat_w: [arch.TOTAL_THREATS]arch.ThreatWeight align(ALIGNMENT),
     ft_b: [arch.L1_SIZE]i16 align(ALIGNMENT),
 
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian) void {
-        if (arch.needsPermutingFor(target_kind)) {
+    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, comptime needs_ft_permute: bool) void {
+        if (needs_ft_permute and arch.needsPermutingFor(target_kind)) {
             const order = arch.permuteOrderFor(target_kind);
             arch.permuteBuffer(&self.ft_w, order);
             arch.permuteBuffer(&self.ft_b, order);

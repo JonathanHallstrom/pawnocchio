@@ -6,6 +6,8 @@ const evaluation = @import("../../evaluation.zig");
 
 const ALIGNMENT = 64;
 
+pub const NEEDS_FT_PERMUTE = true;
+
 pub const Weights = extern struct {
     l1w: [arch.OUTPUT_BUCKET_COUNT][arch.L2_SIZE * arch.L1_SIZE]i8 align(ALIGNMENT),
     l1b: [arch.OUTPUT_BUCKET_COUNT][arch.L2_SIZE]i32 align(ALIGNMENT),
