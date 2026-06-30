@@ -1187,6 +1187,7 @@ fn search(
                 }
             }
 
+            const lmrd_shifted = @max(0, lmr_depth - 9000);
             if (is_quiet) {
                 if (lmr_depth <= TUNABLES.history_pruning_depth_limit and
                     hp_hist_score < depth * TUNABLES.history_pruning_mult + TUNABLES.history_pruning_offs)
@@ -1195,7 +1196,6 @@ fn search(
                     continue;
                 }
 
-                const lmrd_shifted = @max(0, lmr_depth - 9000);
                 var futility_value = eval +
                     TUNABLES.fp_base +
                     @divTrunc(lmr_depth * TUNABLES.fp_mult +
@@ -1230,11 +1230,11 @@ fn search(
                 const futility_value =
                     eval +
                     TUNABLES.bnfp_base +
+                    (lmrd_shifted * lmrd_shifted * 25 >> 10) +
                     (lmr_depth * TUNABLES.bnfp_mult +
                         captured_value * TUNABLES.bnfp_captured >> 10);
                 if (mp.stage == .bad_noisies and
                     !is_in_check and
-                    lmr_depth <= TUNABLES.bnfp_depth_limit and
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
                 {
