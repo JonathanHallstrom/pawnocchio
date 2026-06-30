@@ -114,6 +114,9 @@ pub noinline fn scoreMove(board: *const Board, move: Move, threshold: i32, compt
     }
 
     var occ = board.occupancy() & ~from.toBitboard() & ~to.toBitboard();
+    if (board.isEnPassant(move)) {
+        occ &= ~move.getEnPassantPawnSquare().toBitboard();
+    }
     const queens = board.queens();
     const rooks = board.rooks() | queens;
     const bishops = board.bishops() | queens;
@@ -191,4 +194,5 @@ test scoreMove {
     try std.testing.expect(!scoreMove(&(Board.parseFen("6b1/k7/8/3Pp3/2K2N1r/8/8/8 w - e6 0 1", false) catch unreachable), Move.enPassant(.d5, .e6), 1, .testing));
     try std.testing.expect(scoreMove(&(Board.parseFen("6b1/k7/8/3Pp3/2K2N2/8/8/8 w - e6 0 1", false) catch unreachable), Move.enPassant(.d5, .e6), value(.pawn, .testing), .testing));
     try std.testing.expect(scoreMove(&(Board.parseFen("8/8/8/1k6/6b1/4N3/2p3K1/3n4 w - - 0 1", false) catch unreachable), Move.capture(.e3, .c2), value(.pawn, .testing) - value(.queen, .testing), .testing));
+    try std.testing.expect(!scoreMove(&(Board.parseFen("7k/8/8/3Pp3/8/8/7K/4r3 w - e6 0 1", false) catch unreachable), Move.enPassant(.d5, .e6), 1, .testing));
 }
