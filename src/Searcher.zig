@@ -893,11 +893,16 @@ fn search(
     // hindsight extension
     if (!is_pv and
         eval != evaluation.INF_SCORE and prev_eval != evaluation.INF_SCORE and
-        !is_singular_search and
-        cur.reduction >= TUNABLES.hindsight_ext_margin and
-        @as(i32, eval) + prev_eval < 0)
+        !is_singular_search)
     {
-        depth += 1;
+        const diff = @as(i32, eval) + prev_eval;
+        if (cur.reduction >= TUNABLES.hindsight_ext_margin and diff < 0) {
+            depth += 1;
+        }
+
+        if (!tt_pv and depth >= 2 and cur.reduction > 1000 and diff > 100) {
+            depth -= 1;
+        }
     }
     var corrhists_squared: ?i64 = null;
 
