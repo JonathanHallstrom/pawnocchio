@@ -48,7 +48,7 @@ pub const Weights = extern struct {
     output: outputs.Weights,
 
     pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian) void {
-        self.input.transform(target_kind, endian);
+        self.input.transform(target_kind, endian, outputs.NEEDS_FT_PERMUTE);
         self.output.transform(target_kind, endian);
     }
 

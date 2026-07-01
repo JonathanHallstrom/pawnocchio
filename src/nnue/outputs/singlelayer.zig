@@ -6,6 +6,8 @@ const evaluation = @import("../../evaluation.zig");
 
 const ALIGNMENT = 64;
 
+pub const NEEDS_FT_PERMUTE = false;
+
 pub const Weights = extern struct {
     output_w: [arch.OUTPUT_BUCKET_COUNT][2 * arch.L1_SIZE]i16 align(ALIGNMENT),
     output_b: [arch.OUTPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
@@ -41,11 +43,11 @@ pub fn forward(
     const ow = &weights.output;
     const w = &ow.output_w[output_bucket];
 
-    const LO: simd.vector(i16) = @splat(0);
-    const HI: simd.vector(i16) = @splat(arch.Q0);
+    const LO: simd.Vector(i16) = @splat(0);
+    const HI: simd.Vector(i16) = @splat(arch.Q0);
 
     const UNROLL = @min(4, arch.L1_SIZE / simd.vecSize(i16));
-    var accs: [UNROLL]simd.vector(i32) = @splat(@splat(0));
+    var accs: [UNROLL]simd.Vector(i32) = @splat(@splat(0));
 
     var i: usize = 0;
     while (i < arch.L1_SIZE) {
@@ -53,8 +55,8 @@ pub fn forward(
             const us = std.math.clamp(resolved.read(.stm, i), LO, HI);
             const them = std.math.clamp(resolved.read(.ntm, i), LO, HI);
 
-            const us_w: simd.vector(i16) = w[i..][0..simd.vecSize(i16)].*;
-            const them_w: simd.vector(i16) = w[i + arch.L1_SIZE ..][0..simd.vecSize(i16)].*;
+            const us_w: simd.Vector(i16) = w[i..][0..simd.vecSize(i16)].*;
+            const them_w: simd.Vector(i16) = w[i + arch.L1_SIZE ..][0..simd.vecSize(i16)].*;
 
             acc.* +=
                 simd.maddwd(us_w *% us, us) +
