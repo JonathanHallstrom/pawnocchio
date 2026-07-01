@@ -13,9 +13,10 @@
 
 |         Version         | Release Date | [CCRL 40/15][ccrl 40/15] | [CCRL Blitz][ccrl Blitz] | [CEGT 40/20][cegt 40/20] | [ipman r9 list][ipman 10+1] | [Chess324 Top15][324top15]  |    [SP-CC Top 15 ][spcc]    |
 |:-----------------------:|:------------:|:------------------------:|:------------------------:|:------------------------:|:---------------------------:|:---------------------------:|:---------------------------:|
-| [1.9][v1.9]             |  2026-01-04  |           3587 (#10)     |           3727 (#13)     |           3569 (#11)     |             3537 (#20**)    |          3734 (#8)          |           3680 (#14)        |
-| [1.8][v1.8]             |  2025-07-22  |           3564 (#20)     |           3697 (#16)     |           3544 (#18)     |             3517            |          3680 (#12)         |
-| [1.7][v1.7]             |  2025-05-31  |           3528           |           3642           |           3491           |             3448            |
+| [2.0][v2.0.1]           |  2026-06-27  |           3610*          |           3750*          |           3600*          |             3575*           |          3800*              |           3780*             |
+| [1.9][v1.9.2]           |  2026-01-04  |           3587 (#10)     |           3727 (#13)     |           3569 (#11)     |             3537 (#12)      |          3734 (#8)          |           3680 (#14)        |
+| [1.8][v1.8.1]           |  2025-07-22  |           3564 (#20)     |           3697 (#16)     |           3544 (#18)     |             3517            |          3680 (#12)         |
+| [1.7][v1.7.2]           |  2025-05-31  |           3528           |           3642           |           3491           |             3448            |
 | [1.6.1][v1.6.1]         |  2025-05-15  |           3500*          |           3622           |           3440*          |
 | [1.6][v1.6]             |  2025-04-27  |           3490           |           3600*          |           3433           |
 | [1.5][v1.5]             |  2025-04-18  |           3450*          |           3500           |           3350           |
@@ -29,7 +30,7 @@
 </div>
 *estimated
 
-**#12 if you only keep 1 version per engine
+All ratings and rankings are recorded at the time when they first appeared on the list, and as such they be out of date.
 
 ## Features
 Supports FRC, also known as Chess960
@@ -69,7 +70,11 @@ The Makefile is only intended to be used for testing on Openbench.
 [v1.7]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7
 [v1.7.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.7.2
 [v1.8]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.8
+[v1.8.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.8.1
 [v1.9]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.9
+[v1.9.2]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v1.9.2
+[v2.0]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v2.0
+[v2.0.1]:https://github.com/JonathanHallstrom/pawnocchio/releases/tag/v2.0.1
 
 [324top15]:https://e4e6.com/324/
 [ccrl 40/15]:https://www.computerchess.org.uk/ccrl/4040/cgi/compare_engines.cgi?family=pawnocchio
