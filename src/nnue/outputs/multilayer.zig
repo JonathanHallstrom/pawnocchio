@@ -64,7 +64,7 @@ pub const Weights = extern struct {
                 for (0..arch.L1_SIZE / 4) |i| {
                     for (0..arch.L2_SIZE) |j| {
                         for (0..4) |k| {
-                            l1w_inf[ob][i * 4 * arch.L2_SIZE + j * 4 + k] = l1w_disk[i * 4 + k][ob][j];
+                            l1w_inf[ob][i * 4 * arch.L2_SIZE + j * 4 + k] = l1w_disk[arch.L1_NEURON_ORDER[i * 4 + k]][ob][j];
                         }
                     }
                 }
@@ -122,6 +122,46 @@ pub const PRECISION_MARGIN: comptime_int = blk: {
     std.debug.assert((MAX_ACC << PM) <= std.math.maxInt(i32));
     break :blk PM;
 };
+
+pub const GATHER_L1_STATS = false;
+
+pub var l1_stat_counts: [arch.L1_PAIR_COUNT][arch.L1_PAIR_COUNT]u64 = std.mem.zeroes([arch.L1_PAIR_COUNT][arch.L1_PAIR_COUNT]u64);
+pub var total_sparsity_samples: u64 = 0;
+pub var total_activated_pairs: u64 = 0;
+pub var total_nnz: u64 = 0;
+
+fn recordL1Stats(activated_ft: *const [arch.L1_SIZE]u8, nnz: usize) void {
+    var active: [arch.L1_PAIR_COUNT]u16 = undefined;
+    var vals: [arch.L1_PAIR_COUNT]u8 = @splat(0);
+    var n: usize = 0;
+
+    for (0..arch.L1_PAIR_COUNT) |i| {
+        var w: u8 = 0;
+        if (activated_ft[i] != 0) {
+            w += 1;
+        }
+        if (activated_ft[i + arch.L1_PAIR_COUNT] != 0) {
+            w += 1;
+        }
+
+        if (w != 0) {
+            @branchHint(.unlikely);
+            active[n] = @intCast(i);
+            vals[n] = w;
+            n += 1;
+        }
+    }
+
+    total_nnz += nnz;
+    total_sparsity_samples += 1;
+    total_activated_pairs += n;
+
+    for (0..n) |i| {
+        for (0..n) |j| {
+            l1_stat_counts[active[i]][active[j]] += vals[i] * vals[j];
+        }
+    }
+}
 
 pub fn forward(
     resolved: anytype,
@@ -181,6 +221,7 @@ pub fn forward(
         const ft_i32: [*]i32 = @ptrCast(&activated_ft);
 
         const nonzero_indices: [arch.L1_SIZE / 4]u16, const num_nonzero_indices: usize = @import("../sparse.zig").findNonZeroIndices(&activated_ft);
+        if (GATHER_L1_STATS) recordL1Stats(&activated_ft, num_nonzero_indices);
 
         var i_outer: usize = 0;
 
