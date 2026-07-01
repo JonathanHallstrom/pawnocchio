@@ -1005,7 +1005,7 @@ fn search(
             }
         }
 
-        const probcut_beta = beta + TUNABLES.probcut_margin - TUNABLES.probcut_improving_margin * @intFromBool(improving);
+        var probcut_beta = beta + TUNABLES.probcut_margin - TUNABLES.probcut_improving_margin * @intFromBool(improving);
         const tt_score_valid = tt_hit and tt_entry.flags.getScoreType() != .none;
         if (cutnode and
             depth >= 5 and
@@ -1055,16 +1055,36 @@ fn search(
                     -probcut_beta + 1,
                 );
 
-                if (score >= probcut_beta and probcut_depth > 0) {
-                    score = -self.search(
-                        false,
-                        false,
-                        stm.flipped(),
-                        -probcut_beta,
-                        -probcut_beta + 1,
-                        probcut_depth,
-                        false,
-                    );
+                if (score >= probcut_beta and probcut_depth > 0) success: {
+                    const score_margin: u16 = @intCast(score - probcut_beta);
+                    const adjusted_depth = probcut_depth - score_margin / 300;
+                    const adjusted_beta = evaluation.clampScore(probcut_beta + score_margin / 2);
+
+                    if (adjusted_depth > 0) {
+                        score = -self.search(
+                            false,
+                            false,
+                            stm.flipped(),
+                            -adjusted_beta,
+                            -adjusted_beta + 1,
+                            adjusted_depth,
+                            false,
+                        );
+
+                        if (score >= adjusted_beta and adjusted_beta > probcut_beta) {
+                            score = -self.search(
+                                false,
+                                false,
+                                stm.flipped(),
+                                -probcut_beta,
+                                -probcut_beta + 1,
+                                probcut_depth,
+                                false,
+                            );
+                            break :success;
+                        }
+                    }
+                    probcut_beta = adjusted_beta;
                 }
 
                 self.unmakeMove(stm, move);
