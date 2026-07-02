@@ -356,8 +356,8 @@ fn parseScoreStr(score_str: []const u8) !i16 {
         return sign * 32767;
     }
     const val = try std.fmt.parseFloat(f64, score_str);
-    const clamped = std.math.clamp(val, -327.67, 327.67);
-    return @intFromFloat(clamped * 100);
+    const clamped = std.math.clamp(@round(val * 100), -32767, 32767);
+    return @intFromFloat(clamped);
 }
 
 pub fn scoredPlyReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) ScoredPlyReader {
