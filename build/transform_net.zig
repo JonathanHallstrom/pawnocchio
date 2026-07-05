@@ -2,7 +2,7 @@ const std = @import("std");
 const nnue_arch = @import("nnue_arch");
 
 fn usage() noreturn {
-    std.process.fatal("usage: transform_net <target> <endian> <input> <output>", .{});
+    std.process.fatal("usage: transform_net <target> <endian> <dotprod|emulated> <input> <output>", .{});
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -12,6 +12,7 @@ pub fn main(init: std.process.Init) !void {
     _ = args.next() orelse unreachable;
     const target_name = args.next() orelse usage();
     const endian_name = args.next() orelse usage();
+    const dotprod_name = args.next() orelse usage();
     const input_path = args.next() orelse usage();
     const output_path = args.next() orelse usage();
     if (args.next() != null) usage();
@@ -22,6 +23,12 @@ pub fn main(init: std.process.Init) !void {
     const endian = nnue_arch.parseEndian(endian_name) orelse {
         std.process.fatal("unknown endian '{s}'", .{endian_name});
     };
+    const full_dotprod = if (std.mem.eql(u8, dotprod_name, "dotprod"))
+        true
+    else if (std.mem.eql(u8, dotprod_name, "emulated"))
+        false
+    else
+        usage();
 
     var input = try std.Io.Dir.cwd().openFile(init.io, input_path, .{});
     defer input.close(init.io);
@@ -35,7 +42,7 @@ pub fn main(init: std.process.Init) !void {
         std.process.fatal("short read from '{s}'", .{input_path});
     }
 
-    nnue_arch.transformNetFor(target_kind, endian, weights);
+    nnue_arch.transformNetFor(target_kind, endian, full_dotprod, weights);
 
     var output = try std.Io.Dir.cwd().createFile(init.io, output_path, .{ .truncate = true });
     defer output.close(init.io);

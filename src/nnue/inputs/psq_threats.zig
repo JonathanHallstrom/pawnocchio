@@ -20,6 +20,7 @@ pub const HAS_THREATS = true;
 pub const MirroringType = psq.MirroringType;
 pub const DirtyPiece = psq.DirtyPiece;
 pub const featureWeight = psq.featureWeight;
+pub const featureIndex = psq.featureIndex;
 pub const whichInputBucket = psq.whichInputBucket;
 pub const crossesMiddle = psq.crossesMiddle;
 pub const needsRefresh = psq.needsRefresh;
@@ -31,11 +32,17 @@ pub const Weights = extern struct {
     threat_w: [arch.TOTAL_THREATS]arch.ThreatWeight align(ALIGNMENT),
     ft_b: [arch.L1_SIZE]i16 align(ALIGNMENT),
 
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, comptime needs_ft_permute: bool) void {
-        arch.permuteL1Neurons(&self.ft_w);
-        arch.permuteL1Neurons(&self.ft_b);
-        arch.permuteL1Neurons(&self.pp_w);
-        arch.permuteL1Neurons(&self.threat_w);
+    pub fn flatPSQWeights(self: *const Weights, bucket: usize) *const [768]arch.PSQTWeight {
+        return @ptrCast(&self.ft_w[bucket]);
+    }
+
+    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, l1_permute: bool, comptime needs_ft_permute: bool) void {
+        if (l1_permute) {
+            arch.permuteL1Neurons(&self.ft_w);
+            arch.permuteL1Neurons(&self.ft_b);
+            arch.permuteL1Neurons(&self.pp_w);
+            arch.permuteL1Neurons(&self.threat_w);
+        }
         if (needs_ft_permute and arch.needsPermutingFor(target_kind)) {
             const order = arch.permuteOrderFor(target_kind);
             arch.permuteBuffer(&self.ft_w, order);

@@ -36,6 +36,7 @@ pub fn prepareNet(
     run.addArgs(&.{
         @tagName(nnue_arch.target(cpu)),
         @tagName(cpu.arch.endian()),
+        if (nnue_arch.fullDotProd(cpu)) "dotprod" else "emulated",
     });
     run.addFileArg(net_path);
 

@@ -19,6 +19,7 @@ const simd = @import("../simd.zig");
 pub const Target = simd.Target;
 pub const target = simd.target;
 pub const parseTarget = simd.parseTarget;
+pub const fullDotProd = simd.fullDotProd;
 
 pub const inputs = @import("inputs/psq_threats.zig");
 pub const outputs = @import("outputs/multilayer.zig");
@@ -47,9 +48,9 @@ pub const Weights = extern struct {
     input: inputs.Weights,
     output: outputs.Weights,
 
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian) void {
-        self.input.transform(target_kind, endian, outputs.NEEDS_FT_PERMUTE);
-        self.output.transform(target_kind, endian);
+    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, full_dotprod: bool) void {
+        self.input.transform(target_kind, endian, full_dotprod and outputs.NEEDS_L1_PERMUTE, outputs.NEEDS_FT_PERMUTE);
+        self.output.transform(target_kind, endian, full_dotprod);
     }
 
     pub const SIZE_BYTES = inputs.Weights.SIZE_BYTES + outputs.Weights.SIZE_BYTES;
@@ -140,12 +141,12 @@ pub fn totalElements(comptime T: type) comptime_int {
     }
 }
 
-pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *Weights) void {
-    net.transform(target_kind, endian);
+pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, full_dotprod: bool, net: *Weights) void {
+    net.transform(target_kind, endian, full_dotprod);
 }
 
 pub const AccumulatorVec = @Vector(simd.vecSize(i16), i16);
-pub const PSQTWeightVec = @Vector(simd.vecSize(i16), i16);
+pub const PSQTWeightVec = AccumulatorVec;
 pub const ThreatWeightVec = @Vector(simd.vecSize(i16), i8);
 pub const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / simd.vecSize(i16);
 
@@ -155,7 +156,7 @@ pub const ACCUMULATOR_TILE = @min(ACCUMULATOR_VECTOR_COUNT, switch (simd.TARGET)
 });
 
 pub const RawAccumulator = [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec;
-pub const PSQTWeight = [ACCUMULATOR_VECTOR_COUNT]PSQTWeightVec;
+pub const PSQTWeight = RawAccumulator;
 pub const ThreatWeight = [ACCUMULATOR_VECTOR_COUNT]ThreatWeightVec;
 
 pub const HORIZONTAL_MIRRORING = true;
@@ -192,6 +193,17 @@ pub const L1_NEURON_ORDER: [L1_SIZE]u16 = blk: {
     }
     break :blk o;
 };
+
+pub const L1_IDENTITY_ORDER: [L1_SIZE]u16 = blk: {
+    @setEvalBranchQuota(4 * L1_SIZE);
+    var o: [L1_SIZE]u16 = undefined;
+    for (&o, 0..) |*e, i| e.* = @intCast(i);
+    break :blk o;
+};
+
+pub fn l1OrderFor(full_dotprod: bool) *const [L1_SIZE]u16 {
+    return if (full_dotprod) &L1_NEURON_ORDER else &L1_IDENTITY_ORDER;
+}
 
 pub fn l1NeedsPermuting() bool {
     for (L1_PAIR_ORDER, 0..) |v, i| if (v != i) return true;

@@ -23,7 +23,15 @@ pub const Weights = extern struct {
     ft_w: [arch.INPUT_BUCKET_COUNT][2][6][64]arch.PSQTWeight align(ALIGNMENT),
     ft_b: [arch.L1_SIZE]i16 align(ALIGNMENT),
 
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, comptime needs_ft_permute: bool) void {
+    pub fn flatPSQWeights(self: *const Weights, bucket: usize) *const [768]arch.PSQTWeight {
+        return @ptrCast(&self.ft_w[bucket]);
+    }
+
+    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, l1_permute: bool, comptime needs_ft_permute: bool) void {
+        if (l1_permute) {
+            arch.permuteL1Neurons(&self.ft_w);
+            arch.permuteL1Neurons(&self.ft_b);
+        }
         if (needs_ft_permute and arch.needsPermutingFor(target_kind)) {
             const order = arch.permuteOrderFor(target_kind);
             arch.permuteBuffer(&self.ft_w, order);
@@ -113,17 +121,14 @@ pub const DirtyPiece = union(enum) {
     }
 };
 
-pub inline fn featureWeight(
-    weights: *const arch.Weights,
+pub inline fn featureIndex(
     perspective: Colour,
-    king_sq: Square,
     comptime kind: FeatureKind,
     f: PSQTFeature,
     mirror: MirroringType,
-) *const arch.RawAccumulator {
+) u16 {
     _ = kind;
-    const bucket = whichInputBucket(perspective, king_sq);
-    const side_idx: usize = if (perspective == f.col()) 0 else 1;
+    const side_idx: u16 = @intFromBool(perspective != f.col());
     var sq = f.square();
     if (perspective == .black) {
         @branchHint(.unpredictable);
@@ -133,7 +138,18 @@ pub inline fn featureWeight(
         @branchHint(.unpredictable);
         sq = sq.flipFile();
     }
-    return &weights.input.ft_w[bucket][side_idx][f.piece().toInt()][sq.toInt()];
+    return side_idx * 384 + @as(u16, f.piece().toInt()) * 64 + sq.toInt();
+}
+
+pub inline fn featureWeight(
+    weights: *const arch.Weights,
+    perspective: Colour,
+    king_sq: Square,
+    comptime kind: FeatureKind,
+    f: PSQTFeature,
+    mirror: MirroringType,
+) *const arch.RawAccumulator {
+    return &weights.input.flatPSQWeights(whichInputBucket(perspective, king_sq))[featureIndex(perspective, kind, f, mirror)];
 }
 
 pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {

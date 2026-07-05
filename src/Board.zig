@@ -181,7 +181,7 @@ pub inline fn kings(self: *const Board) u64 {
     return self.pieceBB(.king);
 }
 
-const MAILBOX_EMPTY: u8 = 1 << 7;
+pub const MAILBOX_EMPTY: u8 = 1 << 7;
 
 inline fn mailboxValue(pt: PieceType, col: Colour) u8 {
     return ColouredPieceType.fromPieceType(pt, col).toInt();

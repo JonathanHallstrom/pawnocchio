@@ -20,7 +20,7 @@ pub const FeatureKind = enum {
     psqt,
 };
 
-pub const PSQTFeature = struct {
+pub const PSQTFeature = packed struct {
     c: root.ColouredPieceType,
     s: root.Square,
 
@@ -38,6 +38,13 @@ pub const PSQTFeature = struct {
 
     pub fn square(self: PSQTFeature) root.Square {
         return self.s;
+    }
+
+    pub fn initColoured(c: root.ColouredPieceType, s: root.Square) PSQTFeature {
+        return .{
+            .c = c,
+            .s = s,
+        };
     }
 
     pub fn init(c: root.Colour, p: root.PieceType, s: root.Square) PSQTFeature {

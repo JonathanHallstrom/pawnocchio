@@ -7,13 +7,15 @@ const evaluation = @import("../../evaluation.zig");
 const ALIGNMENT = 64;
 
 pub const NEEDS_FT_PERMUTE = false;
+pub const NEEDS_L1_PERMUTE = false;
 
 pub const Weights = extern struct {
     output_w: [arch.OUTPUT_BUCKET_COUNT][2 * arch.L1_SIZE]i16 align(ALIGNMENT),
     output_b: [arch.OUTPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
 
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian) void {
+    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, full_dotprod: bool) void {
         _ = target_kind;
+        _ = full_dotprod;
 
         if (endian != .little) {
             arch.endianSwap(&self.output_w);

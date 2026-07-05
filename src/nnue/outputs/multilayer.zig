@@ -7,6 +7,7 @@ const evaluation = @import("../../evaluation.zig");
 const ALIGNMENT = 64;
 
 pub const NEEDS_FT_PERMUTE = true;
+pub const NEEDS_L1_PERMUTE = true;
 
 pub const Weights = extern struct {
     l1w: [arch.OUTPUT_BUCKET_COUNT][arch.L2_SIZE * arch.L1_SIZE]i8 align(ALIGNMENT),
@@ -40,8 +41,9 @@ pub const Weights = extern struct {
         return @ptrCast(&self.l3w);
     }
 
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian) void {
+    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, full_dotprod: bool) void {
         _ = target_kind;
+        const l1_order = arch.l1OrderFor(full_dotprod);
 
         if (endian != .little) {
             inline for (.{
@@ -64,7 +66,7 @@ pub const Weights = extern struct {
                 for (0..arch.L1_SIZE / 4) |i| {
                     for (0..arch.L2_SIZE) |j| {
                         for (0..4) |k| {
-                            l1w_inf[ob][i * 4 * arch.L2_SIZE + j * 4 + k] = l1w_disk[arch.L1_NEURON_ORDER[i * 4 + k]][ob][j];
+                            l1w_inf[ob][i * 4 * arch.L2_SIZE + j * 4 + k] = l1w_disk[l1_order[i * 4 + k]][ob][j];
                         }
                     }
                 }

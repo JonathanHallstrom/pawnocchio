@@ -5,7 +5,7 @@ const build_release = @import("build/release.zig");
 const build_tuning = @import("build/tuning.zig");
 const EvalMode = @import("src/eval_mode.zig").EvalMode;
 
-const BASE_VERSION = "2.0";
+const BASE_VERSION = "3.0";
 const DEFAULT_NET_PATH = "pp_big2.nnue";
 
 fn gitShortHash(b: *std.Build) ?[]const u8 {

@@ -100,20 +100,21 @@ pub const Accumulator = struct {
 
     pub fn addSubInPlace(
         self: *Accumulator,
-        adds: []const *const arch.RawAccumulator,
-        subs: []const *const arch.RawAccumulator,
+        weights: [*]const arch.RawAccumulator,
+        add_indices: []const u16,
+        sub_indices: []const u16,
     ) void {
-        for (adds) |a| @prefetch(a, .{ .rw = .read });
-        for (subs) |s| @prefetch(s, .{ .rw = .read });
+        for (add_indices) |a| @prefetch(&weights[a], .{ .rw = .read });
+        for (sub_indices) |s| @prefetch(&weights[s], .{ .rw = .read });
         const TILE = arch.ACCUMULATOR_TILE;
         var i: usize = 0;
         while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
             var v: [TILE]arch.AccumulatorVec = self.vecs()[i..][0..TILE].*;
-            for (adds) |a| inline for (0..TILE) |t| {
-                v[t] += a[i + t];
+            for (add_indices) |a| inline for (0..TILE) |t| {
+                v[t] += weights[a][i + t];
             };
-            for (subs) |s| inline for (0..TILE) |t| {
-                v[t] -= s[i + t];
+            for (sub_indices) |s| inline for (0..TILE) |t| {
+                v[t] -= weights[s][i + t];
             };
             self.vecs()[i..][0..TILE].* = v;
         }
