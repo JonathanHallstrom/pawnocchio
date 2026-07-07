@@ -32,7 +32,7 @@ const nnue = root.nnue;
 const IS_WINDOWS = @import("builtin").os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
-fn adviseHugePages(p: anytype) !void {
+pub fn adviseHugePages(p: anytype) !void {
     const bytes = std.mem.sliceAsBytes(p);
     if (IS_LINUX_LIBC) {
         const ptr = @as([*]align(4096) u8, @alignCast(bytes.ptr));
@@ -343,6 +343,10 @@ pub const ThreadPool = struct {
 
     pub fn correctionHistoriesForThread(self: *ThreadPool, thread_idx: usize) *history.CorrectionHistoryTable {
         return self.corrhists.get(thread_idx);
+    }
+
+    pub fn pawnHistoriesForThread(self: *ThreadPool, thread_idx: usize) *history.PawnHistory {
+        return self.pawn_histories.get(thread_idx);
     }
 
     pub fn startSearch(self: *ThreadPool, params: Searcher.Params, quiet: bool) void {

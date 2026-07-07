@@ -515,7 +515,15 @@ fn datagenWorker(
     const old_tt = searcher.tt;
     defer searcher.tt = old_tt;
     @memset(std.mem.asBytes(searcher), 0);
-    searcher.correction_histories = thread_pool.correctionHistoriesForThread(i);
+
+    searcher.correction_histories = std.heap.page_allocator.create(root.history.CorrectionHistoryTable) catch std.debug.panic("allocation failed\n", .{});
+    @import("ThreadPool.zig").adviseHugePages(searcher.correction_histories[0..1]) catch {};
+    defer std.heap.page_allocator.destroy(searcher.correction_histories);
+
+    searcher.histories.pawn = std.heap.page_allocator.create(root.history.PawnHistory) catch std.debug.panic("allocation failed\n", .{});
+    @import("ThreadPool.zig").adviseHugePages(searcher.histories.pawn[0..1]) catch {};
+    defer std.heap.page_allocator.destroy(searcher.histories.pawn);
+
     searcher.eval_context.initForThread(i);
     var tts: [2][]root.TTCluster = undefined;
     for (&tts) |*tt| {
