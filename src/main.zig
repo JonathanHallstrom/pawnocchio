@@ -684,6 +684,15 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("average: {d:.4} average abs: {d:.4}\n", .{ average, abs_average });
         } else if (std.ascii.eqlIgnoreCase(command, "get_error2")) {
             const SIGMOID_SCALE: f64 = 400.0;
+
+            var stored_evals = false;
+            if (parts.peek()) |p| {
+                if (std.ascii.eqlIgnoreCase(p, "--stored")) {
+                    stored_evals = true;
+                    _ = parts.next();
+                }
+            }
+
             const filename = parts.next() orelse "";
             var file = try std.Io.Dir.cwd().openFile(io, filename, .{});
             defer file.close(io);
@@ -696,7 +705,7 @@ pub fn main(init: std.process.Init) !void {
             const ctx = root.evaluation.globalCtx.lock();
             defer root.evaluation.globalCtx.release();
 
-            if (std.mem.endsWith(u8, filename, ".vf")) {
+            if (std.mem.count(u8, filename, ".vf") != 0) {
                 const stat = try file.stat(io);
                 const start_time = std.Io.Timestamp.now(io, .awake);
                 var vf = root.viriformat.scoredPlyReader(&file_reader.interface, allocator);
@@ -709,7 +718,7 @@ pub fn main(init: std.process.Init) !void {
                     var ply: u16 = 0;
                     var scored = try it.next();
                     while (scored) |sp| {
-                        const stm_eval = ctx.handle(ply).eval(&it.board);
+                        const stm_eval = if (stored_evals) sp.stmEval().? else ctx.handle(ply).eval(&it.board);
                         const white_eval: f64 = @floatFromInt(if (it.board.stm == .white) stm_eval else -stm_eval);
                         const pred = 1.0 / (1.0 + @exp(-white_eval / SIGMOID_SCALE));
                         const err = pred - target;
