@@ -1052,7 +1052,7 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
             if (!skipping) {
                 try record.addMove(ply.move, eval);
 
-                var board = ply.board;
+                var board = ply.board.*;
                 board.makeMoveSimple(ply.move);
 
                 if (root.pyrrhic.probeWDL(board)) |res| {
