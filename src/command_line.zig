@@ -1055,7 +1055,7 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
                 var board = ply.board.*;
                 board.makeMoveSimple(ply.move);
 
-                if (root.pyrrhic.probeWDL(board)) |res| {
+                if (root.pyrrhic.probeWDL(&board)) |res| {
                     const white_relative_result = if (board.stm == .black) res.flipped() else res;
                     const game_result = game.outcome;
                     if (white_relative_result != game_result) {
