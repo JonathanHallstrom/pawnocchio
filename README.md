@@ -48,8 +48,8 @@ The networks are trained using the excellent open source [bullet](https://github
 The Makefile is only intended to be used for testing on Openbench.
 
 ## Licensing
- - The code is licensed under the GPLv3 license. Full text can be found in LICENSE in the project root
- - The assets are licensed under the CC-BY-ND 4.0 license. Full text can be found in assets/LICENSE
+ - The code is licensed under the GPLv3 license. Full text can be found in [LICENSE](LICENSE) in the project root
+ - The assets are licensed under the CC-BY-ND 4.0 license. Full text can be found in [assets/LICENSE](assets/LICENSE)
 
 ## Credit
  - Many strong open source chess engines, but above all [Stormphrax](https://github.com/Ciekce/Stormphrax/) has been a massive source of inspiration
