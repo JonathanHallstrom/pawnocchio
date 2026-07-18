@@ -20,8 +20,8 @@ pub const Target = simd.Target;
 pub const target = simd.target;
 pub const parseTarget = simd.parseTarget;
 
-pub const inputs = @import("inputs/psq_threats.zig");
-pub const outputs = @import("outputs/multilayer.zig");
+pub const inputs = @import("inputs/psq.zig");
+pub const outputs = @import("outputs/multilayer_float.zig");
 
 pub const TOTAL_THREATS = 59808;
 pub const TOTAL_PAWN_PAIRS = 96 * 95 / 2;
@@ -143,6 +143,67 @@ pub fn transformNetFor(target_kind: Target, endian: std.builtin.Endian, net: *We
     net.transform(target_kind, endian);
 }
 
+fn roundClamp(comptime T: type, x: f32, scale: f32) T {
+    const r = @round(x * scale);
+    const lo: f32 = @floatFromInt(std.math.minInt(T));
+    const hi: f32 = @floatFromInt(std.math.maxInt(T));
+    return @intFromFloat(std.math.clamp(r, lo, hi));
+}
+
+pub fn loadUnquantized(src: []const f32, net: *Weights) void {
+    const IB = INPUT_BUCKET_COUNT;
+    const INPUT = 2 * 6 * 64;
+    const OB = OUTPUT_BUCKET_COUNT;
+    const L1 = L1_SIZE;
+    const L2 = L2_SIZE;
+    const L3 = L3_SIZE;
+
+    var off: usize = 0;
+    const ftw_src = src[off..][0 .. IB * INPUT * L1];
+    off += IB * INPUT * L1;
+    const ftb_src = src[off..][0..L1];
+    off += L1;
+    const l1w_src = src[off..][0 .. OB * L2 * L1];
+    off += OB * L2 * L1;
+    const l1b_src = src[off..][0 .. OB * L2];
+    off += OB * L2;
+    const l2w_src = src[off..][0 .. OB * L3 * 2 * L2];
+    off += OB * L3 * 2 * L2;
+    const l2b_src = src[off..][0 .. OB * L3];
+    off += OB * L3;
+    const l3w_src = src[off..][0 .. OB * L3];
+    off += OB * L3;
+    const l3b_src = src[off..][0..OB];
+
+    const ftw: *[IB * INPUT * L1]i16 = @ptrCast(&net.input.ft_w);
+    for (0..IB * INPUT * L1) |i| ftw[i] = roundClamp(i16, ftw_src[i], Q0);
+    for (0..L1) |i| net.input.ft_b[i] = roundClamp(i16, ftb_src[i], Q0);
+
+    const l1w_disk: *[L1][OB][L2]i8 = @ptrCast(&net.output.l1w);
+    for (0..OB) |ob| for (0..L2) |l2| for (0..L1) |l1| {
+        l1w_disk[l1][ob][l2] = roundClamp(i8, l1w_src[(ob * L2 + l2) * L1 + l1], Q1);
+    };
+    for (0..OB) |ob| for (0..L2) |j| {
+        net.output.l1b[ob][j] = l1b_src[ob * L2 + j];
+    };
+
+    const l2w_disk: *[2 * L2][OB][L3]f32 = @ptrCast(&net.output.l2w);
+    for (0..OB) |ob| for (0..L3) |l3| for (0..2 * L2) |i| {
+        l2w_disk[i][ob][l3] = l2w_src[(ob * L3 + l3) * 2 * L2 + i];
+    };
+    for (0..OB) |ob| for (0..L3) |j| {
+        net.output.l2b[ob][j] = l2b_src[ob * L3 + j];
+    };
+
+    const l3w_disk: *[L3][OB]f32 = @ptrCast(&net.output.l3w);
+    for (0..OB) |ob| for (0..L3) |l3| {
+        l3w_disk[l3][ob] = l3w_src[ob * L3 + l3];
+    };
+    for (0..OB) |ob| {
+        net.output.l3b[ob] = l3b_src[ob];
+    }
+}
+
 pub const AccumulatorVec = @Vector(simd.vecSize(i16), i16);
 pub const PSQTWeightVec = @Vector(simd.vecSize(i16), i16);
 pub const ThreatWeightVec = @Vector(simd.vecSize(i16), i8);
@@ -160,9 +221,9 @@ pub const ThreatWeight = [ACCUMULATOR_VECTOR_COUNT]ThreatWeightVec;
 pub const HORIZONTAL_MIRRORING = true;
 pub const INPUT_BUCKET_COUNT: usize = 16;
 pub const OUTPUT_BUCKET_COUNT: usize = 8;
-pub const L1_SIZE: usize = 768;
-pub const L2_SIZE: usize = 16;
-pub const L3_SIZE: usize = 32;
+pub const L1_SIZE: usize = 4096;
+pub const L2_SIZE: usize = 128;
+pub const L3_SIZE: usize = 256;
 pub const SCALE: i64 = 400;
 pub const Q0 = 255;
 pub const Q1 = 128;
@@ -170,8 +231,8 @@ pub const Q = 64;
 pub const INPUT_BUCKET_LAYOUT: [64]u8 = .{
     0,  1,  2,  3,  3,  2,  1,  0,
     4,  5,  6,  7,  7,  6,  5,  4,
-    8,  8,  9,  9,  9,  9,  8,  8,
-    10, 10, 11, 11, 11, 11, 10, 10,
+    8,  9,  10, 11, 11, 10, 9,  8,
+    8,  9,  10, 11, 11, 10, 9,  8,
     12, 12, 13, 13, 13, 13, 12, 12,
     12, 12, 13, 13, 13, 13, 12, 12,
     14, 14, 15, 15, 15, 15, 14, 14,

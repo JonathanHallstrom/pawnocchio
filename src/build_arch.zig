@@ -5,3 +5,4 @@ pub const target = arch.target;
 pub const parseTarget = arch.parseTarget;
 pub const parseEndian = arch.parseEndian;
 pub const transformNetFor = arch.transformNetFor;
+pub const loadUnquantized = arch.loadUnquantized;

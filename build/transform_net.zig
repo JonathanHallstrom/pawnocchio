@@ -26,16 +26,23 @@ pub fn main(init: std.process.Init) !void {
     var input = try std.Io.Dir.cwd().openFile(init.io, input_path, .{});
     defer input.close(init.io);
 
-    const weights = try init.gpa.create(nnue_arch.Weights);
-    defer init.gpa.destroy(weights);
+    const stat = try input.stat(init.io);
+    const src = try init.gpa.alloc(f32, stat.size / @sizeOf(f32));
+    defer init.gpa.free(src);
 
-    const weights_bytes = std.mem.asBytes(weights);
-    const bytes_read = try input.readPositionalAll(init.io, weights_bytes, 0);
-    if (bytes_read != weights_bytes.len) {
+    const src_bytes = std.mem.sliceAsBytes(src);
+    const bytes_read = try input.readPositionalAll(init.io, src_bytes, 0);
+    if (bytes_read != src_bytes.len) {
         std.process.fatal("short read from '{s}'", .{input_path});
     }
 
+    const weights = try init.gpa.create(nnue_arch.Weights);
+    defer init.gpa.destroy(weights);
+
+    nnue_arch.loadUnquantized(src, weights);
     nnue_arch.transformNetFor(target_kind, endian, weights);
+
+    const weights_bytes = std.mem.asBytes(weights);
 
     var output = try std.Io.Dir.cwd().createFile(init.io, output_path, .{ .truncate = true });
     defer output.close(init.io);
