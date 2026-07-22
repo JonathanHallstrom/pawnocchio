@@ -554,8 +554,8 @@ fn search(
         if (!is_in_check and
             best_move.isQuiet() and
             (score_type == .exact or
-                (score_type == .lower and best_score > static_eval) or
-                (score_type == .upper and best_score < static_eval)))
+            (score_type == .lower and best_score > static_eval) or
+            (score_type == .upper and best_score < static_eval)))
         {
             correction.update(board, corrected_static_eval, best_score, depth);
         }

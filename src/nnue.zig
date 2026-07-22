@@ -40,7 +40,7 @@ fn whichOutputBucket(board: *const Board) usize {
     return @min(BUCKET_COUNT - 1, (@popCount(board.white.all | board.black.all) - 2) / divisor);
 }
 
-var weights: Weights = undefined;
+var weights: *const Weights = undefined;
 
 pub const Accumulator = struct {
     white: [HIDDEN_SIZE]i16 align(std.atomic.cache_line),
@@ -426,27 +426,7 @@ fn screlu(x: i32) i32 {
 }
 
 pub fn init() void {
-    var fbs = std.io.fixedBufferStream(@embedFile("networks/net15_02_640_400_8_mirrored.nnue"));
-
-    // first read the weights for the first layer (there should be HIDDEN_SIZE * INPUT_SIZE of them)
-    for (0..weights.hidden_layer_weights.len) |i| {
-        weights.hidden_layer_weights[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-    }
-
-    // then the biases for the first layer (there should be HIDDEN_SIZE of them)
-    for (0..weights.hidden_layer_biases.len) |i| {
-        weights.hidden_layer_biases[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-    }
-
-    // then the weights for the second layer (there should be HIDDEN_SIZE * 2 of them)
-    for (0..weights.output_weights.len) |i| {
-        weights.output_weights[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-    }
-
-    // then finally the bias(es)
-    for (0..weights.output_biases.len) |i| {
-        weights.output_biases[i] = fbs.reader().readInt(i16, .little) catch unreachable;
-    }
+    weights = @ptrCast(@alignCast(@embedFile("networks/net15_02_640_400_8_mirrored.nnue")));
 }
 
 pub fn nnEval(board: *const Board) i16 {
