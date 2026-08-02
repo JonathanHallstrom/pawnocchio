@@ -689,8 +689,6 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("sum: {} sum abs: {}\n", .{ sum, abs_sum });
             std.debug.print("average: {d:.4} average abs: {d:.4}\n", .{ average, abs_average });
         } else if (std.ascii.eqlIgnoreCase(command, "get_error2")) {
-            const SIGMOID_SCALE: f64 = 400.0;
-
             var stored_evals = false;
             if (parts.peek()) |p| {
                 if (std.ascii.eqlIgnoreCase(p, "--stored")) {
@@ -725,8 +723,8 @@ pub fn main(init: std.process.Init) !void {
                     var scored = try it.next();
                     while (scored) |sp| {
                         const stm_eval = if (stored_evals) sp.stmEval().? else ctx.handle(ply).eval(&it.board);
-                        const white_eval: f64 = @floatFromInt(if (it.board.stm == .white) stm_eval else -stm_eval);
-                        const pred = 1.0 / (1.0 + @exp(-white_eval / SIGMOID_SCALE));
+                        const white_eval = if (it.board.stm == .white) stm_eval else -stm_eval;
+                        const pred = root.fastmath.sigmoidScore(white_eval, 400);
                         const err = pred - target;
 
                         seen += 1;
@@ -766,8 +764,8 @@ pub fn main(init: std.process.Init) !void {
                     const b = Board.parseFen(fen, true) catch continue;
                     ctx.initRoot(&b);
                     const stm_eval = ctx.handle(0).eval(&b);
-                    const white_eval: f64 = @floatFromInt(if (b.stm == .white) stm_eval else -stm_eval);
-                    const pred = 1.0 / (1.0 + @exp(-white_eval / SIGMOID_SCALE));
+                    const white_eval = if (b.stm == .white) stm_eval else -stm_eval;
+                    const pred = root.fastmath.sigmoidScore(white_eval, 400);
                     const err = pred - result;
                     sum_sq += err * err;
                     count += 1;

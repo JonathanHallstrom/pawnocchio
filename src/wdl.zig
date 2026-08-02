@@ -19,12 +19,15 @@ const std = @import("std");
 const root = @import("root.zig");
 const Board = root.Board;
 
-pub fn wdlParams(board: *const Board) struct { f64, f64 } {
+pub fn wdlParams(board: *const Board) struct { f32, f32 } {
     const material = std.math.clamp(board.classicalMaterial(), 17, 78);
     const move = std.math.clamp(board.fullmove, 1, 120);
 
-    const x: f64 = @as(f64, @floatFromInt(material)) / 58;
-    const y: f64 = @as(f64, @floatFromInt(move)) / 32;
+    const materialf: f32 = @floatFromInt(material);
+    const movef: f32 = @floatFromInt(move);
+
+    const x = materialf / 58;
+    const y = movef / 32;
 
     const p_a = 237.12953685 + 44.90698791 * y + 91.06850910 * x + -7.15217681 * y * y + -36.74902578 * x * y + -39.99297198 * x * x;
     const p_b = 94.99523877 + -50.60915179 * y + -55.02231007 * x + 11.49863200 * y * y + 4.21120174 * x * y + 43.89888051 * x * x;
@@ -32,23 +35,26 @@ pub fn wdlParams(board: *const Board) struct { f64, f64 } {
     return .{ p_a, p_b };
 }
 
-fn roundWDL(x: f64) i32 {
-    var res: i32 = @round(x);
+fn roundWDL(x: f64) i16 {
+    var res: i16 = @round(x);
 
-    // round extreme values towards the endpoints
+    // round extreme values towards the endpoints, for visual appeal:)
     if (x < 1) res = 0;
     if (x > 999) res = 1000;
 
     return res;
 }
 
-pub fn wdlModel(score: i16, board: *const Board) struct { i32, i32, i32 } {
+fn winChance(score: i16, a: f32, b: f32) f32 {
+    const x: f32 = @floatFromInt(score);
+    return root.fastmath.sigmoidScore(x - a, b);
+}
+
+pub fn wdlModel(score: i16, board: *const Board) struct { i16, i16, i16 } {
     const a, const b = wdlParams(board);
 
-    const x: f64 = @floatFromInt(score);
-
-    const w = roundWDL(1000 / (1 + @exp((a - x) / b)));
-    const l = roundWDL(1000 / (1 + @exp((a + x) / b)));
+    const w = roundWDL(1000 * winChance(score, a, b));
+    const l = roundWDL(1000 * winChance(-score, a, b));
     const d = 1000 - w - l;
 
     return .{ w, d, l };

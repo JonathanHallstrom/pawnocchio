@@ -575,14 +575,6 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
     while (try reader.next()) |game| {
         const wdl = @as(f64, @floatFromInt(@intFromEnum(game.outcome))) / 2.0;
-        const sigmoid = struct {
-            fn impl(score: i16) f64 {
-                const f: f64 = @floatFromInt(score);
-
-                return 1.0 / (1.0 + @exp(-f / 400.0));
-            }
-        }.impl;
-
         var it = game.iter();
         while (try it.next()) |ply| {
             const board = ply.board;
@@ -615,7 +607,7 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
 
             if (piece_count_acc) {
                 if (parsed.@"sigmoid-scores") {
-                    write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(eval), wdl });
+                    write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), root.fastmath.sigmoid(eval), wdl });
                 } else {
                     write("{s} | {d} | {d}\n", .{ board.toFen().slice(), eval, wdl });
                 }

@@ -69,6 +69,7 @@ pub const wdl = @import("wdl.zig");
 pub const input_features = @import("nnue/features.zig");
 pub const PSQTFeature = input_features.PSQTFeature;
 pub const FeatureKind = input_features.FeatureKind;
+pub const fastmath = @import("fastmath.zig");
 
 const assert = std.debug.assert;
 
