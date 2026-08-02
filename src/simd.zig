@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const root = @import("root");
 
 pub const Target = enum {
     avx512vbmi,
@@ -69,7 +70,7 @@ pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
         .avx512vbmi, .avx512 => 64,
         .avx2 => 32,
         .aarch64, .ssse3, .sse2 => 16,
-        .fallback => if (cpu.arch.endian() != .little) 4 else std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
+        .fallback => if (cpu.arch.endian() != .little) 8 else std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
     };
 }
 
@@ -95,6 +96,10 @@ const HAS_VNNI = hasVnni(@import("builtin").cpu);
 const HAS_I8MM = hasI8mm(@import("builtin").cpu);
 pub const HAS_VBMI2 = @import("builtin").cpu.has(.x86, .avx512vbmi2);
 pub const HAS_AVX512 = @import("builtin").cpu.has(.x86, .avx512f);
+pub const HAS_NT_STORES = switch (TARGET) {
+    .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => true,
+    .aarch64, .fallback => false,
+};
 
 const x86 = @import("simd/x86.zig");
 const avx512 = @import("simd/avx512.zig");
@@ -107,6 +112,41 @@ pub fn Vector(comptime T: type) type {
 
 pub fn MaskInt(comptime V: type) type {
     return std.meta.Int(.unsigned, @typeInfo(V).vector.len);
+}
+pub inline fn maskInt(vec: anytype) MaskInt(@TypeOf(vec)) {
+    @setEvalBranchQuota(1 << 16);
+    const M = MaskInt(@TypeOf(vec));
+    if (@import("builtin").cpu.arch.endian() == .little) {
+        return @bitCast(vec);
+    }
+    const N = @typeInfo(@TypeOf(vec)).vector.len;
+    const lanes: [N]bool = vec;
+    var res: M = 0;
+    for (0..N) |k| {
+        res |= @as(M, @intFromBool(lanes[k])) << @intCast(k);
+    }
+    return res;
+}
+
+pub inline fn maskVec(comptime N: usize, bits: std.meta.Int(.unsigned, N)) @Vector(N, bool) {
+    @setEvalBranchQuota(1 << 16);
+    if (@import("builtin").cpu.arch.endian() == .little) {
+        return @bitCast(bits);
+    }
+    var res: [N]bool = undefined;
+    inline for (0..N) |k| {
+        res[k] = bits >> @intCast(k) & 1 != 0;
+    }
+    return res;
+}
+
+pub inline fn prefixLaneMask(comptime N: usize, n: usize) @Vector(N, bool) {
+    if (@import("builtin").cpu.arch.endian() == .little) {
+        return maskVec(N, prefixMask(N, n));
+    }
+
+    const idx: @Vector(N, usize) = std.simd.iota(usize, N);
+    return idx < @as(@Vector(N, usize), @splat(n));
 }
 
 pub fn maddubs(u: Vector(u8), i: Vector(i8)) Vector(i16) {
@@ -169,6 +209,20 @@ pub fn dpbusdx2(
     };
 }
 
+pub fn ntStore(comptime T: type, dst: *T, val: Vector(T)) void {
+    return switch (TARGET) {
+        .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.ntStore(T, dst, val),
+        .aarch64, .fallback => comptime unreachable,
+    };
+}
+
+pub fn ntFence() void {
+    return switch (TARGET) {
+        .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => x86.ntFence(),
+        .aarch64, .fallback => comptime unreachable,
+    };
+}
+
 pub const vpshufbMask = avx512.vpshufbMask;
 pub const vpermb = avx512.vpermb;
 pub const vpcompress = avx512.vpcompress;
@@ -179,12 +233,19 @@ pub const tbl4 = neon.tbl4;
 pub fn loadMasked(comptime T: type, comptime N: usize, ptr: [*]const T, mask: std.meta.Int(.unsigned, N)) @Vector(N, T) {
     const V = @Vector(N, T);
     const zero: V = @splat(0);
-    const mask_vec: @Vector(N, bool) = @bitCast(mask);
+    if (@import("builtin").cpu.arch.endian() == .big) {
+        var res: [N]T = @splat(0);
+        for (0..N) |k| {
+            if (mask >> @intCast(k) & 1 != 0) res[k] = ptr[k];
+        }
+        return res;
+    }
+    const mask_vec: @Vector(N, bool) = maskVec(N, mask);
     const len = std.fmt.comptimePrint("{d}", .{N});
     const bits = std.fmt.comptimePrint("{d}", .{@bitSizeOf(T)});
-    return @extern(*const fn (@Vector(N, bool), [*]const T, i32, V) callconv(.c) V, .{
+    return @extern(*const fn ([*]const T, i32, @Vector(N, bool), V) callconv(.c) V, .{
         .name = "llvm.masked.load.v" ++ len ++ "i" ++ bits ++ ".p0",
-    }).*(mask_vec, ptr, @alignOf(T), zero);
+    }).*(ptr, @alignOf(T), mask_vec, zero);
 }
 
 pub fn loadN(comptime T: type, comptime N: usize, ptr: [*]const T, n: usize) @Vector(N, T) {
@@ -235,15 +296,17 @@ pub fn ChunkIter(comptime T: type, comptime N: usize) type {
         }
 
         pub inline fn hasFullChunk(self: *@This()) bool {
-            return self.i + N < self.len;
-        }
-
-        pub fn preventUnroll(self: @This()) void {
-            std.mem.doNotOptimizeAway(self.i * @sizeOf(T));
+            return self.i + N <= self.len;
         }
 
         inline fn chunk(self: @This()) @Vector(N, T) {
             return self.ptr[self.i..][0..N].*;
+        }
+
+        inline fn overlappingChunkUnchecked(self: *@This()) @Vector(N, T) {
+            std.debug.assert(self.len >= N);
+            defer self.i += N;
+            return self.ptr[@min(self.i, self.len - N)..][0..N].*;
         }
 
         pub inline fn fullChunk(self: *@This()) ?@Vector(N, T) {
@@ -252,17 +315,21 @@ pub fn ChunkIter(comptime T: type, comptime N: usize) type {
             return self.chunk();
         }
 
+        pub inline fn remainder(self: *@This()) []const T {
+            return self.ptr[self.i..self.len];
+        }
+
         pub inline fn tail(self: *@This()) Tail {
             const last_idx = finalIdx(N, self.len);
             const data: @Vector(N, T) = self.ptr[last_idx..][0..N].*;
-            return .{ .data = data, .mask = @bitCast(prefixMask(N, self.len - last_idx)) };
+            return .{ .data = data, .mask = prefixLaneMask(N, self.len - last_idx) };
         }
 
         pub inline fn tailSafe(self: *@This()) Tail {
             const last_idx = finalIdx(N, self.len);
             const remaining = self.len - last_idx;
             const data: @Vector(N, T) = loadN(T, N, self.ptr + last_idx, remaining);
-            return .{ .data = data, .mask = @bitCast(prefixMask(N, self.len - last_idx)) };
+            return .{ .data = data, .mask = prefixLaneMask(N, self.len - last_idx) };
         }
     };
 }
@@ -294,10 +361,6 @@ pub fn IndexedChunkIter(comptime T: type, comptime N: usize) type {
 
         pub inline fn hasFullChunk(self: @This()) bool {
             return self.inner.hasFullChunk();
-        }
-
-        pub inline fn preventUnroll(self: @This()) void {
-            self.inner.preventUnroll();
         }
 
         pub inline fn fullChunk(self: *@This()) ?struct {
@@ -336,11 +399,8 @@ pub fn IndexedChunkIter(comptime T: type, comptime N: usize) type {
 
         pub inline fn tailSafe(self: *@This()) Chunk {
             const remaining = self.inner.len - self.inner.i;
-            const U = std.meta.Int(.unsigned, N);
-            const W = std.meta.Int(.unsigned, 2 * N);
-            const mask_int: U = @truncate(~(~@as(W, 0) << @intCast(remaining)));
             const data: @Vector(N, T) = loadN(T, N, self.inner.ptr + self.inner.i, remaining);
-            return .{ .data = data, .indices = self.indices, .mask = @bitCast(mask_int) };
+            return .{ .data = data, .indices = self.indices, .mask = prefixLaneMask(N, remaining) };
         }
     };
 }
@@ -375,7 +435,7 @@ pub fn ReverseChunkIter(comptime T: type, comptime N: usize) type {
             const start = self.i;
             const data: @Vector(N, T) = self.ptr[start..][0..N].*;
             const valid = self.len - start;
-            const mask: @Vector(N, bool) = if (valid >= N) @splat(true) else @bitCast(prefixMask(N, valid));
+            const mask: @Vector(N, bool) = prefixLaneMask(N, valid);
 
             if (start >= N) {
                 self.i = start - N;
@@ -399,4 +459,106 @@ pub fn indexedChunkIter(comptime T: type, comptime N: usize, slice: []const T) I
 
 pub fn reverseChunkIter(comptime T: type, comptime N: usize, slice: []const T) ReverseChunkIter(T, N) {
     return .init(slice);
+}
+
+fn containsScalar(comptime T: type, haystack: []const T, needle: T) bool {
+    var res = false;
+    for (haystack) |h| {
+        if (h == needle) {
+            @branchHint(.unpredictable);
+            res = true;
+        }
+    }
+    return res;
+}
+
+pub fn containsSmall(comptime T: type, haystack: []const T, needle: T) bool {
+    const N = vecSize(T);
+    if (haystack.len < N or N <= 1) {
+        @branchHint(.likely);
+        return containsScalar(T, haystack, needle);
+    }
+    const Vi = @Vector(N, std.meta.Int(.signed, @bitSizeOf(T)));
+
+    const V = Vector(T);
+    const needle_vec: V = @splat(needle);
+
+    var res_vec: Vi = @splat(0);
+
+    var iter = chunkIter(T, N, haystack);
+    while (!iter.isEmpty()) {
+        const chunk = iter.overlappingChunkUnchecked();
+        const eq: Vi = @intFromBool(chunk == needle_vec);
+        res_vec |= -eq;
+    }
+
+    return @reduce(.Or, res_vec) != 0;
+}
+
+test maddubs {
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    for (0..64) |_| {
+        var ub: [vecSize(u8)]u8 = undefined;
+        var ib: [vecSize(i8)]i8 = undefined;
+        prng.fill(std.mem.asBytes(&ub));
+        prng.fill(std.mem.asBytes(&ib));
+        const got: [vecSize(i16)]i16 = maddubs(ub, ib);
+        for (0..vecSize(i16)) |k| {
+            const want = @as(i16, ub[2 * k]) * @as(i16, ib[2 * k]) +|
+                @as(i16, ub[2 * k + 1]) * @as(i16, ib[2 * k + 1]);
+            try std.testing.expectEqual(want, got[k]);
+        }
+    }
+}
+
+test maddwd {
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    for (0..64) |_| {
+        var a: [vecSize(i16)]i16 = undefined;
+        var b: [vecSize(i16)]i16 = undefined;
+        prng.fill(std.mem.asBytes(&a));
+        prng.fill(std.mem.asBytes(&b));
+        const got: [vecSize(i32)]i32 = maddwd(a, b);
+        for (0..vecSize(i32)) |k| {
+            const want = @as(i32, a[2 * k]) * @as(i32, b[2 * k]) +
+                @as(i32, a[2 * k + 1]) * @as(i32, b[2 * k + 1]);
+            try std.testing.expectEqual(want, got[k]);
+        }
+    }
+}
+
+test maskInt {
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    for (0..64) |_| {
+        var b: [vecSize(u8)]u8 = undefined;
+        prng.fill(std.mem.asBytes(&b));
+        const v: Vector(u8) = b;
+        const ZERO: Vector(u8) = @splat(0);
+        const mask = maskInt(v != ZERO);
+        for (0..vecSize(u8)) |k| {
+            const bit = mask >> @intCast(k) & 1 != 0;
+            try std.testing.expectEqual(b[k] != 0, bit);
+        }
+    }
+}
+
+test maskVec {
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    for (0..64) |_| {
+        const bits: MaskInt(Vector(u8)) = prng.random().int(MaskInt(Vector(u8)));
+        const lanes: [vecSize(u8)]bool = maskVec(vecSize(u8), bits);
+        for (0..vecSize(u8)) |k| {
+            try std.testing.expectEqual(bits >> @intCast(k) & 1 != 0, lanes[k]);
+        }
+    }
+}
+
+test prefixLaneMask {
+    @setEvalBranchQuota(1 << 16);
+    inline for (0..vecSize(u8) + 1) |n| {
+        const lanes: [vecSize(u8)]bool = prefixLaneMask(vecSize(u8), n);
+        for (0..vecSize(u8)) |k| {
+            try std.testing.expectEqual(k < n, lanes[k]);
+        }
+    }
 }

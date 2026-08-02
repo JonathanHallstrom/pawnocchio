@@ -113,8 +113,5 @@ pub const Context = struct {
 };
 
 pub fn evalPosition(board: *const Board) i16 {
-    const ctx = evaluation.globalCtx.lock();
-    defer evaluation.globalCtx.release();
-    ctx.initRoot(board);
-    return ctx.handle(0).eval(board);
+    return Frame.init(board).eval(board);
 }

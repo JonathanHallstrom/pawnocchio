@@ -32,13 +32,23 @@ pub fn wdlParams(board: *const Board) struct { f64, f64 } {
     return .{ p_a, p_b };
 }
 
+fn roundWDL(x: f64) i32 {
+    var res: i32 = @round(x);
+
+    // round extreme values towards the endpoints
+    if (x < 1) res = 0;
+    if (x > 999) res = 1000;
+
+    return res;
+}
+
 pub fn wdlModel(score: i16, board: *const Board) struct { i32, i32, i32 } {
     const a, const b = wdlParams(board);
 
     const x: f64 = @floatFromInt(score);
 
-    const w: i32 = @intFromFloat(@round(1000 / (1 + @exp((a - x) / b))));
-    const l: i32 = @intFromFloat(@round(1000 / (1 + @exp((a + x) / b))));
+    const w = roundWDL(1000 / (1 + @exp((a - x) / b)));
+    const l = roundWDL(1000 / (1 + @exp((a + x) / b)));
     const d = 1000 - w - l;
 
     return .{ w, d, l };

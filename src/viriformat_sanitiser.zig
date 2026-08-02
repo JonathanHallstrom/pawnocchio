@@ -189,8 +189,7 @@ fn parseSingleGame(
     }
 
     var i: usize = 0;
-    var initial: viriformat.MarlinPackedBoard = undefined;
-    @memcpy(std.mem.asBytes(&initial), input[0..32]);
+    var initial: viriformat.MarlinPackedBoard = @bitCast(input[0..32].*);
     i += 32;
     if (initial.wdl > 2) {
         return error.InvalidWdl;
@@ -214,10 +213,9 @@ fn parseSingleGame(
             return error.InputTooShortForMoveEvalPair;
         }
 
-        var move_eval: viriformat.MoveEvalPair = undefined;
-        @memcpy(std.mem.asBytes(&move_eval), input[i..][0..4]);
+        var move_eval: viriformat.MoveEvalPair = @bitCast(input[i..][0..4].*);
         defer i += 4;
-        if (move_eval.move.data == 0) {
+        if (move_eval.move.raw() == 0) {
             break;
         }
         const move = move_eval.move.toMove(&board);
@@ -242,7 +240,7 @@ fn parseSingleGame(
         }
 
         if (for (moves.vals.slice()) |generated| {
-            if (move_eval.move.data == viriformat.ViriMove.fromMove(generated).data) break false;
+            if (move_eval.move.raw() == viriformat.ViriMove.fromMove(generated).raw()) break false;
         } else true) {
             error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
             return error.MoveWronglyEncoded;

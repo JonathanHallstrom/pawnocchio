@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const root = @import("root.zig");
 
 fn formatStatValue(writer: *std.Io.Writer, value: f64) std.Io.Writer.Error!void {
     try writer.print("{d:.4}", .{value});
@@ -346,15 +347,15 @@ pub const Correlation = struct {
 
         const sums = allocator.alloc(f64, names.len) catch @panic("OOM");
         errdefer allocator.free(sums);
-        @memset(sums, 0);
+        root.memset(f64, sums, 0);
 
         const sum_squares = allocator.alloc(f64, names.len) catch @panic("OOM");
         errdefer allocator.free(sum_squares);
-        @memset(sum_squares, 0);
+        root.memset(f64, sum_squares, 0);
 
         const sum_products = allocator.alloc(f64, names.len * names.len) catch @panic("OOM");
         errdefer allocator.free(sum_products);
-        @memset(sum_products, 0);
+        root.memset(f64, sum_products, 0);
 
         return .{
             .allocator = allocator,
@@ -373,9 +374,9 @@ pub const Correlation = struct {
 
     pub fn reset(self: *Self) void {
         self.count = 0;
-        @memset(self.sums, 0);
-        @memset(self.sum_squares, 0);
-        @memset(self.sum_products, 0);
+        root.memset(f64, self.sums, 0);
+        root.memset(f64, self.sum_squares, 0);
+        root.memset(f64, self.sum_products, 0);
     }
 
     pub fn add(self: *Self, values: []const f64) void {

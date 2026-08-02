@@ -40,7 +40,7 @@ const NONZERO_INDICES = blk: {
 fn getMask(vals: simd.Vector(u8)) simd.MaskInt(simd.Vector(i32)) {
     const as_i32: simd.Vector(i32) = @bitCast(vals);
     const zero: simd.Vector(i32) = @splat(0);
-    return @bitCast(as_i32 != zero);
+    return simd.maskInt(as_i32 != zero);
 }
 
 const USE_VBMI2_NNZ = simd.HAS_VBMI2 and simd.vecSize(i32) == 16 and L1_SIZE % 128 == 0;
@@ -80,7 +80,7 @@ fn findNonZeroIndicesLUT(
             const mask_indices = NONZERO_INDICES[byte];
 
             const actual_indices: [8]u16 = mask_indices + base;
-            @memcpy(indices[count..][0..8], &actual_indices);
+            indices[count..][0..8].* = actual_indices;
 
             count += @popCount(byte);
             base += @splat(8);
@@ -103,16 +103,45 @@ fn findNonZeroIndicesVBMI2(
     var count: usize = 0;
 
     inline for (0..L1_SIZE / 128) |i| {
-        const lo: simd.MaskInt(simd.Vector(i32)) = @bitCast(groups[2 * i] != ZERO);
-        const hi: simd.MaskInt(simd.Vector(i32)) = @bitCast(groups[2 * i + 1] != ZERO);
+        const lo: simd.MaskInt(simd.Vector(i32)) = simd.maskInt(groups[2 * i] != ZERO);
+        const hi: simd.MaskInt(simd.Vector(i32)) = simd.maskInt(groups[2 * i + 1] != ZERO);
         const mask: simd.MaskInt(simd.Vector(u16)) = @as(u32, lo) | @as(u32, hi) << 16;
 
         const base: simd.Vector(u16) = std.simd.iota(u16, 32) + @as(simd.Vector(u16), @splat(32 * i));
         const compressed: [32]u16 = simd.vpcompress(base, mask);
-        @memcpy(indices[count..][0..32], &compressed);
+        indices[count..][0..32].* = compressed;
 
         count += @popCount(mask);
     }
 
     return .{ indices, count };
+}
+
+test findNonZeroIndices {
+    const ft = try std.testing.allocator.alignedAlloc(u8, .fromByteUnits(64), L1_SIZE);
+    defer std.testing.allocator.free(ft);
+
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    const r = prng.random();
+
+    for (0..64) |_| {
+        const density: u8 = r.int(u8);
+        for (ft) |*x| x.* = if (r.int(u8) < density) r.int(u8) else 0;
+
+        var expected_indices: [L1_SIZE / 4]u16 = undefined;
+        var expected_count: usize = 0;
+
+        for (0..L1_SIZE / 4) |g| {
+            const any = ft[4 * g] != 0 or ft[4 * g + 1] != 0 or
+                ft[4 * g + 2] != 0 or ft[4 * g + 3] != 0;
+            if (any) {
+                expected_indices[expected_count] = @intCast(g);
+                expected_count += 1;
+            }
+        }
+        const actual_indices, const actual_count = findNonZeroIndices(ft[0..L1_SIZE]);
+
+        try std.testing.expectEqual(expected_count, actual_count);
+        try std.testing.expectEqualSlices(u16, expected_indices[0..expected_count], actual_indices[0..actual_count]);
+    }
 }

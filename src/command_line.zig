@@ -600,7 +600,7 @@ const AnalysisStats = struct {
         stats.tracker = try UniqueTracker.init(approximate, allocator);
         errdefer stats.tracker.deinit(allocator);
         stats.score_counts = try allocator.alloc(u64, 1 + std.math.maxInt(u16));
-        @memset(stats.score_counts, 0);
+        root.memset(u64, stats.score_counts, 0);
         return stats;
     }
 

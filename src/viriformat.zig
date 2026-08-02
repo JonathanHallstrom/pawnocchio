@@ -226,7 +226,7 @@ pub const ViriMove = extern struct {
 
     const Self = @This();
 
-    data: u16,
+    data: LittleEndian(u16),
 
     const MoveFlags = enum(u16) {
         Promotion = promo_flag_bits,
@@ -234,37 +234,41 @@ pub const ViriMove = extern struct {
         Castle = castle_flag_bits,
     };
 
+    pub fn raw(self: Self) u16 {
+        return self.data.toNative();
+    }
+
     pub fn newWithPromo(from_: Square, to_: Square, promotion: PieceType) Self {
         const promotion_int = promotion.toInt() - 1;
-        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @as(u16, promotion_int) << 12 | promo_flag_bits };
+        return .{ .data = .fromNative(@as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @as(u16, promotion_int) << 12 | promo_flag_bits) };
     }
 
     pub fn newWithFlags(from_: Square, to_: Square, flags: MoveFlags) Self {
-        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @intFromEnum(flags) };
+        return .{ .data = .fromNative(@as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @intFromEnum(flags)) };
     }
 
     pub fn new(from_: Square, to_: Square) Self {
-        return .{ .data = @as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 };
+        return .{ .data = .fromNative(@as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6) };
     }
 
     pub fn isPromo(self: Self) bool {
-        return self.data & promo_flag_bits == promo_flag_bits;
+        return self.raw() & promo_flag_bits == promo_flag_bits;
     }
 
     pub fn isEp(self: Self) bool {
-        return self.data & ep_flag_bits == ep_flag_bits;
+        return self.raw() & ep_flag_bits == ep_flag_bits;
     }
 
     pub fn isCastle(self: Self) bool {
-        return self.data & castle_flag_bits == castle_flag_bits;
+        return self.raw() & castle_flag_bits == castle_flag_bits;
     }
 
     pub fn from(self: Self) Square {
-        return @enumFromInt(self.data & 0b111111);
+        return @enumFromInt(self.raw() & 0b111111);
     }
 
     pub fn to(self: Self) Square {
-        return @enumFromInt(self.data >> 6 & 0b111111);
+        return @enumFromInt(self.raw() >> 6 & 0b111111);
     }
 
     pub fn fromMove(move: Move) Self {
@@ -276,7 +280,7 @@ pub const ViriMove = extern struct {
 
     pub fn toMove(self: Self, board: *const Board) Move {
         if (self.isPromo()) {
-            const promo_type = PieceType.fromInt(@intCast(1 + ((self.data & ~promo_flag_bits) >> 12)));
+            const promo_type = PieceType.fromInt(@intCast(1 + ((self.raw() & ~promo_flag_bits) >> 12)));
             return Move.promo(self.from(), self.to(), promo_type);
         }
         if (self.isCastle()) {
@@ -347,7 +351,7 @@ pub const ScoredPlyReader = struct {
                 else => return e,
             };
 
-            if (move_eval_pair.move.data == 0) {
+            if (move_eval_pair.move.raw() == 0) {
                 self.exhausted = true;
                 return null;
             }
@@ -443,7 +447,7 @@ pub const GameRecord = struct {
     pub fn serializeInto(self: GameRecord, writer: *std.Io.Writer) !void {
         try writer.writeAll(std.mem.asBytes(&self.initial_position));
         for (self.moves.items) |move_eval_pair| {
-            if (move_eval_pair.move.data == 0) {
+            if (move_eval_pair.move.raw() == 0) {
                 @panic("NULL MOVE IN GAME");
             }
             try writer.writeAll(std.mem.asBytes(&move_eval_pair));

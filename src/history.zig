@@ -136,14 +136,14 @@ pub const QuietHistory = struct {
     }
 
     inline fn reset(self: *QuietHistory) void {
-        @memset(std.mem.asBytes(&self.vals), 0);
+        root.memzero(&self.vals);
     }
 
     inline fn entry(
         self: anytype,
         board: *const Board,
         move: TypedMove,
-    ) root.inheritConstness(@TypeOf(self), *i16) {
+    ) root.InheritConstness(@TypeOf(self), *i16) {
         return &self.vals[board.stm.toInt()][move.move.fromTo()][move.flags & 3];
     }
 
@@ -186,14 +186,14 @@ pub const PawnHistory = struct {
     }
 
     pub inline fn reset(self: *PawnHistory) void {
-        @memset(std.mem.asBytes(&self.vals), 0);
+        root.memzero(&self.vals);
     }
 
     inline fn entry(
         self: anytype,
         board: *const Board,
         move: TypedMove,
-    ) root.inheritConstness(@TypeOf(self), *std.atomic.Value(i16)) {
+    ) root.InheritConstness(@TypeOf(self), *std.atomic.Value(i16)) {
         const hash_offs: usize = @intCast(board.pawn_hash % HashSize);
         return &self.vals[hash_offs][board.stm.toInt()][move.tp.toInt()][move.move.to().toInt()];
     }
@@ -238,14 +238,14 @@ pub const NoisyHistory = struct {
     }
 
     inline fn reset(self: *NoisyHistory) void {
-        @memset(std.mem.asBytes(&self.vals), 0);
+        root.memzero(&self.vals);
     }
 
     inline fn entry(
         self: anytype,
         board: *const Board,
         move: TypedMove,
-    ) root.inheritConstness(@TypeOf(self), *i16) {
+    ) root.InheritConstness(@TypeOf(self), *i16) {
         const captured = board.colouredPieceOn(move.move.to());
         const captured_offs = if (captured) |capt| capt.toInt() else 12;
         return &self.vals[move.move.fromTo()][captured_offs][move.flags & 3];
@@ -279,7 +279,7 @@ pub const ContHistory = struct {
             self: anytype,
             col: Colour,
             move: TypedMove,
-        ) root.inheritConstness(@TypeOf(self), *i16) {
+        ) root.InheritConstness(@TypeOf(self), *i16) {
             return &self.vals[col.toInt()][move.tp.toInt()][move.move.to().toInt()];
         }
 
@@ -355,14 +355,14 @@ pub const ContHistory = struct {
     }
 
     inline fn reset(self: *ContHistory) void {
-        @memset(std.mem.asBytes(&self.vals), 0);
+        root.memzero(&self.vals);
     }
 
     pub inline fn table(
         self: anytype,
         col: Colour,
         move: TypedMove,
-    ) root.inheritConstness(@TypeOf(self), *ContHistTable) {
+    ) root.InheritConstness(@TypeOf(self), *ContHistTable) {
         return &self.vals[col.toInt()][move.tp.toInt()][move.move.to().toInt()];
     }
 };
@@ -386,12 +386,12 @@ fn HashCorrhist(
         inline fn entry(
             self: anytype,
             board: *const Board,
-        ) root.inheritConstness(@TypeOf(self), *CorrhistEntry) {
+        ) root.InheritConstness(@TypeOf(self), *CorrhistEntry) {
             return &self.vals[hashIndex(board)][board.stm.toInt()];
         }
 
         inline fn reset(self: *Self) void {
-            @memset(std.mem.asBytes(&self.vals), 0);
+            root.memzero(&self.vals);
         }
 
         inline fn update(self: *Self, board: *const Board, err: i32, weight: i32) void {
@@ -411,12 +411,12 @@ const MoveCorrhist = struct {
         self: anytype,
         board: *const Board,
         move: TypedMove,
-    ) root.inheritConstness(@TypeOf(self), *CorrhistEntry) {
+    ) root.InheritConstness(@TypeOf(self), *CorrhistEntry) {
         return &self.vals[move.move.fromTo()][move.flags & 3][board.stm.toInt()];
     }
 
     inline fn reset(self: *MoveCorrhist) void {
-        @memset(std.mem.asBytes(&self.vals), 0);
+        root.memzero(&self.vals);
     }
 
     inline fn update(self: *MoveCorrhist, board: *const Board, move: TypedMove, err: i32, weight: i32) void {

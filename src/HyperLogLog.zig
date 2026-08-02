@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const root = @import("root.zig");
 
 const Self = @This();
 
@@ -24,7 +25,7 @@ m: []u8,
 pub fn init(p_: u8, allocator: std.mem.Allocator) !Self {
     const size_ = @as(usize, 1) << @intCast(p_);
     const m_ = try allocator.alloc(u8, size_);
-    @memset(m_, 0);
+    root.memset(u8, m_, 0);
     return .{
         .p = p_,
         .m = m_,

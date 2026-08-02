@@ -129,7 +129,7 @@ pub fn totalElements(comptime T: type) comptime_int {
     const info = @typeInfo(T);
 
     switch (info) {
-        .array => |i| {
+        inline .array, .vector => |i| {
             return i.len * totalElements(i.child);
         },
         inline else => |i| {

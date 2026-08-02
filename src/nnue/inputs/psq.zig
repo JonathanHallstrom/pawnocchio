@@ -184,7 +184,7 @@ pub const State = struct {
     dirty_piece: DirtyPiece,
     board_ref: ?*const Board,
 
-    pub inline fn half(self: anytype, acc: Colour) root.inheritConstness(@TypeOf(self), *AccumulatorHalf) {
+    pub inline fn half(self: anytype, acc: Colour) root.InheritConstness(@TypeOf(self), *AccumulatorHalf) {
         return if (acc == .white) &self.white else &self.black;
     }
 
@@ -196,7 +196,7 @@ pub const State = struct {
         return if (col == .white) self.white_mirrored else self.black_mirrored;
     }
 
-    pub inline fn mirrorPtrFor(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *MirroringType) {
+    pub inline fn mirrorPtrFor(self: anytype, col: Colour) root.InheritConstness(@TypeOf(self), *MirroringType) {
         return if (col == .white) &self.white_mirrored else &self.black_mirrored;
     }
 };

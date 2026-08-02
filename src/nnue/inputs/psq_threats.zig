@@ -94,7 +94,7 @@ const ThreatState = struct {
     black_threat_mirrored: MirroringType,
     threat_updates: nnue_threat_updates.UpdateBuffer,
 
-    inline fn threatHalf(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *AccumulatorHalf) {
+    inline fn threatHalf(self: anytype, col: Colour) root.InheritConstness(@TypeOf(self), *AccumulatorHalf) {
         return if (col == .white) &self.white_threat else &self.black_threat;
     }
 
@@ -102,7 +102,7 @@ const ThreatState = struct {
         return if (col == .white) self.white_threat_mirrored else self.black_threat_mirrored;
     }
 
-    inline fn threatMirrorPtrFor(self: anytype, col: Colour) root.inheritConstness(@TypeOf(self), *MirroringType) {
+    inline fn threatMirrorPtrFor(self: anytype, col: Colour) root.InheritConstness(@TypeOf(self), *MirroringType) {
         return if (col == .white) &self.white_threat_mirrored else &self.black_threat_mirrored;
     }
 };
@@ -257,7 +257,7 @@ pub const Context = struct {
         };
         const adjusted = ADJUSTED_SQUARES[sq_mask];
         const enemy_offset: @Vector(64, u8) = @splat(48);
-        const mask: @Vector(64, bool) = @bitCast(board.pawnsFor(col));
+        const mask: @Vector(64, bool) = simd.maskVec(64, board.pawnsFor(col));
         const ids = @select(u8, mask, adjusted, adjusted +% enemy_offset);
         return simd.vpcompress(ids, board.pawns() & ~exclude);
     }
@@ -367,9 +367,9 @@ pub const Context = struct {
                 i += 2;
                 fixed_idx += FIXED_INC;
             }) {
-                mask &= mask - 1;
+                mask &= mask -% 1;
                 const m0 = mask & Bitboard.pext(arch.PP_MASK[real_sqs[i]] & pawn_bb, pawn_bb);
-                mask &= mask - 1;
+                mask &= mask -% 1;
                 const m1 = mask & Bitboard.pext(arch.PP_MASK[real_sqs[i + 1]] & pawn_bb, pawn_bb);
 
                 const fixed: IdVec32 = @bitCast(simd.vpermb(fixed_idx, pawns));

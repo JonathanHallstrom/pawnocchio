@@ -159,14 +159,14 @@ const Thread = struct {
                     self.searcher.startSearch(self.search_params, self.search_main, self.search_quiet);
                 },
                 .reset => {
-                    @memset(std.mem.asBytes(self.searcher), 0);
+                    root.memzero(self.searcher);
                     self.searcher.correction_histories = self.correction_histories;
                     self.searcher.histories.pawn = self.pawn_histories;
                     self.searcher.eval_context.initForThread(self.idx);
                     self.searcher.histories.reset();
                     self.searcher.tt = self.tt;
                     if (self.reset_tt_slice.len > 0) {
-                        @memset(std.mem.sliceAsBytes(self.reset_tt_slice), 0);
+                        root.memzero(self.reset_tt_slice);
                     }
                 },
                 else => {},
@@ -326,7 +326,7 @@ pub const ThreadPool = struct {
         const num_threads = self.threads.items.len;
         if (num_threads == 0) {
             if (self.tt.len > 0) {
-                @memset(std.mem.sliceAsBytes(self.tt), 0);
+                root.memzero(self.tt);
             }
             return;
         }

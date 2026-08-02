@@ -16,6 +16,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
+const root = @import("root.zig");
 
 pub const enabled = build_options.use_numa and builtin.os.tag == .linux and builtin.link_libc;
 

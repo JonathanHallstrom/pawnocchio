@@ -17,19 +17,29 @@
 const std = @import("std");
 const simd = @import("../simd.zig");
 
+fn everyOther(comptime T: type, comptime offset: comptime_int, v: simd.Vector(T)) @Vector(simd.vecSize(T) / 2, T) {
+    const N = simd.vecSize(T) / 2;
+    return switch (@import("builtin").cpu.arch.endian()) {
+        .little => @shuffle(T, v, undefined, std.simd.iota(i32, N) *
+            @as(@Vector(N, i32), @splat(2)) + @as(@Vector(N, i32), @splat(offset))),
+        .big => blk: {
+            const lanes: [simd.vecSize(T)]T = v;
+            var out: [N]T = undefined;
+            for (0..N) |k| out[k] = lanes[2 * k + offset];
+            break :blk out;
+        },
+    };
+}
+
 pub fn maddubs(u: simd.Vector(u8), i: simd.Vector(i8)) simd.Vector(i16) {
-    const u_parts = std.simd.deinterlace(2, u);
-    const i_parts = std.simd.deinterlace(2, i);
-    const products_even = @as(simd.Vector(i16), u_parts[0]) * @as(simd.Vector(i16), i_parts[0]);
-    const products_odd = @as(simd.Vector(i16), u_parts[1]) * @as(simd.Vector(i16), i_parts[1]);
+    const products_even = @as(simd.Vector(i16), everyOther(u8, 0, u)) * @as(simd.Vector(i16), everyOther(i8, 0, i));
+    const products_odd = @as(simd.Vector(i16), everyOther(u8, 1, u)) * @as(simd.Vector(i16), everyOther(i8, 1, i));
     return products_even +| products_odd;
 }
 
 pub fn maddwd(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(i32) {
-    const a_parts = std.simd.deinterlace(2, a);
-    const b_parts = std.simd.deinterlace(2, b);
-    const products_even = @as(simd.Vector(i32), a_parts[0]) * @as(simd.Vector(i32), b_parts[0]);
-    const products_odd = @as(simd.Vector(i32), a_parts[1]) * @as(simd.Vector(i32), b_parts[1]);
+    const products_even = @as(simd.Vector(i32), everyOther(i16, 0, a)) * @as(simd.Vector(i32), everyOther(i16, 0, b));
+    const products_odd = @as(simd.Vector(i32), everyOther(i16, 1, a)) * @as(simd.Vector(i32), everyOther(i16, 1, b));
     return products_even + products_odd;
 }
 

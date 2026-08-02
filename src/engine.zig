@@ -235,7 +235,7 @@ noinline fn registerTimer(h: u64, group: []const u8, part: []const u8) void {
     while (cap < n * 2) cap *= 2;
     while (true) {
         const fresh = std.heap.page_allocator.alloc(TimerSlot, cap) catch @panic("OOM");
-        @memset(fresh, .{});
+        root.memset(TimerSlot, fresh, .{});
         const mask = cap - 1;
         var ok = true;
         for (saved[0..n]) |e| {
@@ -395,7 +395,7 @@ pub fn init(io: std.Io) !void {
     debug_bool_stats = .init(std.heap.page_allocator);
     debug_corr_stats = .init(std.heap.page_allocator);
     debug_range_stats = .init(std.heap.page_allocator);
-    debug_rng.seed(@bitCast(@as(i64, @intCast(std.Io.Timestamp.now(io, .awake).nanoseconds))));
+    debug_rng.seed(getSeed(io, u64));
 }
 
 pub fn deinit() void {
@@ -496,9 +496,27 @@ const DatagenStats = struct {
     losses: std.atomic.Value(usize) = .init(0),
 };
 
+const SEED_FALLBACK_ITERS = 8;
+fn getSeed(io: std.Io, comptime T: type) T {
+    var seed: T = undefined;
+    var sleep_ms: i64 = 1;
+    for (0..SEED_FALLBACK_ITERS) |_| {
+        if (io.randomSecure(root.asBytes(&seed))) {
+            return seed;
+        } else |_| {
+            io.sleep(.fromMilliseconds(sleep_ms), .awake) catch {};
+            sleep_ms *= 2;
+            continue;
+        }
+    }
+    io.randomSecure(root.asBytes(&seed)) catch @panic("failed to get seed");
+    return seed;
+}
+
 fn datagenWorker(
     io: std.Io,
     i: usize,
+    rng_seed: u64,
     random_move_count_low: u8,
     random_move_count_high: u8,
     min_depth: i32,
@@ -514,7 +532,7 @@ fn datagenWorker(
     const searcher = thread_pool.searchers.items[i];
     const old_tt = searcher.tt;
     defer searcher.tt = old_tt;
-    @memset(std.mem.asBytes(searcher), 0);
+    root.memzero(searcher);
 
     searcher.correction_histories = std.heap.page_allocator.create(root.history.CorrectionHistoryTable) catch std.debug.panic("allocation failed\n", .{});
     @import("ThreadPool.zig").adviseHugePages(searcher.correction_histories[0..1]) catch {};
@@ -528,17 +546,18 @@ fn datagenWorker(
     var tts: [2][]root.TTCluster = undefined;
     for (&tts) |*tt| {
         tt.* = @import("ThreadPool.zig").allocTT(std.heap.page_allocator, 16 << 20) catch std.debug.panic("allocation failed\n", .{});
-        @memset(tt.*, std.mem.zeroes(root.TTCluster));
+        root.memzero(tt.*);
     }
     defer for (tts) |tt| std.heap.page_allocator.free(tt);
     searcher.tt = tts[0];
     const viriformat = root.viriformat;
-    var seed: u64 = 0;
-    _ = std.os.linux.getrandom(std.mem.asBytes(&seed).ptr, std.mem.asBytes(&seed).len, 0);
-    var rng = std.Random.DefaultPrng.init(seed);
+    var outer_rng = std.Random.DefaultCsprng.init(@splat(0));
+    outer_rng.addEntropy(&root.bytesOf(rng_seed));
     var alloc_buffer: [1 << 20]u8 = undefined;
     var num_positions_written: usize = 0;
     datagen_loop: while (true) {
+        outer_rng.addEntropy(&root.bytesOf(std.Io.Timestamp.now(io, .real).toNanoseconds()));
+        var rng = std.Random.DefaultPrng.init(rng_seed);
         var board = root.Board.dfrcPosition(rng.random().uintLessThanBiased(u20, 960 * 960));
         if (rng.random().boolean()) {
             board = root.Board.startpos();
@@ -680,11 +699,8 @@ fn datagenWorker(
     }
 }
 
-fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
+fn getFileName(io: std.Io, nodes: u64, buf: []u8) ![]const u8 {
     var fbs = std.Io.Writer.fixed(buf);
-
-    var random_buf: [32]u8 align(32) = undefined;
-    _ = std.os.linux.getrandom(std.mem.asBytes(&random_buf).ptr, std.mem.asBytes(&random_buf).len, 0);
 
     const build_options = @import("build_options");
     var eval_identifier = build_options.eval_identifier;
@@ -692,14 +708,14 @@ fn getFileName(nodes: u64, buf: []u8) ![]const u8 {
         eval_identifier = eval_identifier[0..separator];
     }
 
-    try fbs.print("outfile_{s}_{}nodes_{x}.vf", .{ eval_identifier, nodes, @as(u256, @bitCast(random_buf)) });
+    try fbs.print("outfile_{s}_{}nodes_{x}.vf", .{ eval_identifier, nodes, getSeed(io, u256) });
     return fbs.buffered();
 }
 
 pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
     var buf: [4096]u8 = undefined;
     const start_time = std.Io.Timestamp.now(io, .awake);
-    var out_file = try std.Io.Dir.cwd().createFile(io, try getFileName(num_nodes, &buf), .{ .truncate = true });
+    var out_file = try std.Io.Dir.cwd().createFile(io, try getFileName(io, num_nodes, &buf), .{ .truncate = true });
     defer out_file.close(io);
 
     var writer_wrapper = out_file.writerStreaming(io, &buf);
@@ -714,8 +730,9 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
         threads.deinit(std.heap.page_allocator);
     }
 
+    const seed: u64 = getSeed(io, u64);
     for (0..thread_pool.threads.items.len) |i| {
-        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ io, i, 6, 10, 0, num_nodes, &writer_wrapper, &writer_mutex, &stats }));
+        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ io, i, seed +% i, 6, 10, 0, num_nodes, &writer_wrapper, &writer_mutex, &stats }));
     }
     defer for (0..thread_pool.threads.items.len) |i| {
         std.heap.page_allocator.free(thread_pool.searchers.items[i].tt);

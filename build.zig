@@ -121,6 +121,7 @@ fn addExecutable(
             .omit_frame_pointer = minimal_executable,
             .strip = minimal_executable,
             .link_libc = options.target.result.os.tag == .windows or options.use_tbs or options.use_numa,
+            .no_builtin = true,
         }),
         .use_llvm = true,
         .linkage = options.link_mode,
@@ -221,6 +222,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
             .link_libc = use_numa,
+            .no_builtin = true,
         }),
         .use_llvm = true,
     });

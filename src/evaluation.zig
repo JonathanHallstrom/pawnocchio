@@ -190,15 +190,25 @@ pub fn isMateScore(score: i32) bool {
 }
 
 pub fn isTBScore(score: i32) bool {
+    return isDecisiveScore(score) and !isMateScore(score);
+}
+
+pub fn isDecisiveScore(score: i32) bool {
     return @abs(score) > HIGHEST_NON_TB_SCORE;
+}
+
+pub fn decisiveDist(score: i32) i32 {
+    if (!isDecisiveScore(score)) return 0;
+
+    const offset: i64 = if (isMateScore(score)) CHECKMATE_SCORE else TB_WIN_SCORE;
+    return @intCast(offset - @abs(score));
 }
 
 pub fn formatScore(score: i16) root.BoundedArray(u8, 15) {
     var print_buf: [15]u8 = undefined;
     var res: root.BoundedArray(u8, 15) = .{};
     if (isMateScore(score)) {
-        const plies_to_mate = if (score > 0) CHECKMATE_SCORE - score else CHECKMATE_SCORE + score;
-        const moves_to_mate = @divTrunc(plies_to_mate + 1, 2);
+        const moves_to_mate = @divTrunc(decisiveDist(score) + 1, 2);
         res.appendSliceAssumeCapacity("mate ");
         if (score < 0)
             res.appendAssumeCapacity('-');

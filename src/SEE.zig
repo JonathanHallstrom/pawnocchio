@@ -22,6 +22,7 @@ const PieceType = root.PieceType;
 const Square = root.Square;
 const Bitboard = root.Bitboard;
 const attacks = root.attacks;
+const simd = root.simd;
 const Board = root.Board;
 const Move = root.Move;
 const Colour = root.Colour;
@@ -70,12 +71,9 @@ fn pickFirstVectorized(board: *const Board, mask: u64) u8 {
     const bbs = &board.bbs;
     const mask_vec: @Vector(8, u64) = @splat(mask);
     const zero: @Vector(8, u64) = @splat(0);
-    const eql: u8 = @bitCast(mask_vec & bbs.* != zero);
+    const eql: u8 = simd.maskInt(mask_vec & bbs.* != zero);
     std.debug.assert(eql != 0);
-    return switch (@import("builtin").cpu.arch.endian()) {
-        .little => @ctz(eql),
-        .big => @clz(eql),
-    };
+    return @ctz(eql);
 }
 
 // if we have SIMD support use it otherwise use the scalar version
@@ -191,4 +189,40 @@ test scoreMove {
     try std.testing.expect(!scoreMove(&(Board.parseFen("6b1/k7/8/3Pp3/2K2N1r/8/8/8 w - e6 0 1", false) catch unreachable), Move.enPassant(.d5, .e6), 1, .testing));
     try std.testing.expect(scoreMove(&(Board.parseFen("6b1/k7/8/3Pp3/2K2N2/8/8/8 w - e6 0 1", false) catch unreachable), Move.enPassant(.d5, .e6), value(.pawn, .testing), .testing));
     try std.testing.expect(scoreMove(&(Board.parseFen("8/8/8/1k6/6b1/4N3/2p3K1/3n4 w - - 0 1", false) catch unreachable), Move.capture(.e3, .c2), value(.pawn, .testing) - value(.queen, .testing), .testing));
+}
+
+test pickFirst {
+    const fens = [_][]const u8{
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "k6b/8/8/8/8/8/1p6/BK6 w - - 0 1",
+    };
+
+    for (fens) |fen| {
+        const board = try Board.parseFen(fen, false);
+
+        var iter = Bitboard.iterator(board.occupancy());
+        while (iter.nextBB()) |mask| {
+            try std.testing.expectEqual(
+                pickFirstScalar(&board, mask),
+                pickFirstVectorized(&board, mask),
+            );
+        }
+
+        var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+        for (0..64) |_| {
+            const num_active = @popCount(board.occupancy());
+            const active_mask = @as(u64, 1) << @intCast(num_active);
+            const random_subset: u64 = 1 + prng.random().uintLessThan(u64, active_mask - 1);
+
+            const mask = Bitboard.pdep(random_subset, board.occupancy());
+
+            try std.testing.expectEqual(
+                pickFirstScalar(&board, mask),
+                pickFirstVectorized(&board, mask),
+            );
+        }
+    }
 }

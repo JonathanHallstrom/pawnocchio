@@ -69,3 +69,16 @@ pub fn dpbusd(sum: simd.Vector(i32), u: simd.Vector(u8), i: simd.Vector(i8)) sim
         else => unreachable,
     } }).*(sum, @bitCast(u), @bitCast(i));
 }
+
+const PREFIX = if (@import("builtin").cpu.has(.x86, .avx)) "v" else "";
+pub inline fn ntStore(comptime T: type, dst: *T, val: simd.Vector(T)) void {
+    asm volatile (PREFIX ++ "movntdq %[v], (%[p])"
+        :
+        : [v] "v" (val),
+          [p] "r" (dst),
+        : .{ .memory = true });
+}
+
+pub inline fn ntFence() void {
+    asm volatile ("sfence" ::: .{ .memory = true });
+}

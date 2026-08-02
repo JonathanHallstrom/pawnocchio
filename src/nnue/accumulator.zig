@@ -5,7 +5,7 @@ const simd = root.simd;
 pub const Accumulator = struct {
     data: [arch.L1_SIZE]i16 align(64),
 
-    pub inline fn vecs(self: anytype) root.inheritConstness(@TypeOf(self), *align(64) arch.RawAccumulator) {
+    pub inline fn vecs(self: anytype) root.InheritConstness(@TypeOf(self), *align(64) arch.RawAccumulator) {
         return @ptrCast(&self.data);
     }
 

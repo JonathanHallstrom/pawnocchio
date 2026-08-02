@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 test {
     std.testing.refAllDecls(@This());
@@ -214,6 +215,10 @@ pub const Square = enum(u8) {
     pub fn flipFile(self: Square) Square {
         return fromInt(self.toInt() ^ 0b000111);
     }
+
+    pub fn chebyshev(self: Square, other: Square) u8 {
+        return self.getRank().absDiff(other.getRank()) + self.getFile().absDiff(other.getFile());
+    }
 };
 
 pub const File = enum {
@@ -247,6 +252,12 @@ pub const File = enum {
     pub fn toAsciiLetter(self: File) u8 {
         return @as(u8, 'a') + self.toInt();
     }
+
+    pub fn absDiff(self: File, other: File) u8 {
+        const ss: i16 = self.toInt();
+        const so: i16 = other.toInt();
+        return @intCast(@abs(ss - so));
+    }
 };
 
 pub const Rank = enum {
@@ -275,6 +286,12 @@ pub const Rank = enum {
 
     pub fn cmp(_: void, lhs: Rank, rhs: Rank) bool {
         return @intFromEnum(lhs) < @intFromEnum(rhs);
+    }
+
+    pub fn absDiff(self: Rank, other: Rank) u8 {
+        const ss: i16 = self.toInt();
+        const so: i16 = other.toInt();
+        return @intCast(@abs(ss - so));
     }
 };
 
@@ -457,9 +474,12 @@ pub const ScoreType = enum(u8) {
 pub const TTFlags = packed struct(u8) {
     raw: u8 = 0,
 
-    const SCORE_MASK: u8 = 0b00000011;
-    const PV_MASK: u8 = 0b00000100;
-    const AGE_SHIFT: u3 = 3;
+    const SCORE_MASK = 0b00000011;
+    const SCORE_SHIFT = 0;
+    const PV_MASK = 0b00000100;
+    const PV_SHIFT = @ctz(@as(u8, PV_MASK));
+    const AGE_MASK = 0b11111;
+    const AGE_SHIFT = 3;
 
     pub fn init(
         score_type: ScoreType,
@@ -508,27 +528,26 @@ comptime {
     assert(@sizeOf(TTFlags) == 1);
 }
 
-pub const TTEntry = extern struct {
-    score: i16 = 0,
+const TTPICK_TYPE_VALS = [_]i32{
+    -1000_000_000,
+    TUNABLE_CONSTANTS.ttpick_lower_weight,
+    TUNABLE_CONSTANTS.ttpick_upper_weight,
+    TUNABLE_CONSTANTS.ttpick_exact_weight,
+};
+
+pub const TTEntry = packed struct(u64) {
     flags: TTFlags = .{},
     depth: u8 = 0,
     move: Move = Move.init(),
+    score: i16 = 0,
     raw_static_eval: i16 = 0,
 
     inline fn getValue(self: *const TTEntry, cur_age: i32) i32 {
         const depth_val = TUNABLE_CONSTANTS.ttpick_depth_weight * self.depth;
-        const age_val = TUNABLE_CONSTANTS.ttpick_age_weight * (32 + cur_age - self.flags.getAge() & 31);
+        const age_val = TUNABLE_CONSTANTS.ttpick_age_weight * (cur_age - self.flags.getAge() & 31);
         const pv_val = TUNABLE_CONSTANTS.ttpick_pv_weight * @intFromBool(self.flags.getPV());
-        const TYPE_VALS = [_]i32{
-            -1000_000_000,
-            TUNABLE_CONSTANTS.ttpick_lower_weight,
-            TUNABLE_CONSTANTS.ttpick_upper_weight,
-            TUNABLE_CONSTANTS.ttpick_exact_weight,
-        };
-        const type_val = TYPE_VALS[@intFromEnum(self.flags.getScoreType())];
+        const type_val = TTPICK_TYPE_VALS[@intFromEnum(self.flags.getScoreType())];
         const move_val = TUNABLE_CONSTANTS.ttpick_move_weight * @intFromBool(!self.move.isNull());
-        // _ = engine.dbg("tt value", depth_val - age_val + pv_val + move_val);
-        // _ = engine.dbg("age", (32 + cur_age - self.flags.getAge() & 31));
         return depth_val - age_val + pv_val + type_val + move_val;
     }
 };
@@ -557,75 +576,152 @@ pub const TTProxy = struct {
 };
 
 pub const TTCluster = extern struct {
-    entries: [3]TTEntry align(8) = @splat(.{}),
-    hashes: [4]u16 align(8) = @splat(0),
+    // entries: [3]TTEntry align(8) = @splat(.{}),
+    // hashes: [4]u16 align(8) = @splat(0),
+    raw: [4]u64 = @splat(0),
+
+    pub fn hashes(self: TTCluster) [4]u16 {
+        return @bitCast(self.raw[3]);
+    }
+
+    fn hashesPtr(self: *TTCluster) *[4]u16 {
+        return @ptrCast(&self.raw[3]);
+    }
+
+    pub fn entries(self: TTCluster) [3]TTEntry {
+        return @bitCast(self.raw[0..3].*);
+    }
+
+    fn entriesPtr(self: *TTCluster) *[3]TTEntry {
+        return @ptrCast(self.raw[0..3]);
+    }
+
+    inline fn entryFieldVec(low: @Vector(4, u32), comptime name: []const u8) @Vector(4, u32) {
+        const BIT_OFFSET = @bitOffsetOf(TTEntry, name);
+        const BITS = @bitSizeOf(@FieldType(TTEntry, name));
+        comptime assert(BIT_OFFSET + BITS <= 32);
+
+        const mask: @Vector(4, u32) = @splat(std.math.maxInt(std.meta.Int(.unsigned, BITS)));
+        return low >> @splat(BIT_OFFSET) & mask;
+    }
+
+    inline fn getValues(self: TTCluster, cur_age: i32) [4]i32 {
+        const V = @Vector(4, i32);
+        const U = @Vector(4, u32);
+
+        const AGE_MASK: V = @splat(TTFlags.AGE_MASK);
+        const SCORE_MASK: U = @splat(TTFlags.SCORE_MASK);
+        const NULL_MOVE: U = @splat(@intFromEnum(Move.init()));
+        const ONE: U = @splat(1);
+
+        const raw_vec: @Vector(4, u64) = self.raw;
+        const low: U = @truncate(raw_vec);
+
+        const flags = entryFieldVec(low, "flags");
+        const depth = entryFieldVec(low, "depth");
+        const move = entryFieldVec(low, "move");
+
+        const age: V = @intCast(flags >> @splat(TTFlags.AGE_SHIFT));
+        const pv: V = @intCast(flags >> @splat(TTFlags.PV_SHIFT) & ONE);
+        const score_type = flags & SCORE_MASK;
+        const has_move: V = @intCast(@intFromBool(move != NULL_MOVE));
+
+        var type_val: V = @splat(TTPICK_TYPE_VALS[0]);
+        inline for (TTPICK_TYPE_VALS[1..], 1..) |value, index| {
+            const i: U = @splat(index);
+            const v: V = @splat(value);
+            type_val = @select(i32, score_type == i, v, type_val);
+        }
+
+        const cur_ages: V = @splat(cur_age);
+        const aged = (cur_ages - age) & AGE_MASK;
+
+        var sum_values = type_val;
+        inline for (.{
+            TUNABLE_CONSTANTS.ttpick_depth_weight,
+            -TUNABLE_CONSTANTS.ttpick_age_weight,
+            TUNABLE_CONSTANTS.ttpick_pv_weight,
+            TUNABLE_CONSTANTS.ttpick_move_weight,
+        }, .{ @as(V, @intCast(depth)), aged, pv, has_move }) |weight, value| {
+            const w: V = @splat(weight);
+            sum_values += w * value;
+        }
+        return sum_values;
+    }
 
     pub fn compress(h: u64) u16 {
         return @intCast(h & 0xffff);
     }
 
     inline fn idxEqualHashEntry(noalias self: *const TTCluster, hash: u16) usize {
-        const endian = @import("builtin").cpu.arch.endian();
+        const swap = @import("builtin").cpu.arch.endian() == .big;
+        const key: u16 = if (swap) @byteSwap(hash) else hash;
 
-        var haystack: u64 = @bitCast(self.hashes);
-        haystack |= if (endian == .little) @as(u64, hash) << 48 else hash;
+        var haystack: u64 = if (swap) @byteSwap(self.raw[3]) else self.raw[3];
+        haystack |= @as(u64, key) << 48;
 
         const low_bits: u64 = 0x0001000100010001;
         const high_bits: u64 = 0x8000800080008000;
-        const needle = hash * low_bits;
+        const needle = key * low_bits;
         const zeroes = haystack ^ needle;
         const matches = zeroes -% low_bits & ~zeroes & high_bits;
 
-        return switch (endian) {
-            .little => @ctz(matches),
-            .big => @clz(matches),
-        } / 16;
+        return @ctz(matches) / 16;
     }
 
     inline fn proxy(self: *TTCluster, idx: usize) TTProxy {
         return .{
-            .entry = &self.entries[idx],
-            .hash = &self.hashes[idx],
+            .entry = &self.entriesPtr()[idx],
+            .hash = &self.hashesPtr()[idx],
         };
-    }
-
-    inline fn eqlHashEntry(noalias self: *TTCluster, hash: u16) ?TTProxy {
-        const idx = self.idxEqualHashEntry(hash);
-        if (idx == 3) {
-            return null;
-        }
-        return self.proxy(idx);
     }
 
     pub const TTData = struct { TTEntry, bool };
 
-    pub inline fn read(self: *const TTCluster, hash: u16) TTData {
+    pub fn read(self: *const TTCluster, hash: u16) TTData {
         const idx = self.idxEqualHashEntry(hash);
-        const data: TTEntry = if (idx == 3)
-            .{}
-        else
-            self.entries[idx];
-        return .{ data, idx != 3 };
+        var res: TTEntry = @bitCast(self.raw[idx]);
+        if (idx == 3) {
+            @branchHint(.unpredictable);
+            res = .{};
+        }
+        return .{ res, idx != 3 };
     }
 
-    pub inline fn write(noalias self: *TTCluster, hash: u16, cur_age: u8) TTProxy {
-        if (self.eqlHashEntry(hash)) |entry| {
-            @branchHint(.unpredictable);
-            return entry;
+    pub noinline fn write(noalias self: *TTCluster, hash: u16, cur_age: u8) TTProxy {
+        const idx = self.idxEqualHashEntry(hash);
+        if (idx != 3) {
+            @branchHint(.likely);
+            return self.proxy(idx);
         }
 
-        var best_entry: u32 = 0;
-        var best_value: i32 = self.entries[best_entry].getValue(cur_age);
+        const values = self.getValues(cur_age);
 
-        inline for (&self.entries, 0..) |*entry, i| {
-            const value = entry.getValue(cur_age);
-            if (value < best_value) {
-                @branchHint(.unpredictable);
-                best_value = value;
+        var best_entry: u32 = 0;
+        var best_value: i32 = values[0];
+
+        inline for (1..3) |i| {
+            if (values[i] < best_value) {
+                best_value = values[i];
                 best_entry = i;
             }
         }
         return self.proxy(best_entry);
+    }
+
+    test getValues {
+        var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+        const r = prng.random();
+        for (0..1024) |_| {
+            var cluster: TTCluster = .{};
+            for (&cluster.raw) |*w| w.* = r.int(u64);
+            const cur_age: i32 = r.int(u5);
+            const vec: [4]i32 = cluster.getValues(cur_age);
+            const entr: [4]TTEntry = @bitCast(cluster.raw);
+            for (0..3) |i| {
+                try std.testing.expectEqual(entr[i].getValue(cur_age), vec[i]);
+            }
+        }
     }
 };
 
@@ -727,7 +823,7 @@ pub fn isConstPointer(comptime T: type) bool {
     return false;
 }
 
-pub fn inheritConstness(comptime Base: type, comptime Pointer: type) type {
+pub fn InheritConstness(comptime Base: type, comptime Pointer: type) type {
     const info = @typeInfo(Pointer).pointer;
     const is_const = if (@typeInfo(Base) == .pointer) @typeInfo(Base).pointer.is_const else false;
     return @Pointer(info.size, .{
@@ -737,4 +833,160 @@ pub fn inheritConstness(comptime Base: type, comptime Pointer: type) type {
         .@"align" = info.alignment,
         .@"addrspace" = info.address_space,
     }, info.child, info.sentinel());
+}
+
+inline fn ValueTypeOf(x: anytype) type {
+    comptime {
+        if (@TypeOf(x) != type) {
+            return ValueTypeOf(@TypeOf(x));
+        }
+        if (@typeInfo(x) == .pointer) {
+            return ValueTypeOf(@typeInfo(x).pointer.child);
+        }
+        return x;
+    }
+}
+
+pub fn bytesOf(value: anytype) [@divExact(@bitSizeOf(@TypeOf(value)), 8)]u8 {
+    return @bitCast(value);
+}
+
+pub const NT_MEMSET_THRESHOLD: usize = 16 << 20;
+
+noinline fn memsetNonTemporal(comptime T: type, x: []T, v: T) void {
+    const VEC_ELEMS = simd.vecSize(T);
+    const VEC_BYTES = simd.vecSize(u8);
+    const t_arr: [VEC_ELEMS]T = @splat(v);
+
+    const b = std.mem.sliceAsBytes(x);
+    const base = @intFromPtr(b.ptr);
+    const alignment_offs = std.mem.alignForward(usize, base, VEC_BYTES) - base;
+
+    // head may be unaligned
+    if (alignment_offs > 0) {
+        @branchHint(.unlikely);
+        x[0..VEC_ELEMS].* = t_arr;
+    }
+
+    const b_aligned = b[alignment_offs..];
+    var i: usize = 0;
+    while (i + VEC_BYTES <= b_aligned.len) : (i += VEC_BYTES) {
+        simd.ntStore(u8, &b_aligned[i], asBytes(&t_arr).*);
+    }
+    simd.ntFence();
+
+    // tail may be unaligned
+    if (i < b_aligned.len) {
+        @branchHint(.unlikely);
+        x[x.len - VEC_ELEMS ..][0..VEC_ELEMS].* = t_arr;
+    }
+}
+
+pub inline fn unrollBarrier() void {
+    if (!@inComptime()) {
+        asm volatile ("");
+    }
+}
+// 0.16.0 memset is slow
+pub inline fn memset(comptime T: type, x: []T, v: T) void {
+    var i: usize = 0;
+    const VEC_ELEMS = @max(1, simd.vecSize(T));
+    const REG_ELEMS = comptime std.math.clamp(@sizeOf(usize) / @sizeOf(T), 1, VEC_ELEMS);
+
+    const n = x.len;
+
+    if (n < VEC_ELEMS) {
+        @branchHint(.unlikely);
+        if (n < REG_ELEMS) {
+            if (n == 0) {
+                return;
+            }
+            for (0..REG_ELEMS - 1) |j| {
+                x[@min(n - 1, j)] = v;
+            }
+            return;
+        }
+        for (0..VEC_ELEMS / REG_ELEMS) |j| {
+            x[@min(n - REG_ELEMS, REG_ELEMS * j)..][0..REG_ELEMS].* = @splat(v);
+        }
+        return;
+    }
+
+    if (comptime simd.HAS_NT_STORES and simd.vecSize(u8) % @sizeOf(T) == 0) {
+        if (!@inComptime() and n *| @sizeOf(T) >= NT_MEMSET_THRESHOLD) {
+            @branchHint(.unlikely);
+            return memsetNonTemporal(T, x, v);
+        }
+    }
+
+    const UNROLL = comptime std.math.clamp(128 / (VEC_ELEMS * @sizeOf(T)), 1, 8);
+    while (i + UNROLL * VEC_ELEMS <= n) : (i += UNROLL * VEC_ELEMS) {
+        for (0..UNROLL) |j| {
+            x[i + j * VEC_ELEMS ..][0..VEC_ELEMS].* = @splat(v);
+        }
+        unrollBarrier();
+    }
+
+    while (i + VEC_ELEMS < n) : (i += VEC_ELEMS) {
+        x[i..][0..VEC_ELEMS].* = @splat(v);
+        unrollBarrier();
+    }
+    x[n - VEC_ELEMS ..][0..VEC_ELEMS].* = @splat(v);
+}
+
+test memset {
+    const PAGE_SIZE = std.heap.page_size_max;
+    const buf = try std.testing.allocator.alignedAlloc(u8, .fromByteUnits(PAGE_SIZE), PAGE_SIZE + (1 << 16));
+    defer std.testing.allocator.free(buf);
+
+    const TRIALS = 1024;
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    for (0..TRIALS) |_| {
+        const l = prng.random().int(u16) >> prng.random().int(u4);
+        const v = prng.random().int(u8);
+        const off = prng.random().uintLessThan(usize, PAGE_SIZE);
+
+        memset(u8, buf, ~v);
+        const actual = buf[off..][0..l];
+        memset(u8, actual, v);
+
+        for (actual) |a| try std.testing.expectEqual(v, a);
+        for (buf[0..off]) |a| try std.testing.expectEqual(~v, a);
+        for (buf[off + l ..]) |a| try std.testing.expectEqual(~v, a);
+    }
+
+    if (simd.HAS_NT_STORES) {
+        for (0..TRIALS) |_| {
+            const v = prng.random().int(u8);
+            const off = prng.random().uintLessThan(usize, PAGE_SIZE);
+            const l = @max(simd.vecSize(u8), prng.random().int(u16) >> prng.random().int(u4));
+
+            memset(u8, buf, ~v);
+            const actual = buf[off..][0..l];
+            memsetNonTemporal(u8, actual, v);
+
+            for (actual) |a| try std.testing.expectEqual(v, a);
+            for (buf[0..off]) |a| try std.testing.expectEqual(~v, a);
+            for (buf[off + l ..]) |a| try std.testing.expectEqual(~v, a);
+        }
+    }
+}
+
+pub fn AsBytes(comptime T: type) type {
+    const info = @typeInfo(T).pointer;
+    return InheritConstness(
+        T,
+        switch (info.size) {
+            .slice => []u8,
+            else => *[@divExact(@bitSizeOf(info.child), 8)]u8,
+        },
+    );
+}
+
+pub inline fn asBytes(pointer: anytype) AsBytes(@TypeOf(pointer)) {
+    return @ptrCast(pointer);
+}
+
+pub inline fn memzero(pointer: anytype) void {
+    memset(u8, asBytes(pointer), 0);
 }

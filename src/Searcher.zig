@@ -101,11 +101,12 @@ const EvalPair = struct {
 };
 
 const STACK_PADDING = history.HIGHEST_CONTHIST_OFFSET;
+const HASH_PREFIX_PAD = 100;
 
 search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
 is_ready: bool align(std.atomic.cache_line) = false,
 nodes: u64 align(std.atomic.cache_line),
-hashes: [MAX_PLY + 8]u64,
+hashes: [MAX_PLY + 8 + HASH_PREFIX_PAD]u64,
 eval_context: evaluation.Context,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: ?Move,
@@ -120,7 +121,7 @@ limits: Limits,
 ply: u8,
 stop: std.atomic.Value(bool),
 should_stop: std.atomic.Value(bool),
-previous_position_hashes: BoundedArray(u64, MAX_HALFMOVE * 2),
+num_previous_position_hashes: usize,
 tt: []TTCluster,
 pvs: [MAX_PLY]BoundedArray(Move, 256),
 is_main_thread: bool = true,
@@ -136,6 +137,14 @@ min_nmp_ply: u8 = 0,
 winning_root_moves: BoundedArray(Move, 256),
 histories: history.HistoryTable,
 correction_histories: *history.CorrectionHistoryTable,
+
+fn previousPositionHashes(self: *Searcher) []u64 {
+    return self.hashes[HASH_PREFIX_PAD - self.num_previous_position_hashes .. HASH_PREFIX_PAD];
+}
+
+fn treeHashes(self: *Searcher) []u64 {
+    return self.hashes[HASH_PREFIX_PAD..][0 .. self.ply + 1];
+}
 
 inline fn ttIndex(self: *const Searcher, hash: u64) usize {
     return @intCast(@as(u128, hash) * self.tt.len >> 64);
@@ -167,7 +176,7 @@ pub fn writeTT(
             .score = evaluation.scoreToTt(score, self.ply),
             .flags = .init(score_type, tt_pv, self.ttage),
             .move = move,
-            .depth = @intCast(@max(0, depth)),
+            .depth = @intCast(std.math.clamp(depth, 0, 255)),
             .raw_static_eval = raw_static_eval,
         },
         TTCluster.compress(hash),
@@ -175,8 +184,9 @@ pub fn writeTT(
 }
 
 fn rawEval(self: *Searcher) i16 {
-    const hash = self.stackEntry(0).board.getHashWithHalfmove();
-    const eval = self.eval_context.handle(self.ply).eval(&self.stackEntry(0).board);
+    const board: *Board = &self.stackEntry(0).board;
+    const hash = board.getHashWithHalfmove();
+    const eval = self.eval_context.handle(self.ply).eval(board);
     self.writeTT(
         false,
         hash,
@@ -235,7 +245,7 @@ pub const StackEntry = struct {
     }
 
     pub fn reset(self: *StackEntry) void {
-        @memset(std.mem.asBytes(self), 0);
+        root.memzero(self);
     }
 };
 
@@ -267,11 +277,11 @@ fn updatePv(self: *Searcher, move: Move) void {
     }
 }
 
-fn stackEntry(self: anytype, offset: anytype) root.inheritConstness(@TypeOf(self), *StackEntry) {
+fn stackEntry(self: anytype, offset: anytype) root.InheritConstness(@TypeOf(self), *StackEntry) {
     return &self.search_stack[@intCast(STACK_PADDING + @as(i64, self.ply) + offset)];
 }
 
-fn searchStackRoot(self: anytype) root.inheritConstness(@TypeOf(self), [*]StackEntry) {
+fn searchStackRoot(self: anytype) root.InheritConstness(@TypeOf(self), [*]StackEntry) {
     return self.search_stack[STACK_PADDING..];
 }
 
@@ -282,15 +292,13 @@ fn drawScore(self: *const Searcher, comptime stm: Colour) i16 {
 }
 
 fn applyContempt(self: *const Searcher, raw_static_eval: i16) i16 {
-    var contempt: i32 = self.contempt;
+    const contempt: i32 = self.contempt;
     const board: *const Board = &self.stackEntry(0).board;
     if (contempt != 0) {
-        const stm = self.searchStackRoot()[0].board.stm;
-        contempt += @as(i32, 200) * @popCount(board.occupancyFor(stm));
         return evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval + contempt else raw_static_eval - contempt);
     } else {
         @branchHint(.likely);
-        return history.HistoryTable.scaleEval(board, evaluation.clampScore(if (self.ply % 2 == 0) raw_static_eval else raw_static_eval));
+        return history.HistoryTable.scaleEval(board, evaluation.clampScore(raw_static_eval));
     }
 }
 
@@ -312,7 +320,7 @@ fn makeMove(self: *Searcher, comptime stm: Colour, typed: TypedMove) void {
     const new_handle = self.eval_context.handle(self.ply);
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeMoveInternal(stm, move, new_handle, true);
-    self.hashes[self.ply] = new_stack_entry.board.hash;
+    self.hashes[HASH_PREFIX_PAD + self.ply] = new_stack_entry.board.hash;
 }
 
 fn unmakeMove(self: *Searcher, comptime stm: Colour, move: Move) void {
@@ -336,7 +344,7 @@ fn makeNullMove(self: *Searcher, comptime stm: Colour) void {
     self.eval_context.prepareChild(self.ply, &new_stack_entry.board);
     self.pvs[self.ply].len = 0;
     new_stack_entry.board.makeNullMove(stm);
-    self.hashes[self.ply] = new_stack_entry.board.hash;
+    self.hashes[HASH_PREFIX_PAD + self.ply] = new_stack_entry.board.hash;
 }
 
 fn unmakeNullMove(self: *Searcher, comptime stm: Colour) void {
@@ -345,39 +353,18 @@ fn unmakeNullMove(self: *Searcher, comptime stm: Colour) void {
 }
 
 fn isRepetition(self: *Searcher, board: *const Board) bool {
-    const hash = board.hash;
-    const hash_vec: simd.Vector(u64) = @splat(hash);
+    const in_tree_candidates: usize = @min(self.ply, board.halfmove);
+    const end = HASH_PREFIX_PAD + self.ply;
 
-    const amt: usize = @min(self.ply, board.halfmove);
+    const start = end - in_tree_candidates - self.num_previous_position_hashes;
 
-    const N = simd.vecSize(u64);
-
-    var iter: simd.IndexedChunkIter(u64, N) =
-        .init(self.hashes[self.ply - amt .. self.ply]);
-
-    var found: @Vector(N, bool) = @splat(false);
-    while (true) {
-        found |= iter.maskedChunkUnchecked().select(~hash_vec) == hash_vec;
-        if (iter.isEmpty()) {
-            break;
-        }
-    }
-
-    iter = .init(self.previous_position_hashes.slice());
-    while (true) {
-        found |= iter.maskedChunkUnchecked().select(~hash_vec) == hash_vec;
-        if (iter.isEmpty()) {
-            break;
-        }
-    }
-
-    return @reduce(.Or, found);
+    return simd.containsSmall(u64, self.hashes[start..end], board.hash);
 }
 
 fn hasUpcomingRepetition(self: *Searcher) bool {
     const board: *const Board = &self.stackEntry(0).board;
 
-    return cuckoo.hasUpcomingRepetition(board, self.hashes[0 .. self.ply + 1], self.previous_position_hashes.slice());
+    return cuckoo.hasUpcomingRepetition(board, self.treeHashes(), self.previousPositionHashes());
 }
 
 inline fn lerp(
@@ -569,10 +556,10 @@ fn qsearch(
     const tt_entry, const tt_hit = self.readTT(tt_hash);
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType())) {
-        if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
+        const decisive = evaluation.isDecisiveScore(tt_score);
+        if (tt_score >= beta and !decisive) {
             return lerp(i16, 10, TUNABLES.qs_tt_fail_medium, tt_score, beta);
         }
-
         return tt_score;
     }
     const tt_pv = is_pv or tt_entry.flags.getPV();
@@ -593,11 +580,11 @@ fn qsearch(
         cur.evals = cur.evals.updateWith(stm, corrected_static_eval);
         static_eval = corrected_static_eval;
         if (tt_hit and evaluation.checkTTBound(tt_score, static_eval, static_eval, tt_entry.flags.getScoreType())) {
-            static_eval = tt_score;
+            static_eval = evaluation.clampScore(tt_score);
         }
 
         if (static_eval >= beta) {
-            return lerp(i16, 10, TUNABLES.standpat_fail_medium, static_eval, beta);
+            return evaluation.clampScore(lerp(i16, 10, TUNABLES.standpat_fail_medium, static_eval, beta));
         }
         if (static_eval > alpha) {
             alpha = static_eval;
@@ -660,7 +647,7 @@ fn qsearch(
                 !board.givesDirectCheck(move) and
                 !SEE.scoreMove(board, move, 1, .pruning))
             {
-                if (!evaluation.isTBScore(best_score)) {
+                if (!evaluation.isDecisiveScore(best_score)) {
                     best_score = @intCast(@max(best_score, futility));
                 }
                 continue;
@@ -701,7 +688,7 @@ fn qsearch(
         }
     }
 
-    if (!evaluation.isTBScore(best_score) and !evaluation.isTBScore(beta) and best_score > beta) {
+    if (!evaluation.isDecisiveScore(best_score) and !evaluation.isDecisiveScore(beta) and best_score > beta) {
         best_score = lerp(i16, 10, TUNABLES.qs_fail_medium, best_score, beta);
     }
 
@@ -793,14 +780,14 @@ fn search(
     }
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (tt_hit) {
+        const decisive = evaluation.isDecisiveScore(tt_score);
         if (tt_entry.depth >= depth and !is_singular_search) {
             if (!is_pv) {
                 if (evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType()) and board.halfmove < 98) {
-                    var score = tt_score;
-                    if (tt_score >= beta and !evaluation.isMateScore(tt_score)) {
-                        score = lerp(i16, 10, TUNABLES.tt_fail_medium, tt_score, beta);
+                    if (tt_score >= beta and !decisive) {
+                        return lerp(i16, 10, TUNABLES.tt_fail_medium, tt_score, beta);
                     }
-                    return score;
+                    return tt_score;
                 }
             }
         }
@@ -882,7 +869,7 @@ fn search(
             tt_entry.flags.getScoreType(),
         )) {
             is_tt_corrected_eval = true;
-            cur.static_eval = tt_score;
+            cur.static_eval = evaluation.clampScore(tt_score);
         } else {
             cur.static_eval = corrected_static_eval;
         }
@@ -904,8 +891,8 @@ fn search(
     cur.board.ensureThreats();
 
     if (!is_pv and
-        !evaluation.isMateScore(alpha) and
-        !evaluation.isMateScore(beta) and
+        !evaluation.isDecisiveScore(alpha) and
+        !evaluation.isDecisiveScore(beta) and
         !is_in_check and
         !is_singular_search)
     {
@@ -984,7 +971,7 @@ fn search(
 
             if (nmp_score >= beta) {
                 if (depth <= 15 or self.min_nmp_ply != 0) {
-                    return if (evaluation.isMateScore(nmp_score)) @intCast(beta) else nmp_score;
+                    return if (evaluation.isDecisiveScore(nmp_score)) @intCast(beta) else nmp_score;
                 }
 
                 self.min_nmp_ply = @intCast(std.math.clamp(self.ply + @divTrunc(nmp_reduction * 3, 4), 0, MAX_PLY));
@@ -1010,7 +997,7 @@ fn search(
         if (cutnode and
             depth >= 5 and
             eval != evaluation.INF_SCORE and
-            !evaluation.isMateScore(beta) and
+            !evaluation.isDecisiveScore(beta) and
             (!has_tt_move or !board.isQuiet(tt_entry.move)) and
             (!tt_score_valid or tt_score >= probcut_beta))
         {
@@ -1075,9 +1062,10 @@ fn search(
 
                 if (score >= probcut_beta) {
                     self.writeTT(tt_pv, tt_hash, move, score, .lower, probcut_depth + 1, raw_static_eval);
-                    if (!evaluation.isMateScore(score)) {
-                        return evaluation.clampScore(lerp(i32, 10, TUNABLES.probcut_fail_medium, score, beta));
+                    if (evaluation.isDecisiveScore(score)) {
+                        return score;
                     }
+                    return evaluation.clampScore(lerp(i32, 10, TUNABLES.probcut_fail_medium, score, beta));
                 }
             }
         }
@@ -1109,6 +1097,7 @@ fn search(
     const lmp_base_margin = lmp_base +
         lmp_linear_mult * depth +
         lmp_quadratic_mult * depth * depth;
+
     while (mp.next(
         stm,
         &self.histories,
@@ -1214,7 +1203,7 @@ fn search(
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
                 {
-                    if (!evaluation.isTBScore(best_score)) {
+                    if (!evaluation.isDecisiveScore(best_score)) {
                         best_score = @intCast(@max(best_score, futility_value));
                     }
                     mp.skip_quiets = true;
@@ -1239,7 +1228,7 @@ fn search(
                     @abs(alpha) < 2000 and
                     futility_value <= alpha)
                 {
-                    if (!evaluation.isTBScore(best_score)) {
+                    if (!evaluation.isDecisiveScore(best_score)) {
                         best_score = @intCast(@max(best_score, futility_value));
                     }
                     break;
@@ -1532,7 +1521,7 @@ fn search(
         return if (is_in_check) mated_score else 0;
     }
 
-    if (!is_root and best_score >= beta and !evaluation.isTBScore(best_score) and !evaluation.isTBScore(alpha)) {
+    if (!is_root and best_score >= beta and !evaluation.isDecisiveScore(best_score) and !evaluation.isDecisiveScore(alpha)) {
         const w: i32 = @max(0, depth);
         best_score = @intCast(@divFloor(best_score * w + beta, w + 1));
     }
@@ -1572,13 +1561,14 @@ const InfoType = enum {
     upper,
 };
 
-fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) void {
+fn writeInfo(self: *Searcher, input_score: i16, depth: i32, tp: InfoType, move: Move) void {
     const elapsed = @max(1, self.limits.elapsed());
     const type_str = switch (tp) {
         .completed => "",
         .lower => " lowerbound",
         .upper => " upperbound",
     };
+    const score = input_score - (if (evaluation.isDecisiveScore(input_score)) 0 else self.contempt);
     var nodes: u64 = 0;
     var tbhits: u64 = 0;
     const cur_id = self.search_id.load(.seq_cst);
@@ -1607,7 +1597,7 @@ fn writeInfo(self: *Searcher, score: i16, depth: i32, tp: InfoType, move: Move) 
     if (self.tt.len >= 1000) {
         var num_read: usize = 0;
         outer: for (0..1000) |i| {
-            for (self.tt[i].entries) |entry| {
+            for (self.tt[i].entries()) |entry| {
                 hashfull += @intFromBool(entry.flags.getAge() == self.ttage);
                 num_read += 1;
                 if (num_read == 1000) {
@@ -1661,11 +1651,6 @@ fn retainOnlyDuplicates(slice: []u64) usize {
     return write_idx;
 }
 
-/// we make the previous position hashes only contain hashes that occur twice, so that we can just search for the current hash in isRepetition()
-fn fixupPreviousPositionHashes(self: *Searcher) void {
-    self.previous_position_hashes.len = @intCast(retainOnlyDuplicates(self.previous_position_hashes.slice()));
-}
-
 fn initSearchStack(self: *Searcher, params: Params) void {
     const board = &params.board;
     const previous_positions = params.previous_positions.slice();
@@ -1678,7 +1663,7 @@ fn initSearchStack(self: *Searcher, params: Params) void {
 
     if (previous_positions.len == 0) {
         self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init(), .{}, 0);
-        self.hashes[0] = board.hash;
+        self.hashes[HASH_PREFIX_PAD] = board.hash;
         return;
     }
 
@@ -1687,7 +1672,7 @@ fn initSearchStack(self: *Searcher, params: Params) void {
     const usable_moves: u8 = @intCast(@min(previous_moves.len, STACK_PADDING + 1));
     if (usable_moves == 0) {
         self.searchStackRoot()[0].init(board, TypedMove.init(), TypedMove.init(), .{}, 0);
-        self.hashes[0] = board.hash;
+        self.hashes[HASH_PREFIX_PAD] = board.hash;
         return;
     }
 
@@ -1737,7 +1722,7 @@ fn initSearchStack(self: *Searcher, params: Params) void {
             inline else => |stm| evals = evals.updateWith(stm, corrected_static_eval),
         }
     }
-    self.hashes[0] = board.hash;
+    self.hashes[HASH_PREFIX_PAD] = board.hash;
 }
 
 fn dbgHit(self: *Searcher, comptime name: []const u8, a: bool, b: bool) void {
@@ -1759,7 +1744,7 @@ pub fn ensureInvariants(self: *Searcher) void {
     for (&self.search_stack) |*stack_entry| {
         stack_entry.reset();
     }
-    @memset(std.mem.asBytes(&self.node_counts), 0);
+    root.memzero(&self.node_counts);
 }
 
 fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
@@ -1769,18 +1754,20 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.is_main_thread = is_main_thread;
     self.should_stop.store(false, .release);
     self.stop.store(false, .release);
-    self.previous_position_hashes.len = 0;
     self.contempt = params.contempt;
     self.normalize = params.normalize;
     self.minimal = params.minimal;
     self.show_wdl = params.show_wdl;
     var num_repetitions: u8 = 0;
+    var previous_hashes: [params.previous_positions.buffer.len]u64 = undefined;
+    var num_previous_hashes: usize = 0;
     for (params.previous_positions.slice()) |previous_position| {
         const previous_hash = previous_position.hash;
         if (params.board.hash == previous_hash) {
             num_repetitions += 1;
         }
-        self.previous_position_hashes.append(previous_hash) catch @panic("too many hashes!");
+        previous_hashes[num_previous_hashes] = previous_hash;
+        num_previous_hashes += 1;
     }
     self.winning_root_moves = .{};
     if (root.pyrrhic.probeRootDTZ(&params.board, num_repetitions > 0)) |root_probe| {
@@ -1789,7 +1776,12 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
             self.winning_root_moves.append(scored.move) catch unreachable;
         }
     }
-    self.fixupPreviousPositionHashes();
+    self.num_previous_position_hashes = retainOnlyDuplicates(previous_hashes[0..num_previous_hashes]);
+    std.debug.assert(self.num_previous_position_hashes <= HASH_PREFIX_PAD);
+    @memcpy(
+        self.hashes[HASH_PREFIX_PAD - self.num_previous_position_hashes ..][0..self.num_previous_position_hashes],
+        previous_hashes[0..self.num_previous_position_hashes],
+    );
 
     self.initSearchStack(params);
     const root_board = &self.searchStackRoot()[0].board;
@@ -1833,7 +1825,7 @@ fn pickBestMove(b: *const Board) struct { i16, Move } {
         const entry = &votes[move.from().toInt()][move.to().toInt()];
         entry.* += vote;
 
-        if (evaluation.isTBScore(normalized) or evaluation.isTBScore(best_score)) {
+        if (evaluation.isDecisiveScore(normalized) or evaluation.isDecisiveScore(best_score)) {
             if (normalized > best_score) {
                 best_score = normalized;
                 best_move = move;
@@ -1899,7 +1891,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 const should_print = is_main_thread and
                     !quiet and
                     !self.minimal and
-                    !evaluation.isMateScore(score) and
+                    !evaluation.isDecisiveScore(score) and
                     self.root_move != null;
                 if (score >= aspiration_upper) {
                     aspiration_lower = @intCast(@max(aspiration_upper - (quantized_window >> 10), aspiration_lower));

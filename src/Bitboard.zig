@@ -352,7 +352,7 @@ const QUEEN_ATTACKS: [64]u64 = @as(@Vector(64, u64), BISHOP_ATTACKS) | @as(@Vect
 const EXTENDING_RAY_BB: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
-    @memset(std.mem.asBytes(&res), 0);
+    root.memzero(&res);
     for (0..64) |from| {
         for ([_][2]comptime_int{
             .{ 0, 1 },
@@ -382,7 +382,7 @@ const EXTENDING_RAY_BB: [64][64]u64 = blk: {
 const ROOK_RAY_BETWEEN: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
-    @memset(std.mem.asBytes(&res), 0);
+    root.memzero(&res);
     for (0..64) |from| {
         for (ROOK_D_RANKS, ROOK_D_FILES) |d_rank, d_file| {
             const reachable = ray(Square.fromInt(@intCast(from)).toBitboard(), d_rank, d_file);
@@ -399,7 +399,7 @@ const ROOK_RAY_BETWEEN: [64][64]u64 = blk: {
 const BISHOP_RAY_BETWEEN: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
-    @memset(std.mem.asBytes(&res), 0);
+    root.memzero(&res);
     for (0..64) |from| {
         for (BISHOP_D_RANKS, BISHOP_D_FILES) |d_rank, d_file| {
             const reachable = ray(Square.fromInt(@intCast(from)).toBitboard(), d_rank, d_file);
@@ -425,7 +425,7 @@ const QUEEN_RAY_BETWEEN: [64][64]u64 = blk: {
 const ROOK_RAY_BETWEEN_INCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
-    @memset(std.mem.asBytes(&res), 0);
+    root.memzero(&res);
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
         for (ROOK_D_RANKS, ROOK_D_FILES) |d_rank, d_file| {
@@ -443,7 +443,7 @@ const ROOK_RAY_BETWEEN_INCLUSIVE: [64][64]u64 = blk: {
 const BISHOP_RAY_BETWEEN_INCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
-    @memset(std.mem.asBytes(&res), 0);
+    root.memzero(&res);
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
         for (BISHOP_D_RANKS, BISHOP_D_FILES) |d_rank, d_file| {
@@ -470,7 +470,7 @@ const QUEEN_RAY_BETWEEN_INCLUSIVE: [64][64]u64 = blk: {
 const ROOK_RAY_BETWEEN_EXCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
-    @memset(std.mem.asBytes(&res), 0);
+    root.memzero(&res);
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
         for (ROOK_D_RANKS, ROOK_D_FILES) |d_rank, d_file| {
@@ -488,7 +488,7 @@ const ROOK_RAY_BETWEEN_EXCLUSIVE: [64][64]u64 = blk: {
 const BISHOP_RAY_BETWEEN_EXCLUSIVE: [64][64]u64 = blk: {
     @setEvalBranchQuota(1 << 30);
     var res: [64][64]u64 = undefined;
-    @memset(std.mem.asBytes(&res), 0);
+    root.memzero(&res);
     for (0..64) |f| {
         const from = Square.fromInt(@intCast(f));
         for (BISHOP_D_RANKS, BISHOP_D_FILES) |d_rank, d_file| {
@@ -544,6 +544,15 @@ pub inline fn knightMoveBitBoard(bb: u64) u64 {
         res |= move(bb, dr, df);
     }
     return res;
+}
+
+pub inline fn kingMoveBitBoard(bb: u64) u64 {
+    var res: u64 = bb;
+    res |= move(res, 0, 1);
+    res |= move(res, 0, -1);
+    res |= move(res, 1, 0);
+    res |= move(res, -1, 0);
+    return res & ~bb;
 }
 
 pub fn pawnAttacks(square: anytype, color: anytype) u64 {
@@ -665,4 +674,46 @@ pub const LocIterator = extern struct {
 
 pub fn iterator(bitboard: u64) LocIterator {
     return .init(bitboard);
+}
+
+pub const SubsetIterator = struct {
+    state: u64,
+    mask: u64,
+
+    inline fn stepState(s: u64, m: u64) u64 {
+        return s -% m & m;
+    }
+
+    pub fn init(x: u64) SubsetIterator {
+        return .{
+            .state = stepState(0, x),
+            .mask = x,
+        };
+    }
+
+    pub inline fn peek(self: SubsetIterator) ?u64 {
+        return if (self.state == 0) null else self.state;
+    }
+
+    pub inline fn next(self: *SubsetIterator) ?u64 {
+        const res = self.peek() orelse return null;
+        self.state = stepState(self.state, self.mask);
+        return res;
+    }
+};
+
+pub fn subsets(bitboard: u64) SubsetIterator {
+    return .init(bitboard);
+}
+
+test knightMoveBitBoardSetwise {
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    const r = prng.random();
+    for (0..256) |i| {
+        const knights: u64 = if (i < 64) @as(u64, 1) << @intCast(i) else r.int(u64);
+        var want: u64 = 0;
+        var it = iterator(knights);
+        while (it.next()) |sq| want |= knightMoves(sq);
+        try std.testing.expectEqual(want, knightMoveBitBoardSetwise(knights));
+    }
 }

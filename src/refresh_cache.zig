@@ -46,9 +46,9 @@ const NNCacheEntry = struct {
         const cur: @Vector(64, u8) = board.mailbox;
         const old: @Vector(64, u8) = self.mailbox;
         const EMPTY_VEC: @Vector(64, u8) = @splat(Board.MAILBOX_EMPTY);
-        const diff: u64 = @bitCast(cur != old);
-        const adds_mask = diff & @as(u64, @bitCast(cur != EMPTY_VEC));
-        const subs_mask = diff & @as(u64, @bitCast(old != EMPTY_VEC));
+        const diff: u64 = simd.maskInt(cur != old);
+        const adds_mask = diff & simd.maskInt(cur != EMPTY_VEC);
+        const subs_mask = diff & simd.maskInt(old != EMPTY_VEC);
         if (USE_VBMI2_REFRESH) {
             const flip_xor: u16 = @as(u16, if (stm == .black) 56 else 0) | @as(u16, if (mirror.read()) 7 else 0);
             const cur_idx: [2]@Vector(32, u16) = @bitCast(psqIndexVector(cur, stm, flip_xor));
@@ -57,12 +57,13 @@ const NNCacheEntry = struct {
             inline for (0..2) |h| {
                 const am: u32 = @truncate(adds_mask >> (32 * h));
                 const ac: [32]u16 = simd.vpcompress(cur_idx[h], am);
-                @memcpy(adds[num_adds..][0..32], &ac);
+                adds[num_adds..][0..32].* = ac;
                 num_adds += @popCount(am);
 
                 const sm: u32 = @truncate(subs_mask >> (32 * h));
                 const sc: [32]u16 = simd.vpcompress(old_idx[h], sm);
-                @memcpy(subs[num_subs..][0..32], &sc);
+
+                subs[num_subs..][0..32].* = sc;
                 num_subs += @popCount(sm);
             }
         } else if (USE_AVX512F_REFRESH) {
@@ -73,12 +74,12 @@ const NNCacheEntry = struct {
             inline for (0..4) |q| {
                 const am: u16 = @truncate(adds_mask >> (16 * q));
                 const ac: [16]u16 = @as(@Vector(16, u16), @intCast(simd.vpcompress(@as(@Vector(16, u32), cur_q[q]), am)));
-                @memcpy(adds[num_adds..][0..16], &ac);
+                adds[num_adds..][0..16].* = ac;
                 num_adds += @popCount(am);
 
                 const sm: u16 = @truncate(subs_mask >> (16 * q));
                 const sc: [16]u16 = @as(@Vector(16, u16), @intCast(simd.vpcompress(@as(@Vector(16, u32), old_q[q]), sm)));
-                @memcpy(subs[num_subs..][0..16], &sc);
+                subs[num_subs..][0..16].* = sc;
                 num_subs += @popCount(sm);
             }
         } else {
@@ -117,8 +118,8 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             for (&self.data) |*stm| {
                 for (stm) |*subarray| {
                     for (subarray) |*e| {
-                        @memcpy(&e.accumulator.data, &weights.input.ft_b);
-                        @memset(&e.mailbox, Board.MAILBOX_EMPTY);
+                        e.accumulator.data = weights.input.ft_b;
+                        root.memset(u8, &e.mailbox, Board.MAILBOX_EMPTY);
                     }
                 }
             }

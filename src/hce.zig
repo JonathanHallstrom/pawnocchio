@@ -378,9 +378,9 @@ const Frame = struct {
         const mg_phase: i32 = @min(self.phase, MAX_PHASE);
         const eg_phase = MAX_PHASE - mg_phase;
 
-        var res = evaluation.clampScore(@divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), MAX_PHASE));
+        var res = @divTrunc(mg_phase * self.state.midgame() + eg_phase * self.state.endgame(), MAX_PHASE);
         if (board.stm == .black) res = -res;
-        return res;
+        return evaluation.clampScore(res);
     }
 };
 

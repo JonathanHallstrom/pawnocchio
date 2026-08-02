@@ -152,7 +152,11 @@ noinline fn findBest(noalias self: *MovePicker) usize {
 
     var best: i32 = std.math.minInt(i32);
 
-    if (std.simd.suggestVectorLength(i32)) |UNROLL| {
+    const USE_SIMD = comptime std.simd.suggestVectorLength(i32) != null and
+        @import("builtin").cpu.arch.endian() == .little;
+
+    if (USE_SIMD) {
+        const UNROLL = comptime std.simd.suggestVectorLength(i32).?;
         var best_vec: @Vector(UNROLL, i32) = @splat(std.math.minInt(i32));
         var iter = simd.indexedChunkIter(i32, UNROLL, scores[0..len]);
         while (iter.fullChunk()) |c| {
@@ -163,15 +167,15 @@ noinline fn findBest(noalias self: *MovePicker) usize {
             c.data = packScores(UNROLL, c.data, c.indices);
             best_vec = @max(best_vec, c.select(best_vec));
         }
-        best = @reduce(.Max, best_vec) & 0xff;
+        best = @reduce(.Max, best_vec);
     } else {
         var i: usize = 0;
         while (i < len) : (i += 1) {
-            best = @max(best, packScore(scores[i], i));
+            best = @max(best, packScore(scores[i], @intCast(i)));
         }
     }
 
-    const best_idx: usize = @intCast(best);
+    const best_idx: usize = @intCast(best & 0xff);
 
     std.mem.swap(Move, &moves[0], &moves[best_idx]);
     std.mem.swap(i32, &scores[0], &scores[best_idx]);

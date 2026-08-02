@@ -39,7 +39,7 @@ pub const MoveListReceiver = struct {
 
     pub fn receiveMany(self: *@This(), chunk: @Vector(32, u16), count: usize) void {
         const moves: [32]Move = @bitCast(chunk);
-        @memcpy(self.vals.unusedCapacitySlice()[0..32], moves[0..32]);
+        self.vals.unusedCapacitySlice()[0..32].* = moves;
         self.vals.len += count;
     }
 };

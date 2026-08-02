@@ -540,7 +540,7 @@ const byte_ray = struct {
     inline fn maskedMailbox(board: *const Board, ignore: ?u8) Byteboard {
         var mailbox_vec: Byteboard = board.mailbox;
         if (ignore) |ign| {
-            const ignore_mask: @Vector(64, bool) = @bitCast(@as(u64, 1) << @intCast(ign));
+            const ignore_mask: @Vector(64, bool) = simd.maskVec(64, @as(u64, 1) << @intCast(ign));
             mailbox_vec = @select(u8, ignore_mask, @as(Byteboard, @splat(EMPTY_BIT)), mailbox_vec);
         }
         return mailbox_vec;
@@ -618,7 +618,7 @@ const byte_ray = struct {
     }
 
     inline fn occupiedMask(bits: Byteboard) Bitrays {
-        return @bitCast(bits != ZERO);
+        return simd.maskInt(bits != ZERO);
     }
 
     inline fn closestOnRays(occupied: Bitrays) Bitrays {
@@ -627,7 +627,7 @@ const byte_ray = struct {
     }
 
     inline fn testBits(a: Byteboard, b: Byteboard) Bitrays {
-        return @bitCast(a & b != ZERO);
+        return simd.maskInt(a & b != ZERO);
     }
 
     const Tupleboard = @Vector(16, u32);

@@ -144,7 +144,7 @@ pub fn main(init: std.process.Init) !void {
     };
 
     var weird_tcs: bool = IS_POTENTIAL_ANDROID_BUILD;
-    var show_wdl: bool = false;
+    var show_wdl: bool = true;
     loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
         error.EndOfStream => null,
         else => blk: {
@@ -174,8 +174,9 @@ pub fn main(init: std.process.Init) !void {
             } else {
                 try root.writeUnicode(allocator, "id author Jonathan Hallström\n", .{});
             }
+            const max_threads = std.Thread.getCpuCount() catch 65535;
             write("option name Hash type spin default 16 min 1 max 1048576\n", .{});
-            write("option name Threads type spin default 1 min 1 max 65535\n", .{});
+            write("option name Threads type spin default 1 min 1 max {}\n", .{max_threads});
             write("option name Move Overhead type spin default {} min 1 max 10000\n", .{overhead / std.time.ns_per_ms});
             write("option name Contempt type spin default {} min -10000 max 10000\n", .{contempt});
             write("option name UCI_Chess960 type check default false\n", .{});
@@ -199,10 +200,6 @@ pub fn main(init: std.process.Init) !void {
             printTuningSchema();
         } else if (std.ascii.eqlIgnoreCase(command, "ucinewgame")) {
             root.engine.reset();
-            previous_positions.clearRetainingCapacity();
-            previous_moves.clearRetainingCapacity();
-            board = Board.startpos();
-            previous_positions.append(board) catch unreachable;
         } else if (std.ascii.eqlIgnoreCase(command, "setoption") or std.ascii.eqlIgnoreCase(command, "so")) {
             var option_name = parts.next() orelse "";
             if (std.ascii.eqlIgnoreCase("name", option_name)) {
@@ -349,20 +346,25 @@ pub fn main(init: std.process.Init) !void {
             var black_increment: u64 = 0 * std.time.ns_per_s;
             var mate_score_opt: ?i16 = null;
             var move_time_opt: ?u64 = null;
+            var stop_on_any_mate = false;
             var cyclic_tc = false;
 
             while (parts.next()) |command_part| {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
-                    const depth_to_parse = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    const depth = std.fmt.parseInt(i16, depth_to_parse, 10) catch {
-                        writeLog("invalid depth: '{s}'\n", .{depth_to_parse});
-                        continue;
-                    };
+                    if (parts.next()) |depth_str| {
+                        const to_parse = std.mem.trim(u8, depth_str, &std.ascii.whitespace);
+                        const depth = std.fmt.parseInt(i16, to_parse, 10) catch {
+                            writeLog("invalid depth: '{s}'\n", .{to_parse});
+                            continue;
+                        };
 
-                    if (depth < 0) {
-                        mate_score_opt = root.evaluation.matedIn(@abs(depth) * 2);
+                        if (depth < 0) {
+                            mate_score_opt = root.evaluation.matedIn(@abs(depth) * 2);
+                        } else {
+                            mate_score_opt = -root.evaluation.matedIn(@abs(depth) * 2 - 1);
+                        }
                     } else {
-                        mate_score_opt = -root.evaluation.matedIn(@abs(depth) * 2 - 1);
+                        stop_on_any_mate = true;
                     }
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "perft") or std.ascii.eqlIgnoreCase(command_part, "perft_verify")) {
@@ -609,6 +611,10 @@ pub fn main(init: std.process.Init) !void {
                 limits.hard_nodes = max_modes * 128;
             }
 
+            if (stop_on_any_mate) {
+                limits.min_score = -root.evaluation.WIN_SCORE;
+                limits.max_score = root.evaluation.WIN_SCORE;
+            }
             if (mate_score_opt) |mate_value| {
                 if (mate_value < 0) {
                     limits.min_score = mate_value;
