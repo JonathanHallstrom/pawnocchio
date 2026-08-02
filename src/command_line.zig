@@ -540,6 +540,13 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         struct {
             input: []const u8,
             @"sigmoid-scores": bool = false,
+            @"flatten-piececount-distr": bool = false,
+            @"filter-promo": bool = false,
+            @"filter-capture": bool = false,
+            @"filter-in-check": bool = false,
+            @"filter-gives-check": bool = false,
+            @"min-ply": ?usize = null,
+            @"random-skip-chance": f64 = 0,
         },
         .{ .allow_implied = true },
         "vftotxt",
@@ -553,6 +560,18 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     var buf: [4096]u8 = undefined;
     var br = file.readerStreaming(io, &buf);
 
+    var seed: u64 = 0;
+    try io.randomSecure(std.mem.asBytes(&seed));
+    var prng = std.Random.DefaultPrng.init(seed);
+
+    const flatten = parsed.@"flatten-piececount-distr";
+    const filter_promos = parsed.@"filter-promo";
+    const filter_caps = parsed.@"filter-capture";
+    const filter_in_check = parsed.@"filter-in-check";
+    const filter_gives_check = parsed.@"filter-gives-check";
+    const skip_chance = parsed.@"random-skip-chance";
+    var count: [33]u64 = @splat(0);
+    var total: u64 = 0;
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
     while (try reader.next()) |game| {
         const wdl = @as(f64, @floatFromInt(@intFromEnum(game.outcome))) / 2.0;
@@ -566,13 +585,40 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
 
         var it = game.iter();
         while (try it.next()) |ply| {
-            const board = ply.board.*;
+            const board = ply.board;
+
+            const move = ply.move;
             const eval = ply.whiteEval().?;
 
-            if (parsed.@"sigmoid-scores") {
-                write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(eval), wdl });
-            } else {
-                write("{s} | {d} | {d}\n", .{ board.toFen().slice(), eval, wdl });
+            if (prng.random().float(f64) <= skip_chance) {
+                continue;
+            }
+            if (board.isCapture(move) and filter_caps) {
+                continue;
+            }
+            if (board.isPromo(move) and filter_promos) {
+                continue;
+            }
+            if (board.checkers != 0 and filter_in_check) {
+                continue;
+            }
+            if (board.givesCheck(move) and filter_gives_check) {
+                continue;
+            }
+
+            total += 1;
+            const slot = &count[@popCount(board.occupancy())];
+            slot.* += 1;
+
+            const current: u128 = slot.*;
+            const piece_count_acc = !flatten or prng.random().int(u16) * current * 100 <= @as(u128, std.math.maxInt(u16)) * total;
+
+            if (piece_count_acc) {
+                if (parsed.@"sigmoid-scores") {
+                    write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), sigmoid(eval), wdl });
+                } else {
+                    write("{s} | {d} | {d}\n", .{ board.toFen().slice(), eval, wdl });
+                }
             }
         }
     }
