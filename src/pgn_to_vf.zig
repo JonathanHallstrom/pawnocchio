@@ -23,8 +23,14 @@ const pgn = root.pgn;
 const GameRecord = viriformat.GameRecord;
 const ScoredMove = root.dataformat.ScoredMove;
 
+fn hasMissingEvals(moves: []const ScoredMove) bool {
+    return for (moves) |e| {
+        if (e.score == null)
+            break true;
+    } else false;
+}
+
 pub const MissingEvalFill = union(enum) {
-    none,
     prev,
     next,
     value: i16,
@@ -32,7 +38,6 @@ pub const MissingEvalFill = union(enum) {
     pub fn apply(self: MissingEvalFill, moves: []ScoredMove) ?u64 {
         var filled: u64 = 0;
         switch (self) {
-            .none => {},
             .value => |v| {
                 for (moves) |*m| {
                     if (m.score == null) {
@@ -67,8 +72,8 @@ pub const MissingEvalFill = union(enum) {
             },
         }
 
-        for (moves) |m| {
-            if (m.score == null) return null;
+        if (hasMissingEvals(moves)) {
+            return null;
         }
 
         return filled;
@@ -81,7 +86,7 @@ pub fn convert(
     input: *std.Io.Reader,
     output: *std.Io.Writer,
     skip_broken_games: bool,
-    fill: MissingEvalFill,
+    fill: ?MissingEvalFill,
 ) !void {
     var position_count: u64 = 0;
     const start_time = std.Io.Timestamp.now(io, .awake);
@@ -117,9 +122,13 @@ pub fn convert(
 
         if (!parsed_correctly) continue;
 
-        if (fill.apply(scored_moves.items)) |filled| {
-            num_filled_evals += filled;
-        } else {
+        if (fill) |f| {
+            if (f.apply(scored_moves.items)) |filled| {
+                num_filled_evals += filled;
+            }
+        }
+
+        if (hasMissingEvals(scored_moves.items)) {
             if (!skip_broken_games) {
                 return error.MissingEvaluation;
             }

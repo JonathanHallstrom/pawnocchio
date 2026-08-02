@@ -307,7 +307,7 @@ fn chooseDefaultText(custom_default: ?[]const u8, auto_default: ?[]const u8) ?[]
         return text;
     }
     if (auto_default) |text| {
-        return if (std.mem.eql(u8, text, "null")) null else text;
+        return text;
     }
     return null;
 }
@@ -371,14 +371,16 @@ fn defaultValueText(comptime value: anytype) []const u8 {
     };
 }
 
-fn enumTagList(comptime T: type) []const u8 {
-    const fields = @typeInfo(T).@"enum".fields;
+fn fieldNameList(comptime T: type) []const u8 {
     var result = ComptimeArrayList(u8){};
-    inline for (fields, 0..) |field, i| {
+    inline for (std.meta.fields(T), 0..) |field, i| {
         if (i != 0) {
             result.append('|');
         }
         result.appendSlice(field.name);
+        if (@hasField(@TypeOf(field), "type") and field.type != void) {
+            result.appendSlice(std.fmt.comptimePrint("({s})", .{@typeName(field.type)}));
+        }
     }
     return result.items;
 }
@@ -388,7 +390,6 @@ fn typeHintText(comptime T: type) []const u8 {
         .int => "integer",
         .float => "float",
         .bool => "bool",
-        .@"enum" => std.fmt.comptimePrint("enum({s})", .{enumTagList(T)}),
         .pointer => |ptr| blk: {
             if (ptr.size == .slice and ptr.child == u8) break :blk "string";
             if (ptr.size == .slice) {
@@ -400,6 +401,7 @@ fn typeHintText(comptime T: type) []const u8 {
             break :blk @typeName(T);
         },
         .optional => |opt| std.fmt.comptimePrint("?{s}", .{typeHintText(opt.child)}),
+        inline .@"enum", .@"union" => std.fmt.comptimePrint("enum({s})", .{fieldNameList(T)}),
         else => @typeName(T),
     };
 }
@@ -600,6 +602,26 @@ fn parseValue(comptime T: type, value: []const u8) Error!T {
             @compileError("unsupported pointer type in arg parser spec");
         },
         .optional => |opt| @as(T, try parseValue(opt.child, value)),
+        .@"union" => |u| blk: {
+            const Tag: type = u.tag_type orelse @compileError("untagged unions are not supported");
+            comptime var non_void_field: ?struct { tag: Tag, tp: type } = null;
+            inline for (u.fields) |f| {
+                if (f.type != void) {
+                    if (non_void_field != null) {
+                        @compileError("only one value field is supported");
+                    }
+                    non_void_field = .{
+                        .tag = comptime std.meta.stringToEnum(Tag, f.name).?,
+                        .tp = f.type,
+                    };
+                }
+            }
+
+            break :blk if (non_void_field) |nv|
+                @unionInit(T, @tagName(nv.tag), try parseValue(nv.tp, value))
+            else
+                std.meta.stringToEnum(Tag, value) orelse error.InvalidValue;
+        },
         else => @compileError("unsupported arg parser field type"),
     };
 }
