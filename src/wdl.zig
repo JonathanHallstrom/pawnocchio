@@ -45,12 +45,12 @@ fn roundWDL(x: f64) i16 {
     return res;
 }
 
-fn winChance(score: i16, a: f32, b: f32) f32 {
+fn winChance(score: i32, a: f32, b: f32) f32 {
     const x: f32 = @floatFromInt(score);
-    return root.fastmath.sigmoidScore(x - a, b);
+    return root.fastmath.sigmoidScaled(x - a, b);
 }
 
-pub fn wdlModel(score: i16, board: *const Board) struct { i16, i16, i16 } {
+pub fn wdlModel(score: i32, board: *const Board) struct { i16, i16, i16 } {
     const a, const b = wdlParams(board);
 
     const w = roundWDL(1000 * winChance(score, a, b));
@@ -60,11 +60,11 @@ pub fn wdlModel(score: i16, board: *const Board) struct { i16, i16, i16 } {
     return .{ w, d, l };
 }
 
-pub fn normalize(score: i16, board: *const Board) i16 {
+pub fn normalize(score: anytype, board: *const Board) @TypeOf(score) {
     if (root.evaluation.isMateScore(score) or root.evaluation.isTBScore(score)) {
         return score;
     }
     const a, _ = wdlParams(board);
-    const scoref: f64 = @floatFromInt(score);
-    return @intFromFloat(std.math.round(100 * scoref / a));
+    const scoref: f32 = @floatFromInt(score);
+    return @round(100 * scoref / a);
 }

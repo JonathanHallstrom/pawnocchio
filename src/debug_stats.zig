@@ -215,42 +215,42 @@ const BasicStats = struct {
         self.max = @max(self.max, data_point);
     }
 
-    fn getAverage(self: *const Self) f64 {
+    pub fn getAverage(self: *const Self) f64 {
         const n = @max(1, self.count);
         return @as(f64, @floatFromInt(self.sum)) / @as(f64, @floatFromInt(n));
     }
 
-    fn getAverageAbs(self: *const Self) f64 {
+    pub fn getAverageAbs(self: *const Self) f64 {
         const n = @max(1, self.count);
         return @as(f64, @floatFromInt(self.sum_abs)) / @as(f64, @floatFromInt(n));
     }
 
-    fn getVariance(self: *const Self) f64 {
+    pub fn getVariance(self: *const Self) f64 {
         const s: f64 = @floatFromInt(self.sum);
         const ss: f64 = @floatFromInt(self.sum_sqr);
         const n: f64 = @floatFromInt(@max(1, self.count));
         return (ss - s * s / n) / n;
     }
 
-    fn getStandardDeviation(self: *const Self) f64 {
+    pub fn getStandardDeviation(self: *const Self) f64 {
         return @sqrt(self.getVariance());
     }
 
-    fn getMin(self: *const Self) f64 {
+    pub fn getMin(self: *const Self) f64 {
         if (self.count == 0) return 0;
         return @floatFromInt(self.min);
     }
 
-    fn getMax(self: *const Self) f64 {
+    pub fn getMax(self: *const Self) f64 {
         if (self.count == 0) return 0;
         return @floatFromInt(self.max);
     }
 
-    fn getCount(self: *const Self) f64 {
+    pub fn getCount(self: *const Self) f64 {
         return @floatFromInt(self.count);
     }
 
-    fn skewnessFromMedian(self: *const Self, median: f64) f64 {
+    pub fn skewnessFromMedian(self: *const Self, median: f64) f64 {
         const std_dev = self.getStandardDeviation();
         if (std_dev == 0) return 0;
         return (self.getAverage() - median) / std_dev;
@@ -655,8 +655,12 @@ pub const Scalar = struct {
         self.validation.add(data_point);
     }
 
+    pub fn getPercentile(self: *const Self, comptime percentile: f64) f64 {
+        return self.reservoirPercentiles()[percentileIndex(percentile)];
+    }
+
     pub fn getMedian(self: *const Self) f64 {
-        return self.reservoirPercentiles()[MEDIAN_INDEX];
+        return self.getPercentile(50);
     }
 
     pub fn getSkewness(self: *const Self) f64 {
@@ -673,7 +677,7 @@ pub const Scalar = struct {
         try self.validation.format(writer, approx_percentiles);
     }
 
-    fn reservoirPercentiles(self: *const Self) [PERCENTILES.len]f64 {
+    pub fn reservoirPercentiles(self: *const Self) [PERCENTILES.len]f64 {
         return computePercentilesFromSamples(self.reservoir.slice());
     }
 };

@@ -1469,49 +1469,64 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
     return null;
 }
 
-pub fn pickMoveDatagen(self: *Board, rng: std.Random) ?Move {
-    const hce = @import("hce.zig");
-    switch (self.stm) {
-        inline else => |stm| {
-            var ml = root.ScoredMoveReceiver{};
-            root.movegen.generateAllQuiets(stm, self, &ml);
-            root.movegen.generateAllNoisies(stm, self, &ml);
+pub fn pickMoveDatagen(
+    self: *Board,
+    searcher: *root.Searcher,
+    io: std.Io,
+    rng: std.Random,
+) ?root.ScoredMove {
+    const getValue = struct {
+        fn impl(x: i32) f32 {
+            const xc: f32 = @floatFromInt(std.math.clamp(x, -200, 200));
+            const eval_score =
+                root.fastmath.sigmoidScaled(xc, 100);
+            const decisive_score =
+                root.fastmath.sigmoidScaled(@abs(xc) - 100, 100);
 
-            for (ml.vals.slice()) |*m| {
-                m.score = switch (m.move.tp()) {
-                    .default => blk: {
-                        const pt = self.pieceOn(m.move.from()).?;
-                        const pst_score: i32 = hce.readPieceSquareTable(stm, pt, m.move.to()).midgame();
-                        const material = hce.readPieceValue(pt).midgame();
-                        var piece_score: i32 = switch (pt) {
-                            .pawn => 500,
-                            .knight => 1000,
-                            .bishop => 1000,
-                            .rook => 500,
-                            .queen => 100,
-                            .king => 0,
-                        };
-                        const diag_sliders = self.bishopsFor(stm) | self.queensFor(stm);
+            return root.fastmath.pow(eval_score + decisive_score / 2, 0.2);
+        }
+    }.impl;
 
-                        if (Bitboard.bishopAttacks(m.move.from()) & diag_sliders != 0) {
-                            piece_score += 1000;
-                        }
-                        break :blk pst_score - material + piece_score;
-                    },
-                    .castling => 10000,
-                    .ep => 10000,
-                    .promotion => 10000,
-                } + rng.uintLessThanBiased(u16, 30000);
-            }
-            std.sort.pdq(root.ScoredMove, ml.vals.slice(), void{}, root.ScoredMove.desc);
-            for (ml.vals.slice()) |m| {
-                if (root.SEE.scoreMove(self, m.move, -200, .pruning)) {
-                    return m.move;
-                }
-            }
-            return null;
-        },
+    var ml = root.ScoredMoveReceiver{};
+    root.movegen.generateAll(self, &ml);
+
+    if (ml.vals.len == 0) {
+        return null;
     }
+
+    var min_value: f32 = std.math.floatMax(f32);
+    for (ml.vals.slice()) |*m| {
+        const value: i16 = blk: {
+            var cp = self.*;
+            cp.makeMoveSimple(m.move);
+            const search_score = -searcher.qsearchValue(&cp, io, 10 * std.time.ns_per_ms);
+            break :blk root.wdl.normalize(search_score, &cp);
+        };
+        m.score = value;
+        min_value = @min(min_value, getValue(m.score));
+    }
+
+    var total: f32 = 0;
+    for (ml.vals.slice()) |m| {
+        if (self.pieceOn(m.move.from()) == .king and !self.isCastling(m.move)) {
+            continue;
+        }
+        total += getValue(m.score) - min_value;
+    }
+    total = @max(total, 1e-4);
+
+    total *= rng.float(f32);
+    for (ml.vals.slice()) |m| {
+        if (self.pieceOn(m.move.from()) == .king and !self.isCastling(m.move)) {
+            continue;
+        }
+        total -= getValue(m.score) - min_value;
+
+        if (total <= 0) {
+            return m;
+        }
+    }
+    return ml.vals.slice()[ml.vals.len - 1];
 }
 
 pub fn hasLegalMove(self: *const Board) bool {

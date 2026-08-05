@@ -49,10 +49,11 @@ pub const Params = struct {
     previous_moves: BoundedArray(Move, 200),
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
-    contempt: i16,
-    normalize: bool,
-    minimal: bool,
-    show_wdl: bool,
+    contempt: i16 = 0,
+    normalize: bool = true,
+    minimal: bool = false,
+    show_wdl: bool = true,
+    age_histories: bool = true,
 };
 
 const EvalPair = struct {
@@ -554,6 +555,9 @@ fn qsearch(
 
     const tt_hash = board.getHashWithHalfmove();
     const tt_entry, const tt_hit = self.readTT(tt_hash);
+    if (is_root and tt_hit and board.isLegal(stm, tt_entry.move)) {
+        self.root_move = self.root_move orelse tt_entry.move;
+    }
     const tt_score = evaluation.scoreFromTt(tt_entry.score, self.ply);
     if (!is_pv and evaluation.checkTTBound(tt_score, alpha, beta, tt_entry.flags.getScoreType())) {
         const decisive = evaluation.isDecisiveScore(tt_score);
@@ -678,6 +682,10 @@ fn qsearch(
         if (score > alpha) {
             best_move = move;
             alpha = score;
+            if (is_root) {
+                self.root_move = move;
+                self.root_score = best_score;
+            }
             if (is_pv) {
                 self.updatePv(move);
             }
@@ -1740,13 +1748,11 @@ pub fn ensureInvariants(self: *Searcher) void {
     self.root_move = null;
     self.root_score = null;
     self.pvs[0].len = 0;
-    for (&self.search_stack) |*stack_entry| {
-        stack_entry.reset();
-    }
+    self.searchStackRoot()[0].failhighs = 0;
     root.memzero(&self.node_counts);
 }
 
-fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
+fn initForSearch(self: *Searcher, params: Params, is_main_thread: bool, comptime minimal: bool) void {
     self.ensureInvariants();
     self.limits = params.limits;
     self.syzygy_depth = params.syzygy_depth;
@@ -1769,10 +1775,12 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
         num_previous_hashes += 1;
     }
     self.winning_root_moves = .{};
-    if (root.pyrrhic.probeRootDTZ(&params.board, num_repetitions > 0)) |root_probe| {
-        _, const moves = root_probe;
-        for (moves.slice()) |scored| {
-            self.winning_root_moves.append(scored.move) catch unreachable;
+    if (!minimal) {
+        if (root.pyrrhic.probeRootDTZ(&params.board, num_repetitions > 0)) |root_probe| {
+            _, const moves = root_probe;
+            for (moves.slice()) |scored| {
+                self.winning_root_moves.append(scored.move) catch unreachable;
+            }
         }
     }
     self.num_previous_position_hashes = retainOnlyDuplicates(previous_hashes[0..num_previous_hashes]);
@@ -1785,8 +1793,14 @@ fn init(self: *Searcher, params: Params, is_main_thread: bool) void {
     self.initSearchStack(params);
     const root_board = &self.searchStackRoot()[0].board;
     self.eval_context.initRoot(root_board);
-    self.histories.age();
-    self.ttage +%= 1;
+    self.is_ready = false;
+    if (!minimal) {
+        if (params.age_histories) {
+            self.histories.age();
+        }
+        self.ttage +%= 1;
+        _ = self.search_id.fetchAdd(1, .seq_cst);
+    }
 }
 
 fn pickBestMove(b: *const Board) struct { i16, Move } {
@@ -1837,10 +1851,43 @@ fn pickBestMove(b: *const Board) struct { i16, Move } {
     return .{ best_score, best_move };
 }
 
+pub fn qsearchValue(self: *Searcher, board: *const Board, io: std.Io, timeout_ns: u64) i16 {
+    const limits: Limits = .initFixedTime(io, timeout_ns);
+    const params: Params = .{
+        .board = board.*,
+        .limits = limits,
+        .contempt = 0,
+        .previous_positions = .{},
+        .previous_moves = .{},
+    };
+
+    self.initForSearch(params, true, true);
+    const res = switch (board.stm) {
+        inline else => |stm| self.qsearch(true, true, stm, -evaluation.INF_SCORE, evaluation.INF_SCORE),
+    };
+
+    return res;
+}
+
+pub fn fixedNodesSearch(self: *Searcher, board: *const Board, io: std.Io, hard_nodes: usize, timeout_ns: u64) i16 {
+    var limits: Limits = .initFixedTime(io, timeout_ns);
+    limits.hard_nodes = hard_nodes;
+    const params: Params = .{
+        .board = board.*,
+        .limits = limits,
+        .contempt = 0,
+        .previous_positions = .{},
+        .previous_moves = .{},
+        .age_histories = false,
+    };
+
+    self.startSearch(params, false, true);
+
+    return self.root_score.?;
+}
+
 pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
-    self.init(params, is_main_thread);
-    self.is_ready = false;
-    _ = self.search_id.fetchAdd(1, .seq_cst);
+    self.initForSearch(params, is_main_thread, false);
 
     var previous_score: i32 = 0;
 

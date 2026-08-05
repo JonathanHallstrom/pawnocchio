@@ -84,10 +84,12 @@ pub fn main(init: std.process.Init) !void {
         .environ = init.minimal.environ,
     });
     defer threaded_io.deinit();
-    const io = threaded_io.io();
-    root.init(io);
 
+    const io = threaded_io.io();
+
+    root.init(io);
     defer root.deinit();
+
     defer if (!build_options.tools_only) {
         root.engine.stopSearch();
         root.engine.waitUntilDoneSearching();
@@ -724,7 +726,7 @@ pub fn main(init: std.process.Init) !void {
                     while (scored) |sp| {
                         const stm_eval = if (stored_evals) sp.stmEval().? else ctx.handle(ply).eval(&it.board);
                         const white_eval = if (it.board.stm == .white) stm_eval else -stm_eval;
-                        const pred = root.fastmath.sigmoidScore(white_eval, 400);
+                        const pred = root.fastmath.sigmoidScaled(white_eval, 400);
                         const err = pred - target;
 
                         seen += 1;
@@ -765,7 +767,7 @@ pub fn main(init: std.process.Init) !void {
                     ctx.initRoot(&b);
                     const stm_eval = ctx.handle(0).eval(&b);
                     const white_eval = if (b.stm == .white) stm_eval else -stm_eval;
-                    const pred = root.fastmath.sigmoidScore(white_eval, 400);
+                    const pred = root.fastmath.sigmoidScaled(white_eval, 400);
                     const err = pred - result;
                     sum_sq += err * err;
                     count += 1;

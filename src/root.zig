@@ -140,6 +140,7 @@ fn deinitImpl() void {
         nnue.deinit();
     }
     numa.deinit();
+    engine.deinit();
     stdout_writer.flush() catch std.debug.panic("failed to flush stdout", .{});
 }
 

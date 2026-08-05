@@ -60,12 +60,20 @@ pub fn log(x: f32) f32 {
     return @mulAdd(f32, e, std.math.ln2, 2 * s * t);
 }
 
+pub fn pow(a: f32, b: f32) f32 {
+    return exp(b * log(a));
+}
+
 pub fn sigmoid(x: f32) f32 {
     @setFloatMode(.optimized);
     return 1 / (1 + exp(-x));
 }
 
-pub fn sigmoidScore(x: anytype, scale: f32) f32 {
+pub fn tanh(x: f32) f32 {
+    return 2 * sigmoid(2 * x) - 1;
+}
+
+pub fn sigmoidScaled(x: anytype, scale: f32) f32 {
     const xf: f32 = if (@typeInfo(@TypeOf(x)) == .int) @floatFromInt(x) else x;
     const x_scaled = xf / scale;
     return sigmoid(x_scaled);

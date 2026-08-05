@@ -114,7 +114,7 @@ pub fn dbgCorr(name: []const u8, comptime names: []const []const u8, values: any
 }
 
 fn dbgImpl(name: []const u8, value: i64) void {
-    debug_stats_lock.lockUncancelable(root.io);
+    debug_stats_lock.lock(root.io) catch return;
     defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_stats.getOrPut(name) catch unreachable;
@@ -126,7 +126,7 @@ fn dbgImpl(name: []const u8, value: i64) void {
 }
 
 fn dbgBoolImpl(name: []const u8, value: bool) void {
-    debug_stats_lock.lockUncancelable(root.io);
+    debug_stats_lock.lock(root.io) catch return;
     defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_bool_stats.getOrPut(name) catch unreachable;
@@ -138,7 +138,7 @@ fn dbgBoolImpl(name: []const u8, value: bool) void {
 }
 
 fn dbgCorrImpl(name: []const u8, comptime names: []const []const u8, values: []const f64) void {
-    debug_stats_lock.lockUncancelable(root.io);
+    debug_stats_lock.lock(root.io) catch return;
     defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_corr_stats.getOrPut(name) catch unreachable;
@@ -154,7 +154,7 @@ fn dbgCorrImpl(name: []const u8, comptime names: []const []const u8, values: []c
 fn dbgRangeImpl(name: []const u8, index: i64, value: i64, granularity: i64) void {
     std.debug.assert(granularity > 0);
 
-    debug_stats_lock.lockUncancelable(root.io);
+    debug_stats_lock.lock(root.io) catch return;
     defer debug_stats_lock.unlock(root.io);
 
     const gp = debug_range_stats.getOrPut(name) catch unreachable;
@@ -334,6 +334,9 @@ fn resetTimers() void {
 }
 
 pub fn printDebugStats() void {
+    debug_stats_lock.lock(root.io) catch return;
+    defer debug_stats_lock.unlock(root.io);
+
     const writer = root.stdout_writer;
 
     var iter = debug_stats.iterator();
@@ -399,8 +402,8 @@ pub fn init(io: std.Io) !void {
 }
 
 pub fn deinit() void {
-    thread_pool.deinit();
     printDebugStats();
+    thread_pool.deinit();
 
     var debug_values = debug_stats.valueIterator();
     while (debug_values.next()) |value| {
@@ -494,6 +497,10 @@ const DatagenStats = struct {
     wins: std.atomic.Value(usize) = .init(0),
     draws: std.atomic.Value(usize) = .init(0),
     losses: std.atomic.Value(usize) = .init(0),
+
+    win_exit_stats: debug_stats_mod.Scalar = .{},
+    draw_exit_stats: debug_stats_mod.Scalar = .{},
+    loss_exit_stats: debug_stats_mod.Scalar = .{},
 };
 
 const SEED_FALLBACK_ITERS = 8;
@@ -522,7 +529,7 @@ fn datagenWorker(
     min_depth: i32,
     node_count: u64,
     writer_wrapper: *std.Io.File.Writer,
-    writer_mutex: *std.atomic.Mutex,
+    update_mutex: *std.atomic.Mutex,
     stats: *DatagenStats,
 ) void {
     numa.bindCurrentThread(i) catch |err| {
@@ -551,37 +558,56 @@ fn datagenWorker(
     defer for (tts) |tt| std.heap.page_allocator.free(tt);
     searcher.tt = tts[0];
     const viriformat = root.viriformat;
-    var outer_rng = std.Random.DefaultCsprng.init(@splat(0));
-    outer_rng.addEntropy(&root.bytesOf(rng_seed));
+    var rng = std.Random.DefaultCsprng.init(@splat(0));
+    rng.addEntropy(&root.bytesOf(rng_seed));
     var alloc_buffer: [1 << 20]u8 = undefined;
     var num_positions_written: usize = 0;
     datagen_loop: while (true) {
-        outer_rng.addEntropy(&root.bytesOf(std.Io.Timestamp.now(io, .real).toNanoseconds()));
-        var rng = std.Random.DefaultPrng.init(rng_seed);
-        var board = root.Board.dfrcPosition(rng.random().uintLessThanBiased(u20, 960 * 960));
+        rng.addEntropy(&root.bytesOf(std.Io.Timestamp.now(io, .real).toNanoseconds()));
+        var board = root.Board.startpos();
+        // if (rng.random().boolean()) {
+        //     board = root.Board.dfrcPosition(rng.random().uintLessThanBiased(u20, 960 * 960));
+        // }
+        //
         if (rng.random().boolean()) {
-            board = root.Board.startpos();
+            board.stm = .black;
+            board.updateMasks(board.stm);
+            board.resetHash();
         }
+
         var fba = std.heap.FixedBufferAllocator.init(&alloc_buffer);
         const write_buffer = fba.allocator().alloc(u8, 1 << 16) catch @panic("failed to allocate write buffer");
         defer fba.allocator().free(write_buffer);
 
-        var previous_positions = root.BoundedArray(root.Board, 200){};
-        var previous_moves = root.BoundedArray(root.Move, 200){};
-        previous_positions.append(board) catch @panic("failed to append position");
-        const random_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
-        for (0..random_move_count) |_| {
-            const move = board.pickMoveDatagen(rng.random()) orelse {
+        const opening_move_count = rng.random().intRangeAtMost(u8, random_move_count_low, random_move_count_high);
+
+        var opening_score: i32 = 100;
+        for (0..opening_move_count) |_| {
+            const scored_move = board.pickMoveDatagen(searcher, io, rng.random()) orelse {
                 continue :datagen_loop;
             };
-            board.makeMoveSimple(move);
-            previous_moves.append(move) catch @panic("failed to append move");
-            previous_positions.append(board) catch @panic("failed to append position");
+            board.makeMoveSimple(scored_move.move);
+            opening_score = scored_move.score;
         }
+
+        const score_out_of_range = @abs(opening_score) > 300 or @abs(opening_score) < 120;
+        // _ = dbg("out of range openings", score_out_of_range);
+
+        if (score_out_of_range) {
+            continue :datagen_loop;
+        }
+        // _ = dbg("pieces", @popCount(board.occupancy()));
+        // _ = dbg("exit", opening_score);
+
         var game: viriformat.GameRecord = viriformat.GameRecord.from(board, fba.allocator());
         var num_adj_win: u8 = 0;
         var num_adj_draw: u8 = 0;
         var num_adj_loss: u8 = 0;
+        var exit: i16 = 0;
+
+        var previous_positions = root.BoundedArray(root.Board, 200){};
+        var previous_moves = root.BoundedArray(root.Move, 200){};
+        previous_positions.appendAssumeCapacity(board);
         game_loop: for (0..2000) |move_idx| {
             var limits = root.Limits.initFixedTime(io, std.time.ns_per_s);
             limits.soft_nodes = node_count;
@@ -615,8 +641,17 @@ fn datagenWorker(
             const search_score = searcher.full_width_score;
             const adjusted = if (board.stm == .white) search_score else -search_score;
             const adjusted_normalized = if (board.stm == .white) searcher.full_width_score_normalized else -searcher.full_width_score_normalized;
-            if (move_idx == 0 and @abs(adjusted_normalized) > 400) {
-                continue :datagen_loop;
+            if (move_idx == 0) {
+                exit = adjusted_normalized;
+            }
+            if (move_idx == 0) {
+                // var buf: [256]u8 = undefined;
+                // var fixed = std.Io.Writer.fixed(&buf);
+                // fixed.print("{s:<80} {}\n", .{ board.toFen().slice(), adjusted_normalized }) catch {};
+                // std.debug.print("{s}", .{fixed.buffered()});
+                if (@abs(adjusted_normalized) > 400) {
+                    continue :datagen_loop;
+                }
             }
             if (adjusted_normalized > 600) {
                 num_adj_win += 1;
@@ -680,22 +715,35 @@ fn datagenWorker(
             continue :datagen_loop;
         }
 
+        // _ = dbgRange("P(win)", exit, game.initial_position.wdl == 2, 16);
+        // _ = dbgRange("P(draw)", exit, game.initial_position.wdl == 1, 16);
+        // _ = dbgRange("P(loss)", exit, game.initial_position.wdl == 0, 16);
+
         _ = stats.positions.fetchAdd(game.moves.items.len, .seq_cst);
         _ = stats.games.fetchAdd(1, .seq_cst);
         num_positions_written += game.moves.items.len;
 
-        _ = switch (game.initial_position.wdl) {
-            0 => stats.losses.fetchAdd(1, .seq_cst),
-            1 => stats.draws.fetchAdd(1, .seq_cst),
-            2 => stats.wins.fetchAdd(1, .seq_cst),
-            else => {},
-        };
-        while (!writer_mutex.tryLock()) {
+        while (!update_mutex.tryLock()) {
             std.Thread.yield() catch {};
+        }
+        switch (game.initial_position.wdl) {
+            0 => {
+                _ = stats.losses.fetchAdd(1, .seq_cst);
+                stats.loss_exit_stats.add(exit, rng.random());
+            },
+            1 => {
+                _ = stats.draws.fetchAdd(1, .seq_cst);
+                stats.draw_exit_stats.add(exit, rng.random());
+            },
+            2 => {
+                _ = stats.wins.fetchAdd(1, .seq_cst);
+                stats.win_exit_stats.add(exit, rng.random());
+            },
+            else => {},
         }
         game.serializeInto(&writer_wrapper.interface) catch @panic("failed to write game");
 
-        writer_mutex.unlock();
+        update_mutex.unlock();
     }
 }
 
@@ -721,7 +769,7 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
     var writer_wrapper = out_file.writerStreaming(io, &buf);
     var writer = &writer_wrapper.interface;
 
-    var writer_mutex = std.atomic.Mutex.unlocked;
+    var update_mutex = std.atomic.Mutex.unlocked;
     var stats = DatagenStats{};
 
     var threads = try std.ArrayList(std.Thread).initCapacity(std.heap.page_allocator, thread_pool.threads.items.len);
@@ -732,7 +780,18 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
 
     const seed: u64 = getSeed(io, u64);
     for (0..thread_pool.threads.items.len) |i| {
-        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{ io, i, seed +% i, 6, 10, 0, num_nodes, &writer_wrapper, &writer_mutex, &stats }));
+        threads.appendAssumeCapacity(try std.Thread.spawn(.{}, datagenWorker, .{
+            io,
+            i,
+            seed +% i,
+            10,
+            21,
+            0,
+            num_nodes,
+            &writer_wrapper,
+            &update_mutex,
+            &stats,
+        }));
     }
     defer for (0..thread_pool.threads.items.len) |i| {
         std.heap.page_allocator.free(thread_pool.searchers.items[i].tt);
@@ -742,14 +801,15 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
     var pps_ema_opt: ?u64 = null;
     while (true) {
         std.Io.sleep(io, std.Io.Duration.fromNanoseconds(std.time.ns_per_s), .awake) catch {};
-        if (!writer_mutex.tryLock()) {
+        if (!update_mutex.tryLock()) {
             std.Io.sleep(io, std.Io.Duration.fromNanoseconds(std.time.ns_per_ms), .awake) catch {};
             continue;
         }
         try writer.flush();
-        writer_mutex.unlock();
+        defer update_mutex.unlock();
         const cur_positions = stats.positions.load(.seq_cst);
         if (cur_positions >= positions) {
+            printDebugStats();
             std.process.exit(0);
         }
         const now = std.Io.Timestamp.now(io, .awake);
@@ -767,13 +827,31 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
         const upper_bound = if (pps_ema_opt) |pps_ema| pps_ema * 3 / 2 + 1000 else pps;
         const clamped_pps = std.math.clamp(pps, lower_bound, upper_bound);
         pps_ema_opt = if (pps_ema_opt) |pps_ema| (pps_ema * 19 + clamped_pps) / 20 else pps;
-        std.debug.print("games:{} wins:{} draws:{} losses:{} positions:{} positions/s:{}\n", .{
+        std.debug.print(
+            \\games:{} wins:{} draws:{} losses:{} positions:{} positions/s:{}
+            \\win exit quartiles:  {:<5} {:<5} {:<5}
+            \\draw exit quartiles: {:<5} {:<5} {:<5}
+            \\loss exit quartiles: {:<5} {:<5} {:<5}
+            \\
+        , .{
             stats.games.load(.seq_cst),
             stats.wins.load(.seq_cst),
             stats.draws.load(.seq_cst),
             stats.losses.load(.seq_cst),
             cur_positions,
             pps_ema_opt.?,
+
+            stats.win_exit_stats.getPercentile(25),
+            stats.win_exit_stats.getPercentile(50),
+            stats.win_exit_stats.getPercentile(75),
+
+            stats.draw_exit_stats.getPercentile(25),
+            stats.draw_exit_stats.getPercentile(50),
+            stats.draw_exit_stats.getPercentile(75),
+
+            stats.loss_exit_stats.getPercentile(25),
+            stats.loss_exit_stats.getPercentile(50),
+            stats.loss_exit_stats.getPercentile(75),
         });
     }
 }
@@ -785,6 +863,25 @@ pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: a
     defer for (fens.items) |fen| {
         allocator.free(fen);
     };
+
+    const searcher = thread_pool.searchers.items[0];
+    const old_tt = searcher.tt;
+    defer searcher.tt = old_tt;
+    root.memzero(searcher);
+    searcher.tt = try @import("ThreadPool.zig").allocTT(std.heap.page_allocator, 16 << 20);
+    defer std.heap.page_allocator.free(searcher.tt);
+    root.memzero(searcher.tt);
+
+    searcher.correction_histories = try std.heap.page_allocator.create(root.history.CorrectionHistoryTable);
+    @import("ThreadPool.zig").adviseHugePages(searcher.correction_histories[0..1]) catch {};
+    defer std.heap.page_allocator.destroy(searcher.correction_histories);
+
+    searcher.histories.pawn = try std.heap.page_allocator.create(root.history.PawnHistory);
+    @import("ThreadPool.zig").adviseHugePages(searcher.histories.pawn[0..1]) catch {};
+    defer std.heap.page_allocator.destroy(searcher.histories.pawn);
+
+    searcher.eval_context.initForThread(0);
+
     if (path) |p| {
         var f = try std.Io.Dir.cwd().openFile(io, p, .{});
         defer f.close(io);
@@ -799,34 +896,42 @@ pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: a
             std.debug.assert(line_writer.end == fen_size);
 
             try fens.append(try allocator.dupe(u8, line_writer.buffer[0..line_writer.end]));
-            const dfrc_pos = rng.random().uintLessThan(u20, 960 * 960);
-            try fens.append(try allocator.dupe(u8, root.Board.dfrcPosition(dfrc_pos).toFen().slice()));
             _ = line_writer.consumeAll();
         }
+    } else {
+        try fens.append(try allocator.dupe(u8, root.Board.startpos().toFen().slice()));
     }
     rng.random().shuffle([]const u8, fens.items);
 
     var remaining: usize = count;
     var i: usize = 0;
+
+    const book_offset = rng.random().intRangeLessThan(usize, 0, fens.items.len);
+
     fen_loop: while (remaining > 0) : (i += 1) {
-        var board = if (fens.items.len > 0 and rng.random().boolean())
-            try root.Board.parseFen(fens.items[i % fens.items.len], true)
+        var board = if (rng.random().boolean())
+            try root.Board.parseFen(fens.items[(i + book_offset) % fens.items.len], true)
         else
             root.Board.dfrcPosition(rng.random().uintLessThan(u20, 960 * 960));
 
-        var moves = 1 + rng.random().uintLessThan(u8, 4);
+        var moves = 5 + rng.random().uintLessThan(u8, 4);
         // do more random moves if we there are a lot of pieces on the first couple ranks
-        moves += (@popCount(board.occupancy() & 0xff000000000000ff) + 2) / 6;
-        moves += @popCount(board.occupancy() & 0x00ff00000000ff00) / 8;
+        moves += (@popCount(board.occupancy() & 0xff000000000000ff) + 2) / 4;
+        moves += @popCount(board.occupancy() & 0x00ff00000000ff00) / 3;
         for (0..moves) |_| {
-            const move = board.pickMoveDatagen(rng.random()) orelse {
+            const move = board.pickMoveDatagen(searcher, io, rng.random()) orelse {
                 continue :fen_loop;
             };
-            board.makeMoveSimple(move);
+            board.makeMoveSimple(move.move);
         }
 
         if (!board.hasLegalMove()) {
             continue :fen_loop;
+        }
+
+        const opening_value = searcher.fixedNodesSearch(&board, io, 1000, 10 * std.time.ns_per_ms);
+        if (@abs(opening_value) > 600) {
+            continue;
         }
 
         try writer.print("info string genfens {s}\n", .{board.toFen().slice()});
