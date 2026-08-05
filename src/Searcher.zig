@@ -101,7 +101,7 @@ const EvalPair = struct {
 };
 
 const STACK_PADDING = history.HIGHEST_CONTHIST_OFFSET;
-const HASH_PREFIX_PAD = 100;
+const HASH_PREFIX_PAD: usize = 100;
 
 search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
 is_ready: bool align(std.atomic.cache_line) = false,
@@ -118,14 +118,14 @@ eval_stability: u8,
 move_stability: u8,
 node_counts: [64][64]u64,
 limits: Limits,
-ply: u8,
+ply: usize,
 stop: std.atomic.Value(bool),
 should_stop: std.atomic.Value(bool),
 num_previous_position_hashes: usize,
 tt: []TTCluster,
 pvs: [MAX_PLY]BoundedArray(Move, 256),
 is_main_thread: bool = true,
-seldepth: u8,
+seldepth: usize,
 ttage: u5 = 0,
 syzygy_depth: u8 = 1,
 contempt: i16 = 0,
@@ -133,7 +133,7 @@ normalize: bool = false,
 minimal: bool = false,
 show_wdl: bool = false,
 tbhits: u64 = 0,
-min_nmp_ply: u8 = 0,
+min_nmp_ply: usize = 0,
 winning_root_moves: BoundedArray(Move, 256),
 histories: history.HistoryTable,
 correction_histories: *history.CorrectionHistoryTable,
@@ -278,7 +278,7 @@ fn updatePv(self: *Searcher, move: Move) void {
 }
 
 fn stackEntry(self: anytype, offset: anytype) root.InheritConstness(@TypeOf(self), *StackEntry) {
-    return &self.search_stack[@intCast(STACK_PADDING + @as(i64, self.ply) + offset)];
+    return &self.search_stack[@intCast(STACK_PADDING + @as(i64, @intCast(self.ply)) + offset)];
 }
 
 fn searchStackRoot(self: anytype) root.InheritConstness(@TypeOf(self), [*]StackEntry) {
@@ -954,8 +954,7 @@ fn search(
             cutnode)
         {
             self.prefetch(board, Move.init());
-            var nmp_reduction = TUNABLES.nmp_base + depth * TUNABLES.nmp_mult;
-            nmp_reduction >>= 13;
+            const nmp_reduction: u16 = @intCast(@min(depth, TUNABLES.nmp_base + depth * TUNABLES.nmp_mult >> 13));
 
             self.makeNullMove(stm);
             const nmp_score = -self.search(
@@ -974,7 +973,7 @@ fn search(
                     return if (evaluation.isDecisiveScore(nmp_score)) @intCast(beta) else nmp_score;
                 }
 
-                self.min_nmp_ply = @intCast(std.math.clamp(self.ply + @divTrunc(nmp_reduction * 3, 4), 0, MAX_PLY));
+                self.min_nmp_ply = self.ply + nmp_reduction * 3 / 4;
                 const verif_score = self.search(
                     false,
                     false,
@@ -1184,7 +1183,7 @@ fn search(
                     continue;
                 }
 
-                const lmrd_shifted = @max(0, lmr_depth - TUNABLES.fp_depth_offs);
+                const lmrd_shifted: i64 = @max(0, lmr_depth - TUNABLES.fp_depth_offs);
                 var futility_value = eval +
                     TUNABLES.fp_base +
                     @divTrunc(lmr_depth * TUNABLES.fp_mult +
@@ -1216,7 +1215,7 @@ fn search(
                     continue;
                 }
                 const captured_value = SEE.value(board.pieceOn(move.to()) orelse .king, .pruning);
-                const lmrd_shifted = @max(0, lmr_depth - TUNABLES.bnfp_depth_offs);
+                const lmrd_shifted: i64 = @max(0, lmr_depth - TUNABLES.bnfp_depth_offs);
                 const futility_value =
                     eval +
                     TUNABLES.bnfp_base +

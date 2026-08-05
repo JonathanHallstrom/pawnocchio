@@ -144,7 +144,7 @@ pub fn clampScore(score: anytype) i16 {
     return @intCast(std.math.clamp(score, -(WIN_SCORE - 1), WIN_SCORE - 1));
 }
 
-pub fn scoreToTt(score: i16, ply: u8) i16 {
+pub fn scoreToTt(score: i16, ply: usize) i16 {
     if (score < -WIN_SCORE) {
         return score -% @as(i16, @intCast(ply));
     }
@@ -154,7 +154,7 @@ pub fn scoreToTt(score: i16, ply: u8) i16 {
     return score;
 }
 
-pub fn scoreFromTt(score: i16, ply: u8) i16 {
+pub fn scoreFromTt(score: i16, ply: usize) i16 {
     if (score < -WIN_SCORE) {
         return score +% @as(i16, @intCast(ply));
     }
@@ -173,16 +173,16 @@ pub fn checkTTBound(score: i16, alpha: i32, beta: i32, tp: root.ScoreType) bool 
     };
 }
 
-pub fn matedIn(plies: u16) i16 {
+pub fn matedIn(plies: usize) i16 {
     return -CHECKMATE_SCORE + @as(i16, @intCast(plies));
 }
 
-pub fn tbWin(plies: u8) i16 {
-    return TB_WIN_SCORE - plies;
+pub fn tbWin(plies: usize) i16 {
+    return TB_WIN_SCORE - @as(i16, @intCast(plies));
 }
 
-pub fn tbLoss(plies: u8) i16 {
-    return -TB_WIN_SCORE + plies;
+pub fn tbLoss(plies: usize) i16 {
+    return -TB_WIN_SCORE + @as(i16, @intCast(plies));
 }
 
 pub fn isMateScore(score: i32) bool {
