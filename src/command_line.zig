@@ -253,7 +253,11 @@ pub fn handle(init: std.process.Init, version: []const u8) !bool {
                 .@"relabel-tb" => try handleRelabelTb(init.io, init.gpa, &args),
                 .@"relabel-chonker" => try handleRelabelChonker(init.io, init.gpa, &args),
                 .sanitise => try handleSanitise(init.io, init.gpa, &args),
-                .bench => try handleBench(init.io, init.gpa, &args),
+                .bench => if (TOOLS_ONLY) {
+                    writeLog("bench is unavailable in this build\n", .{});
+                } else {
+                    try handleBench(init.io, init.gpa, &args);
+                },
             }
             return true;
         }

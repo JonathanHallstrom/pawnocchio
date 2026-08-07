@@ -51,7 +51,9 @@ pub const zobrist = @import("zobrist.zig");
 pub const PerftEPDParser = @import("PerftEPDParser.zig");
 pub const Searcher = if (TOOLS_ONLY) void else @import("Searcher.zig");
 pub const ThreadPool = if (TOOLS_ONLY) void else @import("ThreadPool.zig").ThreadPool;
-pub const engine = if (TOOLS_ONLY) void else @import("engine.zig");
+pub const engine = if (TOOLS_ONLY) struct {
+    fn deinit() void {}
+} else @import("engine.zig");
 pub const Limits = if (TOOLS_ONLY) void else @import("Limits.zig");
 pub const MovePicker = @import("MovePicker.zig");
 pub const CastlingRights = @import("CastlingRights.zig");

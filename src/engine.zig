@@ -590,7 +590,7 @@ fn datagenWorker(
             opening_score = scored_move.score;
         }
 
-        const score_out_of_range = @abs(opening_score) > 300 or @abs(opening_score) < 120;
+        const score_out_of_range = @abs(opening_score) > 300 or @abs(opening_score) < 50;
         // _ = dbg("out of range openings", score_out_of_range);
 
         if (score_out_of_range) {
