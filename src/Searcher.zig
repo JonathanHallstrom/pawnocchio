@@ -111,6 +111,7 @@ hashes: [MAX_PLY + 8 + HASH_PREFIX_PAD]u64,
 eval_context: evaluation.Context,
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: ?Move,
+full_width_root_move: std.atomic.Value(RootMove),
 root_score: ?i16,
 full_width_score: i16,
 full_width_score_normalized: i16,
@@ -1746,6 +1747,7 @@ pub fn ensureInvariants(self: *Searcher) void {
     self.nodes = 0;
     self.tbhits = 0;
     self.root_move = null;
+    self.full_width_root_move.store(.{}, .release);
     self.root_score = null;
     self.pvs[0].len = 0;
     self.searchStackRoot()[0].failhighs = 0;
@@ -1803,52 +1805,76 @@ fn initForSearch(self: *Searcher, params: Params, is_main_thread: bool, comptime
     }
 }
 
-fn pickBestMove(b: *const Board) struct { i16, Move } {
-    var votes = std.mem.zeroes([64][64]i64);
-    var best_move = Move.init();
-    var best_score: i16 = -evaluation.INF_SCORE;
-    var max_score: i32 = std.math.minInt(i32);
-    const cur_id = engine.thread_pool.searchers.items[0].search_id.load(.seq_cst);
-    for (engine.thread_pool.searchers.items) |searcher| {
-        if (searcher.search_id.load(.seq_cst) != cur_id) {
-            continue;
-        }
-        max_score = @max(max_score, searcher.full_width_score);
-    }
+pub const RootMove = packed struct(u64) {
+    move: Move = .init(),
+    score: i16 = 0,
+    normalized: i16 = 0,
+    depth: u8 = 0,
+    padding: u8 = 0,
+};
 
-    for (engine.thread_pool.searchers.items) |searcher| {
+fn pickBestMove(b: *const Board) struct { i16, Move } {
+    const searchers = engine.thread_pool.searchers;
+    var root_moves = &engine.thread_pool.root_move_buffer;
+    root_moves.clearRetainingCapacity();
+
+    const cur_id = searchers.items[0].search_id.load(.seq_cst);
+    for (searchers.items) |searcher| {
         if (searcher.search_id.load(.seq_cst) != cur_id) {
             continue;
         }
-        const move = searcher.root_move orelse continue;
+        const root_move = searcher.full_width_root_move.load(.acquire);
         switch (b.stm) {
             inline else => |stm| {
-                if (!b.isLegal(stm, move)) {
-                    write("info string Illegal move {s} encountered in root\n", .{move.toString(b).slice()});
+                if (!b.isLegal(stm, root_move.move)) {
+                    write("info string Illegal move {s} encountered in root\n", .{root_move.move.toString(b).slice()});
                     continue;
                 }
             },
         }
-        const score = TUNABLES.voting_score_max - std.math.clamp(max_score - searcher.full_width_score, 0, TUNABLES.voting_score_max);
-        const normalized = searcher.full_width_score_normalized;
-        const d = searcher.limits.root_depth;
+        root_moves.append(engine.thread_pool.allocator, root_move) catch continue;
+    }
 
-        const vote: i64 = (d * 16 + TUNABLES.voting_depth_offset) * (score + TUNABLES.voting_score_offset) + TUNABLES.voting_offset;
+    if (root_moves.items.len == 0) {
+        return .{ 0, .init() };
+    }
 
-        const entry = &votes[move.from().toInt()][move.to().toInt()];
-        entry.* += vote;
+    var max_score: i32 = std.math.minInt(i32);
+    for (root_moves.items) |root_move| {
+        max_score = @max(max_score, root_move.score);
+    }
 
-        if (evaluation.isDecisiveScore(normalized) or evaluation.isDecisiveScore(best_score)) {
-            if (normalized > best_score) {
-                best_score = normalized;
-                best_move = move;
+    var votes = std.mem.zeroes([64][64]i64);
+    for (root_moves.items) |root_move| {
+        const score = TUNABLES.voting_score_max - std.math.clamp(max_score - root_move.score, 0, TUNABLES.voting_score_max);
+        const d: i32 = root_move.depth;
+        const vote = (d * 16 + TUNABLES.voting_depth_offset) * (score + TUNABLES.voting_score_offset) + TUNABLES.voting_offset;
+        votes[root_move.move.from().toInt()][root_move.move.to().toInt()] += vote;
+    }
+
+    var best = root_moves.items[0];
+    for (root_moves.items[1..]) |curr| {
+        const curr_votes = votes[curr.move.from().toInt()][curr.move.to().toInt()];
+        const best_votes = votes[best.move.from().toInt()][best.move.to().toInt()];
+
+        if (evaluation.isDecisiveScore(curr.normalized) or
+            evaluation.isDecisiveScore(best.normalized))
+        {
+            if (curr.normalized > best.normalized) {
+                best = curr;
             }
-        } else if (entry.* > votes[best_move.from().toInt()][best_move.to().toInt()]) {
-            best_score = normalized;
-            best_move = move;
+        } else if (curr_votes != best_votes) {
+            if (curr_votes > best_votes) {
+                best = curr;
+            }
+        } else {
+            if (curr.normalized > best.normalized) {
+                best = curr;
+            }
         }
     }
-    return .{ best_score, best_move };
+
+    return .{ best.score, best.move };
 }
 
 pub fn qsearchValue(self: *Searcher, board: *const Board, io: std.Io, timeout_ns: u64) i16 {
@@ -1962,6 +1988,14 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
 
                     self.full_width_score = stabilised_score;
                     self.full_width_score_normalized = root.wdl.normalize(stabilised_score, &self.searchStackRoot()[0].board);
+                    if (self.root_move) |root_move| {
+                        self.full_width_root_move.store(.{
+                            .move = root_move,
+                            .score = self.full_width_score,
+                            .normalized = self.full_width_score_normalized,
+                            .depth = @intCast(depth),
+                        }, .release);
+                    }
                     break;
                 }
             },
@@ -2030,7 +2064,6 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
         if (!quiet) {
             const board: *const Board = &self.stackEntry(0).board;
             const score, var move = pickBestMove(board);
-            _ = score;
             if (move.isNull()) {
                 const tt_entry, const tt_hit = self.readTT(board.hash);
                 switch (board.stm) {
@@ -2059,7 +2092,7 @@ pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet:
                 }
             }
             if (self.minimal) {
-                self.writeInfo(self.full_width_score, completed_depth, .completed, move);
+                self.writeInfo(score, completed_depth, .completed, move);
             }
             write("bestmove {s}\n", .{move.toString(board).slice()});
         }

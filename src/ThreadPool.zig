@@ -212,6 +212,7 @@ const Thread = struct {
 
 pub const ThreadPool = struct {
     threads: std.ArrayListUnmanaged(*Thread) = .empty,
+    root_move_buffer: std.ArrayListUnmanaged(root.Searcher.RootMove) = .empty,
     searchers: std.ArrayListUnmanaged(*Searcher) = .empty,
     tt: []align(std.atomic.cache_line) TTCluster = &.{},
     corrhists: SharedStore(history.CorrectionHistoryTable) = .{},
@@ -232,6 +233,7 @@ pub const ThreadPool = struct {
     pub fn deinit(self: *ThreadPool) void {
         self.abort();
         self.threads.deinit(self.allocator);
+        self.root_move_buffer.deinit(self.allocator);
         self.searchers.deinit(self.allocator);
         self.corrhists.deinit(self.allocator);
         self.pawn_histories.deinit(self.allocator);
@@ -260,6 +262,7 @@ pub const ThreadPool = struct {
         thread.correction_histories = self.corrhists.get(self.threads.items.len);
         thread.pawn_histories = self.pawn_histories.get(self.threads.items.len);
         try self.threads.append(self.allocator, thread);
+        try self.root_move_buffer.ensureTotalCapacity(self.allocator, self.threads.items.len);
         try self.searchers.append(self.allocator, searcher);
         thread.wake(.reset);
         thread.blockUntilSleep();
