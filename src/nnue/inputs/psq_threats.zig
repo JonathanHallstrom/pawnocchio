@@ -193,8 +193,8 @@ pub const Context = struct {
     const PAWN_SQUARES: u8 = 48;
 
     fn refreshThreatHalf(self: *Context, ply: u16, col: Colour, board: *const Board, weights: *const arch.Weights) void {
-        const timer = root.engine.time("threat_refresh");
-        defer timer.register();
+        // const timer = root.engine.time("threat_refresh");
+        // defer timer.register();
         const buf = &self.threat_accumulator_stack[ply][col.toInt()];
         buildThreatAccumulator(buf, board, col, weights);
         const tf = &self.threat_frames[ply];
@@ -242,8 +242,8 @@ pub const Context = struct {
     };
 
     inline fn collectPawnIdsVBMI2(board: *const Board, col: Colour, sq_mask: u8, exclude: u64) @Vector(64, u8) {
-        const timer = root.engine.time("pp_collect_ids");
-        defer timer.register();
+        // const timer = root.engine.time("pp_collect_ids");
+        // defer timer.register();
         // const adjusted = (std.simd.iota(u8, 64) ^ @as(@Vector(64, u8), @splat(sq_mask))) -% @as(@Vector(64, u8), @splat(8));
         const ADJUSTED_SQUARES: [256]@Vector(64, u8) = comptime blk: {
             @setEvalBranchQuota(1 << 20);
@@ -395,8 +395,8 @@ pub const Context = struct {
     }
 
     fn materialiseThreatHalf(self: *Context, ply: u16, col: Colour, board: *const Board, weights: *const arch.Weights) void {
-        const timer = root.engine.time("materialise_threat");
-        defer timer.register();
+        // const timer = root.engine.time("materialise_threat");
+        // defer timer.register();
         const tf = &self.threat_frames[ply];
         const parent_tf = &self.threat_frames[ply - 1];
 
@@ -629,8 +629,8 @@ pub const Context = struct {
         adds: []const u16,
         subs: []const u16,
     ) void {
-        const timer = root.engine.time("apply_rows");
-        defer timer.register();
+        // const timer = root.engine.time("apply_rows");
+        // defer timer.register();
         const combined: [*]const arch.ThreatWeight = @ptrCast(&weights.input.pp_w);
         var i: usize = 0;
         const TILE = @min(16, arch.ACCUMULATOR_TILE);

@@ -118,6 +118,8 @@ const Thread = struct {
     thread: std.Thread,
 
     search_params: Searcher.Params = undefined,
+    prev_positions: root.BoundedArray(root.Board, 200) = .{},
+    prev_moves: root.BoundedArray(root.Move, 200) = .{},
     search_main: bool = false,
     search_quiet: bool = false,
 
@@ -156,7 +158,7 @@ const Thread = struct {
 
             switch (action) {
                 .search => {
-                    self.searcher.startSearch(self.search_params, self.search_main, self.search_quiet);
+                    self.searcher.startSearch(&self.search_params, self.search_main, self.search_quiet);
                 },
                 .reset => {
                     root.memzero(self.searcher);
@@ -350,9 +352,20 @@ pub const ThreadPool = struct {
     }
 
     pub fn startSearch(self: *ThreadPool, params: Searcher.Params, quiet: bool) void {
+        self.stopSearch();
+        self.waitUntilDoneSearching();
         self.stop_searching.store(false, .seq_cst);
         for (self.threads.items, 0..) |t, i| {
             t.search_params = params;
+
+            t.prev_positions.clear();
+            t.prev_positions.appendSliceAssumeCapacity(params.previous_positions);
+            t.search_params.previous_positions = t.prev_positions.slice();
+
+            t.prev_moves.clear();
+            t.prev_moves.appendSliceAssumeCapacity(params.previous_moves);
+            t.search_params.previous_moves = t.prev_moves.slice();
+
             t.search_quiet = quiet;
             t.search_main = (i == 0);
             t.wake(.search);

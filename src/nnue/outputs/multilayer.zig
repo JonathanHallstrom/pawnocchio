@@ -170,8 +170,8 @@ pub fn forward(
     weights: *const arch.Weights,
     board: *const Board,
 ) i16 {
-    const timer = @import("../../root.zig").engine.time("eval_forward");
-    defer timer.register();
+    // const timer = @import("../../root.zig").engine.time("eval_forward");
+    // defer timer.register();
     const output_bucket: usize = arch.whichOutputBucket(@popCount(board.occupancy()));
     const ow = &weights.output;
 

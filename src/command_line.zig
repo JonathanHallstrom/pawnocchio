@@ -1398,8 +1398,6 @@ fn runBench(io: std.Io, bench_depth: i32) !void {
             .search_params = .{
                 .board = try Board.parseFen(fen, false),
                 .limits = root.Limits.initFixedDepth(io, bench_depth),
-                .previous_positions = .{},
-                .previous_moves = .{},
                 .contempt = 0,
                 .normalize = false,
                 .minimal = false,

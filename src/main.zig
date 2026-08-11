@@ -643,8 +643,8 @@ pub fn main(init: std.process.Init) !void {
                 .search_params = .{
                     .board = board,
                     .limits = limits,
-                    .previous_positions = recent_positions,
-                    .previous_moves = recent_moves,
+                    .previous_positions = recent_positions.slice(),
+                    .previous_moves = recent_moves.slice(),
                     .syzygy_depth = syzygy_depth,
                     .contempt = contempt,
                     .normalize = normalize,

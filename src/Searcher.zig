@@ -45,8 +45,8 @@ pub const MAX_HALFMOVE = 100;
 pub const Params = struct {
     board: Board,
     limits: Limits,
-    previous_positions: BoundedArray(Board, 200),
-    previous_moves: BoundedArray(Move, 200),
+    previous_positions: []const Board = &.{},
+    previous_moves: []const Move = &.{},
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
     contempt: i16 = 0,
@@ -1658,10 +1658,10 @@ fn retainOnlyDuplicates(slice: []u64) usize {
     return write_idx;
 }
 
-fn initSearchStack(self: *Searcher, params: Params) void {
+fn initSearchStack(self: *Searcher, params: *const Params) void {
     const board = &params.board;
-    const previous_positions = params.previous_positions.slice();
-    const previous_moves = params.previous_moves.slice();
+    const previous_positions = params.previous_positions;
+    const previous_moves = params.previous_moves;
 
     std.debug.assert(
         (previous_positions.len == 0 and previous_moves.len == 0) or
@@ -1752,7 +1752,7 @@ pub fn ensureInvariants(self: *Searcher) void {
     root.memzero(&self.node_counts);
 }
 
-fn initForSearch(self: *Searcher, params: Params, is_main_thread: bool, comptime minimal: bool) void {
+fn initForSearch(self: *Searcher, params: *const Params, is_main_thread: bool, comptime minimal: bool) void {
     self.ensureInvariants();
     self.limits = params.limits;
     self.syzygy_depth = params.syzygy_depth;
@@ -1764,9 +1764,9 @@ fn initForSearch(self: *Searcher, params: Params, is_main_thread: bool, comptime
     self.minimal = params.minimal;
     self.show_wdl = params.show_wdl;
     var num_repetitions: u8 = 0;
-    var previous_hashes: [params.previous_positions.buffer.len]u64 = undefined;
+    var previous_hashes: [200]u64 = undefined;
     var num_previous_hashes: usize = 0;
-    for (params.previous_positions.slice()) |previous_position| {
+    for (params.previous_positions) |previous_position| {
         const previous_hash = previous_position.hash;
         if (params.board.hash == previous_hash) {
             num_repetitions += 1;
@@ -1857,11 +1857,10 @@ pub fn qsearchValue(self: *Searcher, board: *const Board, io: std.Io, timeout_ns
         .board = board.*,
         .limits = limits,
         .contempt = 0,
-        .previous_positions = .{},
-        .previous_moves = .{},
+        .age_histories = false,
     };
 
-    self.initForSearch(params, true, true);
+    self.initForSearch(&params, true, true);
     const res = switch (board.stm) {
         inline else => |stm| self.qsearch(true, true, stm, -evaluation.INF_SCORE, evaluation.INF_SCORE),
     };
@@ -1876,17 +1875,15 @@ pub fn fixedNodesSearch(self: *Searcher, board: *const Board, io: std.Io, hard_n
         .board = board.*,
         .limits = limits,
         .contempt = 0,
-        .previous_positions = .{},
-        .previous_moves = .{},
         .age_histories = false,
     };
 
-    self.startSearch(params, false, true);
+    self.startSearch(&params, false, true);
 
     return self.root_score.?;
 }
 
-pub fn startSearch(self: *Searcher, params: Params, is_main_thread: bool, quiet: bool) void {
+pub fn startSearch(self: *Searcher, params: *const Params, is_main_thread: bool, quiet: bool) void {
     self.initForSearch(params, is_main_thread, false);
 
     var previous_score: i32 = 0;

@@ -623,12 +623,12 @@ fn datagenWorker(
             previous_positions.replaceRange(0, drop, &.{}) catch unreachable;
             searcher.tt = tts[move_idx % 2];
             searcher.startSearch(
-                root.Searcher.Params{
+                &.{
                     .board = board,
                     .limits = limits,
                     .needs_full_reset = false,
-                    .previous_positions = previous_positions,
-                    .previous_moves = previous_moves,
+                    .previous_positions = previous_positions.slice(),
+                    .previous_moves = previous_moves.slice(),
                     .contempt = 0,
                     .normalize = false,
                     .minimal = false,
