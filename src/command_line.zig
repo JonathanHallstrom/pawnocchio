@@ -274,22 +274,22 @@ pub fn writeHelp(version: []const u8) void {
 }
 
 fn handleHelp(version: []const u8, threads: usize) void {
-    std.debug.print(
+    writeLog(
         \\pawnocchio {s} - UCI chess engine
         \\
         \\USAGE:
         \\  pawnocchio [COMMAND] [ARGUMENTS]
     , .{version});
     if (!TOOLS_ONLY) {
-        std.debug.print("  pawnocchio (starts in UCI mode)\n", .{});
+        writeLog("  pawnocchio (starts in UCI mode)\n", .{});
     }
-    std.debug.print(
+    writeLog(
         \\
         \\TOOLS:
         \\
     , .{});
     if (!TOOLS_ONLY) {
-        std.debug.print(
+        writeLog(
             \\  bench [--depth <DEPTH>] [<DEPTH> (positional)]
             \\      run benchmark. default depth: {d}
             \\
@@ -303,7 +303,7 @@ fn handleHelp(version: []const u8, threads: usize) void {
             \\
         , .{ BENCH_DEPTH_DEFAULT, threads, DATAGEN_NODES_DEFAULT });
     }
-    std.debug.print(
+    writeLog(
         \\  pgntovf --input <INPUT.pgn> [<INPUT.pgn> (positional)] [--skip-broken-games] [--allow-non-pgn-extension] [--allow-overwrite] [--output <OUTPUT>] [--fill-missing-evals <i16|prev|next>]
         \\      convert PGN to viriformat. default output: <INPUT>.vf
         \\
@@ -330,7 +330,7 @@ fn handleHelp(version: []const u8, threads: usize) void {
         \\
     , .{});
     if (!TOOLS_ONLY) {
-        std.debug.print(
+        writeLog(
             \\UCI COMMANDS:
             \\  uci                     - handshake
             \\  isready                 - synchronization
@@ -379,7 +379,7 @@ fn handleDatagen(io: std.Io, allocator: std.mem.Allocator, args: anytype, defaul
     );
 
     const datagen_threads = parsed.threads orelse default_threads;
-    std.debug.print("datagenning with {} threads\n", .{datagen_threads});
+    writeLog("datagenning with {} threads\n", .{datagen_threads});
     try root.engine.setThreadCount(datagen_threads);
     try root.engine.datagen(io, parsed.nodes, parsed.positions);
 }
@@ -432,10 +432,10 @@ fn handlePgntovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     const skip_broken_games = parsed.@"skip-broken-games";
     const allow_non_pgn_extension = parsed.@"allow-non-pgn-extension";
     if (skip_broken_games) {
-        std.debug.print("skipping broken games\n", .{});
+        writeLog("skipping broken games\n", .{});
     }
     if (allow_non_pgn_extension) {
-        std.debug.print("allowing non pgn extension\n", .{});
+        writeLog("allowing non pgn extension\n", .{});
     }
 
     if (!allow_non_pgn_extension and !std.mem.endsWith(u8, input, ".pgn")) {
@@ -494,10 +494,10 @@ fn handleEpdtovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     const skip_broken_games = parsed.@"skip-broken-games";
     const white_relative = parsed.@"white-relative";
     if (skip_broken_games) {
-        std.debug.print("skipping broken games\n", .{});
+        writeLog("skipping broken games\n", .{});
     }
     if (white_relative) {
-        std.debug.print("treating scores as white relative\n", .{});
+        writeLog("treating scores as white relative\n", .{});
     }
 
     const output = if (parsed.output) |explicit_output|
@@ -801,7 +801,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         args,
         struct {
             inputs: []const []const u8,
-            approximate: bool = false,
+            approximate: bool = true,
             verbose: bool = false,
             @"tb-path": ?[]const u8 = null,
             @"allow-overwrite": bool = false,
@@ -813,6 +813,9 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     );
     defer allocator.free(parsed.inputs);
     const verbose = parsed.verbose;
+    if (verbose) {
+        writeLog("for verbose output pass --help\n", .{});
+    }
     if (!parsed.@"allow-overwrite") {
         if (std.Io.Dir.cwd().access(io, "score_distribution.txt", .{})) |_| {
             writeLog("refusing to overwrite existing file 'score_distribution.txt' (pass --allow-overwrite)\n", .{});
@@ -837,14 +840,11 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
 
     const approximate = parsed.approximate;
     if (!use_tbs) {
-        std.debug.print("not using TBs, if you want TB stats please pass --tb-path\n", .{});
+        writeLog("not using TBs, if you want TB stats pass --tb-path\n", .{});
     }
     if (approximate) {
-        std.debug.print("unique count is using HyperLogLog, and so may be slightly wrong\n", .{});
-    } else {
-        std.debug.print("unique count is using a hashset, for better performance try --approximate\n", .{});
+        writeLog("unique count is using HyperLogLog, if you need an exact count at the cost of a serious performance degredation, pass --approximate=false\n", .{});
     }
-
     var total_size: u64 = 0;
     for (parsed.inputs) |input_path| {
         var f = try openInputFile(io, input_path);
@@ -874,12 +874,12 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         ) !void {
             while (!done_.load(.seq_cst)) {
                 try io_.sleep(.fromMilliseconds(100), .awake);
-                std.debug.print("\rprogress: {d:.2}%", .{
+                writeLog("\rprogress: {d:.2}%", .{
                     @as(f64, @floatFromInt(100 * bytes_done_.load(.acquire))) /
                         @as(f64, @floatFromInt(total_size_)),
                 });
             }
-            std.debug.print("\n", .{});
+            writeLog("\n", .{});
         }
     }.impl, .{
         io,
@@ -961,7 +961,17 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     });
 
     if (use_tbs) {
-        write("\ngames whose outcome do not match TBs: {d:.2}%", .{@as(f64, @floatFromInt(incorrect_tb)) * 100 / @as(f64, @floatFromInt(@max(@as(u64, 1), total_tb)))});
+        const incorrect_tbf: f64 = @floatFromInt(incorrect_tb);
+        const total_tbf: f64 = @floatFromInt(total_tb);
+        const total_gamesf: f64 = @floatFromInt(combined.game_count);
+        write("\ngames that reached a TB position: {} ({d:.2}%)", .{
+            total_tb,
+            total_tbf / @max(1, total_gamesf),
+        });
+        write("\nof those, portion whose outcome do not match TBs: {} ({d:.2}%)", .{
+            incorrect_tb,
+            incorrect_tbf * 100 / @max(1, total_tbf),
+        });
     }
 
     write(
@@ -1252,7 +1262,7 @@ fn handleSanitise(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void
         mapped.data.len < 4 or
         !std.mem.eql(u8, mapped.data[mapped.data.len - 4 ..], &[4]u8{ 0, 0, 0, 0 });
     if (parsed.@"print-errors" and missing_null_terminator) {
-        std.debug.print("warning: file does not end with null terminator\n", .{});
+        writeLog("warning: file does not end with null terminator\n", .{});
     }
 
     var output_file: ?std.Io.File = null;
