@@ -8,6 +8,7 @@ const ALIGNMENT = 64;
 
 pub const NEEDS_FT_PERMUTE = false;
 pub const NEEDS_L1_PERMUTE = false;
+pub const GATHER_L1_STATS = false;
 
 pub const Weights = extern struct {
     output_w: [arch.OUTPUT_BUCKET_COUNT][2 * arch.L1_SIZE]i16 align(ALIGNMENT),
