@@ -120,6 +120,7 @@ const Thread = struct {
     search_params: Searcher.Params = undefined,
     prev_positions: root.BoundedArray(root.Board, 200) = .{},
     prev_moves: root.BoundedArray(root.Move, 200) = .{},
+    searchmoves: root.BoundedArray(root.Move, 256) = .{},
     search_main: bool = false,
     search_quiet: bool = false,
 
@@ -365,6 +366,10 @@ pub const ThreadPool = struct {
             t.prev_moves.clear();
             t.prev_moves.appendSliceAssumeCapacity(params.previous_moves);
             t.search_params.previous_moves = t.prev_moves.slice();
+
+            t.searchmoves.clear();
+            t.searchmoves.appendSliceAssumeCapacity(params.searchmoves);
+            t.search_params.searchmoves = t.searchmoves.slice();
 
             t.search_quiet = quiet;
             t.search_main = (i == 0);

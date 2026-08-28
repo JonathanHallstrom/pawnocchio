@@ -47,6 +47,7 @@ pub const Params = struct {
     limits: Limits,
     previous_positions: []const Board = &.{},
     previous_moves: []const Move = &.{},
+    searchmoves: []const Move = &.{},
     needs_full_reset: bool = false,
     syzygy_depth: u8 = 0,
     contempt: i16 = 0,
@@ -135,7 +136,7 @@ minimal: bool = false,
 show_wdl: bool = false,
 tbhits: u64 = 0,
 min_nmp_ply: usize = 0,
-winning_root_moves: BoundedArray(Move, 256),
+root_moves: BoundedArray(Move, 256),
 histories: history.HistoryTable,
 correction_histories: *history.CorrectionHistoryTable,
 
@@ -1115,8 +1116,8 @@ fn search(
         if (move == cur.excluded) {
             continue;
         }
-        if (is_root and self.winning_root_moves.len > 0) {
-            if (for (self.winning_root_moves.slice()) |winning_move| {
+        if (is_root and self.root_moves.len > 0) {
+            if (for (self.root_moves.slice()) |winning_move| {
                 // the move is a winning move so dont skip it
                 if (winning_move == move) {
                     break false;
@@ -1774,15 +1775,23 @@ fn initForSearch(self: *Searcher, params: *const Params, is_main_thread: bool, c
         previous_hashes[num_previous_hashes] = previous_hash;
         num_previous_hashes += 1;
     }
-    self.winning_root_moves = .{};
-    if (!minimal) {
+    var root_moves: BoundedArray(Move, 256) = .{};
+    if (params.searchmoves.len > 0) {
+        for (params.searchmoves) |move| {
+            if (params.board.isLegalSimple(move)) {
+                root_moves.append(move) catch {};
+            }
+        }
+    } else if (!minimal) {
         if (root.pyrrhic.probeRootDTZ(&params.board, num_repetitions > 0)) |root_probe| {
             _, const moves = root_probe;
             for (moves.slice()) |scored| {
-                self.winning_root_moves.append(scored.move) catch unreachable;
+                root_moves.append(scored.move) catch {};
             }
         }
     }
+    self.root_moves = root_moves;
+
     self.num_previous_position_hashes = retainOnlyDuplicates(previous_hashes[0..num_previous_hashes]);
     std.debug.assert(self.num_previous_position_hashes <= HASH_PREFIX_PAD);
     @memcpy(

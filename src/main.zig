@@ -350,6 +350,7 @@ pub fn main(init: std.process.Init) !void {
             var move_time_opt: ?u64 = null;
             var stop_on_any_mate = false;
             var cyclic_tc = false;
+            var searchmoves: root.BoundedArray(Move, 256) = .{};
 
             while (parts.next()) |command_part| {
                 if (std.ascii.eqlIgnoreCase(command_part, "mate")) {
@@ -579,6 +580,21 @@ pub fn main(init: std.process.Init) !void {
 
                     cyclic_tc = true;
                 }
+                if (std.ascii.eqlIgnoreCase(command_part, "searchmoves")) {
+                    outer: while (parts.peek()) |p| {
+                        if (board.parseMoveStr(p)) |m| {
+                            _ = parts.next();
+                            for (searchmoves.slice()) |sm| {
+                                if (m == sm) {
+                                    continue :outer;
+                                }
+                            }
+                            searchmoves.appendAssumeCapacity(m);
+                        } else |_| {
+                            break;
+                        }
+                    }
+                }
             }
             const my_time_opt = if (board.stm == .white) white_time else black_time;
             const my_increment = if (board.stm == .white) white_increment else black_increment;
@@ -645,6 +661,7 @@ pub fn main(init: std.process.Init) !void {
                     .limits = limits,
                     .previous_positions = recent_positions.slice(),
                     .previous_moves = recent_moves.slice(),
+                    .searchmoves = searchmoves.slice(),
                     .syzygy_depth = syzygy_depth,
                     .contempt = contempt,
                     .normalize = normalize,
