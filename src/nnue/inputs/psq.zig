@@ -176,247 +176,258 @@ pub const Resolved = struct {
     }
 };
 
-pub const State = struct {
-    white: AccumulatorHalf,
-    black: AccumulatorHalf,
-    white_mirrored: MirroringType,
-    black_mirrored: MirroringType,
-    dirty_piece: DirtyPiece,
-    board_ref: ?*const Board,
+pub fn State(comptime B: type) type {
+    return struct {
+        const Self = @This();
 
-    pub inline fn half(self: anytype, acc: Colour) root.InheritConstness(@TypeOf(self), *AccumulatorHalf) {
-        return if (acc == .white) &self.white else &self.black;
-    }
+        white: AccumulatorHalf,
+        black: AccumulatorHalf,
+        white_mirrored: MirroringType,
+        black_mirrored: MirroringType,
+        dirty_piece: DirtyPiece,
+        board_ref: ?*const B,
 
-    pub inline fn setHalf(self: *State, acc: Colour, ptr: *const Accumulator) void {
-        self.half(acc).* = .{ .ptr = ptr };
-    }
+        pub inline fn half(self: anytype, acc: Colour) root.InheritConstness(@TypeOf(self), *AccumulatorHalf) {
+            return if (acc == .white) &self.white else &self.black;
+        }
 
-    pub inline fn mirrorFor(self: anytype, col: Colour) MirroringType {
-        return if (col == .white) self.white_mirrored else self.black_mirrored;
-    }
+        pub inline fn setHalf(self: *Self, acc: Colour, ptr: *const Accumulator) void {
+            self.half(acc).* = .{ .ptr = ptr };
+        }
 
-    pub inline fn mirrorPtrFor(self: anytype, col: Colour) root.InheritConstness(@TypeOf(self), *MirroringType) {
-        return if (col == .white) &self.white_mirrored else &self.black_mirrored;
-    }
-};
+        pub inline fn mirrorFor(self: anytype, col: Colour) MirroringType {
+            return if (col == .white) self.white_mirrored else self.black_mirrored;
+        }
 
-pub const Context = struct {
-    refresh_cache: root.refreshCache(arch.HORIZONTAL_MIRRORING, arch.INPUT_BUCKET_COUNT) = undefined,
-    accumulator_stack: [root.SEARCH_MAX_PLY][2]Accumulator = undefined,
-    pending: [root.SEARCH_MAX_PLY]bool = undefined,
-    frames: [root.SEARCH_MAX_PLY]State = undefined,
+        pub inline fn mirrorPtrFor(self: anytype, col: Colour) root.InheritConstness(@TypeOf(self), *MirroringType) {
+            return if (col == .white) &self.white_mirrored else &self.black_mirrored;
+        }
+    };
+}
 
-    pub fn initRefreshCache(self: *Context, weights: *const arch.Weights) void {
-        self.refresh_cache.initInPlace(weights);
-    }
+pub fn Context(comptime B: type) type {
+    return struct {
+        const Self = @This();
+        refresh_cache: root.refreshCache(arch.HORIZONTAL_MIRRORING, arch.INPUT_BUCKET_COUNT) = undefined,
+        accumulator_stack: [root.SEARCH_MAX_PLY][2]Accumulator = undefined,
+        pending: [root.SEARCH_MAX_PLY]bool = undefined,
+        frames: [root.SEARCH_MAX_PLY]State(B) = undefined,
 
-    pub fn initRoot(self: *Context, board: *const Board, weights: *const arch.Weights) void {
-        const f = &self.frames[0];
-        f.* = .{
-            .white = .{ .ptr = @ptrCast(&weights.input.ft_b) },
-            .black = .{ .ptr = @ptrCast(&weights.input.ft_b) },
-            .white_mirrored = .{},
-            .black_mirrored = .{},
-            .dirty_piece = .clean,
-            .board_ref = board,
-        };
-        self.pending[0] = false;
-        f.white_mirrored.write(Square.fromBitboard(board.kingFor(.white)).getFile().toInt() >= 4);
-        f.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
+        pub fn initRefreshCache(self: *Self, weights: *const arch.Weights) void {
+            self.refresh_cache.initInPlace(weights);
+        }
 
-        const white_king_sq = Square.fromBitboard(board.kingFor(.white));
-        const black_king_sq = Square.fromBitboard(board.kingFor(.black));
-        for (PieceType.all) |tp| {
-            inline for ([_]Colour{ .white, .black }) |piece_col| {
-                var iter = Bitboard.iterator(board.pieceFor(piece_col, tp));
-                while (iter.next()) |sq| {
-                    self.writeFeature(0, f, .white, white_king_sq, .init(piece_col, tp, sq), weights);
-                    self.writeFeature(0, f, .black, black_king_sq, .init(piece_col, tp, sq), weights);
+        pub fn initRoot(self: *Self, board: *const B, weights: *const arch.Weights) void {
+            const f = &self.frames[0];
+            f.* = .{
+                .white = .{ .ptr = @ptrCast(&weights.input.ft_b) },
+                .black = .{ .ptr = @ptrCast(&weights.input.ft_b) },
+                .white_mirrored = .{},
+                .black_mirrored = .{},
+                .dirty_piece = .clean,
+                .board_ref = board,
+            };
+            self.pending[0] = false;
+            f.white_mirrored.write(Square.fromBitboard(board.kingFor(.white)).getFile().toInt() >= 4);
+            f.black_mirrored.write(Square.fromBitboard(board.kingFor(.black)).getFile().toInt() >= 4);
+
+            const white_king_sq = Square.fromBitboard(board.kingFor(.white));
+            const black_king_sq = Square.fromBitboard(board.kingFor(.black));
+            for (PieceType.all) |tp| {
+                inline for ([_]Colour{ .white, .black }) |piece_col| {
+                    var iter = Bitboard.iterator(board.pieceFor(piece_col, tp));
+                    while (iter.next()) |sq| {
+                        self.writeFeature(0, f, .white, white_king_sq, .init(piece_col, tp, sq), weights);
+                        self.writeFeature(0, f, .black, black_king_sq, .init(piece_col, tp, sq), weights);
+                    }
                 }
             }
         }
-    }
 
-    pub fn prepareChild(self: *Context, child_ply: u16, board: *const Board) void {
-        self.pending[child_ply] = true;
-        const f = &self.frames[child_ply];
-        f.board_ref = board;
-        f.dirty_piece.clear();
-    }
-
-    pub fn ensureUpToDate(self: *Context, ply: u16, weights: *const arch.Weights) void {
-        self.resolvePending(ply, weights);
-        const f = &self.frames[ply];
-        if (!f.dirty_piece.isClean()) {
-            self.applyDirtyInplace(ply, weights);
-        }
-    }
-
-    fn resolvePending(self: *Context, ply: u16, weights: *const arch.Weights) void {
-        if (!self.pending[ply]) return;
-
-        var first_pending: usize = ply;
-        while (first_pending > 0 and self.pending[first_pending - 1]) {
-            @branchHint(.unlikely);
-            first_pending -= 1;
+        pub fn prepareChild(self: *Self, child_ply: u16, board: *const B) void {
+            self.pending[child_ply] = true;
+            const f = &self.frames[child_ply];
+            f.board_ref = board;
+            f.dirty_piece.clear();
         }
 
-        var cursor: u16 = @intCast(first_pending);
-        while (cursor <= ply) : (cursor += 1) {
-            self.pending[cursor] = false;
-            const board = self.frames[cursor].board_ref orelse unreachable;
-            self.applyDirtyCopy(cursor, board.stm.flipped(), weights);
+        pub fn ensureUpToDate(self: *Self, ply: u16, weights: *const arch.Weights) void {
+            self.resolvePending(ply, weights);
+            const f = &self.frames[ply];
+            if (!f.dirty_piece.isClean()) {
+                self.applyDirtyInplace(ply, weights);
+            }
         }
-    }
 
-    fn applyDirtyCopy(self: *Context, ply: u16, stm: Colour, weights: *const arch.Weights) void {
-        const f = &self.frames[ply];
-        const parent = &self.frames[ply - 1];
-        f.white_mirrored = parent.white_mirrored;
-        f.black_mirrored = parent.black_mirrored;
-        if (f.dirty_piece.isClean()) {
-            f.white = parent.white;
-            f.black = parent.black;
-            return;
+        fn resolvePending(self: *Self, ply: u16, weights: *const arch.Weights) void {
+            if (!self.pending[ply]) return;
+
+            var first_pending: usize = ply;
+            while (first_pending > 0 and self.pending[first_pending - 1]) {
+                @branchHint(.unlikely);
+                first_pending -= 1;
+            }
+
+            var cursor: u16 = @intCast(first_pending);
+            while (cursor <= ply) : (cursor += 1) {
+                self.pending[cursor] = false;
+                const board = self.frames[cursor].board_ref orelse unreachable;
+                self.applyDirtyCopy(cursor, board.stm.flipped(), weights);
+            }
         }
-        self.refreshStale(ply - 1, weights);
-        self.applyDirtyImpl(ply, ply - 1, stm, weights);
-    }
 
-    fn applyDirtyInplace(self: *Context, ply: u16, weights: *const arch.Weights) void {
-        const f = &self.frames[ply];
-        const board = f.board_ref orelse unreachable;
-        self.refreshStale(ply, weights);
-        self.applyDirtyImpl(ply, ply, board.stm.flipped(), weights);
-    }
-
-    fn applyDirtyImpl(self: *Context, ply: u16, src_ply: u16, stm: Colour, weights: *const arch.Weights) void {
-        // const timer = root.engine.time("psq_update");
-        // defer timer.register();
-        const f = &self.frames[ply];
-        const src = &self.frames[src_ply];
-        const dirty = f.dirty_piece;
-        defer f.dirty_piece.clear();
-
-        const board = f.board_ref orelse unreachable;
-        const them = stm.flipped();
-        const them_king_sq = Square.fromBitboard(board.kingFor(them));
-        self.updateHalf(ply, src, them, them_king_sq, dirty, weights);
-
-        const to_feat = dirty.to();
-        const from_feat = dirty.from();
-        const us_king_sq = Square.fromBitboard(board.kingFor(stm));
-        if (to_feat.piece() == .king and needsRefresh(stm, to_feat.square(), from_feat.square())) {
-            @branchHint(.unlikely);
-            f.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
-            self.refreshHalf(ply, stm, board, weights);
-        } else {
-            self.updateHalf(ply, src, stm, us_king_sq, dirty, weights);
+        fn applyDirtyCopy(self: *Self, ply: u16, stm: Colour, weights: *const arch.Weights) void {
+            const f = &self.frames[ply];
+            const parent = &self.frames[ply - 1];
+            f.white_mirrored = parent.white_mirrored;
+            f.black_mirrored = parent.black_mirrored;
+            if (f.dirty_piece.isClean()) {
+                f.white = parent.white;
+                f.black = parent.black;
+                return;
+            }
+            self.refreshStale(ply - 1, weights);
+            self.applyDirtyImpl(ply, ply - 1, stm, weights);
         }
-    }
 
-    inline fn updateHalf(self: *Context, ply: u16, src: *const State, acc: Colour, king_sq: Square, dirty: DirtyPiece, weights: *const arch.Weights) void {
-        const f = &self.frames[ply];
-        const mir = f.mirrorFor(acc);
-        const buf = &self.accumulator_stack[ply][acc.toInt()];
-        const src_ptr = src.half(acc).ptr;
-
-        switch (dirty) {
-            .move => |state| buf.copyAddSubMany(
-                src_ptr,
-                .{featureWeight(weights, acc, king_sq, .psqt, state.to, mir)},
-                .{featureWeight(weights, acc, king_sq, .psqt, state.from, mir)},
-            ),
-            .capture => |state| buf.copyAddSubMany(
-                src_ptr,
-                .{featureWeight(weights, acc, king_sq, .psqt, state.to, mir)},
-                .{
-                    featureWeight(weights, acc, king_sq, .psqt, state.from, mir),
-                    featureWeight(weights, acc, king_sq, .psqt, state.captured, mir),
-                },
-            ),
-            .castle => |state| buf.copyAddSubMany(
-                src_ptr,
-                .{
-                    featureWeight(weights, acc, king_sq, .psqt, .init(state.col, .king, state.k_to), mir),
-                    featureWeight(weights, acc, king_sq, .psqt, .init(state.col, .rook, state.r_to), mir),
-                },
-                .{
-                    featureWeight(weights, acc, king_sq, .psqt, .init(state.col, .king, state.k_from), mir),
-                    featureWeight(weights, acc, king_sq, .psqt, .init(state.col, .rook, state.r_from), mir),
-                },
-            ),
-            .clean => unreachable,
+        fn applyDirtyInplace(self: *Self, ply: u16, weights: *const arch.Weights) void {
+            const f = &self.frames[ply];
+            const board = f.board_ref orelse unreachable;
+            self.refreshStale(ply, weights);
+            self.applyDirtyImpl(ply, ply, board.stm.flipped(), weights);
         }
-        f.setHalf(acc, buf);
-    }
 
-    fn refreshHalf(self: *Context, ply: u16, acc: Colour, board: *const Board, weights: *const arch.Weights) void {
-        // const timer = root.engine.time("psq_refresh");
-        // defer timer.register();
-        const f = &self.frames[ply];
-        f.mirrorPtrFor(acc).write(Square.fromBitboard(board.kingFor(acc)).getFile().toInt() >= 4);
-        const refreshed = self.refresh_cache.refresh(weights, acc, board);
-        f.half(acc).* = refreshed;
-    }
+        fn applyDirtyImpl(self: *Self, ply: u16, src_ply: u16, stm: Colour, weights: *const arch.Weights) void {
+            // const timer = root.engine.time("psq_update");
+            // defer timer.register();
+            const f = &self.frames[ply];
+            const src = &self.frames[src_ply];
+            const dirty = f.dirty_piece;
+            defer f.dirty_piece.clear();
 
-    inline fn refreshStale(self: *Context, ply: u16, weights: *const arch.Weights) void {
-        const f = &self.frames[ply];
-        if (f.white.generation != 0 and f.white.generation != self.refresh_cache.currentGeneration(.white)) {
-            self.refreshHalf(ply, .white, f.board_ref.?, weights);
+            const board = f.board_ref orelse unreachable;
+            const them = stm.flipped();
+            const them_king_sq = Square.fromBitboard(board.kingFor(them));
+            self.updateHalf(ply, src, them, them_king_sq, dirty, weights);
+
+            const to_feat = dirty.to();
+            const from_feat = dirty.from();
+            const us_king_sq = Square.fromBitboard(board.kingFor(stm));
+            if (to_feat.piece() == .king and needsRefresh(stm, to_feat.square(), from_feat.square())) {
+                @branchHint(.unlikely);
+                f.mirrorPtrFor(stm).write(us_king_sq.getFile().toInt() >= 4);
+                self.refreshHalf(ply, stm, board, weights);
+            } else {
+                self.updateHalf(ply, src, stm, us_king_sq, dirty, weights);
+            }
         }
-        if (f.black.generation != 0 and f.black.generation != self.refresh_cache.currentGeneration(.black)) {
-            self.refreshHalf(ply, .black, f.board_ref.?, weights);
+
+        inline fn updateHalf(self: *Self, ply: u16, src: *const State(B), acc: Colour, king_sq: Square, dirty: DirtyPiece, weights: *const arch.Weights) void {
+            const f = &self.frames[ply];
+            const mir = f.mirrorFor(acc);
+            const buf = &self.accumulator_stack[ply][acc.toInt()];
+            const src_ptr = src.half(acc).ptr;
+
+            switch (dirty) {
+                .move => |state| buf.copyAddSubMany(
+                    src_ptr,
+                    .{featureWeight(weights, acc, king_sq, .psqt, state.to, mir)},
+                    .{featureWeight(weights, acc, king_sq, .psqt, state.from, mir)},
+                ),
+                .capture => |state| buf.copyAddSubMany(
+                    src_ptr,
+                    .{featureWeight(weights, acc, king_sq, .psqt, state.to, mir)},
+                    .{
+                        featureWeight(weights, acc, king_sq, .psqt, state.from, mir),
+                        featureWeight(weights, acc, king_sq, .psqt, state.captured, mir),
+                    },
+                ),
+                .castle => |state| buf.copyAddSubMany(
+                    src_ptr,
+                    .{
+                        featureWeight(weights, acc, king_sq, .psqt, .init(state.col, .king, state.k_to), mir),
+                        featureWeight(weights, acc, king_sq, .psqt, .init(state.col, .rook, state.r_to), mir),
+                    },
+                    .{
+                        featureWeight(weights, acc, king_sq, .psqt, .init(state.col, .king, state.k_from), mir),
+                        featureWeight(weights, acc, king_sq, .psqt, .init(state.col, .rook, state.r_from), mir),
+                    },
+                ),
+                .clean => unreachable,
+            }
+            f.setHalf(acc, buf);
         }
-    }
 
-    inline fn writeFeature(self: *Context, ply: u16, f: *State, acc: Colour, king_sq: Square, piece: PSQTFeature, weights: *const arch.Weights) void {
-        const buf = &self.accumulator_stack[ply][acc.toInt()];
-        buf.copyAdd(f.half(acc).ptr, featureWeight(weights, acc, king_sq, .psqt, piece, f.mirrorFor(acc)));
-        f.setHalf(acc, buf);
-    }
+        fn refreshHalf(self: *Self, ply: u16, acc: Colour, board: *const B, weights: *const arch.Weights) void {
+            // const timer = root.engine.time("psq_refresh");
+            // defer timer.register();
+            const f = &self.frames[ply];
+            f.mirrorPtrFor(acc).write(Square.fromBitboard(board.kingFor(acc)).getFile().toInt() >= 4);
+            const refreshed = self.refresh_cache.refresh(weights, acc, board);
+            f.half(acc).* = refreshed;
+        }
 
-    pub fn resolved(self: *const Context, ply: u16, stm: Colour) Resolved {
-        const f = &self.frames[ply];
-        return .{
-            .stm = if (stm == .white) f.white.ptr else f.black.ptr,
-            .ntm = if (stm == .white) f.black.ptr else f.white.ptr,
-        };
-    }
+        inline fn refreshStale(self: *Self, ply: u16, weights: *const arch.Weights) void {
+            const f = &self.frames[ply];
+            if (f.white.generation != 0 and f.white.generation != self.refresh_cache.currentGeneration(.white)) {
+                self.refreshHalf(ply, .white, f.board_ref.?, weights);
+            }
+            if (f.black.generation != 0 and f.black.generation != self.refresh_cache.currentGeneration(.black)) {
+                self.refreshHalf(ply, .black, f.board_ref.?, weights);
+            }
+        }
 
-    pub fn getHandle(self: *Context, ply: u16, weights: *const arch.Weights) Handle {
-        return .{ .ctx = self, .weights = weights, .ply = ply, .frame = &self.frames[ply] };
-    }
-};
+        inline fn writeFeature(self: *Self, ply: u16, f: *State(B), acc: Colour, king_sq: Square, piece: PSQTFeature, weights: *const arch.Weights) void {
+            const buf = &self.accumulator_stack[ply][acc.toInt()];
+            buf.copyAdd(f.half(acc).ptr, featureWeight(weights, acc, king_sq, .psqt, piece, f.mirrorFor(acc)));
+            f.setHalf(acc, buf);
+        }
 
-pub const Handle = struct {
-    ctx: *Context,
-    weights: *const arch.Weights,
-    ply: u16,
-    frame: *State,
+        pub fn resolved(self: *const Self, ply: u16, stm: Colour) Resolved {
+            const f = &self.frames[ply];
+            return .{
+                .stm = if (stm == .white) f.white.ptr else f.black.ptr,
+                .ntm = if (stm == .white) f.black.ptr else f.white.ptr,
+            };
+        }
 
-    pub fn addSub(self: Handle, add: PSQTFeature, sub: PSQTFeature) void {
-        std.debug.assert(self.frame.dirty_piece.isClean());
-        self.frame.dirty_piece = .initMove(add, sub);
-    }
+        pub fn getHandle(self: *Self, ply: u16, weights: *const arch.Weights) Handle(B) {
+            return .{ .ctx = self, .weights = weights, .ply = ply, .frame = &self.frames[ply] };
+        }
+    };
+}
 
-    pub fn addSubSub(self: Handle, add: PSQTFeature, sub1: PSQTFeature, sub2: PSQTFeature) void {
-        std.debug.assert(self.frame.dirty_piece.isClean());
-        self.frame.dirty_piece = .initCapture(add, sub1, sub2);
-    }
+pub fn Handle(comptime B: type) type {
+    return struct {
+        const Self = @This();
 
-    pub fn addAddSubSub(self: Handle, add1: PSQTFeature, add2: PSQTFeature, sub1: PSQTFeature, sub2: PSQTFeature) void {
-        std.debug.assert(self.frame.dirty_piece.isClean());
-        self.frame.dirty_piece = .initCastle(add1, add2, sub1, sub2);
-    }
+        ctx: *Context(B),
+        weights: *const arch.Weights,
+        ply: u16,
+        frame: *State(B),
 
-    pub fn threatOnChange(_: Handle, _: *const Board, _: ColouredPieceType, _: Square, comptime _: bool) void {}
-    pub fn threatOnMove(_: Handle, _: *const Board, _: ColouredPieceType, _: Square, _: ColouredPieceType, _: Square) void {}
-    pub fn threatOnMutate(_: Handle, _: *const Board, _: ColouredPieceType, _: ColouredPieceType, _: Square) void {}
+        pub fn addSub(self: Self, add: PSQTFeature, sub: PSQTFeature) void {
+            std.debug.assert(self.frame.dirty_piece.isClean());
+            self.frame.dirty_piece = .initMove(add, sub);
+        }
 
-    pub fn eval(self: Handle, board: *const Board) i16 {
-        self.ctx.ensureUpToDate(self.ply, self.weights);
-        return arch.outputs.forward(self.ctx.resolved(self.ply, board.stm), self.weights, board);
-    }
-};
+        pub fn addSubSub(self: Self, add: PSQTFeature, sub1: PSQTFeature, sub2: PSQTFeature) void {
+            std.debug.assert(self.frame.dirty_piece.isClean());
+            self.frame.dirty_piece = .initCapture(add, sub1, sub2);
+        }
+
+        pub fn addAddSubSub(self: Self, add1: PSQTFeature, add2: PSQTFeature, sub1: PSQTFeature, sub2: PSQTFeature) void {
+            std.debug.assert(self.frame.dirty_piece.isClean());
+            self.frame.dirty_piece = .initCastle(add1, add2, sub1, sub2);
+        }
+
+        pub fn threatOnChange(_: Self, _: *const B, _: ColouredPieceType, _: Square, comptime _: bool) void {}
+        pub fn threatOnMove(_: Self, _: *const B, _: ColouredPieceType, _: Square, _: ColouredPieceType, _: Square) void {}
+        pub fn threatOnMutate(_: Self, _: *const B, _: ColouredPieceType, _: ColouredPieceType, _: Square) void {}
+
+        pub fn eval(self: Self, board: *const B) i16 {
+            self.ctx.ensureUpToDate(self.ply, self.weights);
+            return arch.outputs.forward(self.ctx.resolved(self.ply, board.stm), self.weights, board);
+        }
+    };
+}

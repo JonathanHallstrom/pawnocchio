@@ -17,28 +17,32 @@ pub const init = nnue_weights.init;
 pub const deinit = nnue_weights.deinit;
 pub const weightsForNode = nnue_weights.weightsForNode;
 
-pub const Context = struct {
-    weights: *const arch.Weights = undefined,
-    input: arch.inputs.Context = undefined,
+pub fn Context(comptime B: type) type {
+    return struct {
+        const Self = @This();
 
-    pub fn initForThread(self: *Context, thread_idx: usize) void {
-        const node: usize = if (root.numa.enabled) numa.nodeForThread(thread_idx) else 0;
-        self.weights = weightsForNode(node);
-        self.input.initRefreshCache(self.weights);
-    }
+        weights: *const arch.Weights = undefined,
+        input: arch.inputs.Context(B) = undefined,
 
-    pub fn initRoot(self: *Context, board: *const Board) void {
-        self.input.initRoot(board, self.weights);
-    }
+        pub fn initForThread(self: *Self, thread_idx: usize) void {
+            const node: usize = if (root.numa.enabled) numa.nodeForThread(thread_idx) else 0;
+            self.weights = weightsForNode(node);
+            self.input.initRefreshCache(self.weights);
+        }
 
-    pub fn prepareChild(self: *Context, child_ply: usize, child_board: *const Board) void {
-        self.input.prepareChild(@intCast(child_ply), child_board);
-    }
+        pub fn initRoot(self: *Self, board: *const B) void {
+            self.input.initRoot(board, self.weights);
+        }
 
-    pub fn handle(self: *Context, ply: usize) evaluation.Handle(arch.inputs.Handle) {
-        return evaluation.wrapHandle(self.input.getHandle(@intCast(ply), self.weights));
-    }
-};
+        pub fn prepareChild(self: *Self, child_ply: usize, child_board: *const B) void {
+            self.input.prepareChild(@intCast(child_ply), child_board);
+        }
+
+        pub fn handle(self: *Self, ply: usize) evaluation.Handle(arch.inputs.Handle(B)) {
+            return evaluation.wrapHandle(self.input.getHandle(@intCast(ply), self.weights));
+        }
+    };
+}
 
 pub fn evalPosition(board: *const Board) i16 {
     const ctx = evaluation.globalCtx.lock();

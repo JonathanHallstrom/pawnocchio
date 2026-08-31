@@ -320,7 +320,7 @@ const Packed = enum(i32) {
     }
 };
 
-fn computePhase(board: *const Board) u8 {
+fn computePhase(board: anytype) u8 {
     var res: u8 = 0;
     for (0..6) |p| {
         res += GAMEPHASE_INC[p] * @popCount(board.pieceBB(PieceType.fromInt(@intCast(p))));
@@ -340,7 +340,7 @@ const Frame = struct {
     state: Packed,
     phase: u8,
 
-    pub fn init(board: *const Board) Frame {
+    pub fn init(board: anytype) Frame {
         var state = Packed.from(0, 0);
 
         for (PieceType.all) |pt| {
@@ -356,7 +356,7 @@ const Frame = struct {
         };
     }
 
-    pub fn initInPlace(noalias self: *Frame, board: *const Board) void {
+    pub fn initInPlace(noalias self: *Frame, board: anytype) void {
         self.* = init(board);
     }
 
@@ -374,7 +374,7 @@ const Frame = struct {
         self.phase -= GAMEPHASE_INC[s.piece().toInt()];
     }
 
-    pub fn eval(self: Frame, board: *const Board) i16 {
+    pub fn eval(self: Frame, board: anytype) i16 {
         const mg_phase: i32 = @min(self.phase, MAX_PHASE);
         const eg_phase = MAX_PHASE - mg_phase;
 
@@ -384,24 +384,28 @@ const Frame = struct {
     }
 };
 
-pub const Context = struct {
-    frames: [root.SEARCH_MAX_PLY]Frame = undefined,
+pub fn Context(comptime B: type) type {
+    return struct {
+        const Self = @This();
 
-    pub fn initForThread(_: *Context, _: usize) void {}
+        frames: [root.SEARCH_MAX_PLY]Frame = undefined,
 
-    pub fn initRoot(self: *Context, board: *const Board) void {
-        self.frames[0].initInPlace(board);
-    }
+        pub fn initForThread(_: *Self, _: usize) void {}
 
-    pub fn prepareChild(self: *Context, child_ply: usize, child_board: *const Board) void {
-        _ = child_board;
-        self.frames[child_ply].update(&self.frames[child_ply - 1]);
-    }
+        pub fn initRoot(self: *Self, board: *const B) void {
+            self.frames[0].initInPlace(board);
+        }
 
-    pub fn handle(self: *Context, ply: usize) evaluation.Handle(*Frame) {
-        return evaluation.wrapHandle(&self.frames[ply]);
-    }
-};
+        pub fn prepareChild(self: *Self, child_ply: usize, child_board: *const B) void {
+            _ = child_board;
+            self.frames[child_ply].update(&self.frames[child_ply - 1]);
+        }
+
+        pub fn handle(self: *Self, ply: usize) evaluation.Handle(*Frame) {
+            return evaluation.wrapHandle(&self.frames[ply]);
+        }
+    };
+}
 
 pub fn evalPosition(board: *const Board) i16 {
     const ctx = evaluation.globalCtx.lock();

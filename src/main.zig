@@ -725,8 +725,8 @@ pub fn main(init: std.process.Init) !void {
 
             var sum_sq: f64 = 0;
             var count: u64 = 0;
-            const ctx = root.evaluation.globalCtx.lock();
-            defer root.evaluation.globalCtx.release();
+            const ctx = root.evaluation.GlobalCtx(root.LeanBoard).lock();
+            defer root.evaluation.GlobalCtx(root.LeanBoard).release();
 
             if (std.mem.count(u8, filename, ".vf") != 0) {
                 const stat = try file.stat(io);
@@ -761,7 +761,7 @@ pub fn main(init: std.process.Init) !void {
                         const child = ply + 1;
                         ctx.prepareChild(child, &it.board);
                         scored = try it.nextHandle(ctx.handle(child));
-                        const gives_check = it.board.checkers != 0;
+                        const gives_check = it.board.isInCheck();
                         if (!noisy and !gives_check) {
                             sum_sq += err * err;
                             count += 1;
@@ -781,9 +781,10 @@ pub fn main(init: std.process.Init) !void {
                     const result = std.fmt.parseFloat(f64, data_line[open + 1 .. close]) catch continue;
 
                     const b = Board.parseFen(fen, true) catch continue;
-                    ctx.initRoot(&b);
-                    const stm_eval = ctx.handle(0).eval(&b);
-                    const white_eval = if (b.stm == .white) stm_eval else -stm_eval;
+                    const lb = root.LeanBoard.fromBoard(&b);
+                    ctx.initRoot(&lb);
+                    const stm_eval = ctx.handle(0).eval(&lb);
+                    const white_eval = if (lb.stm == .white) stm_eval else -stm_eval;
                     const pred = root.fastmath.sigmoidScaled(white_eval, 400);
                     const err = pred - result;
                     sum_sq += err * err;

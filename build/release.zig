@@ -58,8 +58,10 @@ const RELEASE_SPECS = [_]Spec{
 
 const TOOLS_SPECS = [_]Spec{
     .{ .target = "x86_64-windows", .suffix = "windows-x86_64-tools" },
+    .{ .target = "x86_64-windows", .suffix = "windows-x86_64_v3-tools", .cpu = "x86_64_v3" },
     .{ .target = "aarch64-windows", .suffix = "windows-aarch64-tools" },
     .{ .target = "x86_64-linux", .suffix = "linux-x86_64-tools" },
+    .{ .target = "x86_64-linux", .suffix = "linux-x86_64_v3-tools", .cpu = "x86_64_v3" },
     .{ .target = "aarch64-linux", .suffix = "linux-aarch64-tools" },
     .{ .target = "x86_64-macos", .suffix = "macos-x86_64-tools", .link_mode = .dynamic },
     .{ .target = "aarch64-macos", .suffix = "macos-aarch64-tools", .link_mode = .dynamic },
@@ -75,6 +77,6 @@ pub const RELEASE = Config{
 pub const TOOLS = Config{
     .specs = &TOOLS_SPECS,
     .eval_mode = .hce,
-    .optimize = .ReleaseSmall,
+    .optimize = .ReleaseFast,
     .tools_only = true,
 };

@@ -455,11 +455,13 @@ fn handlePgntovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     var output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
     defer output_file.close(io);
 
-    var input_buf: [4096]u8 = undefined;
-    var output_buf: [4096]u8 = undefined;
+    const input_buf = try allocator.alloc(u8, 1 << 20);
+    defer allocator.free(input_buf);
+    const output_buf = try allocator.alloc(u8, 1 << 20);
+    defer allocator.free(output_buf);
 
-    var input_reader = input_file.readerStreaming(io, &input_buf);
-    var output_writer = output_file.writerStreaming(io, &output_buf);
+    var input_reader = input_file.readerStreaming(io, input_buf);
+    var output_writer = output_file.writerStreaming(io, output_buf);
 
     try @import("pgn_to_vf.zig").convert(
         io,
@@ -585,11 +587,14 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
             if (board.isPromo(move) and filter_promos) {
                 continue;
             }
-            if (board.checkers != 0 and filter_in_check) {
-                continue;
-            }
-            if (board.givesCheck(move) and filter_gives_check) {
-                continue;
+            if (filter_in_check or filter_gives_check) {
+                const masks = Board.computeAuxMasks(board);
+                if (masks.checkers != 0 and filter_in_check) {
+                    continue;
+                }
+                if (Board.computeGivesCheck(board, &masks, move) and filter_gives_check) {
+                    continue;
+                }
             }
 
             total += 1;
@@ -601,9 +606,9 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
 
             if (piece_count_acc) {
                 if (parsed.@"sigmoid-scores") {
-                    write("{s} | {d:.10} | {d:.1}\n", .{ board.toFen().slice(), root.fastmath.sigmoid(eval), wdl });
+                    write("{s} | {d:.10} | {d:.1}\n", .{ Board.computeFen(board).slice(), root.fastmath.sigmoid(eval), wdl });
                 } else {
-                    write("{s} | {d} | {d}\n", .{ board.toFen().slice(), eval, wdl });
+                    write("{s} | {d} | {d}\n", .{ Board.computeFen(board).slice(), eval, wdl });
                 }
             }
         }
@@ -723,77 +728,108 @@ fn analyseFile(
     var stats = try AnalysisStats.init(approximate, allocator);
     errdefer stats.deinit(allocator);
 
-    var buf: [4096]u8 = undefined;
-    var br = file.readerStreaming(io, &buf);
-    var ply_reader = try root.owning_reader.OwningReader.init(format, &br.interface, allocator);
-    defer ply_reader.deinit();
+    const read_buf = try allocator.alloc(u8, 1 << 20);
+    defer allocator.free(read_buf);
+    var br = file.readerStreaming(io, read_buf);
 
     var prev_pos = br.logicalPos();
-    while (try (&ply_reader).next()) |game| {
-        stats.game_count += 1;
-        switch (@intFromEnum(game.outcome)) {
-            0 => stats.losses += 1,
-            1 => stats.draws += 1,
-            2 => stats.wins += 1,
-            else => unreachable,
-        }
+    defer {
+        const new_pos = br.logicalPos();
+        _ = bytes_done.fetchAdd(new_pos - prev_pos, .acq_rel);
+    }
 
-        if (stats.game_count % 16 == 0) {
-            const new_pos = br.logicalPos();
-            _ = bytes_done.fetchAdd(new_pos - prev_pos, .acq_rel);
-            prev_pos = new_pos;
-        }
-
-        var had_tb_win = false;
-        var had_tb_draw = false;
-        var had_tb_loss = false;
-        var board = game.initial_board.*;
-        for (game.moves, 0..) |ply, move_idx| {
-            if (move_idx == 0) {
-                if (ply.stmEval(board.stm)) |ev| {
-                    stats.sum_exits += ev;
+    switch (format) {
+        inline else => |fmt| {
+            var spr = root.dataformat.readerFor(fmt, &br.interface, allocator);
+            defer spr.deinit();
+            while (try spr.next()) |game_view| {
+                stats.game_count += 1;
+                switch (@intFromEnum(game_view.outcome)) {
+                    0 => stats.losses += 1,
+                    1 => stats.draws += 1,
+                    2 => stats.wins += 1,
+                    else => unreachable,
                 }
-            }
 
-            var king: root.Square = .fromBitboard(board.kingFor(board.stm));
-            if (board.stm == .black) {
-                king = king.flipRank();
-            }
-            stats.king_pos[king.toInt()] += 1;
+                if (stats.game_count % 16 == 0) {
+                    const new_pos = br.logicalPos();
+                    _ = bytes_done.fetchAdd(new_pos - prev_pos, .acq_rel);
+                    prev_pos = new_pos;
+                }
 
-            if (use_tbs) {
-                if (root.pyrrhic.probeWDL(&board)) |res| {
-                    switch (if (board.stm == .black) res.flipped() else res) {
-                        .loss => had_tb_loss = true,
-                        .draw => had_tb_draw = true,
-                        .win => had_tb_win = true,
-                    }
+                var tb_flags: TbFlags = .{};
+                var it = game_view.iter();
+                var move_idx: usize = 0;
+                while (try it.next()) |ply| : (move_idx += 1) {
+                    try accumulatePlyStats(&stats, allocator, ply.board, ply.whiteEval(), ply.stmEval(), move_idx == 0, use_tbs, &tb_flags);
                 }
+                recordTbResults(&stats, game_view.outcome, tb_flags);
             }
-            stats.total_piece_counts[@popCount(board.occupancy())] += 1;
-            stats.phase_counts[@min(24, board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 }))] += 1;
-            inline for (.{ Colour.white, Colour.black }) |col| {
-                for (PieceType.all) |pt| {
-                    const cnt = @popCount(board.pieceFor(col, pt));
-                    stats.piece_counts[col.toInt()].getPtr(pt)[cnt] += 1;
-                }
-            }
-            if (ply.whiteEval()) |ev| {
-                stats.score_counts[@intCast(@as(isize, ev) - std.math.minInt(i16))] += 1;
-            }
-            try stats.tracker.track(allocator, board.hash);
-            stats.position_count += 1;
-            board.makeMoveSimple(ply.move);
-        }
-        if (had_tb_loss)
-            stats.tb_results.getPtr(game.outcome).getPtr(.loss).* += 1;
-        if (had_tb_draw)
-            stats.tb_results.getPtr(game.outcome).getPtr(.draw).* += 1;
-        if (had_tb_win)
-            stats.tb_results.getPtr(game.outcome).getPtr(.win).* += 1;
+        },
     }
 
     return stats;
+}
+
+const TbFlags = struct {
+    win: bool = false,
+    draw: bool = false,
+    loss: bool = false,
+};
+
+fn recordTbResults(stats: *AnalysisStats, outcome: root.WDL, tb_flags: TbFlags) void {
+    if (tb_flags.loss)
+        stats.tb_results.getPtr(outcome).getPtr(.loss).* += 1;
+    if (tb_flags.draw)
+        stats.tb_results.getPtr(outcome).getPtr(.draw).* += 1;
+    if (tb_flags.win)
+        stats.tb_results.getPtr(outcome).getPtr(.win).* += 1;
+}
+
+fn accumulatePlyStats(
+    stats: *AnalysisStats,
+    allocator: std.mem.Allocator,
+    board: anytype,
+    white_eval: ?i16,
+    stm_eval: ?i16,
+    is_first: bool,
+    use_tbs: bool,
+    tb_flags: *TbFlags,
+) !void {
+    if (is_first) {
+        if (stm_eval) |ev| {
+            stats.sum_exits += ev;
+        }
+    }
+
+    var king: root.Square = .fromBitboard(board.kingFor(board.stm));
+    if (board.stm == .black) {
+        king = king.flipRank();
+    }
+    stats.king_pos[king.toInt()] += 1;
+
+    if (use_tbs) {
+        if (root.pyrrhic.probeWDL(board)) |res| {
+            switch (if (board.stm == .black) res.flipped() else res) {
+                .loss => tb_flags.loss = true,
+                .draw => tb_flags.draw = true,
+                .win => tb_flags.win = true,
+            }
+        }
+    }
+    stats.total_piece_counts[@popCount(board.occupancy())] += 1;
+    stats.phase_counts[@min(24, board.sumPieces([_]u8{ 0, 1, 1, 2, 4, 0 }))] += 1;
+    inline for (.{ Colour.white, Colour.black }) |col| {
+        for (PieceType.all) |pt| {
+            const cnt = @popCount(board.pieceFor(col, pt));
+            stats.piece_counts[col.toInt()].getPtr(pt)[@min(cnt, 10)] += 1;
+        }
+    }
+    if (white_eval) |ev| {
+        stats.score_counts[@intCast(@as(isize, ev) - std.math.minInt(i16))] += 1;
+    }
+    try stats.tracker.track(allocator, board.hash);
+    stats.position_count += 1;
 }
 
 fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
@@ -864,6 +900,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     var futures = std.array_list.Managed(std.Io.Future(anyerror!void)).init(allocator);
     defer futures.deinit();
 
+    var first_err: ?anyerror = null;
     var done = std.atomic.Value(bool).init(false);
     var progress_future = try io.concurrent(struct {
         fn impl(
@@ -888,7 +925,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         &done,
     });
     for (parsed.inputs) |input_path| {
-        try futures.append(io.async(struct {
+        futures.append(io.async(struct {
             fn impl(
                 input_path_: []const u8,
                 io_: std.Io,
@@ -919,13 +956,19 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
             &bytes_done,
             &combined,
             &merge_lock,
-        }));
+        })) catch |e| {
+            if (first_err == null) first_err = e;
+            break;
+        };
     }
     for (futures.items) |*f| {
-        try f.await(io);
+        f.await(io) catch |e| {
+            if (first_err == null) first_err = e;
+        };
     }
     done.store(true, .seq_cst);
     try progress_future.await(io);
+    if (first_err) |e| return e;
 
     const unique_count = combined.tracker.count();
 
@@ -1095,7 +1138,7 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
                 try record.addMove(ply.move, eval);
 
                 var board = ply.board.*;
-                board.makeMoveSimple(ply.move);
+                board.makeMove(ply.move);
 
                 if (root.pyrrhic.probeWDL(&board)) |res| {
                     const white_relative_result = if (board.stm == .black) res.flipped() else res;
@@ -1177,9 +1220,8 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
 
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
 
-    const ctx = root.evaluation.globalCtx.lock();
-    defer root.evaluation.globalCtx.release();
-    ctx.initRoot(&Board.startpos());
+    const ctx = root.evaluation.GlobalCtx(root.LeanBoard).lock();
+    defer root.evaluation.GlobalCtx(root.LeanBoard).release();
 
     const start_time = std.Io.Timestamp.now(io, .awake);
     while (try reader.next()) |game| {

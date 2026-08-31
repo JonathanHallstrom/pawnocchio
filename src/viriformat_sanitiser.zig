@@ -142,6 +142,7 @@ fn isRecoverableParseError(e: anyerror) bool {
     return switch (e) {
         error.InputTooShortForHeader,
         error.InvalidWdl,
+        error.InvalidPieceCode,
         error.TooManyPieces,
         error.MissingKing,
         error.PawnsOnFirstLastRank,
@@ -248,6 +249,12 @@ fn parseSingleGame(
 
         switch (board.stm) {
             inline else => |stm| {
+                if (move.to().toBitboard() & board.kingFor(stm.flipped()) != 0 or
+                    board.halfmove == std.math.maxInt(u8))
+                {
+                    error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
+                    return error.MoveNotLegal;
+                }
                 if (!board.isLegal(stm, move)) {
                     error_ctx.capturePos(i, &board, move, move_eval.eval.toNative());
                     return error.MoveNotLegal;
@@ -267,6 +274,7 @@ fn parseSingleGame(
 pub const Config = struct {
     print_errors: bool,
     sp_stalemate_fix: bool,
+    progress: bool = true,
 };
 
 pub fn sanitiseBufferToFile(
@@ -275,7 +283,7 @@ pub fn sanitiseBufferToFile(
     allocator: std.mem.Allocator,
     config: Config,
 ) !usize {
-    var game: Game = .from(.startpos(), allocator);
+    var game: Game = .from(Board.startpos(), allocator);
     defer game.moves.deinit();
 
     var parsed: usize = 0;
@@ -285,7 +293,7 @@ pub fn sanitiseBufferToFile(
     var i: usize = 0;
     var iters: usize = 0;
     while (i < input.len) : (iters += 1) {
-        if (iters % (1 << 10) == 0) {
+        if (config.progress and iters % (1 << 10) == 0) {
             std.debug.print("progress: {}/{}\r", .{ i, input.len });
         }
         const bytes_used = parseSingleGame(input[i..], &game, &error_ctx, config) catch |e| {
@@ -321,6 +329,8 @@ pub fn sanitiseBufferToFile(
     if (output) |writer| {
         try writer.flush();
     }
-    std.debug.print("\nparsed {} games and skipped {} bytes\n", .{ parsed, skipped });
+    if (config.progress) {
+        std.debug.print("\nparsed {} games and skipped {} bytes\n", .{ parsed, skipped });
+    }
     return skipped;
 }

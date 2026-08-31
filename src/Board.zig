@@ -32,6 +32,7 @@ const Move = root.Move;
 const movegen = root.movegen;
 const CastlingRights = root.CastlingRights;
 const attacks = root.attacks;
+const LeanBoard = root.LeanBoard;
 const Board = @This();
 
 bbs: [8]u64 = @splat(0),
@@ -53,13 +54,7 @@ nonpawn_hash: [2]u64 = @splat(0),
 
 castling_rights: CastlingRights = CastlingRights.init(),
 
-pinned: [2]u64 = @splat(0),
-// pinner: [2]u64 = @splat(0),
-checkers: u64 = 0,
-checking_squares: [6]u64 = @splat(0),
-threats: [2]u64 = @splat(0),
-threats_by: [2][PieceType.all.len]u64 = @splat(@splat(0)),
-lesser_threats: [2]u64 = @splat(0),
+aux: AuxMasks = .{},
 threats_valid: bool = false,
 
 pub inline fn white(self: *const Board) u64 {
@@ -104,29 +99,29 @@ pub inline fn occupancy(self: *const Board) u64 {
 
 pub inline fn threatsFor(self: *const Board, col: Colour) u64 {
     std.debug.assert(self.threats_valid);
-    return self.threats[col.toInt()];
+    return self.aux.threats[col.toInt()];
 }
 
 pub inline fn threatsBy(self: *const Board, col: Colour, pt: PieceType) u64 {
     std.debug.assert(self.threats_valid);
-    return self.threats_by[col.toInt()][pt.toInt()];
+    return self.aux.threats_by[col.toInt()][pt.toInt()];
 }
 
 pub inline fn lesserThreatsFor(self: *const Board, col: Colour) u64 {
     std.debug.assert(self.threats_valid);
-    return self.lesser_threats[col.toInt()];
+    return self.aux.lesser_threats[col.toInt()];
+}
+
+pub inline fn checkers(self: *const Board) u64 {
+    return self.aux.checkers;
 }
 
 pub inline fn pinnedFor(self: *const Board, col: Colour) u64 {
-    return self.pinned[col.toInt()];
-}
-
-fn pinnedPtrFor(self: *Board, col: Colour) *u64 {
-    return &self.pinned[col.toInt()];
+    return self.aux.pinnedFor(col);
 }
 
 pub inline fn checkingSquaresFor(self: *const Board, pt: PieceType) u64 {
-    return self.checking_squares[pt.toInt()];
+    return self.aux.checkingSquaresFor(pt);
 }
 
 pub inline fn pawnsFor(self: *const Board, col: Colour) u64 {
@@ -259,8 +254,14 @@ pub fn materialScale(self: *const Board) i32 {
 }
 
 pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
+    return parseFenAs(Board, ifen, permissive);
+}
+
+pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
     const fen = std.mem.trim(u8, ifen, &std.ascii.whitespace);
-    if (std.ascii.eqlIgnoreCase(fen, "startpos")) return startpos();
+    if (std.ascii.eqlIgnoreCase(fen, "startpos")) {
+        return if (T == Board) startpos() else LeanBoard.fromBoard(&startpos());
+    }
     if (std.mem.count(u8, fen, "/") > 7) return error.TooManyRanks;
     if (std.mem.count(u8, fen, "/") < 7) return error.TooFewRanks;
     var iter = std.mem.tokenizeAny(u8, fen, " /");
@@ -273,7 +274,7 @@ pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
     var black_king_square: ?Square = null;
     var white_rooks_on_first_rank = try BoundedArray(File, 64).init(0);
     var black_rooks_on_last_rank = try BoundedArray(File, 64).init(0);
-    var self: Board = .{};
+    var self: T = .{};
     for (0..8) |r| {
         var c: usize = 0;
         for (ranks[7 - r]) |ch| {
@@ -479,12 +480,22 @@ pub fn parseFen(ifen: []const u8, permissive: bool) !Board {
     self.fullmove = fullmove;
     self.plies = fullmove * 2 + self.stm.toInt();
     self.resetHash();
-    self.updateMasks(self.stm);
+    if (T == Board) {
+        self.updateMasks(self.stm);
+    }
 
     return self;
 }
 
+pub fn toBoard(self: *const Board) Board {
+    return self.*;
+}
+
 pub fn toFen(self: Board) BoundedArray(u8, 128) {
+    return computeFen(self);
+}
+
+pub fn computeFen(self: anytype) BoundedArray(u8, 128) {
     @setEvalBranchQuota(10000);
     var out = BoundedArray(u8, 128).init(0) catch unreachable;
     inline for (0..8) |rr| {
@@ -528,13 +539,14 @@ pub fn toFen(self: Board) BoundedArray(u8, 128) {
     out.appendAssumeCapacity(' ');
     if (self.ep_target) |ep_target| {
         var valid = false;
-        switch (self.stm) {
+        const full_board: Board = self.toBoard();
+        switch (full_board.stm) {
             inline else => |stm_comptime| {
                 var rec = movegen.MoveListReceiver{};
-                movegen.generateAllNoisies(stm_comptime, &self, &rec);
+                movegen.generateAllNoisies(stm_comptime, &full_board, &rec);
 
                 for (rec.vals.slice()) |move| {
-                    if (self.isEnPassant(move)) {
+                    if (full_board.isEnPassant(move)) {
                         valid = true;
                         break;
                     }
@@ -799,7 +811,25 @@ inline fn removePiece(self: *Board, col: Colour, pt: PieceType, sq: Square) void
     self.mailbox[sq.toInt()] = MAILBOX_EMPTY;
 }
 
-pub fn updateThreatsFor(noalias self: *Board, col: Colour) void {
+pub const AuxMasks = struct {
+    pinned: [2]u64 = @splat(0),
+    // pinner: [2]u64 = @splat(0),
+    checkers: u64 = 0,
+    checking_squares: [6]u64 = @splat(0),
+    threats: [2]u64 = @splat(0),
+    threats_by: [2][PieceType.all.len]u64 = @splat(@splat(0)),
+    lesser_threats: [2]u64 = @splat(0),
+
+    pub inline fn pinnedFor(self: *const AuxMasks, col: Colour) u64 {
+        return self.pinned[col.toInt()];
+    }
+
+    pub inline fn checkingSquaresFor(self: *const AuxMasks, pt: PieceType) u64 {
+        return self.checking_squares[pt.toInt()];
+    }
+};
+
+inline fn computeThreatsFor(self: anytype, noalias masks: *AuxMasks, col: Colour) void {
     const occ = self.occupancy() ^ self.kingFor(col.flipped());
     const pawn_threats = Bitboard.pawnAttackBitBoard(self.pawnsFor(col), col);
     const knight_threats = Bitboard.knightMoveBitBoardSetwise(self.knightsFor(col));
@@ -830,8 +860,8 @@ pub fn updateThreatsFor(noalias self: *Board, col: Colour) void {
     }
 
     const threatened = pawn_threats | knight_threats | bishop_threats | rook_threats | queen_threats | king_threats;
-    self.threats[col.toInt()] = threatened;
-    self.threats_by[col.toInt()] = .{
+    masks.threats[col.toInt()] = threatened;
+    masks.threats_by[col.toInt()] = .{
         pawn_threats,
         knight_threats,
         bishop_threats,
@@ -839,7 +869,11 @@ pub fn updateThreatsFor(noalias self: *Board, col: Colour) void {
         queen_threats,
         king_threats,
     };
-    self.lesser_threats[col.toInt()] = lesser_threatened;
+    masks.lesser_threats[col.toInt()] = lesser_threatened;
+}
+
+pub fn updateThreatsFor(noalias self: *Board, col: Colour) void {
+    computeThreatsFor(self, &self.aux, col);
 }
 
 pub fn updateThreats(self: *Board) void {
@@ -856,17 +890,20 @@ pub fn ensureThreats(self: *Board) void {
     self.updateThreats();
 }
 
-pub fn updateMasks(self: *Board, col: Colour) void {
-    self.updateThreats();
-    switch (col) {
-        inline else => |stm| self.updateKingThreats(stm),
-    }
+pub fn recomputeAll(self: *Board) void {
+    self.updateMasks(self.stm);
+    self.resetHash();
 }
 
-inline fn updateKingThreats(self: *Board, comptime stm: Colour) void {
+pub fn updateMasks(self: *Board, col: Colour) void {
+    self.updateThreats();
+    self.updateKingThreats(col);
+}
+
+inline fn computeKingThreats(self: anytype, noalias masks: *AuxMasks, stm: Colour) void {
     const occ = self.occupancy();
-    self.pinned = .{0} ** 2;
-    self.checkers =
+    masks.pinned = .{0} ** 2;
+    masks.checkers =
         (Bitboard.pawnAttacks(Square.fromBitboard(self.kingFor(stm)), stm) & self.pawnsFor(stm.flipped())) |
         (Bitboard.knightMoves(Square.fromBitboard(self.kingFor(stm))) & self.knightsFor(stm.flipped()));
 
@@ -879,30 +916,43 @@ inline fn updateKingThreats(self: *Board, comptime stm: Colour) void {
         const rook_candidates = Bitboard.rookAttacks(king_sq) & rook_sliders;
         const bishop_candidates = Bitboard.bishopAttacks(king_sq.toInt()) & bishop_sliders;
 
-        var checkers = self.checkers;
-        var pinned = self.pinnedFor(victim);
+        var checks = masks.checkers;
+        var pinned = masks.pinned[victim.toInt()];
 
         var iter = Bitboard.iterator(rook_candidates | bishop_candidates);
         while (iter.next()) |slider_sq| {
             const pieces_between = occ & Bitboard.queenRayBetweenExclusive(king_sq, slider_sq);
             if (victim == stm) {
-                checkers |= if (pieces_between == 0) slider_sq.toBitboard() else 0;
+                checks |= if (pieces_between == 0) slider_sq.toBitboard() else 0;
             }
             pinned |= if (@popCount(pieces_between) == 1 and pieces_between & occ != 0) pieces_between else 0;
         }
 
-        self.checkers = checkers;
-        self.pinnedPtrFor(victim).* = pinned;
+        masks.checkers = checks;
+        masks.pinned[victim.toInt()] = pinned;
     }
 
     const their_king_sq = Square.fromBitboard(self.kingFor(stm.flipped()));
-    self.checking_squares[PieceType.pawn.toInt()] = Bitboard.pawnAttacks(their_king_sq, stm.flipped());
-    self.checking_squares[PieceType.knight.toInt()] = Bitboard.knightMoves(their_king_sq);
-    self.checking_squares[PieceType.bishop.toInt()] = attacks.bishopAttacks(their_king_sq, occ);
-    self.checking_squares[PieceType.rook.toInt()] = attacks.rookAttacks(their_king_sq, occ);
-    self.checking_squares[PieceType.queen.toInt()] =
-        self.checking_squares[PieceType.bishop.toInt()] |
-        self.checking_squares[PieceType.rook.toInt()];
+    masks.checking_squares[PieceType.pawn.toInt()] = Bitboard.pawnAttacks(their_king_sq, stm.flipped());
+    masks.checking_squares[PieceType.knight.toInt()] = Bitboard.knightMoves(their_king_sq);
+    masks.checking_squares[PieceType.bishop.toInt()] = attacks.bishopAttacks(their_king_sq, occ);
+    masks.checking_squares[PieceType.rook.toInt()] = attacks.rookAttacks(their_king_sq, occ);
+    masks.checking_squares[PieceType.queen.toInt()] =
+        masks.checking_squares[PieceType.bishop.toInt()] |
+        masks.checking_squares[PieceType.rook.toInt()];
+    masks.checking_squares[PieceType.king.toInt()] = 0;
+}
+
+inline fn updateKingThreats(self: *Board, stm: Colour) void {
+    computeKingThreats(self, &self.aux, stm);
+}
+
+pub fn computeAuxMasks(self: anytype) AuxMasks {
+    var masks: AuxMasks = .{};
+    computeThreatsFor(self, &masks, .white);
+    computeThreatsFor(self, &masks, .black);
+    computeKingThreats(self, &masks, self.stm);
+    return masks;
 }
 
 pub fn resetHash(self: *Board) void {
@@ -956,13 +1006,13 @@ pub fn makeNullMove(noalias self: *Board, comptime stm: Colour) void {
     self.updateKingThreats(stm.flipped());
 }
 
-fn destPiece(noalias self: *const Board, move: Move) PieceType {
+inline fn destPiece(self: anytype, move: Move) PieceType {
     return if (move.tp() == .promotion) move.promoType() else self.pieceOn(move.from()).?;
 }
 
-pub inline fn givesDirectCheck(noalias self: *const Board, move: Move) bool {
-    const piece = self.destPiece(move);
-    var res = self.checkingSquaresFor(piece) & move.to().toBitboard() != 0;
+inline fn givesDirectCheckImpl(self: anytype, masks: *const AuxMasks, move: Move) bool {
+    const piece = destPiece(self, move);
+    var res = masks.checkingSquaresFor(piece) & move.to().toBitboard() != 0;
 
     if (piece == .king) {
         res = false;
@@ -971,7 +1021,11 @@ pub inline fn givesDirectCheck(noalias self: *const Board, move: Move) bool {
     return res;
 }
 
-pub inline fn givesDiscoveredCheck(noalias self: *const Board, move: Move) bool {
+pub inline fn givesDirectCheck(noalias self: *const Board, move: Move) bool {
+    return givesDirectCheckImpl(self, &self.aux, move);
+}
+
+inline fn givesDiscoveredCheckImpl(self: anytype, masks: *const AuxMasks, move: Move) bool {
     const stm = self.stm;
     const ntm = stm.flipped();
     const ntm_king = self.kingFor(ntm);
@@ -979,7 +1033,7 @@ pub inline fn givesDiscoveredCheck(noalias self: *const Board, move: Move) bool 
     const ray = Bitboard.queenRayBetweenExclusive(ntm_king_sq, move.from());
 
     const fake_discovery = Bitboard.contains(ray, move.to());
-    const is_pinned_to_enemy_king = self.pinnedFor(self.stm.flipped()) & move.from().toBitboard() != 0;
+    const is_pinned_to_enemy_king = masks.pinnedFor(self.stm.flipped()) & move.from().toBitboard() != 0;
     if (is_pinned_to_enemy_king and !fake_discovery) return true;
 
     if (move.tp() == .ep) {
@@ -989,7 +1043,7 @@ pub inline fn givesDiscoveredCheck(noalias self: *const Board, move: Move) bool 
 
         const occ_after = self.occupancy() ^ from_bb ^ to_bb ^ target.toBitboard();
 
-        const is_bishop_discovery = self.checkingSquaresFor(.bishop) & self.pinnedFor(ntm) & target.toBitboard() != 0;
+        const is_bishop_discovery = masks.checkingSquaresFor(.bishop) & masks.pinnedFor(ntm) & target.toBitboard() != 0;
 
         const is_rook_discovery = attacks.rookAttacks(ntm_king_sq, occ_after) & (self.rooksFor(stm) | self.queensFor(stm)) != 0;
 
@@ -999,11 +1053,22 @@ pub inline fn givesDiscoveredCheck(noalias self: *const Board, move: Move) bool 
     return false;
 }
 
+pub inline fn givesDiscoveredCheck(noalias self: *const Board, move: Move) bool {
+    return givesDiscoveredCheckImpl(self, &self.aux, move);
+}
+
 pub inline fn givesCheck(noalias self: *const Board, move: Move) bool {
     if (self.givesDiscoveredCheck(move)) {
         return true;
     }
     return self.givesDirectCheck(move);
+}
+
+pub fn computeGivesCheck(self: anytype, masks: *const AuxMasks, move: Move) bool {
+    if (givesDiscoveredCheckImpl(self, masks, move)) {
+        return true;
+    }
+    return givesDirectCheckImpl(self, masks, move);
 }
 
 fn hasDirectCheck(noalias self: *const Board) bool {
@@ -1118,7 +1183,7 @@ test "en passant discovered check" {
         try std.testing.expect(board.givesCheck(case.move));
 
         board.makeMoveSimple(case.move);
-        try std.testing.expect(board.checkers != 0);
+        try std.testing.expect(board.checkers() != 0);
     }
 
     inline for (.{
@@ -1133,7 +1198,7 @@ test "en passant discovered check" {
         try std.testing.expect(!board.givesCheck(case.move));
 
         board.makeMoveSimple(case.move);
-        try std.testing.expectEqual(@as(u64, 0), board.checkers);
+        try std.testing.expectEqual(@as(u64, 0), board.checkers());
     }
 }
 
@@ -1232,10 +1297,10 @@ pub fn makeMove(noalias self: *Board, move: Move, eval_state: anytype) void {
     }
 }
 
-pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype, comptime defer_threats: bool) void {
+pub inline fn makeMoveCommon(self: anytype, comptime stm: Colour, move: Move, eval_state: anytype) void {
     self.plies += 1;
     var updated_halfmove = self.halfmove + 1;
-    var updated_castling_rights = self.castling_rights;
+    var updated_castling_rights: CastlingRights = self.castling_rights;
     self.updateEPHash();
     self.ep_target = null;
 
@@ -1331,6 +1396,11 @@ pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, 
     self.castling_rights = updated_castling_rights;
     self.stm = stm.flipped();
     self.fullmove += stm.toInt();
+    self.updateTurnHash();
+}
+
+pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, eval_state: anytype, comptime defer_threats: bool) void {
+    makeMoveCommon(self, stm, move, eval_state);
 
     if (defer_threats) {
         self.updateKingThreats(stm.flipped());
@@ -1338,7 +1408,6 @@ pub fn makeMoveInternal(noalias self: *Board, comptime stm: Colour, move: Move, 
     } else {
         self.updateMasks(stm.flipped());
     }
-    self.updateTurnHash();
 }
 
 pub inline fn parseMoveStr(self: *const Board, str: []const u8) !Move {
@@ -1363,27 +1432,29 @@ pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
     self.makeMove(move, root.evaluation.noHandle());
 }
 
-pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
-    if (san_move_inp[0] == 'O') {
-        switch (self.stm) {
-            inline else => |stm| {
-                var ml = movegen.MoveListReceiver{};
-                root.movegen.generateKingQuiets(stm, self, &ml);
-                const queenside = san_move_inp.len >= "O-O-O".len and std.mem.eql(u8, san_move_inp[0..5], "O-O-O");
-                for (ml.vals.slice()) |move| {
-                    if (move.tp() != .castling) {
-                        continue;
-                    }
-                    if ((CastlingRights.castlingKingDestFor(move, stm).getFile() == .c) == queenside) {
-                        return move;
-                    }
-                }
-            },
-        }
-        return null;
-    }
+fn parseSANCastling(self: anytype, queenside: bool) ?Move {
+    const stm = self.stm;
+    const cr = self.castling_rights;
+    const has_rights = if (queenside) cr.queensideCastlingFor(stm) else cr.kingsideCastlingFor(stm);
+    if (!has_rights) return null;
+    if (@popCount(self.kingFor(stm)) != 1) return null;
+    const king_sq: Square = .fromBitboard(self.kingFor(stm));
+    const rook_file = if (queenside) cr.queensideRookFileFor(stm) else cr.kingsideRookFileFor(stm);
+    const rook_from = CastlingRights.startingRankSquare(stm, rook_file);
+    if (self.rooksFor(stm) & rook_from.toBitboard() == 0) return null;
+    return if (queenside) Move.castlingQueenside(stm, king_sq, rook_from) else Move.castlingKingside(stm, king_sq, rook_from);
+}
+
+const SANParts = struct {
+    piece: PieceType,
+    destination: Square,
+    promo_type: ?PieceType,
+    start_mask: u64,
+    pawn_is_push: bool,
+};
+
+fn parseSANParts(san_move_inp: []const u8) ?SANParts {
     var san_move = san_move_inp;
-    if (san_move.len == 0) return null;
 
     while (san_move.len > 0) {
         switch (san_move[san_move.len - 1]) {
@@ -1394,11 +1465,11 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
 
     if (san_move.len < 2) return null;
 
-    const promo_type = switch (san_move[san_move.len - 1]) {
+    const promo_type: ?PieceType = switch (san_move[san_move.len - 1]) {
         '1'...'8' => null,
         else => |p| blk: {
             if (san_move.len < 3) return null;
-            const pt = PieceType.fromAsciiLetter(p);
+            const pt = PieceType.fromAsciiLetter(p) orelse return null;
             if (pt == .king or pt == .pawn) return null;
             san_move.len -= 1;
             if (san_move[san_move.len - 1] == '=') {
@@ -1413,7 +1484,7 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
         File.parse(san_move[san_move.len - 2]) catch return null,
     );
 
-    const tp: PieceType = switch (san_move[0]) {
+    const piece: PieceType = switch (san_move[0]) {
         'a'...'h' => .pawn,
         'N' => .knight,
         'B' => .bishop,
@@ -1423,48 +1494,85 @@ pub fn parseSANMove(self: *const Board, san_move_inp: []const u8) ?Move {
         else => return null,
     };
 
-    var is_capture: bool = false;
-    var allowed_start_mask: u64 = std.math.maxInt(u64);
+    var start_mask: u64 = std.math.maxInt(u64);
     for (san_move[0 .. san_move.len - 2]) |c| switch (c) {
-        '1'...'8' => allowed_start_mask &= @as(u64, 0b11111111) << @intCast(8 * (c - '1')),
-        'a'...'h' => allowed_start_mask &= @as(u64, std.math.maxInt(u64) / std.math.maxInt(u8)) << @intCast(c - 'a'),
-        'x' => is_capture = true,
+        '1'...'8' => start_mask &= @as(u64, 0xff) << @intCast(8 * (c - '1')),
+        'a'...'h' => start_mask &= @as(u64, 0x0101010101010101) << @intCast(c - 'a'),
         else => {},
     };
 
-    switch (self.stm) {
-        inline else => |stm| {
-            var ml = movegen.MoveListReceiver{};
-            root.movegen.generateAllQuietsWithMask(stm, self, &ml, destination.toBitboard());
-            root.movegen.generateAllNoisiesWithMask(stm, self, &ml, destination.toBitboard());
-            var valid_count: usize = 0;
+    return .{
+        .piece = piece,
+        .destination = destination,
+        .promo_type = promo_type,
+        .start_mask = start_mask,
+        .pawn_is_push = san_move[0] == destination.getFile().toAsciiLetter(),
+    };
+}
 
-            for (ml.vals.slice()) |move| {
-                if (move.to() != destination) {
-                    continue;
-                }
-                if (move.from().toBitboard() & allowed_start_mask == 0) {
-                    continue;
-                }
-                if (self.pieceOn(move.from()) != tp) {
-                    continue;
-                }
-                const move_promotype = if (move.tp() == .promotion) move.promoType() else null;
-                if (promo_type != move_promotype) {
-                    continue;
-                }
-                if (!std.debug.runtime_safety) {
-                    return move;
-                }
-                ml.vals.slice()[valid_count] = move;
-                valid_count += 1;
+fn sanCandidateMove(from: Square, dest: Square, promo_type: ?PieceType, is_ep: bool) Move {
+    if (promo_type) |pt| return Move.promo(from, dest, pt);
+    if (is_ep) return Move.enPassant(from, dest);
+    return Move.quiet(from, dest);
+}
+
+pub fn parseSANMove(self: anytype, san_move_inp: []const u8) ?Move {
+    if (san_move_inp.len == 0) return null;
+    const stm = self.stm;
+    if (san_move_inp[0] == 'O' or san_move_inp[0] == '0') {
+        const queenside = std.mem.startsWith(u8, san_move_inp, "O-O-O") or std.mem.startsWith(u8, san_move_inp, "0-0-0");
+        return parseSANCastling(self, queenside);
+    }
+    if (@popCount(self.kingFor(stm)) != 1) return null;
+
+    const parts = parseSANParts(san_move_inp) orelse return null;
+    const destination = parts.destination;
+    const dest_bb = destination.toBitboard();
+    if (self.occupancyFor(stm) & dest_bb != 0) return null;
+    const promo_rank: Rank = if (stm == .white) .eighth else .first;
+    if ((parts.piece == .pawn and destination.getRank() == promo_rank) != (parts.promo_type != null)) return null;
+
+    const occ = self.occupancy();
+    const ep_bb: u64 = if (self.ep_target) |ep| ep.toBitboard() else 0;
+    const candidates: u64 = parts.start_mask & switch (parts.piece) {
+        .pawn => blk: {
+            const back: i8 = if (stm == .white) -1 else 1;
+            if (!parts.pawn_is_push) {
+                if ((self.occupancyFor(stm.flipped()) | ep_bb) & dest_bb == 0) break :blk 0;
+                break :blk Bitboard.pawnAttacks(destination, stm.flipped()) & self.pawnsFor(stm);
             }
-            if (valid_count == 1) {
-                if (promo_type != null) {}
-                return ml.vals.slice()[0];
+            if (occ & dest_bb != 0) break :blk 0;
+            const one = Bitboard.move(dest_bb, back, 0);
+            var cands = one & self.pawnsFor(stm);
+            const double_rank: Rank = if (stm == .white) .fourth else .fifth;
+            if (destination.getRank() == double_rank) {
+                cands |= Bitboard.move(one & ~occ, back, 0) & self.pawnsFor(stm);
             }
-            // std.debug.print("valid: {} {s} {} {} '{s}'\n", .{ valid_count, self.toFen().slice(), allowed_start_mask, destination, san_move });
+            break :blk cands;
         },
+        .knight => Bitboard.knightMoves(destination) & self.knightsFor(stm),
+        .bishop => attacks.bishopAttacks(destination, occ) & self.bishopsFor(stm),
+        .rook => attacks.rookAttacks(destination, occ) & self.rooksFor(stm),
+        .queen => attacks.queenAttacks(destination, occ) & self.queensFor(stm),
+        .king => Bitboard.kingMoves(destination) & self.kingFor(stm),
+    };
+    if (candidates == 0) return null;
+
+    const is_ep = parts.piece == .pawn and ep_bb & dest_bb != 0 and !parts.pawn_is_push;
+    if (candidates & (candidates - 1) == 0) {
+        return sanCandidateMove(.fromBitboard(candidates), destination, parts.promo_type, is_ep);
+    }
+
+    const king_sq: Square = .fromBitboard(self.kingFor(stm));
+    var masks: AuxMasks = .{};
+    computeKingThreats(self, &masks, stm);
+    const pinned = masks.pinnedFor(stm);
+    var from_iter = Bitboard.iterator(candidates);
+    while (from_iter.next()) |from_sq| {
+        if (pinned & from_sq.toBitboard() != 0 and Bitboard.queenRayBetweenExclusive(from_sq, king_sq) & dest_bb == 0) {
+            continue;
+        }
+        return sanCandidateMove(from_sq, destination, parts.promo_type, is_ep);
     }
     return null;
 }
@@ -1576,7 +1684,7 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
     const to_bb = to.toBitboard();
 
     if (tp == .castling) {
-        if (self.checkers != 0) {
+        if (self.checkers() != 0) {
             return false;
         }
 
@@ -1610,7 +1718,7 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
 
     const pt = self.pieceOn(from).?;
 
-    if (self.checkers & self.checkers -% 1 != 0) {
+    if (self.checkers() & self.checkers() -% 1 != 0) {
         return pt == .king and
             tp == .default and move.extra() == 0 and
             Bitboard.kingMoves(from) & to_bb != 0 and
@@ -1640,8 +1748,8 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
         ) == 0;
     }
 
-    if (self.checkers != 0) {
-        if (Bitboard.checkMask(Square.fromBitboard(self.kingFor(stm)), Square.fromBitboard(self.checkers)) & to_bb == 0) {
+    if (self.checkers() != 0) {
+        if (Bitboard.checkMask(Square.fromBitboard(self.kingFor(stm)), Square.fromBitboard(self.checkers())) & to_bb == 0) {
             return false;
         }
     }

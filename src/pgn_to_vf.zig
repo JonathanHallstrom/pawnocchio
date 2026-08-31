@@ -97,7 +97,7 @@ pub fn convert(
     var ply_reader = pgn.scoredPlyReader(input, allocator);
     defer ply_reader.deinit();
 
-    var game_record = GameRecord.from(.{}, allocator);
+    var game_record = GameRecord.from(Board{}, allocator);
     defer game_record.deinit();
 
     var scored_moves: std.ArrayListUnmanaged(ScoredMove) = .empty;

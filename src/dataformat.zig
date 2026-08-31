@@ -16,13 +16,27 @@
 
 const std = @import("std");
 const root = @import("root.zig");
-const Board = root.Board;
+const LeanBoard = root.LeanBoard;
 const Move = root.Move;
 
 pub const FileFormat = enum {
     pgn,
     viriformat,
 };
+
+pub fn ReaderFor(comptime format: FileFormat) type {
+    return switch (format) {
+        .viriformat => root.viriformat.ScoredPlyReader,
+        .pgn => root.pgn.ScoredPlyReader,
+    };
+}
+
+pub fn readerFor(comptime format: FileFormat, reader: *std.Io.Reader, allocator: std.mem.Allocator) ReaderFor(format) {
+    return switch (format) {
+        .viriformat => root.viriformat.scoredPlyReader(reader, allocator),
+        .pgn => root.pgn.scoredPlyReader(reader, allocator),
+    };
+}
 
 pub const ScoredMove = struct {
     move: Move,
@@ -39,7 +53,7 @@ pub const ScoredMove = struct {
 };
 
 pub const ScoredPly = struct {
-    board: *Board,
+    board: *const LeanBoard,
     move: Move,
     _eval: ?i16,
 

@@ -168,7 +168,7 @@ fn recordL1Stats(activated_ft: *const [arch.L1_SIZE]u8, nnz: usize) void {
 pub fn forward(
     resolved: anytype,
     weights: *const arch.Weights,
-    board: *const Board,
+    board: anytype,
 ) i16 {
     // const timer = @import("../../root.zig").engine.time("eval_forward");
     // defer timer.register();

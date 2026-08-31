@@ -39,7 +39,7 @@ pub const Weights = extern struct {
 pub fn forward(
     resolved: anytype,
     weights: *const arch.Weights,
-    board: *const Board,
+    board: anytype,
 ) i16 {
     const output_bucket = arch.whichOutputBucket(@popCount(board.occupancy()));
     const ow = &weights.output;

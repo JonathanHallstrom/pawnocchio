@@ -143,12 +143,12 @@ pub inline fn legalMoveList(noalias board: *const Board) MoveListReceiver {
 
 pub inline fn generateAllQuiets(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
     var check_mask = ~@as(u64, 0);
-    if (board.checkers != 0) {
-        if (board.checkers & board.checkers -% 1 != 0) {
+    if (board.checkers() != 0) {
+        if (board.checkers() & board.checkers() -% 1 != 0) {
             generateKingQuiets(stm, board, move_receiver);
             return;
         }
-        check_mask = Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers));
+        check_mask = Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers()));
     }
     generateSliderQuiets(stm, board, check_mask, move_receiver);
     generateKnightQuiets(stm, board, check_mask, move_receiver);
@@ -158,12 +158,12 @@ pub inline fn generateAllQuiets(comptime stm: Colour, noalias board: *const Boar
 
 pub inline fn generateAllNoisies(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype) void {
     var check_mask = ~@as(u64, 0);
-    if (board.checkers != 0) {
-        if (board.checkers & board.checkers -% 1 != 0) {
+    if (board.checkers() != 0) {
+        if (board.checkers() & board.checkers() -% 1 != 0) {
             generateKingNoisies(stm, board, move_receiver);
             return;
         }
-        check_mask = Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers));
+        check_mask = Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers()));
     }
     generateSliderNoisies(stm, board, check_mask, move_receiver);
     generateKnightNoisies(stm, board, check_mask, move_receiver);
@@ -173,12 +173,12 @@ pub inline fn generateAllNoisies(comptime stm: Colour, noalias board: *const Boa
 
 pub inline fn generateAllQuietsWithMask(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype, mask: u64) void {
     var check_mask = mask;
-    if (board.checkers != 0) {
-        if (board.checkers & board.checkers -% 1 != 0) {
+    if (board.checkers() != 0) {
+        if (board.checkers() & board.checkers() -% 1 != 0) {
             generateKingQuiets(stm, board, move_receiver);
             return;
         }
-        check_mask &= Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers));
+        check_mask &= Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers()));
     }
     generateSliderQuiets(stm, board, check_mask, move_receiver);
     generateKnightQuiets(stm, board, check_mask, move_receiver);
@@ -188,12 +188,12 @@ pub inline fn generateAllQuietsWithMask(comptime stm: Colour, noalias board: *co
 
 pub inline fn generateAllNoisiesWithMask(comptime stm: Colour, noalias board: *const Board, noalias move_receiver: anytype, mask: u64) void {
     var check_mask = mask;
-    if (board.checkers != 0) {
-        if (board.checkers & board.checkers -% 1 != 0) {
+    if (board.checkers() != 0) {
+        if (board.checkers() & board.checkers() -% 1 != 0) {
             generateKingNoisies(stm, board, move_receiver);
             return;
         }
-        check_mask &= Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers));
+        check_mask &= Bitboard.checkMask(Square.fromBitboard(board.kingFor(stm)), Square.fromBitboard(board.checkers()));
     }
     generateSliderNoisies(stm, board, check_mask, move_receiver);
     generateKnightNoisies(stm, board, check_mask, move_receiver);
@@ -331,7 +331,7 @@ pub inline fn generatePawnNoisies(comptime stm: Colour, noalias board: *const Bo
     if (board.ep_target) |target| {
         const captured_sq = target.move(-d_rank, 0);
         const captured_bb = captured_sq.toBitboard();
-        if (board.checkers & ~captured_bb != 0) return;
+        if (board.checkers() & ~captured_bb != 0) return;
 
         if (Bitboard.move(left_movable, d_rank, -1) & target.toBitboard() != 0) {
             const from = target.move(-d_rank, 1);
@@ -382,7 +382,7 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
 
     emitBB(king_sq, Bitboard.kingMoves(king_sq) & ~occ & ~their_threats, move_receiver);
 
-    if (board.checkers == 0) {
+    if (board.checkers() == 0) {
         const home_rank: Rank = CastlingRights.startingRankFor(stm);
 
         const kingside_rook_file = board.castling_rights.kingsideRookFileFor(stm);

@@ -17,23 +17,21 @@
 const std = @import("std");
 const root = @import("root.zig");
 const Board = root.Board;
+const LeanBoard = root.LeanBoard;
 const Move = root.Move;
 const WDL = root.WDL;
 const dataformat = root.dataformat;
 const ScoredPly = dataformat.ScoredPly;
-const ScoredMove = dataformat.ScoredMove;
 
 pub const ScoredPlyReader = struct {
     reader: *std.Io.Reader,
     allocator: std.mem.Allocator,
     buffer: std.ArrayListUnmanaged(u8),
-    move_buffer: std.ArrayListUnmanaged(ScoredMove),
-    initial_board: Board,
 
     pub const Iter = struct {
         text: []const u8,
         cursor: usize,
-        board: Board,
+        board: LeanBoard,
         pending: ?Move = null,
         exhausted: bool = false,
 
@@ -41,32 +39,41 @@ pub const ScoredPlyReader = struct {
             if (self.exhausted) return null;
 
             if (self.pending) |move| {
-                self.board.makeMoveSimple(move);
+                self.board.makeMove(move);
                 self.pending = null;
             }
 
             while (self.cursor < self.text.len) {
                 const remainder = self.text[self.cursor..];
 
-                if (isStartOfGameTerminationMarker(remainder)) {
-                    self.exhausted = true;
-                    return null;
-                }
-
                 switch (remainder[0]) {
+                    ' ', '\t', '\r', '\n' => {
+                        self.cursor += 1;
+                        continue;
+                    },
                     '0'...'9' => {
-                        const end_of_num = std.mem.indexOfNone(u8, remainder, "0123456789") orelse remainder.len;
-                        if (end_of_num < remainder.len and remainder[end_of_num] == '.') {
-                            self.cursor += std.mem.indexOfNone(u8, remainder, "0123456789.") orelse remainder.len;
+                        if (isStartOfGameTerminationMarker(remainder)) {
+                            self.exhausted = true;
+                            return null;
+                        }
+                        var end: usize = 1;
+                        while (end < remainder.len and std.ascii.isDigit(remainder[end])) end += 1;
+                        if (end < remainder.len and remainder[end] == '.') {
+                            while (end < remainder.len and (std.ascii.isDigit(remainder[end]) or remainder[end] == '.')) end += 1;
+                            self.cursor += end;
                             continue;
                         }
                     },
                     '{' => {
-                        self.cursor += if (std.mem.indexOfScalar(u8, remainder, '}')) |end| end + 1 else remainder.len;
+                        var end: usize = 1;
+                        while (end < remainder.len and remainder[end] != '}') end += 1;
+                        self.cursor += @min(end + 1, remainder.len);
                         continue;
                     },
                     '$' => {
-                        self.cursor += if (std.mem.indexOfNone(u8, remainder[1..], "0123456789")) |end| end + 1 else remainder.len;
+                        var end: usize = 1;
+                        while (end < remainder.len and std.ascii.isDigit(remainder[end])) end += 1;
+                        self.cursor += end;
                         continue;
                     },
                     '(' => {
@@ -83,15 +90,11 @@ pub const ScoredPlyReader = struct {
                         }
                         continue;
                     },
-                    else => |c| {
-                        if (std.ascii.isWhitespace(c)) {
-                            self.cursor += 1;
-                            continue;
-                        }
-                    },
+                    else => {},
                 }
 
-                const move_text_len = std.mem.indexOfAny(u8, remainder, &std.ascii.whitespace ++ "{(!$!?") orelse remainder.len;
+                var move_text_len: usize = 0;
+                while (move_text_len < remainder.len and !TOKEN_END[remainder[move_text_len]]) move_text_len += 1;
                 if (move_text_len == 0) {
                     self.cursor += 1;
                     continue;
@@ -104,21 +107,21 @@ pub const ScoredPlyReader = struct {
                 };
 
                 var eval: ?i16 = null;
-                const after_move = self.text[self.cursor..];
-                const trimmed_after = std.mem.trimStart(u8, after_move, &std.ascii.whitespace);
-                if (std.mem.startsWith(u8, trimmed_after, "{")) {
-                    if (std.mem.indexOfScalar(u8, trimmed_after, '}')) |end_brace| {
-                        const comment = trimmed_after[1..end_brace];
-                        self.cursor += (trimmed_after.ptr - after_move.ptr) + end_brace + 1;
-
-                        eval = parseEval(comment);
+                var comment_start: usize = self.cursor;
+                while (comment_start < self.text.len and std.ascii.isWhitespace(self.text[comment_start])) comment_start += 1;
+                if (comment_start < self.text.len and self.text[comment_start] == '{') {
+                    var comment_end: usize = comment_start + 1;
+                    while (comment_end < self.text.len and self.text[comment_end] != '}') comment_end += 1;
+                    if (comment_end < self.text.len) {
+                        eval = parseEval(self.text[comment_start + 1 .. comment_end]);
+                        self.cursor = comment_end + 1;
                     }
                 }
 
                 const white_eval = if (eval) |ev| (if (self.board.stm == .black) -ev else ev) else null;
                 self.pending = move;
 
-                return ScoredPly{
+                return .{
                     .board = &self.board,
                     .move = move,
                     ._eval = white_eval,
@@ -133,74 +136,98 @@ pub const ScoredPlyReader = struct {
     pub fn next(self: *ScoredPlyReader) !?GameView {
         self.buffer.clearRetainingCapacity();
 
-        var byte: u8 = undefined;
         while (true) {
-            byte = self.reader.takeByte() catch |e| switch (e) {
-                error.EndOfStream => return null,
-                else => return e,
+            const window = self.reader.buffered();
+            if (window.len == 0) {
+                self.reader.fillMore() catch |e| switch (e) {
+                    error.EndOfStream => return null,
+                    else => return e,
+                };
+                continue;
+            }
+            const non_ws = std.mem.indexOfNone(u8, window, &std.ascii.whitespace) orelse {
+                self.reader.toss(window.len);
+                continue;
             };
-            if (!std.ascii.isWhitespace(byte)) break;
+            self.reader.toss(non_ws);
+            break;
         }
 
-        try self.buffer.append(self.allocator, byte);
+        var seen_movetext = false;
 
-        var bracket_depth: usize = if (byte == '[') 1 else 0;
-        var brace_depth: usize = if (byte == '{') 1 else 0;
-        var paren_depth: usize = if (byte == '(') 1 else 0;
-
-        var seen_marker = false;
         while (true) {
-            byte = self.reader.takeByte() catch |e| switch (e) {
-                error.EndOfStream => break,
-                else => return e,
-            };
-            try self.buffer.append(self.allocator, byte);
-
-            switch (byte) {
-                '[' => if (brace_depth == 0 and paren_depth == 0) {
-                    bracket_depth += 1;
-                },
-                ']' => if (brace_depth == 0 and paren_depth == 0 and bracket_depth > 0) {
-                    bracket_depth -= 1;
-                },
-                '{' => brace_depth += 1,
-                '}' => if (brace_depth > 0) {
-                    brace_depth -= 1;
-                },
-                '(' => if (brace_depth == 0) {
-                    paren_depth += 1;
-                },
-                ')' => if (brace_depth == 0 and paren_depth > 0) {
-                    paren_depth -= 1;
-                },
-                else => {},
+            const window = self.reader.buffered();
+            if (window.len == 0) {
+                self.reader.fillMore() catch |e| switch (e) {
+                    error.EndOfStream => {
+                        if (self.buffer.items.len > 0 and isGameTerminationMarker(self.buffer.items)) {
+                            return try GameView.fromText(self.buffer.items);
+                        }
+                        return null;
+                    },
+                    else => return e,
+                };
+                continue;
             }
-
-            if (bracket_depth == 0 and brace_depth == 0 and paren_depth == 0) {
-                if (isGameTerminationMarker(self.buffer.items)) {
-                    seen_marker = true;
-                    break;
+            if (self.buffer.items.len > 0 and self.buffer.items[self.buffer.items.len - 1] == '\n') {
+                const first_byte = window[0];
+                if (first_byte == '[') {
+                    if (seen_movetext) {
+                        return try GameView.fromText(self.buffer.items);
+                    }
+                } else if (first_byte != '\r' and first_byte != '\n') {
+                    seen_movetext = true;
                 }
             }
+            var scan_pos: usize = 0;
+            while (scan_pos < window.len) {
+                const newline = findByteFrom(window, scan_pos, '\n') orelse break;
+                if (newline + 1 >= window.len) break;
+                const next_byte = window[newline + 1];
+                if (next_byte == '[') {
+                    if (seen_movetext) {
+                        try self.buffer.appendSlice(self.allocator, window[0 .. newline + 1]);
+                        self.reader.toss(newline + 1);
+                        return try GameView.fromText(self.buffer.items);
+                    }
+                } else if (next_byte != '\r' and next_byte != '\n') {
+                    seen_movetext = true;
+                }
+                scan_pos = newline + 1;
+            }
+            try self.buffer.appendSlice(self.allocator, window);
+            self.reader.toss(window.len);
         }
-
-        if (self.buffer.items.len == 0 or !seen_marker) return null;
-
-        return try GameView.fromText(self.buffer.items);
     }
 
     pub fn deinit(self: *ScoredPlyReader) void {
         self.buffer.deinit(self.allocator);
-        self.move_buffer.deinit(self.allocator);
-    }
-
-    pub fn toDynamic(self: *ScoredPlyReader) root.dynamic_reader.DynamicReader {
-        return .{
-            .ptr = @ptrCast(self),
-            .vtable = &pgn_reader_vtable,
-        };
     }
 };
+
+const SCAN_WIDTH = 32;
+
+fn findByteFrom(haystack: []const u8, start: usize, comptime needle: u8) ?usize {
+    var i = start;
+    while (i + SCAN_WIDTH <= haystack.len) : (i += SCAN_WIDTH) {
+        const chunk: @Vector(SCAN_WIDTH, u8) = haystack[i..][0..SCAN_WIDTH].*;
+        const matches: u32 = @bitCast(chunk == @as(@Vector(SCAN_WIDTH, u8), @splat(needle)));
+        if (matches != 0) return i + @ctz(matches);
+    }
+    while (i < haystack.len) : (i += 1) {
+        if (haystack[i] == needle) return i;
+    }
+    return null;
+}
+
+fn byteSet(comptime chars: []const u8) [256]bool {
+    var set = std.mem.zeroes([256]bool);
+    for (chars) |c| set[c] = true;
+    return set;
+}
+
+const TOKEN_END = byteSet(std.ascii.whitespace ++ "{(!$?");
+const EVAL_DELIMS = byteSet(std.ascii.whitespace ++ "/{}");
 
 const TERMINATION_MARKERS = [_][]const u8{ "1-0", "0-1", "1/2-1/2" };
 
@@ -227,48 +254,14 @@ fn isStartOfGameTerminationMarker(text: []const u8) bool {
     return false;
 }
 
-const DynamicReader = root.dynamic_reader.DynamicReader;
-const DynamicGameView = root.dynamic_reader.DynamicGameView;
-
-const pgn_reader_vtable: DynamicReader.VTable = .{
-    .next = pgnReaderNext,
-    .deinit = pgnReaderDeinit,
-};
-
-fn pgnReaderNext(ptr: *anyopaque) !?DynamicGameView {
-    const reader: *ScoredPlyReader = @ptrCast(@alignCast(ptr));
-    const game_view = try reader.next() orelse return null;
-
-    reader.initial_board = game_view.initial_board;
-    reader.move_buffer.clearRetainingCapacity();
-    var it = game_view.iter();
-    while (try it.next()) |ply| {
-        try reader.move_buffer.append(reader.allocator, .{
-            .move = ply.move,
-            .score = ply.whiteEval(),
-        });
-    }
-
-    return DynamicGameView{
-        .initial_board = &reader.initial_board,
-        .outcome = game_view.outcome,
-        .moves = reader.move_buffer.items,
-    };
-}
-
-fn pgnReaderDeinit(ptr: *anyopaque) void {
-    const reader: *ScoredPlyReader = @ptrCast(@alignCast(ptr));
-    reader.deinit();
-}
-
 pub const GameView = struct {
     text: []const u8,
-    initial_board: Board,
+    initial_board: LeanBoard,
     outcome: WDL,
     move_section_offset: usize,
 
     pub fn fromText(text: []const u8) !GameView {
-        var initial_board = Board.startpos();
+        var fen: ?[]const u8 = null;
         var outcome: WDL = .draw;
         var move_section_offset: usize = 0;
 
@@ -282,8 +275,7 @@ pub const GameView = struct {
                             if (std.mem.indexOfScalar(u8, header[fen_idx..], '"')) |q1| {
                                 const start = fen_idx + q1 + 1;
                                 if (std.mem.indexOfScalar(u8, header[start..], '"')) |q2| {
-                                    const fen = header[start .. start + q2];
-                                    initial_board = try Board.parseFen(fen, true);
+                                    fen = header[start .. start + q2];
                                 }
                             }
                         } else if (std.mem.indexOf(u8, header, "Result")) |res_idx| {
@@ -318,6 +310,7 @@ pub const GameView = struct {
             outcome = .draw;
         }
 
+        const initial_board = if (fen) |f| try LeanBoard.parseFen(f, true) else LeanBoard.fromBoard(&Board.startpos());
         return .{
             .text = text,
             .initial_board = initial_board,
@@ -336,28 +329,36 @@ pub const GameView = struct {
 };
 
 fn parseEval(info: []const u8) ?i16 {
-    if (std.mem.indexOf(u8, info, "[%eval ")) |index| {
-        const start = index + "[%eval ".len;
-        const end = std.mem.indexOfScalarPos(u8, info, start, ']') orelse info.len;
-        return parseScoreStr(info[start..end]) catch null;
-    }
-
-    var it = std.mem.tokenizeAny(u8, info, &std.ascii.whitespace ++ "/{}");
-    if (it.next()) |score_str| {
-        return parseScoreStr(score_str) catch null;
-    }
-    return null;
+    var i: usize = 0;
+    while (i < info.len and EVAL_DELIMS[info[i]]) i += 1;
+    var j: usize = i;
+    while (j < info.len and !EVAL_DELIMS[info[j]]) j += 1;
+    if (j == i) return null;
+    return parseScoreStr(info[i..j]) catch null;
 }
 
 fn parseScoreStr(score_str: []const u8) !i16 {
-    if (score_str.len == 0) return error.Empty;
-    if (std.mem.indexOfAny(u8, score_str, "M#") != null) {
-        const sign: i16 = if (std.mem.startsWith(u8, score_str, "-")) -1 else 1;
-        return sign * 32767;
+    var s = score_str;
+    var neg = false;
+    if (s.len > 0 and (s[0] == '+' or s[0] == '-')) {
+        neg = s[0] == '-';
+        s = s[1..];
     }
-    const val = try std.fmt.parseFloat(f64, score_str);
-    const clamped = std.math.clamp(@round(val * 100), -32767, 32767);
-    return @intFromFloat(clamped);
+    if (s.len == 0 or s.len > 8) return error.InvalidScore;
+    if (s[0] == 'M') return if (neg) -32767 else 32767;
+    if (s.len < 4 or s[s.len - 3] != '.') return error.InvalidScore;
+    var cp: i64 = 0;
+    for (s[0 .. s.len - 3]) |c| {
+        const d = c -% '0';
+        if (d > 9) return error.InvalidScore;
+        cp = cp * 10 + d;
+    }
+    const tenths = s[s.len - 2] -% '0';
+    const hundredths = s[s.len - 1] -% '0';
+    if (tenths > 9 or hundredths > 9) return error.InvalidScore;
+    cp = cp * 100 + tenths * 10 + hundredths;
+    if (neg) cp = -cp;
+    return @intCast(std.math.clamp(cp, -32767, 32767));
 }
 
 pub fn scoredPlyReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) ScoredPlyReader {
@@ -365,7 +366,5 @@ pub fn scoredPlyReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) Sco
         .reader = reader,
         .allocator = allocator,
         .buffer = .empty,
-        .move_buffer = .empty,
-        .initial_board = undefined,
     };
 }

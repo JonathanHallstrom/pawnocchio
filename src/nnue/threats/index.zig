@@ -244,7 +244,7 @@ fn perspectiveBelow(from: Square, sq_mask: u8) u64 {
     return below;
 }
 
-pub fn collectRefreshThreats(out: []u16, board: *const Board, colour: Colour) usize {
+pub fn collectRefreshThreats(out: []u16, board: anytype, colour: Colour) usize {
     const occ = board.occupancy();
     const king_sq = Square.fromBitboard(board.kingFor(colour));
     const piece_bbs = board.pieceBBs();

@@ -31,26 +31,32 @@ const impl = switch (EVAL_MODE) {
 
 const material = @import("material_eval.zig");
 
-pub const Context = impl.Context;
+pub fn Context(comptime B: type) type {
+    return impl.Context(B);
+}
 
-pub const globalCtx = struct {
-    var ctx: Context = undefined;
-    var initialised: bool = false;
-    var mutex: std.atomic.Mutex = .unlocked;
+pub fn GlobalCtx(comptime B: type) type {
+    return struct {
+        var ctx: Context(B) = undefined;
+        var initialised: bool = false;
+        var mutex: std.atomic.Mutex = .unlocked;
 
-    pub fn lock() *Context {
-        while (!mutex.tryLock()) std.atomic.spinLoopHint();
-        if (!initialised) {
-            initialised = true;
-            ctx.initForThread(0);
+        pub fn lock() *Context(B) {
+            while (!mutex.tryLock()) std.atomic.spinLoopHint();
+            if (!initialised) {
+                initialised = true;
+                ctx.initForThread(0);
+            }
+            return &ctx;
         }
-        return &ctx;
-    }
 
-    pub fn release() void {
-        mutex.unlock();
-    }
-};
+        pub fn release() void {
+            mutex.unlock();
+        }
+    };
+}
+
+pub const globalCtx = GlobalCtx(Board);
 
 pub fn Handle(comptime T: type) type {
     return struct {
@@ -96,19 +102,19 @@ pub fn Handle(comptime T: type) type {
             }
         }
 
-        pub inline fn threatOnChange(self: Self, board: *const Board, piece: root.ColouredPieceType, sq: root.Square, comptime is_add: bool) void {
+        pub inline fn threatOnChange(self: Self, board: anytype, piece: root.ColouredPieceType, sq: root.Square, comptime is_add: bool) void {
             if (comptime hasMethod("threatOnChange")) self.inner.threatOnChange(board, piece, sq, is_add);
         }
 
-        pub inline fn threatOnMove(self: Self, board: *const Board, old_piece: root.ColouredPieceType, src: root.Square, new_piece: root.ColouredPieceType, dst: root.Square) void {
+        pub inline fn threatOnMove(self: Self, board: anytype, old_piece: root.ColouredPieceType, src: root.Square, new_piece: root.ColouredPieceType, dst: root.Square) void {
             if (comptime hasMethod("threatOnMove")) self.inner.threatOnMove(board, old_piece, src, new_piece, dst);
         }
 
-        pub inline fn threatOnMutate(self: Self, board: *const Board, old_piece: root.ColouredPieceType, new_piece: root.ColouredPieceType, sq: root.Square) void {
+        pub inline fn threatOnMutate(self: Self, board: anytype, old_piece: root.ColouredPieceType, new_piece: root.ColouredPieceType, sq: root.Square) void {
             if (comptime hasMethod("threatOnMutate")) self.inner.threatOnMutate(board, old_piece, new_piece, sq);
         }
 
-        pub inline fn eval(self: Self, board: *const Board) i16 {
+        pub inline fn eval(self: Self, board: anytype) i16 {
             if (hasMethod("eval")) return self.inner.eval(board);
             return 0;
         }

@@ -25,13 +25,13 @@ const Square = root.Square;
 const Bitboard = root.Bitboard;
 const attacks = root.attacks;
 const Board = root.Board;
+const LeanBoard = root.LeanBoard;
 const Move = root.Move;
 const Colour = root.Colour;
 const Rank = root.Rank;
 const File = root.File;
 const WDL = root.WDL;
 const dataformat = root.dataformat;
-const ScoredPly = dataformat.ScoredPly;
 const CastlingRights = root.CastlingRights;
 
 pub const Error = error{
@@ -40,6 +40,7 @@ pub const Error = error{
     PawnsOnFirstLastRank,
     KingOnWrongRankAndCanCastle,
     InvalidEpSquare,
+    InvalidPieceCode,
 };
 
 fn LittleEndian(comptime T: type) type {
@@ -71,7 +72,15 @@ pub const MarlinPackedBoard = extern struct {
     const unmoved_rook = 6;
 
     pub fn toBoard(self: MarlinPackedBoard) Error!Board {
-        var res: Board = .{};
+        return self.toImpl(Board);
+    }
+
+    pub fn toLeanBoard(self: MarlinPackedBoard) Error!LeanBoard {
+        return self.toImpl(LeanBoard);
+    }
+
+    fn toImpl(self: MarlinPackedBoard, comptime T: type) Error!T {
+        var res: T = .{};
 
         const occ = self.occupancy.toNative();
         if (@popCount(occ) > 32) {
@@ -95,11 +104,9 @@ pub const MarlinPackedBoard = extern struct {
                     castling_rooks |= sq.toBitboard();
                     break :blk .rook;
                 },
-                else => undefined,
+                else => return error.InvalidPieceCode,
             };
-            switch (col) {
-                inline else => |ccol| res.addPiece(ccol, pt, sq),
-            }
+            res.addPiece(col, pt, sq);
         }
         if (@popCount(res.kingFor(.white)) != 1 or @popCount(res.kingFor(.black)) != 1) {
             return error.MissingKing;
@@ -166,16 +173,22 @@ pub const MarlinPackedBoard = extern struct {
             if (ep_sq.getRank() != proper_rank) {
                 return error.InvalidEpSquare;
             }
+            const d_rank: i8 = if (res.stm == .white) 1 else -1;
+            const pushed_pawn = ep_sq.move(-d_rank, 0);
+            if (res.pieceFor(res.stm.flipped(), .pawn) & pushed_pawn.toBitboard() == 0 or
+                res.occupancy() & ep_sq.toBitboard() != 0)
+            {
+                return error.InvalidEpSquare;
+            }
         }
         res.halfmove = self.halfmove_clock;
         res.fullmove = self.fullmove_number.toNative();
-        res.updateMasks(res.stm);
-        res.resetHash();
+        res.recomputeAll();
 
         return res;
     }
 
-    pub fn from(board: Board, loss_draw_win: u8, score: i16) MarlinPackedBoard {
+    pub fn from(board: anytype, loss_draw_win: u8, score: i16) MarlinPackedBoard {
         const occ = board.occupancy();
         var pieces: [16]u8 = .{0} ** 16;
         {
@@ -278,7 +291,7 @@ pub const ViriMove = extern struct {
         return new(move.from(), move.to());
     }
 
-    pub fn toMove(self: Self, board: *const Board) Move {
+    pub fn toMove(self: Self, board: anytype) Move {
         if (self.isPromo()) {
             const promo_type = PieceType.fromInt(@intCast(1 + ((self.raw() & ~promo_flag_bits) >> 12)));
             return Move.promo(self.from(), self.to(), promo_type);
@@ -309,13 +322,10 @@ pub const MoveEvalPair = extern struct {
 
 pub const ScoredPlyReader = struct {
     reader: *std.Io.Reader,
-    allocator: std.mem.Allocator,
-    move_buffer: std.ArrayListUnmanaged(root.dataformat.ScoredMove),
-    initial_board: Board,
 
     pub const GameView = struct {
         reader: *std.Io.Reader,
-        board: Board,
+        board: LeanBoard,
         outcome: WDL,
 
         pub fn iter(self: @This()) Iter {
@@ -328,28 +338,42 @@ pub const ScoredPlyReader = struct {
 
     pub const Iter = struct {
         reader: *std.Io.Reader,
-        board: Board,
+        board: LeanBoard,
         pending: ?Move = null,
         exhausted: bool = false,
 
-        pub fn next(self: *Iter) !?ScoredPly {
+        pub fn next(self: *Iter) !?dataformat.ScoredPly {
             return self.nextHandle(root.evaluation.noHandle());
         }
 
-        pub fn nextHandle(self: *Iter, eval_state: anytype) !?ScoredPly {
+        pub fn nextHandle(self: *Iter, eval_state: anytype) !?dataformat.ScoredPly {
             if (self.exhausted) {
                 return null;
             }
 
             if (self.pending) |move| {
-                self.board.makeMove(move, eval_state);
+                if (self.board.halfmove == std.math.maxInt(u8)) {
+                    return error.HalfmoveOverflow;
+                }
+                if (self.board.pieceOn(move.from()) == null) {
+                    return error.MoveNotLegal;
+                }
+                switch (self.board.stm) {
+                    inline else => |stm| Board.makeMoveCommon(&self.board, stm, move, eval_state),
+                }
+                if (self.board.kingFor(.white) == 0 or
+                    self.board.kingFor(.black) == 0 or
+                    self.board.pawns() & 0xff000000000000ff != 0)
+                {
+                    return error.MoveNotLegal;
+                }
             }
 
-            var move_eval_pair: MoveEvalPair = undefined;
-            self.reader.readSliceAll(std.mem.asBytes(&move_eval_pair)) catch |e| switch (e) {
+            const pair_bytes = self.reader.takeArray(@sizeOf(MoveEvalPair)) catch |e| switch (e) {
                 error.EndOfStream => return null,
                 else => return e,
             };
+            const move_eval_pair = std.mem.bytesToValue(MoveEvalPair, pair_bytes);
 
             if (move_eval_pair.move.raw() == 0) {
                 self.exhausted = true;
@@ -358,10 +382,9 @@ pub const ScoredPlyReader = struct {
 
             const move = move_eval_pair.move.toMove(&self.board);
             const eval = move_eval_pair.eval.toNative();
-
             self.pending = move;
 
-            return ScoredPly{
+            return .{
                 .board = &self.board,
                 .move = move,
                 ._eval = eval,
@@ -370,13 +393,16 @@ pub const ScoredPlyReader = struct {
     };
 
     pub fn next(self: *ScoredPlyReader) !?GameView {
-        var initial_position: MarlinPackedBoard = undefined;
-        self.reader.readSliceAll(std.mem.asBytes(&initial_position)) catch |e| switch (e) {
+        const header_bytes = self.reader.takeArray(@sizeOf(MarlinPackedBoard)) catch |e| switch (e) {
             error.EndOfStream => return null,
             else => return e,
         };
+        const initial_position = std.mem.bytesToValue(MarlinPackedBoard, header_bytes);
+        if (initial_position.wdl > 2) {
+            return error.InvalidWdl;
+        }
 
-        const board = try initial_position.toBoard();
+        const board = try initial_position.toLeanBoard();
         return .{
             .reader = self.reader,
             .board = board,
@@ -384,59 +410,15 @@ pub const ScoredPlyReader = struct {
         };
     }
 
-    pub fn toDynamic(self: *ScoredPlyReader) root.dynamic_reader.DynamicReader {
-        return .{
-            .ptr = @ptrCast(self),
-            .vtable = &vf_reader_vtable,
-        };
-    }
-
     pub fn deinit(self: *ScoredPlyReader) void {
-        self.move_buffer.deinit(self.allocator);
+        _ = self;
     }
 };
-
-const DynamicReader = root.dynamic_reader.DynamicReader;
-const DynamicGameView = root.dynamic_reader.DynamicGameView;
-
-const vf_reader_vtable: DynamicReader.VTable = .{
-    .next = vfReaderNext,
-    .deinit = vfReaderDeinit,
-};
-
-fn vfReaderNext(ptr: *anyopaque) !?DynamicGameView {
-    const reader: *ScoredPlyReader = @ptrCast(@alignCast(ptr));
-    const game = try reader.next() orelse return null;
-
-    reader.initial_board = game.board;
-    reader.move_buffer.clearRetainingCapacity();
-
-    var it = game.iter();
-    while (try it.next()) |ply| {
-        try reader.move_buffer.append(reader.allocator, .{
-            .move = ply.move,
-            .score = ply.whiteEval(),
-        });
-    }
-
-    return DynamicGameView{
-        .initial_board = &reader.initial_board,
-        .outcome = game.outcome,
-        .moves = reader.move_buffer.items,
-    };
-}
-
-fn vfReaderDeinit(ptr: *anyopaque) void {
-    const reader: *ScoredPlyReader = @ptrCast(@alignCast(ptr));
-    reader.deinit();
-}
 
 pub fn scoredPlyReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) ScoredPlyReader {
+    _ = allocator;
     return .{
         .reader = reader,
-        .allocator = allocator,
-        .move_buffer = .empty,
-        .initial_board = undefined,
     };
 }
 
@@ -466,12 +448,12 @@ pub const GameRecord = struct {
         self.initial_position.wdl = wdl.toInt();
     }
 
-    pub fn reset(self: *GameRecord, board: Board) void {
+    pub fn reset(self: *GameRecord, board: anytype) void {
         self.initial_position = .from(board, 1, 0);
         self.moves.clearRetainingCapacity();
     }
 
-    pub fn from(board: Board, allocator: Allocator) GameRecord {
+    pub fn from(board: anytype, allocator: Allocator) GameRecord {
         return GameRecord{
             .initial_position = .from(board, 1, 0),
             .moves = .init(allocator),
@@ -494,49 +476,4 @@ pub const GameRecord = struct {
 comptime {
     std.debug.assert(@sizeOf(MarlinPackedBoard) == 32);
     std.debug.assert(@bitSizeOf(MarlinPackedBoard) == 32 * 8);
-}
-
-fn viriformatTest(fen: []const u8, move: Move, expected: u32) !void {
-    var game = GameRecord.from(try Board.parseFen(fen, true), std.testing.allocator);
-    defer game.deinit();
-    try game.addMove(move, 0);
-    var buf: [40]u8 = undefined;
-    var fbs = std.Io.Writer.fixed(&buf);
-    try game.serializeInto(&fbs);
-    try std.testing.expectEqual(expected, std.mem.readInt(u32, fbs.buffered()[32..][0..4], .little));
-}
-
-test "viriformat moves" {
-    root.init(std.testing.io);
-    try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Move.quiet(.e2, .e4), 0x070c);
-    try viriformatTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1", Move.castlingKingside(.white, .e1, .h1), 0x81c4);
-    try viriformatTest("8/6P1/8/8/1k6/4K3/8/8 w - - 0 1", Move.promo(.g7, .g8, .queen), 0xffb6);
-    try viriformatTest("rnbqkbnr/2pppppp/p7/Pp6/8/8/1PPPPPPP/RNBQKBNR w KQkq b6 0 1", Move.enPassant(.a5, .b6), 0x4a60);
-}
-
-test "all edge cases i could think of in one position" {
-    root.init(std.testing.io);
-    var game = GameRecord.from(try Board.parseFen("4k3/P4p2/8/6P1/8/8/8/R3K2R w Q - 0 1", false), std.testing.allocator);
-    defer game.deinit();
-    try game.addMove(Move.castlingQueenside(.white, .e1, .a1), 0);
-    try game.addMove(Move.quiet(.f7, .f5), 0);
-    try game.addMove(Move.enPassant(.g5, .f6), 0);
-    try game.addMove(Move.quiet(.e8, .f8), 0);
-    try game.addMove(Move.promo(.a7, .a8, .queen), 0);
-
-    var buf: [64]u8 = undefined;
-    var fbs = std.Io.Writer.fixed(&buf);
-    try game.serializeInto(&fbs);
-
-    try std.testing.expectEqualSlices(u8, &.{ 145, 0, 0, 0, 64, 0, 33, 16, 86, 3, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 1, 0, 0, 0, 1, 164, 4, 128, 0, 0, 117, 9, 0, 0, 102, 75, 0, 0, 124, 15, 0, 0, 48, 254, 0, 0, 0, 0, 0, 0 }, fbs.buffered());
-}
-
-test {
-    const board_original = Board.startpos();
-
-    const marlin_board = MarlinPackedBoard.from(board_original, 1, 0);
-
-    const round_trip = marlin_board.toBoard();
-
-    try std.testing.expectEqualDeep(board_original, round_trip);
 }

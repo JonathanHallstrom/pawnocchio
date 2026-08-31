@@ -37,7 +37,7 @@ const NNCacheEntry = struct {
     accumulator: nnue.Accumulator,
     mailbox: [64]u8,
 
-    fn refresh(noalias self: *NNCacheEntry, weights: *const nnue.arch.Weights, stm: Colour, board: *const Board, mirror: nnue.MirroringType) *const nnue.Accumulator {
+    fn refresh(noalias self: *NNCacheEntry, weights: *const nnue.arch.Weights, stm: Colour, board: anytype, mirror: nnue.MirroringType) *const nnue.Accumulator {
         const us_king = Square.fromBitboard(board.kingFor(stm));
         var adds: [64]u16 = undefined;
         var num_adds: usize = 0;
@@ -125,7 +125,7 @@ pub fn refreshCache(comptime mirrored: bool, comptime bucket_count: usize) type 
             }
         }
 
-        pub inline fn refresh(noalias self: *Self, weights: *const nnue.arch.Weights, stm: Colour, board: *const Board) nnue.AccumulatorHalf {
+        pub inline fn refresh(noalias self: *Self, weights: *const nnue.arch.Weights, stm: Colour, board: anytype) nnue.AccumulatorHalf {
             if (empty) unreachable;
             self.generation[stm.toInt()] += 1;
             const king_sq = Square.fromBitboard(board.kingFor(stm));

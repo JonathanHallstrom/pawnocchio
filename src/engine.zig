@@ -212,14 +212,19 @@ inline fn timerHash(name: []const u8) u64 {
 }
 
 inline fn rdtscp() u64 {
-    var hi: u32 = undefined;
-    var lo: u32 = undefined;
-    asm volatile ("rdtscp"
-        : [hi] "={edx}" (hi),
-          [lo] "={eax}" (lo),
-        :
-        : .{ .ecx = true });
-    return (@as(u64, hi) << 32) | lo;
+    const arch = @import("builtin").cpu.arch;
+    if (comptime arch.isX86()) {
+        var hi: u32 = undefined;
+        var lo: u32 = undefined;
+        asm volatile ("rdtscp"
+            : [hi] "={edx}" (hi),
+              [lo] "={eax}" (lo),
+            :
+            : .{ .ecx = true });
+        return (@as(u64, hi) << 32) | lo;
+    } else {
+        return 0;
+    }
 }
 
 noinline fn registerTimer(h: u64, group: []const u8, part: []const u8) void {

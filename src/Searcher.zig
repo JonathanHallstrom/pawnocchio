@@ -109,7 +109,7 @@ search_id: std.atomic.Value(u64) align(std.atomic.cache_line) = .init(0),
 is_ready: bool align(std.atomic.cache_line) = false,
 nodes: u64 align(std.atomic.cache_line),
 hashes: [MAX_PLY + 8 + HASH_PREFIX_PAD]u64,
-eval_context: evaluation.Context,
+eval_context: evaluation.Context(Board),
 search_stack: [MAX_PLY + STACK_PADDING]StackEntry,
 root_move: ?Move,
 root_score: ?i16,
@@ -552,7 +552,7 @@ fn qsearch(
             return @intCast(alpha);
         }
     }
-    const is_in_check = board.checkers != 0;
+    const is_in_check = board.checkers() != 0;
 
     const tt_hash = board.getHashWithHalfmove();
     const tt_entry, const tt_hit = self.readTT(tt_hash);
@@ -610,7 +610,7 @@ fn qsearch(
         &cur.scores,
         tt_entry.move,
         cur.move.move,
-        board.checkers == 0,
+        board.checkers() == 0,
     );
     defer mp.deinit();
     var num_searched: u8 = 0;
@@ -738,7 +738,7 @@ fn search(
     const cur: *StackEntry = self.stackEntry(0);
     const prev: *StackEntry = self.stackEntry(-1);
     const board: *const Board = &cur.board;
-    const is_in_check = board.checkers != 0;
+    const is_in_check = board.checkers() != 0;
 
     if (!is_root) {
         if (alpha < 0 and self.hasUpcomingRepetition()) {
@@ -1350,7 +1350,7 @@ fn search(
             self.stackEntry(0).history_score = rfp_hist_score;
             defer self.unmakeMove(stm, move);
 
-            const gives_check = self.stackEntry(0).board.checkers != 0;
+            const gives_check = self.stackEntry(0).board.checkers() != 0;
 
             const node_count_before: u64 = if (is_root) self.nodes else undefined;
             defer if (is_root) {

@@ -53,7 +53,7 @@ pub fn deinit() void {
     }
 }
 
-pub fn probeWDL(board: *const Board) ?WDL {
+pub fn probeWDL(board: anytype) ?WDL {
     if (!USE_TBS or !tbs_init) {
         return null;
     }

@@ -208,7 +208,7 @@ const scalar = struct {
     fn emitChangeSide(
         buf: *UpdateBuffer,
         stacks: Stacks,
-        board: *const Board,
+        board: anytype,
         piece: ColouredPieceType,
         sq: Square,
         comptime is_add: bool,
@@ -278,13 +278,13 @@ const scalar = struct {
         }
     }
 
-    pub fn doOnChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+    pub fn doOnChange(buf: *UpdateBuffer, stacks: Stacks, board: anytype, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
         // const timer = root.engine.timeGrouped("threat_emit", "change");
         // defer timer.register();
         emitChangeSide(buf, stacks, board, piece, sq, is_add, board.occupancy());
     }
 
-    pub fn doOnMove(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+    pub fn doOnMove(buf: *UpdateBuffer, stacks: Stacks, board: anytype, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
         // const timer = root.engine.timeGrouped("threat_emit", "move");
         // defer timer.register();
         const occ = board.occupancy();
@@ -292,7 +292,7 @@ const scalar = struct {
         emitChangeSide(buf, stacks, board, new_piece, dst, true, occ);
     }
 
-    pub fn doOnMutate(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+    pub fn doOnMutate(buf: *UpdateBuffer, stacks: Stacks, board: anytype, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
         // const timer = root.engine.timeGrouped("threat_emit", "mutate");
         // defer timer.register();
         const occ = board.occupancy();
@@ -528,7 +528,7 @@ const byte_ray = struct {
         bits: Byteboard,
     };
 
-    inline fn permuteMailbox(board: *const Board, focus: u8, ignore: ?u8) RayVector {
+    inline fn permuteMailbox(board: anytype, focus: u8, ignore: ?u8) RayVector {
         if (has_vbmi) return permuteMailboxVbmi(board, focus, ignore);
         if (has_vec_permute) return permuteMailboxVec(board, focus, ignore);
         if (has_neon) return permuteMailboxNeon(board, focus, ignore);
@@ -537,7 +537,7 @@ const byte_ray = struct {
 
     const Half = @Vector(32, u8);
 
-    inline fn maskedMailbox(board: *const Board, ignore: ?u8) Byteboard {
+    inline fn maskedMailbox(board: anytype, ignore: ?u8) Byteboard {
         var mailbox_vec: Byteboard = board.mailbox;
         if (ignore) |ign| {
             const ignore_mask: @Vector(64, bool) = simd.maskVec(64, @as(u64, 1) << @intCast(ign));
@@ -556,7 +556,7 @@ const byte_ray = struct {
         return @shuffle(u8, v, undefined, mask);
     }
 
-    inline fn permuteMailboxVec(board: *const Board, focus: u8, ignore: ?u8) RayVector {
+    inline fn permuteMailboxVec(board: anytype, focus: u8, ignore: ?u8) RayVector {
         const perm = PERMUTATION_TABLE[focus];
         const mailbox: [2]Half = @bitCast(maskedMailbox(board, ignore));
         const c0 = broadcast16(mailbox[0], false);
@@ -587,14 +587,14 @@ const byte_ray = struct {
         };
     }
 
-    inline fn permuteMailboxVbmi(board: *const Board, focus: u8, ignore: ?u8) RayVector {
+    inline fn permuteMailboxVbmi(board: anytype, focus: u8, ignore: ?u8) RayVector {
         const perm = PERMUTATION_TABLE[focus];
         const pieces = simd.vpermb(perm.indices, maskedMailbox(board, ignore));
         const bits = simd.vpshufbMask(pieces, PIECE_TO_BIT_LUT, perm.valid);
         return .{ .perm = perm.indices, .pieces = pieces, .bits = bits };
     }
 
-    inline fn permuteMailboxNeon(board: *const Board, focus: u8, ignore: ?u8) RayVector {
+    inline fn permuteMailboxNeon(board: anytype, focus: u8, ignore: ?u8) RayVector {
         const Quad = @Vector(16, u8);
         const perm = PERMUTATION_TABLE[focus];
         const mb: [4]Quad = @bitCast(maskedMailbox(board, ignore));
@@ -786,7 +786,7 @@ const byte_ray = struct {
         }
     }
 
-    inline fn emitChangeSide(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, focus: u8, comptime is_add: bool, ignore: ?u8) void {
+    inline fn emitChangeSide(buf: *UpdateBuffer, stacks: Stacks, board: anytype, piece: ColouredPieceType, focus: u8, comptime is_add: bool, ignore: ?u8) void {
         const rv = permuteMailbox(board, focus, ignore);
         const occupied = occupiedMask(rv.bits);
         const closest = closestOnRays(occupied);
@@ -798,20 +798,20 @@ const byte_ray = struct {
         brEmitDiscovered(buf, stacks, &rv, closest, is_add);
     }
 
-    pub fn doOnChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+    pub fn doOnChange(buf: *UpdateBuffer, stacks: Stacks, board: anytype, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
         // const timer = root.engine.timeGrouped("threat_emit", "change");
         // defer timer.register();
         emitChangeSide(buf, stacks, board, piece, sq.toInt(), is_add, null);
     }
 
-    pub fn doOnMove(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+    pub fn doOnMove(buf: *UpdateBuffer, stacks: Stacks, board: anytype, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
         // const timer = root.engine.timeGrouped("threat_emit", "move");
         // defer timer.register();
         emitChangeSide(buf, stacks, board, old_piece, src.toInt(), false, dst.toInt());
         emitChangeSide(buf, stacks, board, new_piece, dst.toInt(), true, null);
     }
 
-    pub fn doOnMutate(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+    pub fn doOnMutate(buf: *UpdateBuffer, stacks: Stacks, board: anytype, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
         // const timer = root.engine.timeGrouped("threat_emit", "mutate");
         // defer timer.register();
         const focus = sq.toInt();
@@ -835,15 +835,15 @@ const backend = switch (simd.TARGET) {
     else => scalar,
 };
 
-pub fn onChange(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
+pub fn onChange(buf: *UpdateBuffer, stacks: Stacks, board: anytype, piece: ColouredPieceType, sq: Square, comptime is_add: bool) void {
     backend.doOnChange(buf, stacks, board, piece, sq, is_add);
 }
 
-pub fn onMove(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
+pub fn onMove(buf: *UpdateBuffer, stacks: Stacks, board: anytype, old_piece: ColouredPieceType, src: Square, new_piece: ColouredPieceType, dst: Square) void {
     backend.doOnMove(buf, stacks, board, old_piece, src, new_piece, dst);
 }
 
-pub fn onMutate(buf: *UpdateBuffer, stacks: Stacks, board: *const Board, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
+pub fn onMutate(buf: *UpdateBuffer, stacks: Stacks, board: anytype, old_piece: ColouredPieceType, new_piece: ColouredPieceType, sq: Square) void {
     backend.doOnMutate(buf, stacks, board, old_piece, new_piece, sq);
 }
 
