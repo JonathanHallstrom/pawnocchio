@@ -849,8 +849,8 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     );
     defer allocator.free(parsed.inputs);
     const verbose = parsed.verbose;
-    if (verbose) {
-        writeLog("for verbose output pass --help\n", .{});
+    if (!verbose) {
+        writeLog("for verbose output pass --verbose\n", .{});
     }
     if (!parsed.@"allow-overwrite") {
         if (std.Io.Dir.cwd().access(io, "score_distribution.txt", .{})) |_| {
