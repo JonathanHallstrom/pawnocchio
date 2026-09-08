@@ -30,7 +30,7 @@ const File = root.File;
 const TOTAL_THREATS = arch.TOTAL_THREATS;
 const IdxType = if (TOTAL_THREATS + arch.TOTAL_PAWN_PAIRS < std.math.maxInt(u16)) u16 else u32;
 
-const PIECE_TARGET_MAP: [6][6]i32 = if (arch.PAWN_PAIR_INPUTS) .{
+const PIECE_TARGET_MAP: [6][6]comptime_int = if (arch.PAWN_PAIR_INPUTS) .{
     .{ -1, 0, -1, 1, -1, -1 },
     .{ 0, 1, 2, 3, 4, -1 },
     .{ 0, 1, 2, 3, -1, -1 },
@@ -46,14 +46,14 @@ const PIECE_TARGET_MAP: [6][6]i32 = if (arch.PAWN_PAIR_INPUTS) .{
     .{ -1, -1, -1, -1, -1, -1 },
 };
 
-const PIECE_TARGET_COUNT: [6]i32 = blk: {
-    var count: [6]i32 = @splat(0);
+const PIECE_TARGET_COUNT: [6]comptime_int = blk: {
+    var count: [6]comptime_int = @splat(0);
     for (0..6) |pt| {
-        var c: i32 = 0;
+        var c: IdxType = 0;
         for (0..6) |vpt| {
             if (PIECE_TARGET_MAP[pt][vpt] != -1) c += 1;
         }
-        count[pt] = 2 * c;
+        count[pt] = c;
     }
     break :blk count;
 };
@@ -101,30 +101,30 @@ pub const OFFSETS: Offset = blk: {
         .indices = @splat(.{ .piece_offset = 0, .global_offset = 0 }),
         .offsets = @splat(@splat(0)),
     };
-    var global_offset: i32 = 0;
+    var global_offset = 0;
 
     for (0..2) |col_idx| {
-        const col = Colour.fromInt(@intCast(col_idx));
+        const col = Colour.fromInt(col_idx);
         for (0..6) |pt_idx| {
-            const pt = PieceType.fromInt(@intCast(pt_idx));
+            const pt = PieceType.fromInt(pt_idx);
             const piece = ColouredPieceType.fromPieceType(pt, col);
             const pidx = piece.toInt();
-            var piece_offset: i32 = 0;
+            var piece_offset = 0;
             for (0..64) |sq_idx| {
-                const sq = Square.fromInt(@intCast(sq_idx));
-                dst.offsets[pidx][sq_idx] = @intCast(piece_offset);
+                const sq = Square.fromInt(sq_idx);
+                dst.offsets[pidx][sq_idx] = piece_offset;
                 const is_pawn_end_rank = pt == .pawn and
                     (sq.getRank() == .first or sq.getRank() == .eighth);
                 if (!is_pawn_end_rank) {
                     const attacks = emptyBoardAttacks(piece, sq);
-                    piece_offset += @intCast(@popCount(attacks));
+                    piece_offset += @popCount(attacks);
                 }
             }
             dst.indices[pidx] = .{
-                .piece_offset = @intCast(piece_offset),
-                .global_offset = @intCast(global_offset),
+                .piece_offset = piece_offset,
+                .global_offset = global_offset,
             };
-            global_offset += PIECE_TARGET_COUNT[pt_idx] * piece_offset;
+            global_offset += 2 * PIECE_TARGET_COUNT[pt_idx] * piece_offset;
         }
     }
     break :blk dst;
@@ -132,18 +132,18 @@ pub const OFFSETS: Offset = blk: {
 
 pub const ATTACK_INDEX: [12][12][2]IdxType = blk: {
     @setEvalBranchQuota(1 << 20);
-    const SENTINEL: IdxType = @intCast(TOTAL_THREATS);
+    const SENTINEL = TOTAL_THREATS;
     var dst: [12][12][2]IdxType = @splat(@splat(.{ SENTINEL, SENTINEL }));
 
     for (0..12) |a_idx| {
-        const attacker = ColouredPieceType.fromInt(@intCast(a_idx));
+        const attacker = ColouredPieceType.fromInt(a_idx);
         const apt = attacker.toPieceType().toInt();
 
         for (0..12) |v_idx| {
-            const victim = ColouredPieceType.fromInt(@intCast(v_idx));
+            const victim = ColouredPieceType.fromInt(v_idx);
             const vpt = victim.toPieceType().toInt();
 
-            const map = PIECE_TARGET_MAP[apt][vpt];
+            const map: i32 = PIECE_TARGET_MAP[apt][vpt];
             const full_excluded = map == -1;
 
             const opposed = attacker.toColour().toInt() != victim.toColour().toInt();
@@ -151,12 +151,11 @@ pub const ATTACK_INDEX: [12][12][2]IdxType = blk: {
                 (opposed or apt != PieceType.pawn.toInt());
 
             const entry = OFFSETS.indices[a_idx];
-            const colour_base: i32 = @as(i32, @intCast(victim.toColour().toInt())) *
-                @divExact(PIECE_TARGET_COUNT[apt], 2);
-            const feature: i32 = entry.global_offset + (colour_base + map) * entry.piece_offset;
+            const colour_base = victim.toColour().toInt() * PIECE_TARGET_COUNT[apt];
+            const feature: comptime_int = entry.global_offset + (colour_base + map) * entry.piece_offset;
 
-            dst[a_idx][v_idx][0] = if (full_excluded) SENTINEL else @intCast(feature);
-            dst[a_idx][v_idx][1] = if (full_excluded or semi_excluded) SENTINEL else @intCast(feature);
+            dst[a_idx][v_idx][0] = if (full_excluded) SENTINEL else feature;
+            dst[a_idx][v_idx][1] = if (full_excluded or semi_excluded) SENTINEL else feature;
         }
     }
     break :blk dst;
@@ -216,14 +215,14 @@ pub fn threatIndex(
 }
 
 comptime {
-    var total_offset: i32 = 0;
+    var total_offset: IdxType = 0;
     for (0..2) |col_idx| {
-        const col = Colour.fromInt(@intCast(col_idx));
+        const col = Colour.fromInt(col_idx);
         for (0..6) |pt_idx| {
-            const pt = PieceType.fromInt(@intCast(pt_idx));
+            const pt = PieceType.fromInt(pt_idx);
             const piece = ColouredPieceType.fromPieceType(pt, col);
             const pidx = piece.toInt();
-            total_offset += PIECE_TARGET_COUNT[pt_idx] * OFFSETS.indices[pidx].piece_offset;
+            total_offset += 2 * PIECE_TARGET_COUNT[pt_idx] * OFFSETS.indices[pidx].piece_offset;
         }
     }
     std.debug.assert(total_offset == TOTAL_THREATS);
