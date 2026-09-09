@@ -218,9 +218,9 @@ pub fn attackersFor(comptime col: Colour, noalias board: *const Board, square: S
     return attacks_from_square & board.occupancyFor(col);
 }
 
-pub inline fn getAttacks(comptime col: Colour, pt: PieceType, square: Square, occ: u64) u64 {
+pub inline fn getAttacks(col: Colour, pt: PieceType, square: Square, occ: u64) u64 {
     return switch (pt) {
-        .pawn => Bitboard.pawnAttacks(square, col.flipped()),
+        .pawn => Bitboard.pawnAttacks(square, col),
         .bishop => attacks.bishopAttacks(square, occ),
         .knight => Bitboard.knightMoves(square),
         .rook => attacks.rookAttacks(square, occ),

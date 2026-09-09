@@ -26,6 +26,7 @@ const Colour = root.Colour;
 const PieceType = root.PieceType;
 const ColouredPieceType = root.ColouredPieceType;
 const File = root.File;
+const movegen = root.movegen;
 
 const TOTAL_THREATS = arch.TOTAL_THREATS;
 const IdxType = if (TOTAL_THREATS + arch.TOTAL_PAWN_PAIRS < std.math.maxInt(u16)) u16 else u32;
@@ -58,17 +59,6 @@ const PIECE_TARGET_COUNT: [6]comptime_int = blk: {
     break :blk count;
 };
 
-fn emptyBoardAttacks(piece: ColouredPieceType, sq: Square) u64 {
-    return switch (piece.toPieceType()) {
-        .pawn => Bitboard.pawnAttacks(sq, piece.toColour()),
-        .knight => Bitboard.knightMoves(sq),
-        .bishop => Bitboard.bishopAttacks(sq),
-        .rook => Bitboard.rookAttacks(sq),
-        .queen => Bitboard.queenAttacks(sq),
-        .king => Bitboard.kingMoves(sq),
-    };
-}
-
 pub const PIECE_INDEX: [12][64][64]u8 = blk: {
     @setEvalBranchQuota(1 << 28);
     var table: [12][64][64]u8 = @splat(@splat(@splat(0)));
@@ -76,7 +66,7 @@ pub const PIECE_INDEX: [12][64][64]u8 = blk: {
         const piece = ColouredPieceType.fromInt(@intCast(piece_idx));
         for (0..64) |from_idx| {
             const from = Square.fromInt(@intCast(from_idx));
-            const attacks = emptyBoardAttacks(piece, from);
+            const attacks = movegen.getAttacks(piece.toColour(), piece.toPieceType(), from, 0);
             for (0..64) |to_idx| {
                 var count: u8 = 0;
                 var it = Bitboard.iterator(attacks);
@@ -116,7 +106,7 @@ pub const OFFSETS: Offset = blk: {
                 const is_pawn_end_rank = pt == .pawn and
                     (sq.getRank() == .first or sq.getRank() == .eighth);
                 if (!is_pawn_end_rank) {
-                    const attacks = emptyBoardAttacks(piece, sq);
+                    const attacks = movegen.getAttacks(piece.toColour(), piece.toPieceType(), sq, 0);
                     piece_offset += @popCount(attacks);
                 }
             }
@@ -258,14 +248,7 @@ pub fn collectRefreshThreats(out: []u16, board: anytype, colour: Colour) usize {
         const attacker = board.colouredPieceOn(attacker_sq).?;
         const apt = attacker.toPieceType();
 
-        const attacks = switch (apt) {
-            .pawn => Bitboard.pawnAttacks(attacker_sq, attacker.toColour()),
-            .knight => Bitboard.knightMoves(attacker_sq),
-            .bishop => root.attacks.bishopAttacks(attacker_sq, occ),
-            .rook => root.attacks.rookAttacks(attacker_sq, occ),
-            .queen => root.attacks.queenAttacks(attacker_sq, occ),
-            .king => unreachable,
-        };
+        const attacks = movegen.getAttacks(attacker.toColour(), attacker.toPieceType(), attacker_sq, occ);
 
         const below = perspectiveBelow(attacker_sq, sq_mask);
         const same_type = piece_bbs[apt.toInt()];
