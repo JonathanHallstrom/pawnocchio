@@ -252,7 +252,8 @@ pub fn collectRefreshThreats(out: []u16, board: anytype, colour: Colour) usize {
 
         const below = perspectiveBelow(attacker_sq, sq_mask);
         const same_type = piece_bbs[apt.toInt()];
-        const attacked = attacks & victim_mask[apt.toInt()] & (~same_type | below);
+        const semi_excluded = if (apt == .pawn) same_type & board.occupancyFor(attacker.toColour().flipped()) else same_type;
+        const attacked = attacks & victim_mask[apt.toInt()] & (~semi_excluded | below);
 
         var victims_it = Bitboard.iterator(attacked);
         while (victims_it.next()) |victim_sq| {

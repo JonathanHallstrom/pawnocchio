@@ -37,8 +37,9 @@ pub fn main(init: std.process.Init) !void {
     defer init.gpa.destroy(weights);
 
     const weights_bytes = std.mem.asBytes(weights);
+    @memset(weights_bytes, 0);
     const bytes_read = try input.readPositionalAll(init.io, weights_bytes, 0);
-    if (bytes_read != weights_bytes.len) {
+    if (weights_bytes.len - bytes_read >= @alignOf(nnue_arch.Weights)) {
         std.process.fatal("short read from '{s}'", .{input_path});
     }
 
