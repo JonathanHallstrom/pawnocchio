@@ -54,6 +54,15 @@ pub inline fn move(bitboard: u64, d_rank: anytype, d_file: anytype) u64 {
     return res;
 }
 
+pub inline fn flipFiles(bitboard: u64) u64 {
+    const v: @Vector(8, u8) = @bitCast(bitboard);
+    return @bitCast(@bitReverse(v));
+}
+
+pub inline fn flipRanks(bitboard: u64) u64 {
+    return @byteSwap(bitboard);
+}
+
 const A_FILE: u64 = 0x0101010101010101;
 const B_FILE: u64 = A_FILE << 1;
 const G_FILE: u64 = A_FILE << 6;

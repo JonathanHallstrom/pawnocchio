@@ -233,13 +233,8 @@ fn perspectiveBelow(from: Square, sq_mask: u8) u64 {
     const flip_files = sq_mask & 0b000111 != 0;
     const flip_ranks = sq_mask & 0b111000 != 0;
     var below: u64 = (@as(u64, 1) << @intCast(from_p)) - 1;
-    if (flip_files and flip_ranks) {
-        below = @bitReverse(below);
-    } else if (flip_files) {
-        below = @bitReverse(@byteSwap(below));
-    } else if (flip_ranks) {
-        below = @byteSwap(below);
-    }
+    if (flip_files) below = Bitboard.flipFiles(below);
+    if (flip_ranks) below = Bitboard.flipRanks(below);
     return below;
 }
 
