@@ -1569,7 +1569,10 @@ pub fn parseSANMove(self: anytype, san_move_inp: []const u8) ?Move {
     const pinned = masks.pinnedFor(stm);
     var from_iter = Bitboard.iterator(candidates);
     while (from_iter.next()) |from_sq| {
-        if (pinned & from_sq.toBitboard() != 0 and Bitboard.queenRayBetweenExclusive(from_sq, king_sq) & dest_bb == 0) {
+        if (pinned & from_sq.toBitboard() != 0 and
+            Bitboard.queenRayBetweenExclusive(from_sq, king_sq) & dest_bb == 0 and
+            Bitboard.queenRayBetweenExclusive(king_sq, destination) & from_sq.toBitboard() == 0)
+        {
             continue;
         }
         return sanCandidateMove(from_sq, destination, parts.promo_type, is_ep);
