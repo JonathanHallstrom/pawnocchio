@@ -22,6 +22,12 @@ const Move = root.Move;
 pub const FileFormat = enum {
     pgn,
     viriformat,
+
+    pub fn fromPath(path: []const u8) ?FileFormat {
+        if (std.mem.endsWith(u8, path, ".pgn")) return .pgn;
+        if (std.mem.endsWith(u8, path, ".vf")) return .viriformat;
+        return null;
+    }
 };
 
 pub fn ReaderFor(comptime format: FileFormat) type {

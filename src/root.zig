@@ -67,6 +67,7 @@ pub const dataformat = @import("dataformat.zig");
 pub const viriformat = @import("viriformat.zig");
 pub const pgn = @import("pgn.zig");
 pub const wdl = @import("wdl.zig");
+pub const fit_wdl = @import("fit_wdl.zig");
 pub const input_features = @import("nnue/features.zig");
 pub const PSQTFeature = input_features.PSQTFeature;
 pub const FeatureKind = input_features.FeatureKind;

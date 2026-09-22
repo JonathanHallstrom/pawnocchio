@@ -159,6 +159,10 @@ pub inline fn pieceOn(self: *const LeanBoard, sq: Square) ?PieceType {
     return if (raw == Board.MAILBOX_EMPTY) null else PieceType.fromInt(raw >> 1);
 }
 
+pub fn classicalMaterial(self: *const LeanBoard) u8 {
+    return self.sumPieces([_]u8{ 1, 3, 3, 5, 9, 0 });
+}
+
 pub fn sumPieces(self: *const LeanBoard, weights: [6]u8) u8 {
     var res: u8 = 0;
     for (PieceType.all) |pt| {

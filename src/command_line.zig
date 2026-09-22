@@ -41,6 +41,7 @@ const Command = enum {
     epdtovf,
     vftotxt,
     analyse,
+    @"fit-wdl",
     @"relabel-tb",
     @"relabel-chonker",
     sanitise,
@@ -250,6 +251,7 @@ pub fn handle(init: std.process.Init, version: []const u8) !bool {
                 .epdtovf => try handleEpdtovf(init.io, init.gpa, &args),
                 .vftotxt => try handleVftotxt(init.io, init.gpa, &args),
                 .analyse => try handleAnalyse(init.io, init.gpa, &args),
+                .@"fit-wdl" => try handleFitWdl(init.io, init.gpa, &args),
                 .@"relabel-tb" => try handleRelabelTb(init.io, init.gpa, &args),
                 .@"relabel-chonker" => try handleRelabelChonker(init.io, init.gpa, &args),
                 .sanitise => try handleSanitise(init.io, init.gpa, &args),
@@ -321,6 +323,10 @@ fn handleHelp(version: []const u8, threads: usize) void {
         \\      --approximate: use HyperLogLog for faster unique count
         \\      --tb-path: required for TB statistics
         \\      score distribution output: score_distribution.txt
+        \\
+        \\  fit-wdl --inputs <FILE> [<FILE>...] [--format pgn|viriformat] [--max-eval <centipawns>]
+        \\      fit the WDL model as configured in src/fit_wdl.zig
+        \\      default max-eval is 2000
         \\
         \\  relabel-tb --input <INPUT.vf> --tb-path <TB_PATH> [--allow-overwrite] [--output <OUTPUT>]
         \\      relabel dataset outcomes based on Syzygy tablebases. default output: <INPUT>_relabeled
@@ -1067,6 +1073,26 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     var writer = score_distr_file.writerStreaming(io, &buf);
     try writer.interface.print("{any}\n", .{combined.score_counts});
     try writer.interface.flush();
+}
+
+fn handleFitWdl(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
+    const parsed = try parseCommandArgs(
+        args,
+        struct {
+            inputs: []const []const u8,
+            format: ?root.dataformat.FileFormat = null,
+            @"max-eval": u16 = 2000,
+        },
+        .{ .allow_implied = false },
+        "fit-wdl",
+        allocator,
+    );
+    defer allocator.free(parsed.inputs);
+    try root.fit_wdl.run(io, allocator, .{
+        .inputs = parsed.inputs,
+        .format = parsed.format,
+        .max_eval = parsed.@"max-eval",
+    });
 }
 
 fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
