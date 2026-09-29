@@ -47,21 +47,16 @@ const USE_VBMI2_NNZ = simd.HAS_VBMI2 and simd.vecSize(i32) == 16 and L1_SIZE % 1
 
 pub inline fn findNonZeroIndices(
     ft: *align(64) const [L1_SIZE]u8,
-) struct {
-    [L1_SIZE / 4]u16,
-    usize,
-} {
+    indices: *[L1_SIZE / 4]u16,
+) usize {
     const impl = if (comptime USE_VBMI2_NNZ) findNonZeroIndicesVBMI2 else findNonZeroIndicesLUT;
-    return impl(ft);
+    return impl(ft, indices);
 }
 
 fn findNonZeroIndicesLUT(
     ft: *align(64) const [L1_SIZE]u8,
-) struct {
-    [L1_SIZE / 4]u16,
-    usize,
-} {
-    var indices: [L1_SIZE / 4]u16 = undefined;
+    indices: *[L1_SIZE / 4]u16,
+) usize {
     var count: usize = 0;
     var base: @Vector(8, u16) = @splat(0);
 
@@ -87,19 +82,16 @@ fn findNonZeroIndicesLUT(
         }
     }
 
-    return .{ indices, count };
+    return count;
 }
 
 fn findNonZeroIndicesVBMI2(
     ft: *align(64) const [L1_SIZE]u8,
-) struct {
-    [L1_SIZE / 4]u16,
-    usize,
-} {
+    indices: *[L1_SIZE / 4]u16,
+) usize {
     const ZERO: simd.Vector(i32) = @splat(0);
     const groups: [*]align(64) const simd.Vector(i32) = @ptrCast(ft);
 
-    var indices: [L1_SIZE / 4]u16 = undefined;
     var count: usize = 0;
 
     inline for (0..L1_SIZE / 128) |i| {
@@ -114,7 +106,7 @@ fn findNonZeroIndicesVBMI2(
         count += @popCount(mask);
     }
 
-    return .{ indices, count };
+    return count;
 }
 
 test findNonZeroIndices {
@@ -139,7 +131,8 @@ test findNonZeroIndices {
                 expected_count += 1;
             }
         }
-        const actual_indices, const actual_count = findNonZeroIndices(ft[0..L1_SIZE]);
+        var actual_indices: [L1_SIZE / 4]u16 = undefined;
+        const actual_count = findNonZeroIndices(ft[0..L1_SIZE], &actual_indices);
 
         try std.testing.expectEqual(expected_count, actual_count);
         try std.testing.expectEqualSlices(u16, expected_indices[0..expected_count], actual_indices[0..actual_count]);

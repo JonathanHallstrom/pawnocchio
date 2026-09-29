@@ -540,7 +540,7 @@ const byte_ray = struct {
     inline fn maskedMailbox(board: anytype, ignore: ?u8) Byteboard {
         var mailbox_vec: Byteboard = board.mailbox;
         if (ignore) |ign| {
-            const ignore_mask: @Vector(64, bool) = simd.maskVec(64, @as(u64, 1) << @intCast(ign));
+            const ignore_mask: @Vector(64, bool) = std.simd.iota(u8, 64) == @as(Byteboard, @splat(ign));
             mailbox_vec = @select(u8, ignore_mask, @as(Byteboard, @splat(EMPTY_BIT)), mailbox_vec);
         }
         return mailbox_vec;

@@ -34,6 +34,12 @@ pub fn usdot(sum: simd.Vector(i32), u: simd.Vector(u8), i: simd.Vector(i8)) simd
     }).*(sum, u, i);
 }
 
+pub fn sdot(sum: simd.Vector(i32), a: simd.Vector(i8), b: simd.Vector(i8)) simd.Vector(i32) {
+    return @extern(*const fn (simd.Vector(i32), simd.Vector(i8), simd.Vector(i8)) callconv(.c) simd.Vector(i32), .{
+        .name = "llvm.aarch64.neon.sdot.v4i32.v16i8",
+    }).*(sum, a, b);
+}
+
 fn sqdmulh(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(i16) {
     return @extern(*const fn (simd.Vector(i16), simd.Vector(i16)) callconv(.c) simd.Vector(i16), .{
         .name = "llvm.aarch64.neon.sqdmulh.v8i16",

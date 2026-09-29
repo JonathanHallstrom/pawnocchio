@@ -155,8 +155,8 @@ noinline fn findBest(noalias self: *MovePicker) usize {
     const USE_SIMD = comptime std.simd.suggestVectorLength(i32) != null and
         @import("builtin").cpu.arch.endian() == .little;
 
-    if (USE_SIMD) {
-        const UNROLL = comptime std.simd.suggestVectorLength(i32).?;
+    const UNROLL = comptime std.simd.suggestVectorLength(i32) orelse 1;
+    if (USE_SIMD and simd.HAS_AVX512) {
         var best_vec: @Vector(UNROLL, i32) = @splat(std.math.minInt(i32));
         var iter = simd.indexedChunkIter(i32, UNROLL, scores[0..len]);
         while (iter.fullChunk()) |c| {
@@ -166,6 +166,17 @@ noinline fn findBest(noalias self: *MovePicker) usize {
             var c = iter.tail();
             c.data = packScores(UNROLL, c.data, c.indices);
             best_vec = @max(best_vec, c.select(best_vec));
+        }
+        best = @reduce(.Max, best_vec);
+    } else if (USE_SIMD and len >= UNROLL) {
+        const lanes: @Vector(UNROLL, i32) = std.simd.iota(i32, UNROLL);
+        const start = len - UNROLL;
+        const tail_indices = lanes + @as(@Vector(UNROLL, i32), @splat(@intCast(start)));
+        var best_vec: @Vector(UNROLL, i32) = packScores(UNROLL, scores[start..][0..UNROLL].*, tail_indices);
+        var i: usize = 0;
+        while (i + UNROLL < len) : (i += UNROLL) {
+            const indices = lanes + @as(@Vector(UNROLL, i32), @splat(@intCast(i)));
+            best_vec = @max(best_vec, packScores(UNROLL, scores[i..][0..UNROLL].*, indices));
         }
         best = @reduce(.Max, best_vec);
     } else {

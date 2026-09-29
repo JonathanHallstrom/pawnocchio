@@ -94,6 +94,7 @@ pub fn fullDotProd(cpu: std.Target.Cpu) bool {
 
 const HAS_VNNI = hasVnni(@import("builtin").cpu);
 const HAS_I8MM = hasI8mm(@import("builtin").cpu);
+const HAS_DOTPROD = @import("builtin").cpu.has(.aarch64, .dotprod);
 pub const HAS_VBMI2 = @import("builtin").cpu.has(.x86, .avx512vbmi2);
 pub const HAS_AVX512 = @import("builtin").cpu.has(.x86, .avx512f);
 pub const HAS_NT_STORES = switch (TARGET) {
@@ -191,6 +192,9 @@ pub fn dpbusd(sum: Vector(i32), u: Vector(u8), i: Vector(i8)) Vector(i32) {
     if (HAS_I8MM) {
         return neon.usdot(sum, u, i);
     }
+    if (HAS_DOTPROD) {
+        return neon.sdot(sum, @bitCast(u), i);
+    }
     return sum + maddwd(maddubs(u, i), @splat(1));
 }
 
@@ -201,7 +205,7 @@ pub fn dpbusdx2(
     u_2: Vector(u8),
     i_2: Vector(i8),
 ) Vector(i32) {
-    if (HAS_VNNI or HAS_I8MM) {
+    if (HAS_VNNI or HAS_I8MM or HAS_DOTPROD) {
         return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2);
     }
     return switch (TARGET) {

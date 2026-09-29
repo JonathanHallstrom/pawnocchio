@@ -222,7 +222,8 @@ pub fn forward(
         const w: [*]const i8 = &ow.l1w[output_bucket];
         const ft_i32: [*]i32 = @ptrCast(&activated_ft);
 
-        const nonzero_indices: [arch.L1_SIZE / 4]u16, const num_nonzero_indices: usize = @import("../sparse.zig").findNonZeroIndices(&activated_ft);
+        var nonzero_indices: [arch.L1_SIZE / 4]u16 = undefined;
+        const num_nonzero_indices: usize = @import("../sparse.zig").findNonZeroIndices(&activated_ft, &nonzero_indices);
         if (GATHER_L1_STATS) recordL1Stats(&activated_ft, num_nonzero_indices);
 
         var i_outer: usize = 0;
