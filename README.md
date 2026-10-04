@@ -44,11 +44,15 @@ The networks are trained using the excellent open source [bullet](https://github
 1. Get the network with `make net`
 2. Install zig (0.16.0)
 3. `zig build --release=fast --prefix <installation path>` (for example `--prefix ~/.local` will put pawnocchio in `~/.local/bin/pawnocchio`)
+
 The Makefile is only intended to be used for testing on Openbench.
 
 ## Licensing
- - The code is licensed under the GPLv3 license. Full text can be found in LICENSE in the project root
- - The assets are licensed under the CC-BY-ND 4.0 license. Full text can be found in assets/LICENSE
+ - The code is licensed under the GPLv3 license. Full text can be found in [LICENSE](LICENSE)
+ - The networks, hosted in [pawnocchio-nets](https://github.com/JonathanHallstrom/pawnocchio-nets), are licensed under CC-BY-SA 4.0. Full text in [pawnocchio-nets/LICENSE](https://github.com/JonathanHallstrom/pawnocchio-nets/blob/main/LICENSE)
+ - The assets are licensed under the CC-BY-ND 4.0 license. Full text in [assets/LICENSE](assets/LICENSE)
+
+When redistributing, please link to this repository.
 
 ## Credit
  - Many strong open source chess engines, but above all [Stormphrax](https://github.com/Ciekce/Stormphrax/) has been a massive source of inspiration
