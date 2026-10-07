@@ -85,7 +85,11 @@ pub fn convert(
     var num_broken_games: u64 = 0;
     var num_okay_games: u64 = 0;
     // var previous_hashes = root.BoundedArray(u64, 200){};
-    while (try input.takeDelimiter('\n')) |line| {
+    var line_buf: [4096]u8 = undefined;
+    var line_writer = std.Io.Writer.fixed(&line_buf);
+    while (try root.streamLine(input, &line_writer)) |len| {
+        defer _ = line_writer.consumeAll();
+        const line = line_buf[0..len];
         if (position_count % 1000 == 0) {
             const now = std.Io.Timestamp.now(io, .awake);
             const elapsed_time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));

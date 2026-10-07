@@ -27,35 +27,25 @@ pub const needsRefresh = psq.needsRefresh;
 pub const Perspective = psq.Perspective;
 
 pub const Weights = extern struct {
-    ft_w: [arch.INPUT_BUCKET_COUNT][2][6][64]arch.PSQTWeight align(ALIGNMENT),
+    ft_w: [arch.INPUT_BUCKET_COUNT][arch.PSQ_FEATURE_COUNT]arch.PSQTWeight align(ALIGNMENT),
     pp_w: [arch.TOTAL_PAWN_PAIRS]arch.ThreatWeight align(ALIGNMENT),
     threat_w: [arch.TOTAL_THREATS]arch.ThreatWeight align(ALIGNMENT),
     ft_b: [arch.L1_SIZE]i16 align(ALIGNMENT),
 
-    pub fn flatPSQWeights(self: *const Weights, bucket: usize) *const [768]arch.PSQTWeight {
-        return @ptrCast(&self.ft_w[bucket]);
+    pub fn flatPSQWeights(self: *const Weights, bucket: usize) *const [arch.PSQ_FEATURE_COUNT]arch.PSQTWeight {
+        return &self.ft_w[bucket];
     }
 
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, l1_permute: bool, comptime needs_ft_permute: bool) void {
-        if (l1_permute) {
-            arch.permuteL1Neurons(&self.ft_w);
-            arch.permuteL1Neurons(&self.ft_b);
-            arch.permuteL1Neurons(&self.pp_w);
-            arch.permuteL1Neurons(&self.threat_w);
-        }
-        if (needs_ft_permute and arch.needsPermutingFor(target_kind)) {
-            const order = arch.permuteOrderFor(target_kind);
-            arch.permuteBuffer(&self.ft_w, order);
-            arch.permuteBuffer(&self.ft_b, order);
-            arch.permuteBufferI8(&self.pp_w, order);
-            arch.permuteBufferI8(&self.threat_w, order);
-        }
-        if (endian != .little) {
-            arch.endianSwap(&self.ft_w);
-            arch.endianSwap(&self.pp_w);
-            arch.endianSwap(&self.threat_w);
-            arch.endianSwap(&self.ft_b);
-        }
+    pub fn byteSwap(self: *Weights) void {
+        arch.endianSwap(&self.ft_w);
+        arch.endianSwap(&self.ft_b);
+    }
+
+    pub fn permuteL1(self: *Weights, order: *const [arch.L1_SIZE]u16) void {
+        arch.permuteL1Neurons(&self.ft_w, order);
+        arch.permuteL1Neurons(&self.ft_b, order);
+        arch.permuteL1Neurons(&self.pp_w, order);
+        arch.permuteL1Neurons(&self.threat_w, order);
     }
 
     pub const SIZE_BYTES = @sizeOf(Weights);

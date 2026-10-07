@@ -62,7 +62,11 @@ pub fn next(self: *PerftEPDParser) !?PerftPosition {
     var w = std.Io.Writer.Allocating.init(self.allocator);
     defer w.deinit();
 
-    _ = try self.reader.?.interface.streamDelimiter(&w.writer, '\n');
+    while (true) {
+        _ = (try root.streamLine(&self.reader.?.interface, &w.writer)) orelse return null;
+        if (std.mem.trim(u8, w.written(), &std.ascii.whitespace).len != 0) break;
+        w.clearRetainingCapacity();
+    }
     const read = w.written();
     var iter = std.mem.tokenizeSequence(u8, read, ";D");
     var res: PerftPosition = .{
@@ -72,7 +76,7 @@ pub fn next(self: *PerftEPDParser) !?PerftPosition {
     errdefer self.allocator.free(res.fen);
     while (iter.next()) |part| {
         const stripped = std.mem.trim(u8, part, &std.ascii.whitespace);
-        const depth_end = std.mem.indexOfScalar(u8, stripped, ' ') orelse 0;
+        const depth_end = root.indexOfScalar(u8, stripped, ' ') orelse 0;
         const depth = try std.fmt.parseInt(u31, stripped[0..depth_end], 10);
         const nodes = try std.fmt.parseInt(
             u64,

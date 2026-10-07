@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const root = @import("root.zig");
 const ComptimeArrayList = @import("comptime_array_list.zig").ComptimeArrayList;
 const edit_distance = @import("edit_distance.zig");
 
@@ -109,7 +110,7 @@ fn parseImpl(
         pending = null;
         if (std.mem.startsWith(u8, arg, "--")) {
             const option = arg[2..];
-            const equals_idx = std.mem.indexOfScalar(u8, option, '=');
+            const equals_idx = root.indexOfScalar(u8, option, '=');
             const option_name = option[0 .. equals_idx orelse option.len];
             const inline_value = if (equals_idx) |idx| option[idx + 1 ..] else null;
             if (std.mem.eql(u8, option_name, "help")) {
@@ -279,7 +280,7 @@ pub fn fullUsage(comptime spec_or_type: anytype, comptime options: Options) []co
             const type_hint = type_parts.items[i];
             const type_padding = " " ** (max_type_len - type_hint.len);
             const suffix = if (default_parts.items[i]) |default_text|
-                std.fmt.comptimePrint("({s}{s} default: {s})", .{ type_hint, type_padding, default_text })
+                std.fmt.comptimePrint("({s},{s} default: {s})", .{ type_hint, type_padding, default_text })
             else
                 std.fmt.comptimePrint("({s})", .{type_hint});
             const base_padding = " " ** (max_base_len - base.len + 1);
@@ -353,7 +354,7 @@ fn usageDefaultTextForField(comptime options: Options, comptime field_name: []co
     return null;
 }
 
-fn defaultValueText(comptime value: anytype) []const u8 {
+fn defaultValueText(comptime value: anytype) ?[]const u8 {
     const T = @TypeOf(value);
     return switch (@typeInfo(T)) {
         .bool => if (value) "true" else "false",
@@ -362,7 +363,7 @@ fn defaultValueText(comptime value: anytype) []const u8 {
         .optional => if (value) |inner|
             defaultValueText(inner)
         else
-            "null",
+            null,
         .pointer => |ptr| if (ptr.size == .slice and ptr.child == u8)
             value
         else
@@ -617,10 +618,14 @@ fn parseValue(comptime T: type, value: []const u8) Error!T {
                 }
             }
 
+            inline for (u.fields) |f| {
+                if (f.type == void and std.mem.eql(u8, value, f.name)) break :blk @unionInit(T, f.name, {});
+            }
+
             break :blk if (non_void_field) |nv|
                 @unionInit(T, @tagName(nv.tag), try parseValue(nv.tp, value))
             else
-                std.meta.stringToEnum(Tag, value) orelse error.InvalidValue;
+                error.InvalidValue;
         },
         else => @compileError("unsupported arg parser field type"),
     };

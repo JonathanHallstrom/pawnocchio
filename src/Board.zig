@@ -299,7 +299,7 @@ pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
         if (c > 8) return error.TooManyPiecesOnRank;
     }
 
-    if (!permissive and white_king_square == null or black_king_square == null) return error.MissingKing;
+    if (white_king_square == null or black_king_square == null) return error.MissingKing;
 
     const turn_str = iter.next() orelse return error.MissingTurn;
     assert(turn_str.len > 0); // tokenize should only return non-empty strings
@@ -482,6 +482,7 @@ pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
     self.resetHash();
     if (T == Board) {
         self.updateMasks(self.stm);
+        if (self.kingFor(self.stm.flipped()) & self.threatsFor(self.stm) != 0) return error.OpponentInCheck;
     }
 
     return self;

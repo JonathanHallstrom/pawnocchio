@@ -20,27 +20,21 @@ const ALIGNMENT = 64;
 pub const HAS_THREATS = false;
 
 pub const Weights = extern struct {
-    ft_w: [arch.INPUT_BUCKET_COUNT][2][6][64]arch.PSQTWeight align(ALIGNMENT),
+    ft_w: [arch.INPUT_BUCKET_COUNT][arch.PSQ_FEATURE_COUNT]arch.PSQTWeight align(ALIGNMENT),
     ft_b: [arch.L1_SIZE]i16 align(ALIGNMENT),
 
-    pub fn flatPSQWeights(self: *const Weights, bucket: usize) *const [768]arch.PSQTWeight {
-        return @ptrCast(&self.ft_w[bucket]);
+    pub fn flatPSQWeights(self: *const Weights, bucket: usize) *const [arch.PSQ_FEATURE_COUNT]arch.PSQTWeight {
+        return &self.ft_w[bucket];
     }
 
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, l1_permute: bool, comptime needs_ft_permute: bool) void {
-        if (l1_permute) {
-            arch.permuteL1Neurons(&self.ft_w);
-            arch.permuteL1Neurons(&self.ft_b);
-        }
-        if (needs_ft_permute and arch.needsPermutingFor(target_kind)) {
-            const order = arch.permuteOrderFor(target_kind);
-            arch.permuteBuffer(&self.ft_w, order);
-            arch.permuteBuffer(&self.ft_b, order);
-        }
-        if (endian != .little) {
-            arch.endianSwap(&self.ft_w);
-            arch.endianSwap(&self.ft_b);
-        }
+    pub fn byteSwap(self: *Weights) void {
+        arch.endianSwap(&self.ft_w);
+        arch.endianSwap(&self.ft_b);
+    }
+
+    pub fn permuteL1(self: *Weights, order: *const [arch.L1_SIZE]u16) void {
+        arch.permuteL1Neurons(&self.ft_w, order);
+        arch.permuteL1Neurons(&self.ft_b, order);
     }
 
     pub const SIZE_BYTES = @sizeOf(Weights);
@@ -128,7 +122,7 @@ pub inline fn featureIndex(
     mirror: MirroringType,
 ) u16 {
     _ = kind;
-    const side_idx: u16 = @intFromBool(perspective != f.col());
+    const side_idx: u16 = @intFromBool(perspective != f.col() and !(arch.MERGED_KINGS and f.piece() == .king));
     var sq = f.square();
     if (perspective == .black) {
         @branchHint(.unpredictable);

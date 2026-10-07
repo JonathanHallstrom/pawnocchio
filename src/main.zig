@@ -147,15 +147,12 @@ pub fn main(init: std.process.Init) !void {
 
     var weird_tcs: bool = IS_POTENTIAL_ANDROID_BUILD;
     var show_wdl: bool = true;
-    loop: while (reader.interface.streamDelimiter(&line_writer, '\n') catch |e| switch (e) {
-        error.EndOfStream => null,
-        else => blk: {
-            std.debug.print("WARNING: encountered '{any}'\n", .{e});
-            break :blk 0;
-        },
+    loop: while (root.streamLine(&reader.interface, &line_writer) catch |e| blk: {
+        std.debug.print("WARNING: encountered '{any}'\n", .{e});
+        if (e == error.ReadFailed) return e;
+        break :blk 0;
     }) |line_len| {
         defer _ = line_writer.consumeAll();
-        std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
         const line = std.mem.trim(u8, line_buf[0..line_len], &std.ascii.whitespace);
         for (line) |c| {
             if (!std.ascii.isPrint(c)) {
@@ -468,6 +465,7 @@ pub fn main(init: std.process.Init) !void {
                                     \\error at depth: {}
                                     \\for position {s}
                                     \\got: {} expected: {}
+                                    \\
                                 , .{
                                     node_count.depth,
                                     position.fen,
@@ -685,6 +683,8 @@ pub fn main(init: std.process.Init) !void {
 
             var reader_buf: [4096]u8 = undefined;
             var file_reader = file.readerStreaming(io, &reader_buf);
+            var data_buf: [reader_buf.len]u8 = undefined;
+            var data_writer = std.Io.Writer.fixed(&data_buf);
 
             var sum: i64 = 0;
             var abs_sum: i64 = 0;
@@ -692,17 +692,19 @@ pub fn main(init: std.process.Init) !void {
 
             const ctx = root.evaluation.globalCtx.lock();
             defer root.evaluation.globalCtx.release();
-            while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
-                const end = std.mem.indexOfScalar(u8, data_line, '[') orelse data_line.len;
+            while (root.streamLine(&file_reader.interface, &data_writer) catch null) |len| {
+                defer _ = data_writer.consumeAll();
+                const data_line = data_buf[0..len];
+                const end = root.indexOfScalar(u8, data_line, '[') orelse data_line.len;
                 const fen = data_line[0..end];
 
-                const b = try Board.parseFen(fen, true);
+                const b = Board.parseFen(fen, true) catch continue;
                 ctx.initRoot(&b);
                 const raw_eval = ctx.handle(0).eval(&b);
                 sum += raw_eval;
                 abs_sum += @abs(raw_eval);
                 count += 1;
-            } else |_| {}
+            }
             const average = @as(f64, @floatFromInt(sum)) / @as(f64, @floatFromInt(count));
             const abs_average = @as(f64, @floatFromInt(abs_sum)) / @as(f64, @floatFromInt(count));
             std.debug.print("sum: {} sum abs: {}\n", .{ sum, abs_sum });
@@ -774,9 +776,13 @@ pub fn main(init: std.process.Init) !void {
                     }
                 }
             } else {
-                while (file_reader.interface.takeDelimiterInclusive('\n')) |data_line| {
-                    const open = std.mem.indexOfScalar(u8, data_line, '[') orelse continue;
-                    const close = std.mem.indexOfScalarPos(u8, data_line, open, ']') orelse continue;
+                var data_buf: [reader_buf.len]u8 = undefined;
+                var data_writer = std.Io.Writer.fixed(&data_buf);
+                while (root.streamLine(&file_reader.interface, &data_writer) catch null) |len| {
+                    defer _ = data_writer.consumeAll();
+                    const data_line = data_buf[0..len];
+                    const open = root.indexOfScalar(u8, data_line, '[') orelse continue;
+                    const close = open + (root.indexOfScalar(u8, data_line[open..], ']') orelse continue);
                     const fen = std.mem.trim(u8, data_line[0..open], &std.ascii.whitespace);
                     const result = std.fmt.parseFloat(f64, data_line[open + 1 .. close]) catch continue;
 
@@ -789,7 +795,7 @@ pub fn main(init: std.process.Init) !void {
                     const err = pred - result;
                     sum_sq += err * err;
                     count += 1;
-                } else |_| {}
+                }
             }
             std.debug.print("\ncount: {}\n", .{count});
             std.debug.print("MSE: {d:.8}\n", .{sum_sq / @as(f64, @floatFromInt(count))});

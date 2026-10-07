@@ -23,10 +23,10 @@ fn everyOther(comptime T: type, comptime offset: comptime_int, v: simd.Vector(T)
         .little => @shuffle(T, v, undefined, std.simd.iota(i32, N) *
             @as(@Vector(N, i32), @splat(2)) + @as(@Vector(N, i32), @splat(offset))),
         .big => blk: {
-            const lanes: [simd.vecSize(T)]T = v;
-            var out: [N]T = undefined;
-            for (0..N) |k| out[k] = lanes[2 * k + offset];
-            break :blk out;
+            const BITS = @bitSizeOf(T);
+            const pairs: @Vector(N, std.meta.Int(.unsigned, 2 * BITS)) = @bitCast(v);
+            const half: @Vector(N, std.meta.Int(.unsigned, BITS)) = @truncate(pairs >> @splat(if (offset == 0) BITS else 0));
+            break :blk @bitCast(half);
         },
     };
 }
@@ -49,10 +49,24 @@ pub fn mulhi(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(i16) {
     return @as(simd.Vector(i16), @intCast(products >> @as(Wide, @splat(16))));
 }
 
+const PACKUS_MASK: @Vector(simd.vecSize(u8), i32) = blk: {
+    const LANE = 8;
+    var mask: [simd.vecSize(u8)]i32 = undefined;
+    for (&mask, 0..) |*m, dst| {
+        const lane = dst / (2 * LANE);
+        const src: i32 = lane * LANE + dst % LANE;
+        m.* = if (dst % (2 * LANE) < LANE) src else ~src;
+    }
+    break :blk mask;
+};
+
 pub fn packus(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(u8) {
     const zero: simd.Vector(i16) = @splat(0);
     const a_packed: @Vector(simd.vecSize(i16), u8) = @intCast(@max(a, zero));
     const b_packed: @Vector(simd.vecSize(i16), u8) = @intCast(@max(b, zero));
+    if (simd.vecSize(i16) > 8) {
+        return @shuffle(u8, a_packed, b_packed, PACKUS_MASK);
+    }
     const halves: [2]@Vector(simd.vecSize(i16), u8) = .{ a_packed, b_packed };
     return @bitCast(halves);
 }

@@ -6,8 +6,19 @@ const evaluation = @import("../../evaluation.zig");
 
 const ALIGNMENT = 64;
 
-pub const NEEDS_FT_PERMUTE = true;
-pub const NEEDS_L1_PERMUTE = true;
+const PACKUS_LANE: usize = 8;
+const PACKUS_WIDTH: usize = 32;
+
+pub fn packusPosition(neuron: usize) usize {
+    const chunk = neuron % (2 * PACKUS_WIDTH);
+    const lane = chunk / (2 * PACKUS_LANE);
+    const half = chunk % (2 * PACKUS_LANE) / PACKUS_LANE;
+    return neuron - chunk + half * PACKUS_WIDTH + lane * PACKUS_LANE + chunk % PACKUS_LANE;
+}
+
+comptime {
+    std.debug.assert(simd.vecSize(i16) <= PACKUS_WIDTH);
+}
 
 pub const Weights = extern struct {
     l1w: [arch.OUTPUT_BUCKET_COUNT][arch.L2_SIZE * arch.L1_SIZE]i8 align(ALIGNMENT),
@@ -17,85 +28,26 @@ pub const Weights = extern struct {
     l3w: [arch.OUTPUT_BUCKET_COUNT][arch.L3_SIZE]i32 align(ALIGNMENT),
     l3b: [arch.OUTPUT_BUCKET_COUNT]i32 align(ALIGNMENT),
 
-    fn l1wInference(self: *Weights) *align(ALIGNMENT) [arch.OUTPUT_BUCKET_COUNT][arch.L2_SIZE * arch.L1_SIZE]i8 {
-        return @ptrCast(&self.l1w);
+    pub fn byteSwap(self: *Weights) void {
+        arch.endianSwap(&self.l1b);
+        arch.endianSwap(&self.l2w);
+        arch.endianSwap(&self.l2b);
+        arch.endianSwap(&self.l3w);
+        arch.endianSwap(&self.l3b);
     }
 
-    fn l1wDisk(self: *Weights) *align(ALIGNMENT) [arch.L1_SIZE][arch.OUTPUT_BUCKET_COUNT][arch.L2_SIZE]i8 {
-        return @ptrCast(&self.l1w);
-    }
-
-    fn l2wInference(self: *Weights) *align(ALIGNMENT) [arch.OUTPUT_BUCKET_COUNT][2 * arch.L3_SIZE * arch.L2_SIZE]i32 {
-        return @ptrCast(&self.l2w);
-    }
-
-    fn l2wDisk(self: *Weights) *align(ALIGNMENT) [2 * arch.L2_SIZE][arch.OUTPUT_BUCKET_COUNT][arch.L3_SIZE]i32 {
-        return @ptrCast(&self.l2w);
-    }
-
-    fn l3wInference(self: *Weights) *align(ALIGNMENT) [arch.OUTPUT_BUCKET_COUNT][arch.L3_SIZE]i32 {
-        return @ptrCast(&self.l3w);
-    }
-
-    fn l3wDisk(self: *Weights) *align(ALIGNMENT) [arch.L3_SIZE][arch.OUTPUT_BUCKET_COUNT]i32 {
-        return @ptrCast(&self.l3w);
-    }
-
-    pub fn transform(self: *Weights, target_kind: simd.Target, endian: std.builtin.Endian, full_dotprod: bool) void {
-        _ = target_kind;
-        const l1_order = arch.l1OrderFor(full_dotprod);
-
-        if (endian != .little) {
-            inline for (.{
-                &self.l1w,
-                &self.l1b,
-                &self.l2w,
-                &self.l2b,
-                &self.l3w,
-                &self.l3b,
-            }) |field| {
-                arch.endianSwap(field);
+    pub fn permuteL1(self: *Weights, order: *const [arch.L1_SIZE]u16) void {
+        for (&self.l1w) |*bucket| {
+            for (0..arch.L2_SIZE) |j| {
+                var tmp: [arch.L1_SIZE]i8 = undefined;
+                for (0..arch.L1_SIZE) |n| tmp[n] = bucket[l1wIndex(order[n], j)];
+                for (0..arch.L1_SIZE) |n| bucket[l1wIndex(n, j)] = tmp[n];
             }
         }
+    }
 
-        {
-            const l1w_disk = self.l1wDisk().*;
-            const l1w_inf = self.l1wInference();
-
-            for (0..arch.OUTPUT_BUCKET_COUNT) |ob| {
-                for (0..arch.L1_SIZE / 4) |i| {
-                    for (0..arch.L2_SIZE) |j| {
-                        for (0..4) |k| {
-                            l1w_inf[ob][i * 4 * arch.L2_SIZE + j * 4 + k] = l1w_disk[l1_order[i * 4 + k]][ob][j];
-                        }
-                    }
-                }
-            }
-        }
-
-        {
-            const l2w_disk = self.l2wDisk().*;
-            const l2w_inf = self.l2wInference();
-
-            for (0..arch.OUTPUT_BUCKET_COUNT) |ob| {
-                for (0..2 * arch.L2_SIZE) |i| {
-                    for (0..arch.L3_SIZE) |j| {
-                        l2w_inf[ob][i * arch.L3_SIZE + j] = l2w_disk[i][ob][j];
-                    }
-                }
-            }
-        }
-
-        {
-            const l3w_disk = self.l3wDisk().*;
-            const l3w_inf = self.l3wInference();
-
-            for (0..arch.OUTPUT_BUCKET_COUNT) |ob| {
-                for (0..arch.L3_SIZE) |i| {
-                    l3w_inf[ob][i] = l3w_disk[i][ob];
-                }
-            }
-        }
+    fn l1wIndex(neuron: usize, output: usize) usize {
+        return neuron / 4 * 4 * arch.L2_SIZE + output * 4 + neuron % 4;
     }
 
     pub const SIZE_BYTES = @sizeOf(Weights);
@@ -182,15 +134,17 @@ pub fn forward(
         const LO: simd.Vector(i16) = @splat(0);
         const HI: simd.Vector(i16) = @splat(arch.Q0);
         while (i < arch.L1_SIZE / 2) : (i += items_per_iter) {
-            var s1 = resolved.read(.stm, i);
-            var s2 = resolved.read(.stm, i + arch.L1_SIZE / 2);
-            var s3 = resolved.read(.stm, i + simd.vecSize(i16));
-            var s4 = resolved.read(.stm, i + simd.vecSize(i16) + arch.L1_SIZE / 2);
+            const offset_1 = packusPosition(i);
+            const offset_2 = packusPosition(i + @min(simd.vecSize(i16), PACKUS_LANE));
+            var s1 = resolved.read(.stm, offset_1);
+            var s2 = resolved.read(.stm, offset_1 + arch.L1_SIZE / 2);
+            var s3 = resolved.read(.stm, offset_2);
+            var s4 = resolved.read(.stm, offset_2 + arch.L1_SIZE / 2);
 
-            var n1 = resolved.read(.ntm, i);
-            var n2 = resolved.read(.ntm, i + arch.L1_SIZE / 2);
-            var n3 = resolved.read(.ntm, i + simd.vecSize(i16));
-            var n4 = resolved.read(.ntm, i + simd.vecSize(i16) + arch.L1_SIZE / 2);
+            var n1 = resolved.read(.ntm, offset_1);
+            var n2 = resolved.read(.ntm, offset_1 + arch.L1_SIZE / 2);
+            var n3 = resolved.read(.ntm, offset_2);
+            var n4 = resolved.read(.ntm, offset_2 + arch.L1_SIZE / 2);
 
             s1 = std.math.clamp(s1, LO, HI);
             s2 = @min(s2, HI);

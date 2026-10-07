@@ -820,6 +820,32 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
     stdout_writer.flush() catch |e| std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
 }
 
+pub fn streamLine(reader: *std.Io.Reader, writer: *std.Io.Writer) std.Io.Reader.StreamRemainingError!?usize {
+    var len: usize = 0;
+    while (true) {
+        const byte = reader.takeByte() catch |e| switch (e) {
+            error.EndOfStream => return if (len > 0) len else null,
+            error.ReadFailed => |err| return err,
+        };
+        if (byte == '\n') return len;
+        writer.writeByte(byte) catch |e| {
+            while (true) {
+                const rest = reader.takeByte() catch break;
+                if (rest == '\n') break;
+            }
+            return e;
+        };
+        len += 1;
+    }
+}
+
+pub fn indexOfScalar(comptime T: type, slice: []const T, value: T) ?usize {
+    return switch (builtin.cpu.arch.endian()) {
+        .little => std.mem.indexOfScalar(T, slice, value),
+        .big => std.mem.indexOfAny(T, slice, &.{value}),
+    };
+}
+
 pub fn isConstPointer(comptime T: type) bool {
     if (@typeInfo(T) == .pointer) {
         return @typeInfo(T).pointer.is_const;

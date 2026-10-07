@@ -44,6 +44,7 @@ const Command = enum {
     @"fit-wdl",
     @"relabel-tb",
     @"relabel-chonker",
+    @"permute-net",
     sanitise,
     bench,
 };
@@ -80,7 +81,7 @@ fn suggestCommand(input: []const u8) ?CommandSuggestion {
 fn parseOptionName(arg: []const u8) ?[]const u8 {
     if (!std.mem.startsWith(u8, arg, "--")) return null;
     const option = arg[2..];
-    return option[0 .. std.mem.indexOfScalar(u8, option, '=') orelse option.len];
+    return option[0 .. root.indexOfScalar(u8, option, '=') orelse option.len];
 }
 
 fn logUnknownOption(command_name: []const u8, option_name: []const u8, suggestion: ?arg_parser.Suggestion) void {
@@ -231,6 +232,11 @@ pub fn handle(init: std.process.Init, version: []const u8) !bool {
         }
 
         const cmd_raw = std.mem.trim(u8, arg, "-");
+        if (!TOOLS_ONLY and std.mem.startsWith(u8, cmd_raw, "genfens ")) {
+            var genfens_args = std.mem.tokenizeScalar(u8, cmd_raw["genfens ".len..], ' ');
+            try handleGenfens(init.io, init.gpa, &genfens_args);
+            return true;
+        }
         if (std.meta.stringToEnum(Command, cmd_raw)) |command| {
             switch (command) {
                 .help => {
@@ -254,6 +260,7 @@ pub fn handle(init: std.process.Init, version: []const u8) !bool {
                 .@"fit-wdl" => try handleFitWdl(init.io, init.gpa, &args),
                 .@"relabel-tb" => try handleRelabelTb(init.io, init.gpa, &args),
                 .@"relabel-chonker" => try handleRelabelChonker(init.io, init.gpa, &args),
+                .@"permute-net" => try handlePermuteNet(init.io, init.gpa, &args),
                 .sanitise => try handleSanitise(init.io, init.gpa, &args),
                 .bench => if (TOOLS_ONLY) {
                     writeLog("bench is unavailable in this build\n", .{});
@@ -330,6 +337,9 @@ fn handleHelp(version: []const u8, threads: usize) void {
         \\
         \\  relabel-tb --input <INPUT.vf> --tb-path <TB_PATH> [--allow-overwrite] [--output <OUTPUT>]
         \\      relabel dataset outcomes based on Syzygy tablebases. default output: <INPUT>_relabeled
+        \\
+        \\  permute-net --input <NET> --order <ORDER.json> --output <OUTPUT> [--allow-overwrite]
+        \\      reorder the L1 neurons of a net by a JSON array of L1 pair indices
         \\
         \\  help
         \\      show this help message and exit
@@ -1200,6 +1210,60 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
         incorrect_wdl_count,
         game_count,
     });
+}
+
+fn handlePermuteNet(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
+    const arch = @import("nnue/arch.zig");
+    if (!@hasDecl(arch.outputs.Weights, "permuteL1")) {
+        writeLog("permute-net is unavailable for this net architecture\n", .{});
+        return;
+    }
+
+    const parsed = try parseCommandArgs(
+        args,
+        struct {
+            input: []const u8,
+            order: []const u8,
+            output: []const u8,
+            @"allow-overwrite": bool = false,
+        },
+        .{ .allow_implied = false },
+        "permute-net",
+        allocator,
+    );
+
+    var order_file = try openInputFile(io, parsed.order);
+    defer order_file.close(io);
+    const order_bytes = try allocator.alloc(u8, (try order_file.stat(io)).size);
+    defer allocator.free(order_bytes);
+    const order_len = try order_file.readPositionalAll(io, order_bytes, 0);
+    const order_json = try std.json.parseFromSlice([arch.L1_PAIR_COUNT]u16, allocator, order_bytes[0..order_len], .{});
+    defer order_json.deinit();
+    var seen: [arch.L1_PAIR_COUNT]bool = @splat(false);
+    for (order_json.value) |pair| {
+        if (pair >= arch.L1_PAIR_COUNT or seen[pair]) {
+            writeLog("order is not a permutation of 0..{}\n", .{arch.L1_PAIR_COUNT});
+            return error.InvalidOrder;
+        }
+        seen[pair] = true;
+    }
+
+    const weights = try allocator.create(arch.Weights);
+    defer allocator.destroy(weights);
+    var input_file = try openInputFile(io, parsed.input);
+    defer input_file.close(io);
+    if ((try input_file.stat(io)).size != @sizeOf(arch.Weights) or
+        try input_file.readPositionalAll(io, std.mem.asBytes(weights), 0) != @sizeOf(arch.Weights))
+    {
+        writeLog("'{s}' is not a net of this architecture ({} bytes expected)\n", .{ parsed.input, @sizeOf(arch.Weights) });
+        return error.InvalidNet;
+    }
+
+    weights.permuteL1(&order_json.value);
+
+    var output_file = try createOutputFile(io, parsed.output, parsed.@"allow-overwrite");
+    defer output_file.close(io);
+    try output_file.writeStreamingAll(io, std.mem.asBytes(weights));
 }
 
 fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {

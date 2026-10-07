@@ -896,8 +896,7 @@ pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: a
         var line_buf: [128]u8 = undefined;
         var line_writer = std.Io.Writer.fixed(&line_buf);
 
-        while (reader.interface.streamDelimiter(&line_writer, '\n') catch null) |fen_size| {
-            std.debug.assert(try reader.interface.discardDelimiterInclusive('\n') == 1);
+        while (root.streamLine(&reader.interface, &line_writer) catch null) |fen_size| {
             std.debug.assert(line_writer.end == fen_size);
 
             try fens.append(try allocator.dupe(u8, line_writer.buffer[0..line_writer.end]));
@@ -906,6 +905,7 @@ pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: a
     } else {
         try fens.append(try allocator.dupe(u8, root.Board.startpos().toFen().slice()));
     }
+    if (fens.items.len == 0) return error.EmptyBook;
     rng.random().shuffle([]const u8, fens.items);
 
     var remaining: usize = count;

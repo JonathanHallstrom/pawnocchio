@@ -28,7 +28,11 @@ const USE_AVX512F_REFRESH = @import("builtin").cpu.has(.x86, .avx512f);
 
 fn psqIndexVector(mailbox: @Vector(64, u8), stm: Colour, flip_xor: u16) @Vector(64, u16) {
     const c: @Vector(64, u16) = mailbox;
-    const side_rel = (c ^ @as(@Vector(64, u16), @splat(stm.toInt()))) & @as(@Vector(64, u16), @splat(1));
+    var side_rel = (c ^ @as(@Vector(64, u16), @splat(stm.toInt()))) & @as(@Vector(64, u16), @splat(1));
+    if (nnue.arch.MERGED_KINGS) {
+        const is_king = (c >> @splat(1)) == @as(@Vector(64, u16), @splat(root.PieceType.king.toInt()));
+        side_rel = @select(u16, is_king, @as(@Vector(64, u16), @splat(0)), side_rel);
+    }
     return side_rel * @as(@Vector(64, u16), @splat(384)) +
         ((c >> @splat(1)) << @splat(6)) + (std.simd.iota(u16, 64) ^ @as(@Vector(64, u16), @splat(flip_xor)));
 }

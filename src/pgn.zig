@@ -211,7 +211,7 @@ fn findByteFrom(haystack: []const u8, start: usize, comptime needle: u8) ?usize 
     var i = start;
     while (i + SCAN_WIDTH <= haystack.len) : (i += SCAN_WIDTH) {
         const chunk: @Vector(SCAN_WIDTH, u8) = haystack[i..][0..SCAN_WIDTH].*;
-        const matches: u32 = @bitCast(chunk == @as(@Vector(SCAN_WIDTH, u8), @splat(needle)));
+        const matches: u32 = root.simd.maskInt(chunk == @as(@Vector(SCAN_WIDTH, u8), @splat(needle)));
         if (matches != 0) return i + @ctz(matches);
     }
     while (i < haystack.len) : (i += 1) {
@@ -269,19 +269,19 @@ pub const GameView = struct {
             const remainder = text[move_section_offset..];
             switch (remainder[0]) {
                 '[' => {
-                    if (std.mem.indexOfScalar(u8, remainder, ']')) |end| {
+                    if (root.indexOfScalar(u8, remainder, ']')) |end| {
                         const header = remainder[1..end];
                         if (std.mem.indexOf(u8, header, "FEN")) |fen_idx| {
-                            if (std.mem.indexOfScalar(u8, header[fen_idx..], '"')) |q1| {
+                            if (root.indexOfScalar(u8, header[fen_idx..], '"')) |q1| {
                                 const start = fen_idx + q1 + 1;
-                                if (std.mem.indexOfScalar(u8, header[start..], '"')) |q2| {
+                                if (root.indexOfScalar(u8, header[start..], '"')) |q2| {
                                     fen = header[start .. start + q2];
                                 }
                             }
                         } else if (std.mem.indexOf(u8, header, "Result")) |res_idx| {
-                            if (std.mem.indexOfScalar(u8, header[res_idx..], '"')) |q1| {
+                            if (root.indexOfScalar(u8, header[res_idx..], '"')) |q1| {
                                 const start = res_idx + q1 + 1;
-                                if (std.mem.indexOfScalar(u8, header[start..], '"')) |q2| {
+                                if (root.indexOfScalar(u8, header[start..], '"')) |q2| {
                                     const result_val = header[start .. start + q2];
                                     if (std.mem.eql(u8, result_val, "1-0")) outcome = .win;
                                     if (std.mem.eql(u8, result_val, "0-1")) outcome = .loss;

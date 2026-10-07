@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const EvalMode = @import("../src/eval_mode.zig").EvalMode;
-const nnue_arch = @import("../src/nnue/arch.zig");
 
 pub const Input = union(enum) {
     hce,
@@ -32,17 +31,15 @@ pub fn prepareNet(
     cpu: std.Target.Cpu,
     net_path: std.Build.LazyPath,
 ) !Input {
-    const run = b.addRunArtifact(transform_tool);
-    run.addArgs(&.{
-        @tagName(nnue_arch.target(cpu)),
-        @tagName(cpu.arch.endian()),
-        if (nnue_arch.fullDotProd(cpu)) "dotprod" else "emulated",
-    });
-    run.addFileArg(net_path);
+    const file = if (cpu.arch.endian() == .little) net_path else blk: {
+        const run = b.addRunArtifact(transform_tool);
+        run.addFileArg(net_path);
+        break :blk run.addOutputFileArg("net");
+    };
 
     return .{ .nnue = .{
         .identifier = net_path.basename(b, null),
-        .file = run.addOutputFileArg("net"),
+        .file = file,
     } };
 }
 

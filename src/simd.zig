@@ -49,10 +49,6 @@ pub fn target(cpu: std.Target.Cpu) Target {
     return .fallback;
 }
 
-pub fn parseTarget(name: []const u8) ?Target {
-    return std.meta.stringToEnum(Target, name);
-}
-
 pub fn hasPext(cpu: std.Target.Cpu) bool {
     if (cpu.arch != .x86_64 and cpu.arch != .x86) return false;
     const llvm_name = cpu.model.llvm_name orelse "";
@@ -86,10 +82,6 @@ fn hasVnni(cpu: std.Target.Cpu) bool {
 
 fn hasI8mm(cpu: std.Target.Cpu) bool {
     return cpu.has(.aarch64, .i8mm);
-}
-
-pub fn fullDotProd(cpu: std.Target.Cpu) bool {
-    return hasVnni(cpu) or hasI8mm(cpu);
 }
 
 const HAS_VNNI = hasVnni(@import("builtin").cpu);
@@ -205,12 +197,7 @@ pub fn dpbusdx2(
     u_2: Vector(u8),
     i_2: Vector(i8),
 ) Vector(i32) {
-    if (HAS_VNNI or HAS_I8MM or HAS_DOTPROD) {
-        return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2);
-    }
-    return switch (TARGET) {
-        .avx512vbmi, .avx512, .avx2, .aarch64, .ssse3, .sse2, .fallback => sum + maddwd(maddubs(u_1, i_1) + maddubs(u_2, i_2), @splat(1)),
-    };
+    return dpbusd(dpbusd(sum, u_1, i_1), u_2, i_2);
 }
 
 pub fn ntStore(comptime T: type, dst: *T, val: Vector(T)) void {
@@ -497,38 +484,6 @@ pub fn containsSmall(comptime T: type, haystack: []const T, needle: T) bool {
     }
 
     return @reduce(.Or, res_vec) != 0;
-}
-
-test maddubs {
-    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
-    for (0..64) |_| {
-        var ub: [vecSize(u8)]u8 = undefined;
-        var ib: [vecSize(i8)]i8 = undefined;
-        prng.fill(std.mem.asBytes(&ub));
-        prng.fill(std.mem.asBytes(&ib));
-        const got: [vecSize(i16)]i16 = maddubs(ub, ib);
-        for (0..vecSize(i16)) |k| {
-            const want = @as(i16, ub[2 * k]) * @as(i16, ib[2 * k]) +|
-                @as(i16, ub[2 * k + 1]) * @as(i16, ib[2 * k + 1]);
-            try std.testing.expectEqual(want, got[k]);
-        }
-    }
-}
-
-test maddwd {
-    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
-    for (0..64) |_| {
-        var a: [vecSize(i16)]i16 = undefined;
-        var b: [vecSize(i16)]i16 = undefined;
-        prng.fill(std.mem.asBytes(&a));
-        prng.fill(std.mem.asBytes(&b));
-        const got: [vecSize(i32)]i32 = maddwd(a, b);
-        for (0..vecSize(i32)) |k| {
-            const want = @as(i32, a[2 * k]) * @as(i32, b[2 * k]) +
-                @as(i32, a[2 * k + 1]) * @as(i32, b[2 * k + 1]);
-            try std.testing.expectEqual(want, got[k]);
-        }
-    }
 }
 
 test maskInt {
