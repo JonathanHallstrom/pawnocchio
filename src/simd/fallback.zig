@@ -19,16 +19,8 @@ const simd = @import("../simd.zig");
 
 fn everyOther(comptime T: type, comptime offset: comptime_int, v: simd.Vector(T)) @Vector(simd.vecSize(T) / 2, T) {
     const N = simd.vecSize(T) / 2;
-    return switch (@import("builtin").cpu.arch.endian()) {
-        .little => @shuffle(T, v, undefined, std.simd.iota(i32, N) *
-            @as(@Vector(N, i32), @splat(2)) + @as(@Vector(N, i32), @splat(offset))),
-        .big => blk: {
-            const BITS = @bitSizeOf(T);
-            const pairs: @Vector(N, std.meta.Int(.unsigned, 2 * BITS)) = @bitCast(v);
-            const half: @Vector(N, std.meta.Int(.unsigned, BITS)) = @truncate(pairs >> @splat(if (offset == 0) BITS else 0));
-            break :blk @bitCast(half);
-        },
-    };
+    return @shuffle(T, v, undefined, std.simd.iota(i32, N) *
+        @as(@Vector(N, i32), @splat(2)) + @as(@Vector(N, i32), @splat(offset)));
 }
 
 pub fn maddubs(u: simd.Vector(u8), i: simd.Vector(i8)) simd.Vector(i16) {
@@ -40,7 +32,7 @@ pub fn maddubs(u: simd.Vector(u8), i: simd.Vector(i8)) simd.Vector(i16) {
 pub fn maddwd(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(i32) {
     const products_even = @as(simd.Vector(i32), everyOther(i16, 0, a)) * @as(simd.Vector(i32), everyOther(i16, 0, b));
     const products_odd = @as(simd.Vector(i32), everyOther(i16, 1, a)) * @as(simd.Vector(i32), everyOther(i16, 1, b));
-    return products_even + products_odd;
+    return products_even +% products_odd;
 }
 
 pub fn mulhi(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(i16) {
@@ -62,11 +54,11 @@ const PACKUS_MASK: @Vector(simd.vecSize(u8), i32) = blk: {
 
 pub fn packus(a: simd.Vector(i16), b: simd.Vector(i16)) simd.Vector(u8) {
     const zero: simd.Vector(i16) = @splat(0);
-    const a_packed: @Vector(simd.vecSize(i16), u8) = @intCast(@max(a, zero));
-    const b_packed: @Vector(simd.vecSize(i16), u8) = @intCast(@max(b, zero));
+    const max: simd.Vector(i16) = @splat(255);
+    const a_packed: @Vector(simd.vecSize(i16), u8) = @intCast(std.math.clamp(a, zero, max));
+    const b_packed: @Vector(simd.vecSize(i16), u8) = @intCast(std.math.clamp(b, zero, max));
     if (simd.vecSize(i16) > 8) {
         return @shuffle(u8, a_packed, b_packed, PACKUS_MASK);
     }
-    const halves: [2]@Vector(simd.vecSize(i16), u8) = .{ a_packed, b_packed };
-    return @bitCast(halves);
+    return std.simd.join(a_packed, b_packed);
 }

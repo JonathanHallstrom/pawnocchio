@@ -73,5 +73,5 @@ pub fn count(self: *const Self) u64 {
         E = -(1 << 64) * @log(1 - E / (1 << 64));
     }
 
-    return @intFromFloat(E);
+    return @trunc(E);
 }

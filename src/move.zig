@@ -44,11 +44,11 @@ pub const Move = enum(u16) {
     pub const promotion_flag: u16 = 0b1100;
 
     fn initFromParts(from_: u16, to_: u16, flag_: u16) Move {
-        return @enumFromInt(from_ | to_ << 6 | flag_ << 12);
+        return @fromBackingInt(from_ | to_ << 6 | flag_ << 12);
     }
 
     fn toInt(self: Move) u16 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn from(self: Move) Square {
@@ -68,7 +68,7 @@ pub const Move = enum(u16) {
     }
 
     pub fn tp(self: Move) MoveType {
-        return @enumFromInt(self.toInt() >> 14);
+        return @fromBackingInt(@intCast(self.toInt() >> 14));
     }
 
     pub fn extra(self: Move) u8 {
@@ -76,7 +76,7 @@ pub const Move = enum(u16) {
     }
 
     pub fn init() Move {
-        return @enumFromInt(0);
+        return @fromBackingInt(0);
     }
 
     pub fn isNull(self: Move) bool {

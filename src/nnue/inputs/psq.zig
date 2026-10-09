@@ -17,20 +17,9 @@ const evaluation = root.evaluation;
 
 const ALIGNMENT = 64;
 
-pub const HAS_THREATS = false;
-
 pub const Weights = extern struct {
     ft_w: [arch.INPUT_BUCKET_COUNT][arch.PSQ_FEATURE_COUNT]arch.PSQTWeight align(ALIGNMENT),
-    ft_b: [arch.L1_SIZE]i16 align(ALIGNMENT),
-
-    pub fn flatPSQWeights(self: *const Weights, bucket: usize) *const [arch.PSQ_FEATURE_COUNT]arch.PSQTWeight {
-        return &self.ft_w[bucket];
-    }
-
-    pub fn byteSwap(self: *Weights) void {
-        arch.endianSwap(&self.ft_w);
-        arch.endianSwap(&self.ft_b);
-    }
+    ft_b: arch.RawAccumulator align(ALIGNMENT),
 
     pub fn permuteL1(self: *Weights, order: *const [arch.L1_SIZE]u16) void {
         arch.permuteL1Neurons(&self.ft_w, order);
@@ -38,16 +27,13 @@ pub const Weights = extern struct {
     }
 
     pub const SIZE_BYTES = @sizeOf(Weights);
-    pub const WEIGHT_COUNT = blk: {
+    comptime {
         var size = 0;
-        var res = 0;
-        for (std.meta.fields(Weights)) |field| {
-            res += arch.totalElements(field.type);
-            size += arch.totalElements(field.type) * @sizeOf(arch.UltimateChild(field.type));
+        for (@typeInfo(Weights).@"struct".field_types) |field_type| {
+            size += @sizeOf(field_type);
         }
         std.debug.assert(std.mem.alignForward(usize, size, 64) == SIZE_BYTES);
-        break :blk res;
-    };
+    }
 };
 
 pub const MirroringType = if (arch.HORIZONTAL_MIRRORING) struct {
@@ -143,7 +129,7 @@ pub inline fn featureWeight(
     f: PSQTFeature,
     mirror: MirroringType,
 ) *const arch.RawAccumulator {
-    return &weights.input.flatPSQWeights(whichInputBucket(perspective, king_sq))[featureIndex(perspective, kind, f, mirror)];
+    return &weights.input.ft_w[whichInputBucket(perspective, king_sq)][featureIndex(perspective, kind, f, mirror)];
 }
 
 pub inline fn whichInputBucket(stm: Colour, king_square: Square) usize {
@@ -166,7 +152,7 @@ pub const Resolved = struct {
     ntm: *const Accumulator,
 
     pub inline fn read(self: Resolved, comptime perspective: Perspective, i: usize) simd.Vector(i16) {
-        return (if (perspective == .stm) self.stm else self.ntm).data[i..][0..simd.vecSize(i16)].*;
+        return (if (perspective == .stm) self.stm else self.ntm).data[@divExact(i, simd.vecSize(i16))];
     }
 };
 
@@ -213,9 +199,10 @@ pub fn Context(comptime B: type) type {
 
         pub fn initRoot(self: *Self, board: *const B, weights: *const arch.Weights) void {
             const f = &self.frames[0];
+            for (&self.accumulator_stack[0]) |*acc| acc.data = weights.input.ft_b;
             f.* = .{
-                .white = .{ .ptr = @ptrCast(&weights.input.ft_b) },
-                .black = .{ .ptr = @ptrCast(&weights.input.ft_b) },
+                .white = .{ .ptr = &self.accumulator_stack[0][Colour.white.toInt()] },
+                .black = .{ .ptr = &self.accumulator_stack[0][Colour.black.toInt()] },
                 .white_mirrored = .{},
                 .black_mirrored = .{},
                 .dirty_piece = .clean,
@@ -372,9 +359,7 @@ pub fn Context(comptime B: type) type {
         }
 
         inline fn writeFeature(self: *Self, ply: u16, f: *State(B), acc: Colour, king_sq: Square, piece: PSQTFeature, weights: *const arch.Weights) void {
-            const buf = &self.accumulator_stack[ply][acc.toInt()];
-            buf.copyAdd(f.half(acc).ptr, featureWeight(weights, acc, king_sq, .psqt, piece, f.mirrorFor(acc)));
-            f.setHalf(acc, buf);
+            self.accumulator_stack[ply][acc.toInt()].add(featureWeight(weights, acc, king_sq, .psqt, piece, f.mirrorFor(acc)));
         }
 
         pub fn resolved(self: *const Self, ply: u16, stm: Colour) Resolved {

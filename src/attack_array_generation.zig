@@ -75,7 +75,7 @@ pub fn generateRookAttackArrayInPlaceCompressed(ms: [64]AttackEntry, arr: []u16)
 pub fn generateBishopAttackArray(comptime ms: [64]AttackEntry, comptime len: comptime_int) [len]u64 {
     comptime { // enforce this only being run at compile time
         @setEvalBranchQuota(1 << 30);
-        var arr: [len]u64 = .{0} ** len;
+        var arr: [len]u64 = @splat(0);
         generateBishopAttackArrayInPlace(ms, &arr);
         return arr;
     }
@@ -84,7 +84,7 @@ pub fn generateBishopAttackArray(comptime ms: [64]AttackEntry, comptime len: com
 pub fn generateRookAttackArray(comptime ms: [64]AttackEntry, comptime len: comptime_int) [len]u64 {
     comptime { // enforce this only being run at compile time
         @setEvalBranchQuota(1 << 30);
-        var arr: [len]u64 = .{0} ** len;
+        var arr: [len]u64 = @splat(0);
         generateRookAttackArrayInPlace(ms, &arr);
         return arr;
     }
@@ -101,7 +101,7 @@ fn validRandom(r: Random, b: u64) u64 {
 }
 
 fn neededArrayLen(bishops: bool, s: Square, m: AttackEntry) ?u32 {
-    var arr: [1 << 12]?u64 = .{null} ** (1 << 12);
+    var arr: [1 << 12]?u64 = @splat(null);
     var blockers: u64 = 0;
     const len = @as(u64, 1) << @intCast(@popCount(m.mask));
     var biggest_i: u32 = 0;

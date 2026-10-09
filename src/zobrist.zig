@@ -141,7 +141,7 @@ inline fn load(p: []const u8) u64 {
 }
 
 pub fn piece(col: Colour, pt: PieceType, sq: Square) u64 {
-    const offset = @intFromEnum(pt) * PIECE_ENTRIES + sq.toInt() + if (col == .white) SIDE_ENTRIES else 0;
+    const offset = @backingInt(pt) * PIECE_ENTRIES + sq.toInt() + if (col == .white) SIDE_ENTRIES else 0;
     return load(DATA[offset..]);
 }
 

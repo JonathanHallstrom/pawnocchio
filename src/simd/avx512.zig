@@ -20,22 +20,16 @@ const simd = @import("../simd.zig");
 pub fn vpermb(idx: anytype, src: @TypeOf(idx)) @TypeOf(idx) {
     const V = @TypeOf(idx);
     const L = @typeInfo(V).vector.len;
-    return @extern(*const fn (V, V) callconv(.c) V, .{ .name = switch (L) {
+    return @extern(*const fn (V, V) callconv(simd.INTRINSIC_CALLCONV) V, .{ .name = switch (L) {
         64 => "llvm.x86.avx512.permvar.qi.512",
         32 => "llvm.x86.avx512.permvar.qi.256",
         else => unreachable,
     } }).*(src, idx);
 }
 
-pub fn vpshufb(idx: @Vector(64, u8), src: @Vector(64, u8)) @Vector(64, u8) {
-    return @extern(*const fn (@Vector(64, u8), @Vector(64, u8)) callconv(.c) @Vector(64, u8), .{
-        .name = "llvm.x86.avx512.pshuf.b.512",
-    }).*(src, idx);
-}
-
 pub fn vpshufbMask(idx: @Vector(64, u8), src: @Vector(64, u8), mask: u64) @Vector(64, u8) {
     const zero: @Vector(64, u8) = @splat(0);
-    return @extern(*const fn (@Vector(64, u8), @Vector(64, u8), @Vector(64, u8), u64) callconv(.c) @Vector(64, u8), .{
+    return @extern(*const fn (@Vector(64, u8), @Vector(64, u8), @Vector(64, u8), u64) callconv(simd.INTRINSIC_CALLCONV) @Vector(64, u8), .{
         .name = "llvm.x86.avx512.mask.pshuf.b.512",
     }).*(src, idx, zero, mask);
 }
@@ -52,7 +46,7 @@ pub fn vpcompress(src: anytype, mask: simd.MaskInt(@TypeOf(src))) @TypeOf(src) {
         else => unreachable,
     };
     const total_bits = std.fmt.comptimePrint("{d}", .{info.len * @bitSizeOf(info.child)});
-    return @extern(*const fn (V, V, simd.MaskInt(V)) callconv(.c) V, .{
+    return @extern(*const fn (V, V, simd.MaskInt(V)) callconv(simd.INTRINSIC_CALLCONV) V, .{
         .name = "llvm.x86.avx512.mask.compress." ++ elem_char ++ "." ++ total_bits,
     }).*(src, zero, mask);
 }

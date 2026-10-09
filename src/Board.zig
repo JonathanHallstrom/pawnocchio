@@ -345,7 +345,7 @@ pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
                     if (!permissive and std.mem.count(File, rook_array.slice(), &.{file}) == 0)
                         return error.NoRookForCastling;
 
-                    if (@intFromEnum(file) > @intFromEnum(king_square.getFile())) {
+                    if (@backingInt(file) > @backingInt(king_square.getFile())) {
                         if (std.ascii.isUpper(castle_ch)) {
                             white_kingside_file = file;
                         } else {
@@ -353,7 +353,7 @@ pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
                         }
                         break :blk kingside_castle;
                     }
-                    if (@intFromEnum(file) < @intFromEnum(king_square.getFile())) {
+                    if (@backingInt(file) < @backingInt(king_square.getFile())) {
                         if (std.ascii.isUpper(castle_ch)) {
                             white_queenside_file = file;
                         } else {
@@ -564,9 +564,9 @@ pub fn computeFen(self: anytype) BoundedArray(u8, 128) {
     }
     var print_buf: [32]u8 = undefined;
     out.appendAssumeCapacity(' ');
-    out.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{self.halfmove}) catch unreachable);
+    out.appendSliceAssumeCapacity(std.mem.print(&print_buf, "{}", .{self.halfmove}) catch unreachable);
     out.appendAssumeCapacity(' ');
-    out.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{self.fullmove}) catch unreachable);
+    out.appendSliceAssumeCapacity(std.mem.print(&print_buf, "{}", .{self.fullmove}) catch unreachable);
 
     return out;
 }
@@ -641,9 +641,9 @@ fn frcBackrank(n: anytype) [8]PieceType {
         }
     }
 
-    back_rank[std.mem.indexOfScalar(?PieceType, &back_rank, null) orelse unreachable] = .rook;
-    back_rank[std.mem.indexOfScalar(?PieceType, &back_rank, null) orelse unreachable] = .king;
-    back_rank[std.mem.indexOfScalar(?PieceType, &back_rank, null) orelse unreachable] = .rook;
+    back_rank[std.mem.findScalar(?PieceType, &back_rank, null) orelse unreachable] = .rook;
+    back_rank[std.mem.findScalar(?PieceType, &back_rank, null) orelse unreachable] = .king;
+    back_rank[std.mem.findScalar(?PieceType, &back_rank, null) orelse unreachable] = .rook;
     var out: [8]PieceType = undefined;
     for (&out, back_rank) |*out_elem, nullable_elem| {
         assert(nullable_elem != null);
@@ -754,7 +754,7 @@ pub inline fn isNoisy(self: *const Board, move: Move) bool {
         return true;
     }
 
-    if (std.debug.runtime_safety) {
+    if (@import("builtin").optimize.runtimeSafety()) {
         inline for (.{ .knight, .bishop, .rook, .queen }) |pt| {
             const naive = self.isPromo(move) and move.promoType() == pt;
             std.debug.assert(naive == move.promoTypeEquals(pt));
@@ -903,7 +903,7 @@ pub fn updateMasks(self: *Board, col: Colour) void {
 
 inline fn computeKingThreats(self: anytype, noalias masks: *AuxMasks, stm: Colour) void {
     const occ = self.occupancy();
-    masks.pinned = .{0} ** 2;
+    masks.pinned = @splat(0);
     masks.checkers =
         (Bitboard.pawnAttacks(Square.fromBitboard(self.kingFor(stm)), stm) & self.pawnsFor(stm.flipped())) |
         (Bitboard.knightMoves(Square.fromBitboard(self.kingFor(stm))) & self.knightsFor(stm.flipped()));
@@ -961,7 +961,7 @@ pub fn resetHash(self: *Board) void {
     self.pawn_hash = 0;
     self.major_hash = 0;
     self.minor_hash = 0;
-    self.nonpawn_hash = .{0} ** 2;
+    self.nonpawn_hash = @splat(0);
     self.updateEPHash();
     self.updateCastlingHash();
     if (self.stm == .black)
@@ -1809,7 +1809,7 @@ pub fn isLegalSimple(self: *const Board, move: Move) bool {
 pub inline fn roughHashAfter(self: *const Board, move: Move, comptime include_halfmove: bool) u64 {
     var res: u64 = self.hash;
 
-    var hmc = if (include_halfmove) self.halfmove + 1 else void{};
+    var hmc = if (include_halfmove) self.halfmove + 1 else {};
     if (!move.isNull()) {
         if (self.colouredPieceOn(move.to())) |cpt| {
             @branchHint(.unpredictable);
@@ -1913,11 +1913,11 @@ fn computePlausibleMoves() BoundedArray(Move, 8192) {
             }
 
             if ((from_rank == 0 and to_rank == 0) or (from_rank == 7 and to_rank == 7)) {
-                const col_offset: u16 = if (from_rank == 7) 1 else 0;
-                const ks = Move.castlingKingside(@enumFromInt(col_offset), from, to);
-                const qs = Move.castlingQueenside(@enumFromInt(col_offset), from, to);
+                const col: Colour = if (from_rank == 7) .black else .white;
+                const ks = Move.castlingKingside(col, from, to);
+                const qs = Move.castlingQueenside(col, from, to);
                 result.appendAssumeCapacity(ks);
-                if (@intFromEnum(ks) != @intFromEnum(qs)) {
+                if (ks != qs) {
                     result.appendAssumeCapacity(qs);
                 }
             }
@@ -1964,7 +1964,7 @@ fn perft_impl(
                 if (!found) {
                     std.debug.print("  extra: {s} (tp={} extra={})\n", .{
                         m.toString(self).slice(),
-                        @intFromEnum(m.tp()),
+                        @backingInt(m.tp()),
                         m.extra(),
                     });
                 }
@@ -1980,7 +1980,7 @@ fn perft_impl(
                 if (!found) {
                     std.debug.print("  missing: {s} (tp={} extra={})\n", .{
                         gen_move.toString(self).slice(),
-                        @intFromEnum(gen_move.tp()),
+                        @backingInt(gen_move.tp()),
                         gen_move.extra(),
                     });
                 }

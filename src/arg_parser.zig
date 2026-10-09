@@ -15,7 +15,6 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const std = @import("std");
-const root = @import("root.zig");
 const ComptimeArrayList = @import("comptime_array_list.zig").ComptimeArrayList;
 const edit_distance = @import("edit_distance.zig");
 
@@ -30,7 +29,6 @@ pub const Error = error{
 };
 
 pub const UsageDescription = struct {
-    field: []const u8,
     text: ?[]const u8 = null,
     default_text: ?[]const u8 = null,
 };
@@ -40,24 +38,45 @@ pub const Suggestion = struct {
     cost: usize,
 };
 
-pub const Options = struct {
-    allow_implied: bool = false,
-    default_int_type: type = i32,
-    default_float_type: type = f64,
-    option_suggest_base: usize = 80,
-    option_suggest_extra: usize = 10,
-    usage_descriptions: []const UsageDescription = &.{},
-};
+pub fn Options(comptime spec_or_type: anytype) type {
+    const Spec = SpecType(spec_or_type);
+    if (@typeInfo(Spec) != .@"struct") {
+        @compileError("arg_parser spec must be a struct");
+    }
+    return struct {
+        allow_implied: bool = false,
+        default_int_type: type = i32,
+        default_float_type: type = f64,
+        option_suggest_base: usize = 80,
+        option_suggest_extra: usize = 10,
+        usage_descriptions: OptionalFields(Spec, UsageDescription) = .{},
+        bare_values: OptionalFields(Spec, null) = .{},
+    };
+}
 
-pub fn ParsedType(comptime spec_or_type: anytype, comptime options: Options) type {
-    const RawSpecType = if (@TypeOf(spec_or_type) == type) spec_or_type else @TypeOf(spec_or_type);
-    return NormalizedSpecType(RawSpecType, options);
+fn SpecType(comptime spec_or_type: anytype) type {
+    return if (@TypeOf(spec_or_type) == type) spec_or_type else @TypeOf(spec_or_type);
+}
+
+fn OptionalFields(comptime Spec: type, comptime Value: ?type) type {
+    const spec_info = @typeInfo(Spec).@"struct";
+    var field_types: [spec_info.field_names.len]type = undefined;
+    var field_attrs: [spec_info.field_names.len]std.lang.Type.Struct.FieldAttributes = undefined;
+    for (spec_info.field_types, 0..) |field_type, i| {
+        field_types[i] = ?(Value orelse field_type);
+        field_attrs[i] = .{ .default_value_ptr = @ptrCast(&@as(field_types[i], null)) };
+    }
+    return @Struct(.auto, null, spec_info.field_names, &field_types, &field_attrs);
+}
+
+pub fn ParsedType(comptime spec_or_type: anytype, comptime options: Options(spec_or_type)) type {
+    return NormalizedSpecType(SpecType(spec_or_type), options);
 }
 
 pub inline fn parse(
     args: anytype,
     comptime spec_or_type: anytype,
-    comptime options: Options,
+    comptime options: Options(spec_or_type),
     allocator: std.mem.Allocator,
 ) (Error || error{OutOfMemory})!ParsedType(spec_or_type, options) {
     const ArgType = std.meta.Child(@TypeOf(args));
@@ -69,11 +88,11 @@ pub inline fn parse(
 
     const Spec = ParsedType(spec_or_type, options);
     const spec_is_type = @TypeOf(spec_or_type) == type;
-    const RawSpecType = if (spec_is_type) spec_or_type else @TypeOf(spec_or_type);
+    const RawSpecType = SpecType(spec_or_type);
     const required_mask = comptime blk: {
         var mask = ComptimeArrayList(bool){};
-        for (std.meta.fields(RawSpecType)) |field| {
-            mask.append(spec_is_type and field.default_value_ptr == null);
+        for (@typeInfo(RawSpecType).@"struct".field_attrs) |field_attrs| {
+            mask.append(spec_is_type and field_attrs.default_value_ptr == null);
         }
         break :blk mask.items;
     };
@@ -87,30 +106,26 @@ pub inline fn parse(
 fn parseImpl(
     args: anytype,
     spec: anytype,
-    comptime options: Options,
+    comptime options: anytype,
     required_mask: []const bool,
     allocator: std.mem.Allocator,
 ) (Error || error{OutOfMemory})!@TypeOf(spec) {
     const Spec = @TypeOf(spec);
+    const spec_info = @typeInfo(Spec).@"struct";
 
     var parsed = spec;
     var consumed_implied = false;
-    var seen: [std.meta.fields(Spec).len]bool = .{false} ** std.meta.fields(Spec).len;
+    var seen: [spec_info.field_names.len]bool = @splat(false);
     var pending: ?[]const u8 = null;
 
-    var scratch: [std.meta.fields(Spec).len]std.ArrayListUnmanaged([]const u8) =
-        .{std.ArrayListUnmanaged([]const u8).empty} ** std.meta.fields(Spec).len;
-    defer {
-        for (&scratch) |*s| {
-            if (s.capacity > 0) s.deinit(allocator);
-        }
-    }
+    var scratch: [spec_info.field_names.len]std.ArrayList([]const u8) = @splat(.empty);
+    defer for (&scratch) |*s| s.deinit(allocator);
 
     while (pending orelse args.next()) |arg| {
         pending = null;
         if (std.mem.startsWith(u8, arg, "--")) {
             const option = arg[2..];
-            const equals_idx = root.indexOfScalar(u8, option, '=');
+            const equals_idx = std.mem.findScalar(u8, option, '=');
             const option_name = option[0 .. equals_idx orelse option.len];
             const inline_value = if (equals_idx) |idx| option[idx + 1 ..] else null;
             if (std.mem.eql(u8, option_name, "help")) {
@@ -118,9 +133,9 @@ fn parseImpl(
             }
 
             var list_field_idx: ?usize = null;
-            inline for (std.meta.fields(Spec), 0..) |field, i| {
-                if (comptime field.type == []const []const u8) {
-                    if (std.mem.eql(u8, field.name, option_name)) {
+            inline for (spec_info.field_names, spec_info.field_types, 0..) |field_name, field_type, i| {
+                if (comptime field_type == []const []const u8) {
+                    if (std.mem.eql(u8, field_name, option_name)) {
                         list_field_idx = i;
                     }
                 }
@@ -141,7 +156,7 @@ fn parseImpl(
                 continue;
             }
 
-            const field_idx = try setNamedOption(Spec, &parsed, option_name, inline_value, args, &seen);
+            const field_idx = try setNamedOption(Spec, options, &parsed, option_name, inline_value, args, &seen);
             seen[field_idx] = true;
             continue;
         }
@@ -155,36 +170,35 @@ fn parseImpl(
         consumed_implied = true;
     }
 
-    inline for (std.meta.fields(Spec), 0..) |field, i| {
-        if (comptime field.type == []const []const u8) {
-            @field(parsed, field.name) = try scratch[i].toOwnedSlice(allocator);
+    inline for (spec_info.field_types, 0..) |field_type, i| {
+        if (required_mask[i]) {
+            const missing = if (comptime field_type == []const []const u8)
+                scratch[i].items.len == 0
+            else
+                !seen[i];
+            if (missing) return error.MissingRequiredOption;
         }
     }
 
-    for (required_mask, 0..) |is_required, i| {
-        if (!is_required or seen[i]) continue;
-        var is_list_field: bool = false;
-        inline for (std.meta.fields(Spec), 0..) |field, fi| {
-            if (fi == i and comptime field.type == []const []const u8) {
-                is_list_field = true;
+    var transferred: usize = 0;
+    errdefer {
+        inline for (spec_info.field_names, spec_info.field_types, 0..) |field_name, field_type, i| {
+            if (comptime field_type == []const []const u8) {
+                if (i < transferred) allocator.free(@field(parsed, field_name));
             }
         }
-        if (is_list_field) continue;
-        return error.MissingRequiredOption;
     }
-
-    inline for (std.meta.fields(Spec), 0..) |field, i| {
-        if (comptime field.type == []const []const u8) {
-            if (required_mask[i] and @field(parsed, field.name).len == 0) {
-                return error.MissingRequiredOption;
-            }
+    inline for (spec_info.field_names, spec_info.field_types, 0..) |field_name, field_type, i| {
+        if (comptime field_type == []const []const u8) {
+            @field(parsed, field_name) = try scratch[i].toOwnedSlice(allocator);
+            transferred = i + 1;
         }
     }
 
     return parsed;
 }
 
-pub fn requiredUsage(comptime spec_or_type: anytype, comptime options: Options) []const []const u8 {
+pub fn requiredUsage(comptime spec_or_type: anytype, comptime options: Options(spec_or_type)) []const []const u8 {
     if (@TypeOf(spec_or_type) != type) {
         return &.{};
     }
@@ -192,41 +206,35 @@ pub fn requiredUsage(comptime spec_or_type: anytype, comptime options: Options) 
     return comptime blk: {
         const Spec = ParsedType(spec_or_type, options);
         const RawSpecType = spec_or_type;
-        const raw_fields = std.meta.fields(RawSpecType);
+        const raw_info = @typeInfo(RawSpecType).@"struct";
         const implied_index = firstImpliedFieldIndex(Spec, options);
 
         var result = ComptimeArrayList([]const u8){};
-        for (raw_fields, 0..) |field, i| {
-            if (field.default_value_ptr != null) continue;
+        for (raw_info.field_names, raw_info.field_attrs, 0..) |field_name, field_attrs, i| {
+            if (field_attrs.default_value_ptr != null) continue;
             const value_name = value_name_blk: {
-                var out: [field.name.len]u8 = undefined;
-                _ = std.ascii.upperString(&out, field.name);
+                var out: [field_name.len]u8 = undefined;
+                _ = std.ascii.upperString(&out, field_name);
                 break :value_name_blk out;
             };
-            const part = usageDescriptionForField(options, field.name) orelse if (implied_index != null and implied_index.? == i)
-                std.fmt.comptimePrint("--{s} <{s}> or <{s}> (positional)", .{ field.name, value_name[0..], value_name[0..] })
+            const usage: UsageDescription = @field(options.usage_descriptions, field_name) orelse .{};
+            const part = usage.text orelse if (implied_index != null and implied_index.? == i)
+                std.fmt.comptimePrint("--{s} <{s}> or <{s}> (positional)", .{ field_name, value_name[0..], value_name[0..] })
             else
-                std.fmt.comptimePrint("--{s}", .{field.name});
+                std.fmt.comptimePrint("--{s}", .{field_name});
             result.append(part);
         }
         break :blk result.items;
     };
 }
 
-pub fn fullUsage(comptime spec_or_type: anytype, comptime options: Options) []const []const u8 {
+pub fn fullUsage(comptime spec_or_type: anytype, comptime options: Options(spec_or_type)) []const []const u8 {
     const Spec = ParsedType(spec_or_type, options);
 
     const spec_is_type = @TypeOf(spec_or_type) == type;
-    const RawSpecType = if (spec_is_type) spec_or_type else @TypeOf(spec_or_type);
-    const raw_fields = std.meta.fields(RawSpecType);
-    const spec_fields = std.meta.fields(Spec);
-    const required_mask = comptime blk: {
-        var mask: [raw_fields.len]bool = .{false} ** raw_fields.len;
-        for (raw_fields, 0..) |field, i| {
-            mask[i] = spec_is_type and field.default_value_ptr == null;
-        }
-        break :blk mask;
-    };
+    const RawSpecType = SpecType(spec_or_type);
+    const raw_info = @typeInfo(RawSpecType).@"struct";
+    const spec_info = @typeInfo(Spec).@"struct";
     const implied_index = comptime firstImpliedFieldIndex(Spec, options);
 
     return comptime blk: {
@@ -236,26 +244,27 @@ pub fn fullUsage(comptime spec_or_type: anytype, comptime options: Options) []co
         var max_base_len: usize = 0;
         var max_type_len: usize = 0;
 
-        for (raw_fields, 0..) |field, i| {
-            const spec_field = spec_fields[i];
+        for (raw_info.field_names, raw_info.field_types, raw_info.field_attrs, 0..) |field_name, field_type, field_attrs, i| {
+            const spec_field_type = spec_info.field_types[i];
             const value_name = value_name_blk: {
-                var out: [field.name.len]u8 = undefined;
-                _ = std.ascii.upperString(&out, field.name);
+                var out: [field_name.len]u8 = undefined;
+                _ = std.ascii.upperString(&out, field_name);
                 break :value_name_blk out;
             };
-            const custom_part = usageDescriptionForField(options, field.name);
-            const custom_default = usageDefaultTextForField(options, field.name);
-            const type_hint = typeHintText(spec_field.type);
-            const part = custom_part orelse if (spec_field.type == []const []const u8)
-                std.fmt.comptimePrint("--{s} <{s}>...", .{ field.name, value_name[0..] })
-            else if (implied_index != null and implied_index.? == i and spec_field.type != bool)
-                std.fmt.comptimePrint("--{s} <{s}> or <{s}> (positional)", .{ field.name, value_name[0..], value_name[0..] })
-            else if (spec_field.type == bool)
-                std.fmt.comptimePrint("--{s}", .{field.name})
+            const usage: UsageDescription = @field(options.usage_descriptions, field_name) orelse .{};
+            const type_hint = typeHintText(spec_field_type);
+            const part = usage.text orelse if (spec_field_type == []const []const u8)
+                std.fmt.comptimePrint("--{s} <{s}>...", .{ field_name, value_name[0..] })
+            else if (implied_index != null and implied_index.? == i)
+                std.fmt.comptimePrint("--{s} <{s}> or <{s}> (positional)", .{ field_name, value_name[0..], value_name[0..] })
+            else if (spec_field_type == bool)
+                std.fmt.comptimePrint("--{s}", .{field_name})
+            else if (@field(options.bare_values, field_name) != null)
+                std.fmt.comptimePrint("--{s}[=<{s}>]", .{ field_name, value_name[0..] })
             else
-                std.fmt.comptimePrint("--{s} <{s}>", .{ field.name, value_name[0..] });
+                std.fmt.comptimePrint("--{s} <{s}>", .{ field_name, value_name[0..] });
 
-            const base = if (required_mask[i])
+            const base = if (spec_is_type and field_attrs.default_value_ptr == null)
                 part ++ " [required]"
             else
                 part;
@@ -266,8 +275,13 @@ pub fn fullUsage(comptime spec_or_type: anytype, comptime options: Options) []co
                 max_type_len = type_hint.len;
             }
 
-            const auto_default = defaultTextFor(spec_or_type, spec_is_type, field);
-            const default_text = chooseDefaultText(custom_default, auto_default);
+            const auto_default = if (!spec_is_type)
+                defaultValueText(@field(spec_or_type, field_name))
+            else if (field_attrs.defaultValue(field_type)) |value|
+                defaultValueText(value)
+            else
+                null;
+            const default_text = usage.default_text orelse auto_default;
 
             base_parts.append(base);
             type_parts.append(type_hint);
@@ -278,53 +292,21 @@ pub fn fullUsage(comptime spec_or_type: anytype, comptime options: Options) []co
         for (0..base_parts.items.len) |i| {
             const base = base_parts.items[i];
             const type_hint = type_parts.items[i];
-            const type_padding = " " ** (max_type_len - type_hint.len);
+            const type_padding: [max_type_len - type_hint.len]u8 = @splat(' ');
             const suffix = if (default_parts.items[i]) |default_text|
                 std.fmt.comptimePrint("({s},{s} default: {s})", .{ type_hint, type_padding, default_text })
             else
                 std.fmt.comptimePrint("({s})", .{type_hint});
-            const base_padding = " " ** (max_base_len - base.len + 1);
+            const base_padding: [max_base_len - base.len + 1]u8 = @splat(' ');
             result.append(std.fmt.comptimePrint("{s}{s}{s}", .{ base, base_padding, suffix }));
         }
         break :blk result.items;
     };
 }
 
-fn defaultTextFor(comptime spec_or_type: anytype, comptime spec_is_type: bool, comptime field: anytype) ?[]const u8 {
-    if (!spec_is_type) {
-        return defaultValueText(@field(spec_or_type, field.name));
-    }
-    if (field.default_value_ptr == null) {
-        return null;
-    }
-
-    const DefaultPtr = *const field.type;
-    const default_value = @as(DefaultPtr, @ptrCast(@alignCast(field.default_value_ptr.?))).*;
-    return defaultValueText(default_value);
-}
-
-fn chooseDefaultText(custom_default: ?[]const u8, auto_default: ?[]const u8) ?[]const u8 {
-    if (custom_default) |text| {
-        return text;
-    }
-    if (auto_default) |text| {
-        return text;
-    }
-    return null;
-}
-
 pub fn suggestOption(
     comptime spec_or_type: anytype,
-    comptime options: Options,
-    option_name: []const u8,
-) ?[]const u8 {
-    const suggestion = suggestOptionWithCost(spec_or_type, options, option_name) orelse return null;
-    return suggestion.name;
-}
-
-pub fn suggestOptionWithCost(
-    comptime spec_or_type: anytype,
-    comptime options: Options,
+    comptime options: Options(spec_or_type),
     option_name: []const u8,
 ) ?Suggestion {
     const Spec = ParsedType(spec_or_type, options);
@@ -334,24 +316,6 @@ pub fn suggestOptionWithCost(
         .match => |field| .{ .name = @tagName(field), .cost = 0 },
         .closest => |closest| .{ .name = @tagName(closest.tag), .cost = closest.cost },
     };
-}
-
-fn usageDescriptionForField(comptime options: Options, comptime field_name: []const u8) ?[]const u8 {
-    for (options.usage_descriptions) |usage_description| {
-        if (std.mem.eql(u8, usage_description.field, field_name)) {
-            return usage_description.text;
-        }
-    }
-    return null;
-}
-
-fn usageDefaultTextForField(comptime options: Options, comptime field_name: []const u8) ?[]const u8 {
-    for (options.usage_descriptions) |usage_description| {
-        if (std.mem.eql(u8, usage_description.field, field_name)) {
-            return usage_description.default_text;
-        }
-    }
-    return null;
 }
 
 fn defaultValueText(comptime value: anytype) ?[]const u8 {
@@ -374,14 +338,19 @@ fn defaultValueText(comptime value: anytype) ?[]const u8 {
 
 fn fieldNameList(comptime T: type) []const u8 {
     var result = ComptimeArrayList(u8){};
-    inline for (std.meta.fields(T), 0..) |field, i| {
-        if (i != 0) {
-            result.append('|');
-        }
-        result.appendSlice(field.name);
-        if (@hasField(@TypeOf(field), "type") and field.type != void) {
-            result.appendSlice(std.fmt.comptimePrint("({s})", .{@typeName(field.type)}));
-        }
+    switch (@typeInfo(T)) {
+        inline .@"enum", .@"union" => |info| {
+            inline for (info.field_names, 0..) |field_name, i| {
+                if (i != 0) {
+                    result.append('|');
+                }
+                result.appendSlice(field_name);
+                if (@hasField(@TypeOf(info), "field_types") and info.field_types[i] != void) {
+                    result.appendSlice(std.fmt.comptimePrint("({s})", .{@typeName(info.field_types[i])}));
+                }
+            }
+        },
+        else => @compileError("expected enum or union type, found '" ++ @typeName(T) ++ "'"),
     }
     return result.items;
 }
@@ -407,35 +376,24 @@ fn typeHintText(comptime T: type) []const u8 {
     };
 }
 
-fn NormalizedSpecType(comptime RawSpec: type, comptime options: Options) type {
-    const raw_info = @typeInfo(RawSpec);
-    if (raw_info != .@"struct") {
-        @compileError("arg_parser.parse expects a struct (type or instance) as spec");
+fn NormalizedSpecType(comptime RawSpec: type, comptime options: anytype) type {
+    const raw_struct = @typeInfo(RawSpec).@"struct";
+    comptime var field_types: [raw_struct.field_names.len]type = undefined;
+    comptime var field_attrs: [raw_struct.field_names.len]std.lang.Type.Struct.FieldAttributes = undefined;
+
+    inline for (raw_struct.field_types, raw_struct.field_attrs, 0..) |raw_field_type, raw_field_attrs, i| {
+        field_types[i] = NormalizedFieldType(raw_field_type, options);
+        field_attrs[i] = .{ .@"align" = raw_field_attrs.@"align" };
     }
 
-    const raw_fields = std.meta.fields(RawSpec);
-    comptime var field_names: [raw_fields.len][]const u8 = undefined;
-    comptime var field_types: [raw_fields.len]type = undefined;
-    comptime var field_attrs: [raw_fields.len]std.builtin.Type.StructField.Attributes = undefined;
-
-    inline for (raw_fields, 0..) |field, i| {
-        field_names[i] = field.name;
-        field_types[i] = NormalizedFieldType(field.type, options);
-        field_attrs[i] = .{
-            .@"comptime" = false,
-            .@"align" = field.alignment,
-            .default_value_ptr = null,
-        };
-    }
-
-    if (raw_info.@"struct".is_tuple) {
+    if (raw_struct.is_tuple) {
         return @Tuple(&field_types);
     }
 
-    return @Struct(raw_info.@"struct".layout, null, &field_names, &field_types, &field_attrs);
+    return @Struct(raw_struct.layout, null, raw_struct.field_names, &field_types, &field_attrs);
 }
 
-fn NormalizedFieldType(comptime T: type, comptime options: Options) type {
+fn NormalizedFieldType(comptime T: type, comptime options: anytype) type {
     return switch (@typeInfo(T)) {
         .comptime_int => options.default_int_type,
         .comptime_float => options.default_float_type,
@@ -456,25 +414,18 @@ fn NormalizedFieldType(comptime T: type, comptime options: Options) type {
 }
 
 fn initSpecDefaults(comptime RawSpec: type, comptime Spec: type) Spec {
-    const raw_fields = std.meta.fields(RawSpec);
-    const spec_fields = std.meta.fields(Spec);
-    comptime {
-        if (raw_fields.len != spec_fields.len) {
-            @compileError("normalized spec field mismatch");
-        }
-    }
-
+    const raw_info = @typeInfo(RawSpec).@"struct";
+    const spec_info = @typeInfo(Spec).@"struct";
     var spec: Spec = undefined;
-    inline for (raw_fields, 0..) |raw_field, i| {
-        const spec_field = spec_fields[i];
-        if (raw_field.default_value_ptr) |default_ptr| {
-            const DefaultPtr = *const raw_field.type;
-            const default_value = @as(DefaultPtr, @ptrCast(@alignCast(default_ptr))).*;
-            @field(spec, spec_field.name) = coerceValue(spec_field.type, default_value);
-        } else if (spec_field.type == []const []const u8) {
-            @field(spec, spec_field.name) = &.{};
+    inline for (raw_info.field_types, raw_info.field_attrs, 0..) |raw_field_type, raw_field_attrs, i| {
+        const spec_field_name = spec_info.field_names[i];
+        const spec_field_type = spec_info.field_types[i];
+        if (raw_field_attrs.defaultValue(raw_field_type)) |default_value| {
+            @field(spec, spec_field_name) = coerceValue(spec_field_type, default_value);
+        } else if (spec_field_type == []const []const u8) {
+            @field(spec, spec_field_name) = &.{};
         } else {
-            @field(spec, spec_field.name) = undefined;
+            @field(spec, spec_field_name) = undefined;
         }
     }
     return spec;
@@ -486,9 +437,10 @@ fn normalizeSpecValue(comptime Out: type, spec: anytype) Out {
         return spec;
     }
 
+    const out_info = @typeInfo(Out).@"struct";
     var out: Out = undefined;
-    inline for (std.meta.fields(Out)) |field| {
-        @field(out, field.name) = coerceValue(field.type, @field(spec, field.name));
+    inline for (out_info.field_names, out_info.field_types) |field_name, field_type| {
+        @field(out, field_name) = coerceValue(field_type, @field(spec, field_name));
     }
     return out;
 }
@@ -518,12 +470,12 @@ fn coerceValue(comptime To: type, value: anytype) To {
     };
 }
 
-fn firstImpliedFieldIndex(comptime Spec: type, comptime options: Options) ?usize {
+fn firstImpliedFieldIndex(comptime Spec: type, comptime options: anytype) ?usize {
     if (!options.allow_implied) {
         return null;
     }
-    inline for (std.meta.fields(Spec), 0..) |field, i| {
-        if (field.type != bool) {
+    inline for (@typeInfo(Spec).@"struct".field_types, 0..) |field_type, i| {
+        if (field_type != bool) {
             return i;
         }
     }
@@ -532,15 +484,16 @@ fn firstImpliedFieldIndex(comptime Spec: type, comptime options: Options) ?usize
 
 fn setNamedOption(
     comptime Spec: type,
+    comptime options: anytype,
     parsed: *Spec,
     option_name: []const u8,
     inline_value: ?[]const u8,
     args: anytype,
-    seen: *const [std.meta.fields(Spec).len]bool,
+    seen: *const [@typeInfo(Spec).@"struct".field_names.len]bool,
 ) Error!usize {
     const Field = std.meta.FieldEnum(Spec);
     const field = std.meta.stringToEnum(Field, option_name) orelse return error.UnknownOption;
-    const i = @intFromEnum(field);
+    const i = @backingInt(field);
     if (seen[i]) {
         return error.OptionAlreadySet;
     }
@@ -559,6 +512,10 @@ fn setNamedOption(
             if (FieldType == []const []const u8) {
                 unreachable; // list fields are intercepted in parseImpl before setNamedOption
             }
+            if (comptime @field(options.bare_values, field_name)) |bare| {
+                @field(parsed.*, field_name) = if (inline_value) |value| try parseValue(FieldType, value) else bare;
+                return i;
+            }
 
             const value = inline_value orelse (args.next() orelse return error.MissingOptionValue);
             @field(parsed.*, field_name) = try parseValue(FieldType, value);
@@ -571,14 +528,15 @@ fn setImpliedPositional(
     comptime Spec: type,
     parsed: *Spec,
     value: []const u8,
-    seen: *const [std.meta.fields(Spec).len]bool,
+    seen: *const [@typeInfo(Spec).@"struct".field_names.len]bool,
 ) Error!usize {
-    inline for (std.meta.fields(Spec), 0..) |field, i| {
-        if (field.type != bool) {
+    const spec_info = @typeInfo(Spec).@"struct";
+    inline for (spec_info.field_names, spec_info.field_types, 0..) |field_name, field_type, i| {
+        if (field_type != bool) {
             if (seen[i]) {
                 return error.OptionAlreadySet;
             }
-            @field(parsed.*, field.name) = try parseValue(field.type, value);
+            @field(parsed.*, field_name) = try parseValue(field_type, value);
             return i;
         }
     }
@@ -606,20 +564,20 @@ fn parseValue(comptime T: type, value: []const u8) Error!T {
         .@"union" => |u| blk: {
             const Tag: type = u.tag_type orelse @compileError("untagged unions are not supported");
             comptime var non_void_field: ?struct { tag: Tag, tp: type } = null;
-            inline for (u.fields) |f| {
-                if (f.type != void) {
+            inline for (u.field_names, u.field_types) |field_name, field_type| {
+                if (field_type != void) {
                     if (non_void_field != null) {
                         @compileError("only one value field is supported");
                     }
                     non_void_field = .{
-                        .tag = comptime std.meta.stringToEnum(Tag, f.name).?,
-                        .tp = f.type,
+                        .tag = comptime std.meta.stringToEnum(Tag, field_name).?,
+                        .tp = field_type,
                     };
                 }
             }
 
-            inline for (u.fields) |f| {
-                if (f.type == void and std.mem.eql(u8, value, f.name)) break :blk @unionInit(T, f.name, {});
+            inline for (u.field_names, u.field_types) |field_name, field_type| {
+                if (field_type == void and std.mem.eql(u8, value, field_name)) break :blk @unionInit(T, field_name, {});
             }
 
             break :blk if (non_void_field) |nv|
@@ -629,363 +587,4 @@ fn parseValue(comptime T: type, value: []const u8) Error!T {
         },
         else => @compileError("unsupported arg parser field type"),
     };
-}
-
-const SliceIterator = struct {
-    args: []const []const u8,
-    index: usize = 0,
-
-    fn next(self: *SliceIterator) ?[]const u8 {
-        if (self.index >= self.args.len) return null;
-        defer self.index += 1;
-        return self.args[self.index];
-    }
-};
-
-fn parseArgs(
-    comptime spec_or_type: anytype,
-    comptime options: Options,
-    args: []const []const u8,
-) (Error || error{OutOfMemory})!ParsedType(spec_or_type, options) {
-    var iter = SliceIterator{ .args = args };
-    return parse(&iter, spec_or_type, options, std.testing.allocator);
-}
-
-fn expectParseError(
-    expected: anyerror,
-    comptime spec_or_type: anytype,
-    comptime options: Options,
-    args: []const []const u8,
-) !void {
-    try std.testing.expectError(expected, parseArgs(spec_or_type, options, args));
-}
-
-test "allow_implied defaults to false" {
-    try expectParseError(error.UnexpectedPositional, .{ .depth = 13 }, .{}, &.{"42"});
-}
-
-test "parse accepts spec type and instance" {
-    const typed = try parseArgs(
-        struct { depth: i32 = 13 },
-        .{ .allow_implied = true },
-        &.{"42"},
-    );
-    try std.testing.expectEqual(@as(i32, 42), typed.depth);
-
-    const instance = try parseArgs(
-        .{ .depth = 13 },
-        .{ .allow_implied = true },
-        &.{"42"},
-    );
-    try std.testing.expectEqual(@as(i32, 42), instance.depth);
-    try std.testing.expect(@TypeOf(instance.depth) == i32);
-}
-
-test "required field in type must be provided" {
-    try expectParseError(
-        error.MissingRequiredOption,
-        struct { input: []const u8 },
-        .{ .allow_implied = true },
-        &.{},
-    );
-}
-
-test "required usage strings are formatted correctly" {
-    const default_usage = requiredUsage(
-        struct {
-            input: []const u8,
-            @"tb-path": []const u8,
-            approximate: bool = false,
-        },
-        .{ .allow_implied = true },
-    );
-    try std.testing.expectEqual(@as(usize, 2), default_usage.len);
-    try std.testing.expectEqualStrings("--input <INPUT> or <INPUT> (positional)", default_usage[0]);
-    try std.testing.expectEqualStrings("--tb-path", default_usage[1]);
-
-    const custom_usage = requiredUsage(
-        struct {
-            input: []const u8,
-            @"tb-path": []const u8,
-            approximate: bool = false,
-        },
-        .{
-            .allow_implied = true,
-            .usage_descriptions = &.{
-                .{ .field = "input", .text = "<INPUT>" },
-                .{ .field = "tb-path", .text = "--tb-path <PATH>" },
-            },
-        },
-    );
-    try std.testing.expectEqual(@as(usize, 2), custom_usage.len);
-    try std.testing.expectEqualStrings("<INPUT>", custom_usage[0]);
-    try std.testing.expectEqualStrings("--tb-path <PATH>", custom_usage[1]);
-}
-
-test "required positional can satisfy required field" {
-    const parsed = try parseArgs(
-        struct { input: []const u8 },
-        .{ .allow_implied = true },
-        &.{"in.epd"},
-    );
-    try std.testing.expectEqualStrings("in.epd", parsed.input);
-}
-
-test "help option returns help requested error" {
-    try expectParseError(
-        error.HelpRequested,
-        struct { input: []const u8 },
-        .{ .allow_implied = true },
-        &.{"--help"},
-    );
-}
-
-test "full usage includes required and optional fields" {
-    const usage = fullUsage(
-        struct {
-            input: []const u8,
-            output: ?[]const u8 = null,
-            @"allow-overwrite": bool = false,
-        },
-        .{ .allow_implied = true },
-    );
-    try std.testing.expectEqual(@as(usize, 3), usage.len);
-    try std.testing.expectEqualStrings("--input <INPUT> or <INPUT> (positional) [required] (string)", usage[0]);
-    try std.testing.expect(std.mem.endsWith(u8, usage[1], "(?string)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, usage[2], 1, "default: false"));
-    const col0 = std.mem.lastIndexOfScalar(u8, usage[0], '(').?;
-    const col1 = std.mem.lastIndexOfScalar(u8, usage[1], '(').?;
-    const col2 = std.mem.lastIndexOfScalar(u8, usage[2], '(').?;
-    try std.testing.expectEqual(col0, col1);
-    try std.testing.expectEqual(col0, col2);
-    try std.testing.expect(std.mem.indexOf(u8, usage[1], "default:") == null);
-}
-
-test "full usage appends type/default for custom descriptions and aligns suffixes" {
-    const usage = fullUsage(
-        struct {
-            input: []const u8,
-            output: ?[]const u8 = null,
-        },
-        .{
-            .allow_implied = false,
-            .usage_descriptions = &.{
-                .{ .field = "input", .text = "--input <INPUT>" },
-            },
-        },
-    );
-    try std.testing.expectEqual(@as(usize, 2), usage.len);
-    try std.testing.expect(std.mem.endsWith(u8, usage[0], "(string)"));
-    try std.testing.expect(std.mem.endsWith(u8, usage[1], "(?string)"));
-    const col0 = std.mem.lastIndexOfScalar(u8, usage[0], '(').?;
-    const col1 = std.mem.lastIndexOfScalar(u8, usage[1], '(').?;
-    try std.testing.expectEqual(col0, col1);
-}
-
-test "full usage uses default_text override from usage description" {
-    const usage = fullUsage(
-        struct {
-            output: ?[]const u8 = null,
-        },
-        .{
-            .usage_descriptions = &.{
-                .{ .field = "output", .default_text = "<INPUT>.vf" },
-            },
-        },
-    );
-    try std.testing.expectEqual(@as(usize, 1), usage.len);
-    try std.testing.expectEqualStrings("--output <OUTPUT> (?string, default: <INPUT>.vf)", usage[0]);
-}
-
-test "implied parsing supports provided and default values" {
-    const provided = try parseArgs(.{ .depth = 13 }, .{ .allow_implied = true }, &.{"42"});
-    try std.testing.expectEqual(@as(i32, 42), provided.depth);
-
-    const omitted = try parseArgs(.{ .depth = 13 }, .{ .allow_implied = true }, &.{});
-    try std.testing.expectEqual(@as(i32, 13), omitted.depth);
-}
-
-test "default numeric and string type inference works" {
-    const float_parsed = try parseArgs(.{ .temp = 1.25 }, .{ .allow_implied = true }, &.{"2.5"});
-    try std.testing.expect(@TypeOf(float_parsed.temp) == f64);
-    try std.testing.expectApproxEqAbs(@as(f64, 2.5), float_parsed.temp, 0.000001);
-
-    const string_parsed = try parseArgs(.{ .input = "" }, .{ .allow_implied = true }, &.{"in.epd"});
-    try std.testing.expectEqualStrings("in.epd", string_parsed.input);
-    try std.testing.expect(@TypeOf(string_parsed.input) == []const u8);
-}
-
-test "boolean flags support bare and inline forms" {
-    const bare = try parseArgs(
-        struct {
-            @"skip-broken-games": bool = false,
-            @"white-relative": bool = false,
-        },
-        .{},
-        &.{"--white-relative"},
-    );
-    try std.testing.expectEqual(false, bare.@"skip-broken-games");
-    try std.testing.expectEqual(true, bare.@"white-relative");
-
-    const inline_false = try parseArgs(
-        .{ .@"white-relative" = true },
-        .{},
-        &.{"--white-relative=false"},
-    );
-    try std.testing.expectEqual(false, inline_false.@"white-relative");
-}
-
-test "mixed implied positional and named options" {
-    const parsed = try parseArgs(
-        struct {
-            input: []const u8 = "",
-            @"skip-broken-games": bool = false,
-        },
-        .{ .allow_implied = true },
-        &.{ "in.epd", "--skip-broken-games" },
-    );
-    try std.testing.expectEqualStrings("in.epd", parsed.input);
-    try std.testing.expectEqual(true, parsed.@"skip-broken-games");
-}
-
-test "options with values support split and inline forms" {
-    const cases = [_][]const []const u8{
-        &.{ "--tb-path", "/tb", "data.vf" },
-        &.{ "--tb-path=/tb", "data.vf" },
-    };
-
-    for (cases) |args| {
-        const parsed = try parseArgs(
-            struct {
-                input: []const u8 = "",
-                @"tb-path": ?[]const u8 = null,
-            },
-            .{ .allow_implied = true },
-            args,
-        );
-        try std.testing.expectEqualStrings("data.vf", parsed.input);
-        try std.testing.expectEqualStrings("/tb", parsed.@"tb-path".?);
-    }
-}
-
-test "unknown options return an error" {
-    try expectParseError(
-        error.UnknownOption,
-        .{ .white_relative = false },
-        .{},
-        &.{"--nope=1"},
-    );
-    try expectParseError(
-        error.UnknownOption,
-        .{ .white_relative = false },
-        .{},
-        &.{"--nope"},
-    );
-}
-
-test "option suggestion returns close match and respects threshold" {
-    const suggestion = suggestOption(
-        struct {
-            @"allow-overwrite": bool = false,
-            @"tb-path": ?[]const u8 = null,
-        },
-        .{},
-        "allow-overwrit",
-    );
-    try std.testing.expectEqualStrings("allow-overwrite", suggestion.?);
-
-    try std.testing.expectEqual(
-        @as(?[]const u8, null),
-        suggestOption(
-            struct { @"allow-overwrite": bool = false },
-            .{ .option_suggest_base = 0, .option_suggest_extra = 0 },
-            "allow-overwrit",
-        ),
-    );
-}
-
-test "option suggestion supports prefix matches gated by percent" {
-    try std.testing.expectEqualStrings(
-        "allow-overwrite",
-        suggestOption(
-            struct {
-                @"allow-overwrite": bool = false,
-                @"tb-path": ?[]const u8 = null,
-            },
-            .{},
-            "allow-ov",
-        ).?,
-    );
-
-    try std.testing.expectEqual(
-        @as(?[]const u8, null),
-        suggestOption(
-            struct { @"allow-overwrite": bool = false },
-            .{ .option_suggest_base = 0, .option_suggest_extra = 0 },
-            "allow-ov",
-        ),
-    );
-}
-
-test "setting the same option twice returns error" {
-    try expectParseError(
-        error.OptionAlreadySet,
-        .{ .depth = @as(i32, 11) },
-        .{},
-        &.{ "--depth", "12", "--depth=13" },
-    );
-}
-
-test "mixing named and positional for the same field returns error" {
-    try expectParseError(
-        error.OptionAlreadySet,
-        struct { input: []const u8 = "" },
-        .{ .allow_implied = true },
-        &.{ "--input", "in.epd", "other.epd" },
-    );
-}
-
-test "setting bool flag twice returns error" {
-    try expectParseError(
-        error.OptionAlreadySet,
-        struct { @"white-relative": bool = false },
-        .{},
-        &.{ "--white-relative", "--white-relative" },
-    );
-}
-
-test "missing option value returns error" {
-    try expectParseError(
-        error.MissingOptionValue,
-        struct { path: ?[]const u8 = null }{},
-        .{},
-        &.{"--path"},
-    );
-}
-
-test "extra positional arguments are rejected" {
-    try expectParseError(
-        error.UnexpectedPositional,
-        struct { input: []const u8 = "" }{},
-        .{ .allow_implied = true },
-        &.{ "in.epd", "extra" },
-    );
-    try expectParseError(
-        error.UnexpectedPositional,
-        struct {
-            input: []const u8 = "",
-            output: ?[]const u8 = null,
-        }{},
-        .{ .allow_implied = true },
-        &.{ "in.epd", "out.vf" },
-    );
-}
-
-test "invalid integer value returns error" {
-    try expectParseError(
-        error.InvalidValue,
-        .{ .depth = @as(i32, 11) },
-        .{ .allow_implied = true },
-        &.{"abc"},
-    );
 }

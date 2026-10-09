@@ -24,7 +24,7 @@ const nnue = root.nnue;
 const simd = root.simd;
 
 const USE_VBMI2_REFRESH = simd.HAS_VBMI2;
-const USE_AVX512F_REFRESH = @import("builtin").cpu.has(.x86, .avx512f);
+const USE_AVX512F_REFRESH = @import("builtin").target.cpu.has(.x86, .avx512f);
 
 fn psqIndexVector(mailbox: @Vector(64, u8), stm: Colour, flip_xor: u16) @Vector(64, u16) {
     const c: @Vector(64, u16) = mailbox;
@@ -99,7 +99,7 @@ const NNCacheEntry = struct {
             }
         }
         self.accumulator.addSubInPlace(
-            weights.input.flatPSQWeights(nnue.arch.inputs.whichInputBucket(stm, us_king)),
+            &weights.input.ft_w[nnue.arch.inputs.whichInputBucket(stm, us_king)],
             adds[0..num_adds],
             subs[0..num_subs],
         );

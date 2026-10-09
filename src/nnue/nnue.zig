@@ -11,7 +11,6 @@ const nnue_weights = @import("weights.zig");
 pub const Accumulator = nnue_accumulator.Accumulator;
 pub const AccumulatorHalf = nnue_accumulator.AccumulatorHalf;
 pub const MirroringType = arch.inputs.MirroringType;
-pub const feature = arch.inputs.featureWeight;
 pub const featureIndex = arch.inputs.featureIndex;
 pub const init = nnue_weights.init;
 pub const deinit = nnue_weights.deinit;

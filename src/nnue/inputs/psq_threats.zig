@@ -16,49 +16,30 @@ const evaluation = root.evaluation;
 
 const ALIGNMENT = 64;
 
-pub const HAS_THREATS = true;
 pub const MirroringType = psq.MirroringType;
-pub const DirtyPiece = psq.DirtyPiece;
-pub const featureWeight = psq.featureWeight;
 pub const featureIndex = psq.featureIndex;
 pub const whichInputBucket = psq.whichInputBucket;
-pub const crossesMiddle = psq.crossesMiddle;
-pub const needsRefresh = psq.needsRefresh;
 pub const Perspective = psq.Perspective;
 
 pub const Weights = extern struct {
     ft_w: [arch.INPUT_BUCKET_COUNT][arch.PSQ_FEATURE_COUNT]arch.PSQTWeight align(ALIGNMENT),
-    pp_w: [arch.TOTAL_PAWN_PAIRS]arch.ThreatWeight align(ALIGNMENT),
-    threat_w: [arch.TOTAL_THREATS]arch.ThreatWeight align(ALIGNMENT),
-    ft_b: [arch.L1_SIZE]i16 align(ALIGNMENT),
-
-    pub fn flatPSQWeights(self: *const Weights, bucket: usize) *const [arch.PSQ_FEATURE_COUNT]arch.PSQTWeight {
-        return &self.ft_w[bucket];
-    }
-
-    pub fn byteSwap(self: *Weights) void {
-        arch.endianSwap(&self.ft_w);
-        arch.endianSwap(&self.ft_b);
-    }
+    pp_threat_w: [arch.TOTAL_PAWN_PAIRS + arch.TOTAL_THREATS]arch.ThreatWeight align(ALIGNMENT),
+    ft_b: arch.RawAccumulator align(ALIGNMENT),
 
     pub fn permuteL1(self: *Weights, order: *const [arch.L1_SIZE]u16) void {
         arch.permuteL1Neurons(&self.ft_w, order);
         arch.permuteL1Neurons(&self.ft_b, order);
-        arch.permuteL1Neurons(&self.pp_w, order);
-        arch.permuteL1Neurons(&self.threat_w, order);
+        arch.permuteL1Neurons(&self.pp_threat_w, order);
     }
 
     pub const SIZE_BYTES = @sizeOf(Weights);
-    pub const WEIGHT_COUNT = blk: {
+    comptime {
         var size = 0;
-        var res = 0;
-        for (std.meta.fields(Weights)) |field| {
-            res += arch.totalElements(field.type);
-            size += arch.totalElements(field.type) * @sizeOf(arch.UltimateChild(field.type));
+        for (@typeInfo(Weights).@"struct".field_types) |field_type| {
+            size += @sizeOf(field_type);
         }
         std.debug.assert(std.mem.alignForward(usize, size, 64) == SIZE_BYTES);
-        break :blk res;
-    };
+    }
 };
 
 pub const Resolved = struct {
@@ -71,8 +52,8 @@ pub const Resolved = struct {
         const V = simd.Vector(i16);
         const psq_ptr = if (perspective == .stm) self.stm_psq else self.ntm_psq;
         const threat_ptr = if (perspective == .stm) self.stm_threat else self.ntm_threat;
-        const p: V = psq_ptr.data[i..][0..simd.vecSize(i16)].*;
-        const t: V = threat_ptr.data[i..][0..simd.vecSize(i16)].*;
+        const p: V = psq_ptr.data[@divExact(i, simd.vecSize(i16))];
+        const t: V = threat_ptr.data[@divExact(i, simd.vecSize(i16))];
         return p + t;
     }
 };
@@ -114,10 +95,6 @@ pub fn Context(comptime B: type) type {
         pub fn initRoot(self: *Self, board: *const B, weights: *const arch.Weights) void {
             self.psq.initRoot(board, weights);
             const tf = &self.threat_frames[0];
-            tf.white_threat = .{ .ptr = &nnue_accumulator.zero_accumulator };
-            tf.black_threat = .{ .ptr = &nnue_accumulator.zero_accumulator };
-            tf.white_threat_mirrored = .{};
-            tf.black_threat_mirrored = .{};
             tf.threat_updates = .{};
             self.pending[0] = false;
             self.refreshThreatHalf(0, .white, board, weights);
@@ -134,14 +111,14 @@ pub fn Context(comptime B: type) type {
             self.resolvePending(ply, weights);
             self.psq.ensureUpToDate(ply, weights);
 
-            if (std.debug.runtime_safety) {
+            if (@import("builtin").optimize.runtimeSafety()) {
                 const board = self.psq.frames[ply].board_ref.?;
                 var white_oracle: Accumulator align(64) = undefined;
                 var black_oracle: Accumulator align(64) = undefined;
                 buildThreatAccumulator(&white_oracle, board, .white, weights);
                 buildThreatAccumulator(&black_oracle, board, .black, weights);
-                std.debug.assert(std.mem.eql(i16, &self.threat_frames[ply].white_threat.ptr.data, &white_oracle.data));
-                std.debug.assert(std.mem.eql(i16, &self.threat_frames[ply].black_threat.ptr.data, &black_oracle.data));
+                std.debug.assert(std.meta.eql(self.threat_frames[ply].white_threat.ptr.data, white_oracle.data));
+                std.debug.assert(std.meta.eql(self.threat_frames[ply].black_threat.ptr.data, black_oracle.data));
             }
         }
 
@@ -623,34 +600,38 @@ pub fn Context(comptime B: type) type {
         ) void {
             // const timer = root.engine.time("apply_rows");
             // defer timer.register();
-            const combined: [*]const arch.ThreatWeight = @ptrCast(&weights.input.pp_w);
+            const rows = &weights.input.pp_threat_w;
             var i: usize = 0;
             const TILE = @min(16, arch.ACCUMULATOR_TILE);
-            for (subs) |idx| @prefetch(&combined[idx], .{ .rw = .read });
-            for (adds) |idx| @prefetch(&combined[idx], .{ .rw = .read });
+            for (subs) |idx| @prefetch(&rows[idx], .{ .rw = .read });
+            for (adds) |idx| @prefetch(&rows[idx], .{ .rw = .read });
             while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
-                var v: [TILE]arch.AccumulatorVec = src.vecs()[i..][0..TILE].*;
-                for (subs) |idx| inline for (0..TILE) |t| {
-                    v[t] -= combined[idx][i + t];
-                };
-                for (adds) |idx| inline for (0..TILE) |t| {
-                    v[t] += combined[idx][i + t];
-                };
-                dst.vecs()[i..][0..TILE].* = v;
+                const src_tile = src.data[i..][0..TILE];
+                const dst_tile = dst.data[i..][0..TILE];
+                var v: [TILE]arch.AccumulatorVec = undefined;
+                inline for (0..TILE) |t| v[t] = src_tile[t];
+                for (subs) |idx| {
+                    inline for (0..TILE) |t| v[t] -= rows[idx][i + t];
+                }
+                for (adds) |idx| {
+                    inline for (0..TILE) |t| v[t] += rows[idx][i + t];
+                }
+                inline for (0..TILE) |t| dst_tile[t] = v[t];
             }
         }
 
         fn applyAllRowsZeroed(noalias dst: *Accumulator, weights: *const arch.Weights, adds: []const u16) void {
-            const combined: [*]const arch.ThreatWeight = @ptrCast(&weights.input.pp_w);
-            for (adds) |idx| @prefetch(&combined[idx], .{ .rw = .read });
+            const rows = &weights.input.pp_threat_w;
+            for (adds) |idx| @prefetch(&rows[idx], .{ .rw = .read });
             const TILE = @min(16, arch.ACCUMULATOR_TILE);
             var i: usize = 0;
             while (i < arch.ACCUMULATOR_VECTOR_COUNT) : (i += TILE) {
+                const dst_tile = dst.data[i..][0..TILE];
                 var v: [TILE]arch.AccumulatorVec = @splat(@splat(0));
-                for (adds) |idx| inline for (0..TILE) |t| {
-                    v[t] += combined[idx][i + t];
-                };
-                dst.vecs()[i..][0..TILE].* = v;
+                for (adds) |idx| {
+                    inline for (0..TILE) |t| v[t] += rows[idx][i + t];
+                }
+                inline for (0..TILE) |t| dst_tile[t] = v[t];
             }
         }
 

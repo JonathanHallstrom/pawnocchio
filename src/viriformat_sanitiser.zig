@@ -115,17 +115,17 @@ fn printInitialPositionDiff(error_ctx: *const ErrorContext) void {
     const initial_position_decoded = error_ctx.initial_position_decoded orelse return;
 
     std.debug.print("  initial_position diff:\n", .{});
-    inline for (std.meta.fields(viriformat.MarlinPackedBoard)) |field| {
-        if (comptime isIgnoredInitialPositionField(field.name)) {
+    inline for (@typeInfo(viriformat.MarlinPackedBoard).@"struct".field_names) |field_name| {
+        if (comptime isIgnoredInitialPositionField(field_name)) {
             continue;
         }
-        if (!std.meta.eql(@field(initial_position_from_file, field.name), @field(initial_position_decoded, field.name))) {
+        if (!std.meta.eql(@field(initial_position_from_file, field_name), @field(initial_position_decoded, field_name))) {
             std.debug.print(
                 "    {s}: file={any} decoded={any}\n",
                 .{
-                    field.name,
-                    @field(initial_position_from_file, field.name),
-                    @field(initial_position_decoded, field.name),
+                    field_name,
+                    @field(initial_position_from_file, field_name),
+                    @field(initial_position_decoded, field_name),
                 },
             );
         }
@@ -138,26 +138,6 @@ fn printInitialPositionDiff(error_ctx: *const ErrorContext) void {
     });
 }
 
-fn isRecoverableParseError(e: anyerror) bool {
-    return switch (e) {
-        error.InputTooShortForHeader,
-        error.InvalidWdl,
-        error.InvalidPieceCode,
-        error.TooManyPieces,
-        error.MissingKing,
-        error.PawnsOnFirstLastRank,
-        error.KingOnWrongRankAndCanCastle,
-        error.InvalidEpSquare,
-        error.InputTooShortForMoveEvalPair,
-        error.MoveNotPseudoLegal,
-        error.MoveNotLegal,
-        error.MoveWronglyEncoded,
-        error.InvalidInitialPos,
-        => true,
-        else => false,
-    };
-}
-
 const ParseGameError =
     ParseError ||
     viriformat.Error ||
@@ -167,11 +147,11 @@ fn sameInitialPosition(
     a: viriformat.MarlinPackedBoard,
     b: viriformat.MarlinPackedBoard,
 ) bool {
-    inline for (std.meta.fields(viriformat.MarlinPackedBoard)) |field| {
-        if (comptime isIgnoredInitialPositionField(field.name)) {
+    inline for (@typeInfo(viriformat.MarlinPackedBoard).@"struct".field_names) |field_name| {
+        if (comptime isIgnoredInitialPositionField(field_name)) {
             continue;
         }
-        if (!std.meta.eql(@field(a, field.name), @field(b, field.name))) {
+        if (!std.meta.eql(@field(a, field_name), @field(b, field_name))) {
             return false;
         }
     }
@@ -190,7 +170,7 @@ fn parseSingleGame(
     }
 
     var i: usize = 0;
-    var initial: viriformat.MarlinPackedBoard = @bitCast(input[0..32].*);
+    var initial: viriformat.MarlinPackedBoard = std.mem.bytesToValue(viriformat.MarlinPackedBoard, input[0..32]);
     i += 32;
     if (initial.wdl > 2) {
         return error.InvalidWdl;
@@ -200,21 +180,21 @@ fn parseSingleGame(
         return e;
     };
     game.reset(board);
-    game.setOutCome(@enumFromInt(initial.wdl));
+    game.setOutCome(@fromBackingInt(initial.wdl));
 
     if (!sameInitialPosition(initial, game.initial_position)) {
         error_ctx.captureInitialPositionDiff(&board, initial, game.initial_position);
         return error.InvalidInitialPos;
     }
 
-    var prev_move: Move = undefined;
+    var prev_move: ?Move = null;
     while (i < input.len) {
         if (input.len - i < 4) {
             error_ctx.capturePos(i, &board, null, null);
             return error.InputTooShortForMoveEvalPair;
         }
 
-        var move_eval: viriformat.MoveEvalPair = @bitCast(input[i..][0..4].*);
+        var move_eval: viriformat.MoveEvalPair = std.mem.bytesToValue(viriformat.MoveEvalPair, input[i..][0..4]);
         defer i += 4;
         if (move_eval.move.raw() == 0) {
             break;
@@ -271,8 +251,10 @@ fn parseSingleGame(
     return i;
 }
 
+pub const PrintErrors = enum { off, on, verbose };
+
 pub const Config = struct {
-    print_errors: bool,
+    print_errors: PrintErrors = .off,
     sp_stalemate_fix: bool,
     progress: bool = true,
 };
@@ -284,11 +266,12 @@ pub fn sanitiseBufferToFile(
     config: Config,
 ) !usize {
     var game: Game = .from(Board.startpos(), allocator);
-    defer game.moves.deinit();
+    defer game.deinit();
 
     var parsed: usize = 0;
     var skipped: usize = 0;
     var error_ctx: ErrorContext = .{};
+    var recovering: bool = false;
 
     var i: usize = 0;
     var iters: usize = 0;
@@ -297,29 +280,25 @@ pub fn sanitiseBufferToFile(
             std.debug.print("progress: {}/{}\r", .{ i, input.len });
         }
         const bytes_used = parseSingleGame(input[i..], &game, &error_ctx, config) catch |e| {
-            if (isRecoverableParseError(e)) {
-                if (config.print_errors) {
-                    std.debug.print("failed to parse game at byte offset {} (offset {}): {}\n", .{ i, error_ctx.in_game_byte_offset, e });
-                    if (error_ctx.fen()) |fen| {
-                        std.debug.print("  final_fen: {s}\n", .{fen});
-                        printParsedGameLine(&game, &error_ctx);
-                    }
-                    printInitialPositionDiff(&error_ctx);
-                }
-                skipped += 1;
-                i += 1;
-                continue;
-            }
-            if (config.print_errors) {
-                std.debug.print("fatal sanitiser error at byte offset {} (offset {}): {}\n", .{ i, error_ctx.in_game_byte_offset, e });
+            const recoverable: bool = e != error.OutOfMemory;
+            if (config.print_errors == .verbose or (config.print_errors == .on and !recovering)) {
+                const message: []const u8 = if (recoverable) "failed to parse game" else "fatal sanitiser error";
+                std.debug.print("{s} at file byte {}, game byte {}: {}\n", .{ message, i, error_ctx.in_game_byte_offset, e });
                 if (error_ctx.fen()) |fen| {
                     std.debug.print("  final_fen: {s}\n", .{fen});
                     printParsedGameLine(&game, &error_ctx);
                 }
                 printInitialPositionDiff(&error_ctx);
             }
+            if (recoverable) {
+                recovering = true;
+                skipped += 1;
+                i += 1;
+                continue;
+            }
             return e;
         };
+        recovering = false;
         i += bytes_used;
         parsed += 1;
         if (output) |writer| {

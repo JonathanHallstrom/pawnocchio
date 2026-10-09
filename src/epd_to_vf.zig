@@ -60,12 +60,14 @@ inline fn parseLine(line: []const u8) !struct { Board, i16, WDL } {
     var parts = std.mem.tokenizeScalar(u8, line, '|');
     const parsed_board = try Board.parseFen(std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace), true);
     const score = try std.fmt.parseInt(i16, std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace), 10);
+    if (score == std.math.minInt(i16)) return error.InvalidScore;
     const wdl_float = try std.fmt.parseFloat(f64, std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace));
-    const wdl: WDL = switch (@as(u2, @intFromFloat(wdl_float * 2))) {
+    if (!(wdl_float >= 0 and wdl_float <= 1)) return error.InvalidWdl;
+    const wdl: WDL = switch (@as(u2, @trunc(wdl_float * 2))) {
         0 => .loss,
         1 => .draw,
         2 => .win,
-        else => return error.InvalidWDL,
+        else => return error.InvalidWdl,
     };
     return .{ parsed_board, score, wdl };
 }
@@ -81,15 +83,13 @@ pub fn convert(
     var position_count: u64 = 0;
     const start_time = std.Io.Timestamp.now(io, .awake);
     var game: viriformat.GameRecord = .from(Board{}, allocator);
+    defer game.deinit();
     var board: Board = .{};
+    var board_score: i16 = 0;
     var num_broken_games: u64 = 0;
     var num_okay_games: u64 = 0;
     // var previous_hashes = root.BoundedArray(u64, 200){};
-    var line_buf: [4096]u8 = undefined;
-    var line_writer = std.Io.Writer.fixed(&line_buf);
-    while (try root.streamLine(input, &line_writer)) |len| {
-        defer _ = line_writer.consumeAll();
-        const line = line_buf[0..len];
+    while (try input.takeDelimiter('\n')) |line| {
         if (position_count % 1000 == 0) {
             const now = std.Io.Timestamp.now(io, .awake);
             const elapsed_time = @as(u64, @intCast(start_time.durationTo(now).nanoseconds));
@@ -102,17 +102,19 @@ pub fn convert(
         } else return e;
         position_count += 1;
 
-        defer board = parsed_board;
-        if (getConnectingMove(&board, &parsed_board)) |connecting_move| {
-            const white_relative_score = if (white_relative_scores)
+        defer {
+            board = parsed_board;
+            board_score = if (white_relative_scores)
                 score
             else
                 (if (parsed_board.stm == .white) score else -score);
-            try game.addMove(connecting_move, white_relative_score);
+        }
+        if (getConnectingMove(&board, &parsed_board)) |connecting_move| {
+            try game.addMove(connecting_move, board_score);
         } else {
-            num_okay_games += 1;
             if (game.moves.items.len > 0) {
                 try game.serializeInto(output);
+                num_okay_games += 1;
             }
             game.reset(parsed_board);
             game.setOutCome(wdl);

@@ -52,7 +52,7 @@ pub const CountReceiver = struct {
     }
 };
 
-const HAS_VBMI2 = builtin.cpu.has(.x86, .avx512vbmi2);
+const HAS_VBMI2 = builtin.target.cpu.has(.x86, .avx512vbmi2);
 
 inline fn moveBits(from: u8, to: u8, flag: u16) u16 {
     return @as(u16, from) | @as(u16, to) << 6 | flag << 12;
@@ -71,7 +71,7 @@ const DEFAULT_MOVE_TEMPLATE: [64][64]u16 = blk: {
 
 fn offsetMoveTemplate(comptime from_rank_delta: i8, comptime from_file_delta: i8, comptime flag: u16) [64]u16 {
     @setEvalBranchQuota(10_000);
-    var table = [_]u16{0} ** 64;
+    var table: [64]u16 = @splat(0);
     for (0..64) |to_idx| {
         const to_rank: i8 = @intCast(to_idx / 8);
         const to_file: i8 = @intCast(to_idx % 8);
@@ -106,7 +106,7 @@ inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) v
     } else {
         var it = Bitboard.iterator(bb);
         while (it.next()) |to| {
-            receiver.receive(@as(Move, @enumFromInt(template[to.toInt()])));
+            receiver.receive(@as(Move, @fromBackingInt(template[to.toInt()])));
         }
     }
 }

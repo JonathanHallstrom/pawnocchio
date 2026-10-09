@@ -48,6 +48,7 @@ pub const Options = struct {
     inputs: []const []const u8,
     format: ?FileFormat,
     max_eval: u16,
+    skip_broken_games: bool,
 };
 
 const Group = struct {
@@ -139,7 +140,7 @@ fn parseInputs(
     var positions: u64 = 0;
     for (options.inputs, results) |path, result| {
         positions += result catch |e| {
-            std.debug.print("reading file '{s}' gave: '{}'\n", .{ path, e });
+            std.debug.print("reading '{s}': {}\n", .{ path, e });
             return e;
         };
     }
@@ -155,10 +156,7 @@ fn readFile(context: *const ParseContext, path: []const u8) !u64 {
     const format = context.options.format orelse FileFormat.fromPath(path) orelse return error.UnknownFileFormat;
     const buffer = try context.allocator.alloc(u8, 1 << 20);
     defer context.allocator.free(buffer);
-    const file = if (std.fs.path.isAbsolute(path))
-        try std.Io.Dir.openFileAbsolute(io, path, .{})
-    else
-        try std.Io.Dir.cwd().openFile(io, path, .{});
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
     defer file.close(io);
     var file_reader = file.readerStreaming(io, buffer);
     const max_eval: i32 = context.options.max_eval;
@@ -167,8 +165,15 @@ fn readFile(context: *const ParseContext, path: []const u8) !u64 {
         inline else => |comptime_format| {
             var reader = dataformat.readerFor(comptime_format, &file_reader.interface, context.allocator);
             defer reader.deinit();
-            while (try reader.next()) |game| {
-                const outcome: usize = @intFromEnum(game.outcome);
+            games: while (try reader.next()) |game| {
+                if (comptime_format == .pgn and context.options.skip_broken_games) {
+                    var check = game.iter();
+                    while (check.next() catch |e| {
+                        std.debug.print("skipping game in '{s}': {}\n", .{ path, e });
+                        continue :games;
+                    }) |_| {}
+                }
+                const outcome: usize = @backingInt(game.outcome);
                 var iterator = game.iter();
                 while (try iterator.next()) |ply| {
                     const eval: i32 = ply.whiteEval() orelse continue;
@@ -199,11 +204,11 @@ fn packHistogram(
     eval_count: usize,
     max_eval: u16,
 ) !Histogram {
-    var groups: std.ArrayListUnmanaged(Group) = .empty;
+    var groups: std.ArrayList(Group) = .empty;
     defer groups.deinit(allocator);
-    var evals: std.ArrayListUnmanaged(f32) = .empty;
+    var evals: std.ArrayList(f32) = .empty;
     defer evals.deinit(allocator);
-    var counts: [OUTCOME_COUNT]std.ArrayListUnmanaged(f32) = @splat(.empty);
+    var counts: [OUTCOME_COUNT]std.ArrayList(f32) = @splat(.empty);
     defer for (&counts) |*list| list.deinit(allocator);
 
     var occupied_cells: usize = 0;

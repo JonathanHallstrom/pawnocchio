@@ -100,7 +100,7 @@ pub fn convert(
     var game_record = GameRecord.from(Board{}, allocator);
     defer game_record.deinit();
 
-    var scored_moves: std.ArrayListUnmanaged(ScoredMove) = .empty;
+    var scored_moves: std.ArrayList(ScoredMove) = .empty;
     defer scored_moves.deinit(allocator);
 
     while (try ply_reader.next()) |game_view| {
@@ -109,18 +109,20 @@ pub fn convert(
 
         scored_moves.clearRetainingCapacity();
         var it = game_view.iter();
-        var parsed_correctly = true;
+        var parse_error: ?anyerror = null;
         while (it.next() catch |e| blk: {
-            std.debug.print("error parsing game: {}\n", .{e});
-            if (!skip_broken_games) return e;
-            parsed_correctly = false;
-            num_broken_games += 1;
+            parse_error = e;
             break :blk null;
         }) |ply| {
             try scored_moves.append(allocator, .{ .move = ply.move, .score = ply.whiteEval() });
         }
 
-        if (!parsed_correctly) continue;
+        if (parse_error) |e| {
+            std.debug.print("error parsing game: {}\n", .{e});
+            if (!skip_broken_games) return e;
+            num_broken_games += 1;
+            continue;
+        }
 
         if (fill) |f| {
             if (f.apply(scored_moves.items)) |filled| {

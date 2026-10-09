@@ -6,26 +6,20 @@ const evaluation = @import("../../evaluation.zig");
 
 const ALIGNMENT = 64;
 
+pub const GATHER_L1_STATS = false;
+
 pub const Weights = extern struct {
     output_w: [arch.OUTPUT_BUCKET_COUNT][2 * arch.L1_SIZE]i16 align(ALIGNMENT),
     output_b: [arch.OUTPUT_BUCKET_COUNT]i16 align(ALIGNMENT),
 
-    pub fn byteSwap(self: *Weights) void {
-        arch.endianSwap(&self.output_w);
-        arch.endianSwap(&self.output_b);
-    }
-
     pub const SIZE_BYTES = @sizeOf(Weights);
-    pub const WEIGHT_COUNT = blk: {
+    comptime {
         var size = 0;
-        var res = 0;
-        for (std.meta.fields(Weights)) |field| {
-            res += arch.totalElements(field.type);
-            size += arch.totalElements(field.type) * @sizeOf(arch.UltimateChild(field.type));
+        for (@typeInfo(Weights).@"struct".field_types) |field_type| {
+            size += @sizeOf(field_type);
         }
         std.debug.assert(std.mem.alignForward(usize, size, 64) == SIZE_BYTES);
-        break :blk res;
-    };
+    }
 };
 
 pub fn forward(

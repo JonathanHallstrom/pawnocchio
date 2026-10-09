@@ -4,7 +4,7 @@ const EvalMode = @import("../src/eval_mode.zig").EvalMode;
 pub const Config = struct {
     specs: []const Spec,
     eval_mode: EvalMode,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     tools_only: bool,
 };
 
@@ -12,7 +12,7 @@ pub const Spec = struct {
     target: []const u8,
     suffix: []const u8,
     cpu: ?[]const u8 = null,
-    link_mode: std.builtin.LinkMode = .static,
+    link_mode: std.lang.LinkMode = .static,
 
     pub fn name(self: Spec, b: *std.Build, version: []const u8) []const u8 {
         return b.fmt("pawnocchio-{s}-{s}", .{ version, self.suffix });
@@ -70,13 +70,13 @@ const TOOLS_SPECS = [_]Spec{
 pub const RELEASE = Config{
     .specs = &RELEASE_SPECS,
     .eval_mode = .nnue,
-    .optimize = .ReleaseFast,
+    .optimize = .fast,
     .tools_only = false,
 };
 
 pub const TOOLS = Config{
     .specs = &TOOLS_SPECS,
     .eval_mode = .hce,
-    .optimize = .ReleaseFast,
+    .optimize = .fast,
     .tools_only = true,
 };

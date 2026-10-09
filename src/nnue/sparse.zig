@@ -89,14 +89,15 @@ fn findNonZeroIndicesVBMI2(
     ft: *align(64) const [L1_SIZE]u8,
     indices: *[L1_SIZE / 4]u16,
 ) usize {
-    const ZERO: simd.Vector(i32) = @splat(0);
-    const groups: [*]align(64) const simd.Vector(i32) = @ptrCast(ft);
+    const GROUP_BYTES = simd.vecSize(u8);
 
     var count: usize = 0;
 
     inline for (0..L1_SIZE / 128) |i| {
-        const lo: simd.MaskInt(simd.Vector(i32)) = simd.maskInt(groups[2 * i] != ZERO);
-        const hi: simd.MaskInt(simd.Vector(i32)) = simd.maskInt(groups[2 * i + 1] != ZERO);
+        const lo_bytes: simd.Vector(u8) = ft[2 * i * GROUP_BYTES ..][0..GROUP_BYTES].*;
+        const hi_bytes: simd.Vector(u8) = ft[(2 * i + 1) * GROUP_BYTES ..][0..GROUP_BYTES].*;
+        const lo: simd.MaskInt(simd.Vector(i32)) = getMask(lo_bytes);
+        const hi: simd.MaskInt(simd.Vector(i32)) = getMask(hi_bytes);
         const mask: simd.MaskInt(simd.Vector(u16)) = @as(u32, lo) | @as(u32, hi) << 16;
 
         const base: simd.Vector(u16) = std.simd.iota(u16, 32) + @as(simd.Vector(u16), @splat(32 * i));

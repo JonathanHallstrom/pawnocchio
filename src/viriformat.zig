@@ -190,7 +190,7 @@ pub const MarlinPackedBoard = extern struct {
 
     pub fn from(board: anytype, loss_draw_win: u8, score: i16) MarlinPackedBoard {
         const occ = board.occupancy();
-        var pieces: [16]u8 = .{0} ** 16;
+        var pieces: [16]u8 = @splat(0);
         {
             var i: usize = 0;
             var iter = Bitboard.iterator(occ);
@@ -257,7 +257,7 @@ pub const ViriMove = extern struct {
     }
 
     pub fn newWithFlags(from_: Square, to_: Square, flags: MoveFlags) Self {
-        return .{ .data = .fromNative(@as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @intFromEnum(flags)) };
+        return .{ .data = .fromNative(@as(u16, from_.toInt()) | @as(u16, to_.toInt()) << 6 | @backingInt(flags)) };
     }
 
     pub fn new(from_: Square, to_: Square) Self {
@@ -277,11 +277,11 @@ pub const ViriMove = extern struct {
     }
 
     pub fn from(self: Self) Square {
-        return @enumFromInt(self.raw() & 0b111111);
+        return @fromBackingInt(@intCast(self.raw() & 0b111111));
     }
 
     pub fn to(self: Self) Square {
-        return @enumFromInt(self.raw() >> 6 & 0b111111);
+        return @fromBackingInt(@intCast(self.raw() >> 6 & 0b111111));
     }
 
     pub fn fromMove(move: Move) Self {
@@ -406,7 +406,7 @@ pub const ScoredPlyReader = struct {
         return .{
             .reader = self.reader,
             .board = board,
-            .outcome = @enumFromInt(initial_position.wdl),
+            .outcome = @fromBackingInt(initial_position.wdl),
         };
     }
 
@@ -424,7 +424,8 @@ pub fn scoredPlyReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) Sco
 
 pub const GameRecord = struct {
     initial_position: MarlinPackedBoard,
-    moves: std.array_list.Managed(MoveEvalPair),
+    moves: std.ArrayList(MoveEvalPair),
+    allocator: Allocator,
 
     pub fn serializeInto(self: GameRecord, writer: *std.Io.Writer) !void {
         try writer.writeAll(std.mem.asBytes(&self.initial_position));
@@ -434,7 +435,7 @@ pub const GameRecord = struct {
             }
             try writer.writeAll(std.mem.asBytes(&move_eval_pair));
         }
-        try writer.writeAll(&(.{0} ** @sizeOf(MoveEvalPair)));
+        try writer.splatByteAll(0, @sizeOf(MoveEvalPair));
     }
 
     pub fn bytesRequiredToSerialize(self: GameRecord) usize {
@@ -456,17 +457,18 @@ pub const GameRecord = struct {
     pub fn from(board: anytype, allocator: Allocator) GameRecord {
         return GameRecord{
             .initial_position = .from(board, 1, 0),
-            .moves = .init(allocator),
+            .moves = .empty,
+            .allocator = allocator,
         };
     }
 
-    pub fn deinit(self: GameRecord) void {
-        self.moves.deinit();
+    pub fn deinit(self: *GameRecord) void {
+        self.moves.deinit(self.allocator);
     }
 
     /// score has to be from whites perspective
     pub fn addMove(self: *GameRecord, move: Move, score: i16) !void {
-        try self.moves.append(MoveEvalPair{
+        try self.moves.append(self.allocator, MoveEvalPair{
             .eval = LittleEndian(i16).fromNative(score),
             .move = ViriMove.fromMove(move),
         });
@@ -475,5 +477,4 @@ pub const GameRecord = struct {
 
 comptime {
     std.debug.assert(@sizeOf(MarlinPackedBoard) == 32);
-    std.debug.assert(@bitSizeOf(MarlinPackedBoard) == 32 * 8);
 }

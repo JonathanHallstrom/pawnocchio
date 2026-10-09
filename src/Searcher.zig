@@ -390,7 +390,7 @@ fn float(x: anytype) f64 {
 fn int(comptime T: type, x: anytype) T {
     return switch (@typeInfo(@TypeOf(x))) {
         .int, .comptime_int => @intCast(x),
-        .float, .comptime_float => @intFromFloat(x),
+        .float, .comptime_float => @trunc(x),
         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
     };
 }
@@ -433,7 +433,7 @@ fn calculateBaseLMR(depth: i32, legal: u8, is_quiet: bool) i32 {
 
 inline fn convolve(comptime N: usize, params: [N]bool, weights: anytype) i16 {
     var res: i32 = 0;
-    inline for (0..std.meta.fields(@TypeOf(weights)).len) |order| {
+    inline for (0..@typeInfo(@TypeOf(weights)).@"struct".field_names.len) |order| {
         switch (order) {
             0 => {
                 const table = @field(weights, std.fmt.comptimePrint("{}", .{order + 1}));
@@ -631,7 +631,7 @@ fn qsearch(
         std.debug.assert(!move.isNull());
         self.prefetch(board, move);
 
-        if (std.debug.runtime_safety and
+        if (@import("builtin").optimize.runtimeSafety() and
             (mp.stage == .good_noisies or mp.stage == .bad_noisies))
         {
             std.debug.assert(board.isNoisy(move));
@@ -1139,7 +1139,7 @@ fn search(
         }
         const is_quiet = board.isQuiet(move);
         const direct_check = board.givesDirectCheck(move);
-        if (std.debug.runtime_safety and
+        if (@import("builtin").optimize.runtimeSafety() and
             (mp.stage == .good_noisies or mp.stage == .bad_noisies))
         {
             std.debug.assert(!is_quiet);
@@ -1332,7 +1332,7 @@ fn search(
         }
         num_searched += 1;
 
-        if (std.debug.runtime_safety) {
+        if (@import("builtin").optimize.runtimeSafety()) {
             if (for (searched_noisies.slice()) |searched_move| {
                 if (searched_move.move == move) break true;
             } else false) {
@@ -1640,7 +1640,7 @@ fn writeInfo(self: *Searcher, input_score: i16, depth: i32, tp: InfoType, move: 
 }
 
 fn retainOnlyDuplicates(slice: []u64) usize {
-    std.sort.pdq(u64, slice, void{}, std.sort.asc(u64));
+    std.sort.pdq(u64, slice, {}, std.sort.asc(u64));
     var write_idx: usize = 0;
     var last: u64 = 0;
     var count: usize = 0;

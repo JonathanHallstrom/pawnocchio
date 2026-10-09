@@ -34,7 +34,7 @@ pub fn exp(x: f32) f32 {
         1.0,
         1.0,
     }) |c| p = @mulAdd(f32, p, r, c);
-    const ki: i32 = @intFromFloat(k);
+    const ki: i32 = @trunc(k);
     const scale: f32 = @bitCast(ki + E_BIAS << M_BITS);
     return p * scale;
 }

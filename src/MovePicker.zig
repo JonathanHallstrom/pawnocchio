@@ -152,8 +152,7 @@ noinline fn findBest(noalias self: *MovePicker) usize {
 
     var best: i32 = std.math.minInt(i32);
 
-    const USE_SIMD = comptime std.simd.suggestVectorLength(i32) != null and
-        @import("builtin").cpu.arch.endian() == .little;
+    const USE_SIMD = comptime std.simd.suggestVectorLength(i32) != null;
 
     const UNROLL = comptime std.simd.suggestVectorLength(i32) orelse 1;
     if (USE_SIMD and simd.HAS_AVX512) {

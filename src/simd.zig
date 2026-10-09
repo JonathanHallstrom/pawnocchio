@@ -52,25 +52,30 @@ pub fn target(cpu: std.Target.Cpu) Target {
 pub fn hasPext(cpu: std.Target.Cpu) bool {
     if (cpu.arch != .x86_64 and cpu.arch != .x86) return false;
     const llvm_name = cpu.model.llvm_name orelse "";
-    return std.Target.x86.featureSetHas(cpu.model.features, .bmi2) and
+    return cpu.has(.x86, .bmi2) and
         !std.mem.eql(u8, "znver1", llvm_name) and
         !std.mem.eql(u8, "znver2", llvm_name);
 }
 
-pub const TARGET = target(@import("builtin").cpu);
+pub const TARGET = target(@import("builtin").target.cpu);
 
-pub const HAS_PEXT = hasPext(@import("builtin").cpu);
+pub const INTRINSIC_CALLCONV: std.lang.CallingConvention = if (@import("builtin").target.cpu.arch == .x86_64)
+    .{ .x86_64_sysv = .{} }
+else
+    .c;
+
+pub const HAS_PEXT = hasPext(@import("builtin").target.cpu);
 
 pub fn vecBytes(comptime cpu: std.Target.Cpu) comptime_int {
     return switch (target(cpu)) {
         .avx512vbmi, .avx512 => 64,
         .avx2 => 32,
         .aarch64, .ssse3, .sse2 => 16,
-        .fallback => if (cpu.arch.endian() != .little) 8 else std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
+        .fallback => std.simd.suggestVectorLengthForCpu(u8, cpu) orelse 4,
     };
 }
 
-const VEC_BYTES: comptime_int = vecBytes(@import("builtin").cpu);
+const VEC_BYTES: comptime_int = vecBytes(@import("builtin").target.cpu);
 
 pub fn vecSize(comptime T: type) comptime_int {
     return VEC_BYTES / @sizeOf(T);
@@ -84,11 +89,11 @@ fn hasI8mm(cpu: std.Target.Cpu) bool {
     return cpu.has(.aarch64, .i8mm);
 }
 
-const HAS_VNNI = hasVnni(@import("builtin").cpu);
-const HAS_I8MM = hasI8mm(@import("builtin").cpu);
-const HAS_DOTPROD = @import("builtin").cpu.has(.aarch64, .dotprod);
-pub const HAS_VBMI2 = @import("builtin").cpu.has(.x86, .avx512vbmi2);
-pub const HAS_AVX512 = @import("builtin").cpu.has(.x86, .avx512f);
+const HAS_VNNI = hasVnni(@import("builtin").target.cpu);
+const HAS_I8MM = hasI8mm(@import("builtin").target.cpu);
+const HAS_DOTPROD = @import("builtin").target.cpu.has(.aarch64, .dotprod);
+pub const HAS_VBMI2 = @import("builtin").target.cpu.has(.x86, .avx512vbmi2);
+pub const HAS_AVX512 = @import("builtin").target.cpu.has(.x86, .avx512f);
 pub const HAS_NT_STORES = switch (TARGET) {
     .avx512vbmi, .avx512, .avx2, .ssse3, .sse2 => true,
     .aarch64, .fallback => false,
@@ -104,42 +109,18 @@ pub fn Vector(comptime T: type) type {
 }
 
 pub fn MaskInt(comptime V: type) type {
-    return std.meta.Int(.unsigned, @typeInfo(V).vector.len);
+    return @Int(.unsigned, @typeInfo(V).vector.len);
 }
 pub inline fn maskInt(vec: anytype) MaskInt(@TypeOf(vec)) {
-    @setEvalBranchQuota(1 << 16);
-    const M = MaskInt(@TypeOf(vec));
-    if (@import("builtin").cpu.arch.endian() == .little) {
-        return @bitCast(vec);
-    }
-    const N = @typeInfo(@TypeOf(vec)).vector.len;
-    const lanes: [N]bool = vec;
-    var res: M = 0;
-    for (0..N) |k| {
-        res |= @as(M, @intFromBool(lanes[k])) << @intCast(k);
-    }
-    return res;
+    return @bitCast(vec);
 }
 
-pub inline fn maskVec(comptime N: usize, bits: std.meta.Int(.unsigned, N)) @Vector(N, bool) {
-    @setEvalBranchQuota(1 << 16);
-    if (@import("builtin").cpu.arch.endian() == .little) {
-        return @bitCast(bits);
-    }
-    var res: [N]bool = undefined;
-    inline for (0..N) |k| {
-        res[k] = bits >> @intCast(k) & 1 != 0;
-    }
-    return res;
+pub inline fn maskVec(comptime N: usize, bits: @Int(.unsigned, N)) @Vector(N, bool) {
+    return @bitCast(bits);
 }
 
 pub inline fn prefixLaneMask(comptime N: usize, n: usize) @Vector(N, bool) {
-    if (@import("builtin").cpu.arch.endian() == .little) {
-        return maskVec(N, prefixMask(N, n));
-    }
-
-    const idx: @Vector(N, usize) = std.simd.iota(usize, N);
-    return idx < @as(@Vector(N, usize), @splat(n));
+    return maskVec(N, prefixMask(N, n));
 }
 
 pub fn maddubs(u: Vector(u8), i: Vector(i8)) Vector(i16) {
@@ -221,33 +202,11 @@ pub const pshufb = x86.pshufb;
 pub const tbl1 = neon.tbl1;
 pub const tbl4 = neon.tbl4;
 
-pub fn loadMasked(comptime T: type, comptime N: usize, ptr: [*]const T, mask: std.meta.Int(.unsigned, N)) @Vector(N, T) {
-    const V = @Vector(N, T);
-    const zero: V = @splat(0);
-    if (@import("builtin").cpu.arch.endian() == .big) {
-        var res: [N]T = @splat(0);
-        for (0..N) |k| {
-            if (mask >> @intCast(k) & 1 != 0) res[k] = ptr[k];
-        }
-        return res;
-    }
-    const mask_vec: @Vector(N, bool) = maskVec(N, mask);
-    const len = std.fmt.comptimePrint("{d}", .{N});
-    const bits = std.fmt.comptimePrint("{d}", .{@bitSizeOf(T)});
-    return @extern(*const fn ([*]const T, i32, @Vector(N, bool), V) callconv(.c) V, .{
-        .name = "llvm.masked.load.v" ++ len ++ "i" ++ bits ++ ".p0",
-    }).*(ptr, @alignOf(T), mask_vec, zero);
-}
-
-pub fn loadN(comptime T: type, comptime N: usize, ptr: [*]const T, n: usize) @Vector(N, T) {
-    return loadMasked(T, N, ptr, prefixMask(N, n));
-}
-
 pub fn prefixMask(
     comptime N: usize,
     n: usize,
-) std.meta.Int(.unsigned, N) {
-    const M: std.meta.Int(.unsigned, N) = (1 << N) - 1;
+) @Int(.unsigned, N) {
+    const M: @Int(.unsigned, N) = (1 << N) - 1;
     if (n >= N) {
         @branchHint(.unpredictable);
         return M;
@@ -255,28 +214,11 @@ pub fn prefixMask(
     return ~(M << @intCast(n));
 }
 
-fn finalIdx(comptime N: usize, n: usize) usize {
-    var i: usize = 0;
-    while (i + N < n) {
-        i += N;
-    }
-    return i;
-}
-
 pub fn ChunkIter(comptime T: type, comptime N: usize) type {
     return struct {
         ptr: [*]const T,
         len: usize,
         i: usize = 0,
-
-        pub const Tail = struct {
-            data: @Vector(N, T),
-            mask: @Vector(N, bool),
-
-            pub inline fn select(self: @This(), fill: @Vector(N, T)) @Vector(N, T) {
-                return @select(T, self.mask, self.data, fill);
-            }
-        };
 
         pub inline fn init(s: []const T) @This() {
             return .{ .ptr = s.ptr, .len = s.len };
@@ -305,29 +247,12 @@ pub fn ChunkIter(comptime T: type, comptime N: usize) type {
             defer self.i += N;
             return self.chunk();
         }
-
-        pub inline fn remainder(self: *@This()) []const T {
-            return self.ptr[self.i..self.len];
-        }
-
-        pub inline fn tail(self: *@This()) Tail {
-            const last_idx = finalIdx(N, self.len);
-            const data: @Vector(N, T) = self.ptr[last_idx..][0..N].*;
-            return .{ .data = data, .mask = prefixLaneMask(N, self.len - last_idx) };
-        }
-
-        pub inline fn tailSafe(self: *@This()) Tail {
-            const last_idx = finalIdx(N, self.len);
-            const remaining = self.len - last_idx;
-            const data: @Vector(N, T) = loadN(T, N, self.ptr + last_idx, remaining);
-            return .{ .data = data, .mask = prefixLaneMask(N, self.len - last_idx) };
-        }
     };
 }
 
 pub fn IndexedChunkIter(comptime T: type, comptime N: usize) type {
     return struct {
-        const Index = if (@typeInfo(T) == .int) T else std.meta.Int(.unsigned, @bitSizeOf(T));
+        const Index = if (@typeInfo(T) == .int) T else @Int(.unsigned, @bitSizeOf(T));
 
         inner: ChunkIter(T, N),
         indices: @Vector(N, Index) = std.simd.iota(i32, N),
@@ -345,14 +270,6 @@ pub fn IndexedChunkIter(comptime T: type, comptime N: usize) type {
                 return @select(T, self.mask, self.data, fill);
             }
         };
-
-        pub inline fn isEmpty(self: @This()) bool {
-            return self.inner.isEmpty();
-        }
-
-        pub inline fn hasFullChunk(self: @This()) bool {
-            return self.inner.hasFullChunk();
-        }
 
         pub inline fn fullChunk(self: *@This()) ?struct {
             data: @Vector(N, T),
@@ -372,70 +289,8 @@ pub fn IndexedChunkIter(comptime T: type, comptime N: usize) type {
             return .{ .data = self.inner.chunk(), .indices = self.indices, .mask = mask };
         }
 
-        pub inline fn maskedChunkUnchecked(self: *@This()) Chunk {
-            defer self.inner.i += N;
-            defer self.indices += @splat(N);
-            const res = self.maskedChunkImpl();
-            return res;
-        }
-
-        pub inline fn maskedChunk(self: *@This()) ?Chunk {
-            if (self.isEmpty()) return null;
-            return self.maskedChunkUnchecked();
-        }
-
         pub inline fn tail(self: *@This()) Chunk {
             return self.maskedChunkImpl();
-        }
-
-        pub inline fn tailSafe(self: *@This()) Chunk {
-            const remaining = self.inner.len - self.inner.i;
-            const data: @Vector(N, T) = loadN(T, N, self.inner.ptr + self.inner.i, remaining);
-            return .{ .data = data, .indices = self.indices, .mask = prefixLaneMask(N, remaining) };
-        }
-    };
-}
-
-pub fn ReverseChunkIter(comptime T: type, comptime N: usize) type {
-    return struct {
-        ptr: [*]const T,
-        len: usize,
-        i: usize,
-
-        pub const Chunk = struct {
-            data: @Vector(N, T),
-            mask: @Vector(N, bool),
-            start: usize,
-
-            pub inline fn select(self: @This(), fill: @Vector(N, T)) @Vector(N, T) {
-                return @select(T, self.mask, self.data, fill);
-            }
-        };
-
-        pub inline fn init(s: []const T) @This() {
-            return .{ .ptr = s.ptr, .len = s.len, .i = finalIdx(N, s.len) };
-        }
-
-        pub inline fn isEmpty(self: @This()) bool {
-            return self.len == 0;
-        }
-
-        pub inline fn maskedChunk(self: *@This()) ?Chunk {
-            if (self.len == 0) return null;
-
-            const start = self.i;
-            const data: @Vector(N, T) = self.ptr[start..][0..N].*;
-            const valid = self.len - start;
-            const mask: @Vector(N, bool) = prefixLaneMask(N, valid);
-
-            if (start >= N) {
-                self.i = start - N;
-                self.len = start;
-            } else {
-                self.len = 0;
-            }
-
-            return .{ .data = data, .mask = mask, .start = start };
         }
     };
 }
@@ -445,10 +300,6 @@ pub fn chunkIter(comptime T: type, comptime N: usize, slice: []const T) ChunkIte
 }
 
 pub fn indexedChunkIter(comptime T: type, comptime N: usize, slice: []const T) IndexedChunkIter(T, N) {
-    return .init(slice);
-}
-
-pub fn reverseChunkIter(comptime T: type, comptime N: usize, slice: []const T) ReverseChunkIter(T, N) {
     return .init(slice);
 }
 
@@ -469,7 +320,7 @@ pub fn containsSmall(comptime T: type, haystack: []const T, needle: T) bool {
         @branchHint(.likely);
         return containsScalar(T, haystack, needle);
     }
-    const Vi = @Vector(N, std.meta.Int(.signed, @bitSizeOf(T)));
+    const Vi = @Vector(N, @Int(.signed, @bitSizeOf(T)));
 
     const V = Vector(T);
     const needle_vec: V = @splat(needle);

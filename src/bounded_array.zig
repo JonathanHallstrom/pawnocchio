@@ -1,6 +1,5 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const mem = std.mem;
 const testing = std.testing;
 
 /// A structure with an array and a length, that can be used as a slice.
@@ -162,7 +161,7 @@ pub fn BoundedArrayAligned(
             }
             _ = try self.addOne();
             var s = self.slice();
-            mem.copyBackwards(T, s[i + 1 .. s.len], s[i .. s.len - 1]);
+            @memmove(s[i + 1 .. s.len], s[i .. s.len - 1]);
             self.buffer[i] = item;
         }
 
@@ -171,7 +170,7 @@ pub fn BoundedArrayAligned(
         pub fn insertSlice(self: *Self, i: usize, items: []const T) error{Overflow}!void {
             try self.ensureUnusedCapacity(items.len);
             self.len += items.len;
-            mem.copyBackwards(T, self.slice()[i + items.len .. self.len], self.constSlice()[i .. self.len - items.len]);
+            @memmove(self.slice()[i + items.len .. self.len], self.constSlice()[i .. self.len - items.len]);
             @memcpy(self.slice()[i..][0..items.len], items);
         }
 
@@ -291,7 +290,7 @@ test BoundedArray {
     try a.resize(48);
     try testing.expectEqual(a.len, 48);
 
-    const x = [_]u8{1} ** 10;
+    const x: [10]u8 = @splat(1);
     a = try BoundedArray(u8, 64).fromSlice(&x);
     try testing.expectEqualSlices(u8, &x, a.constSlice());
 

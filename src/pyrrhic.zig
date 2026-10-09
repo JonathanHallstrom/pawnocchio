@@ -25,7 +25,7 @@ const Bitboard = root.Bitboard;
 
 const USE_TBS = root.USE_TBS;
 
-const c = if (USE_TBS) @cImport(@cInclude("tbprobe.h")) else undefined;
+const c = if (USE_TBS) @import("tbprobe") else undefined;
 const TB_MAX_MOVES: usize = if (USE_TBS) c.TB_MAX_MOVES else 0;
 const TbRootMoves = if (USE_TBS) c.TbRootMoves else void;
 
@@ -36,8 +36,9 @@ pub fn init(path: [*:0]const u8) error{TBInitializationFailed}!void {
     if (!USE_TBS) {
         return;
     }
-    tbs_init = true;
-    if (!c.tb_init(path)) {
+    tbs_init = c.tb_init(path);
+    if (!tbs_init) {
+        c.tb_free();
         return error.TBInitializationFailed;
     }
 }
@@ -121,10 +122,7 @@ pub fn probeRootDTZ(
         &tb_results,
     );
 
-    if (tb_results.size == 0) {
-        return null;
-    }
-    if (probe_result == c.TB_RESULT_FAILED) {
+    if (probe_result == 0 or tb_results.size == 0) {
         return null;
     }
 
@@ -162,7 +160,7 @@ pub fn probeRootDTZ(
             .score = tb_move.tbRank,
         });
     }
-    std.mem.sort(ScoredMove, res.slice(), void{}, struct {
+    std.mem.sort(ScoredMove, res.slice(), {}, struct {
         fn impl(_: void, lhs: ScoredMove, rhs: ScoredMove) bool {
             return lhs.score > rhs.score;
         }

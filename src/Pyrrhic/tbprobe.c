@@ -676,6 +676,8 @@ bool tb_init(const char *path)
       fprintf(stderr, "Out of memory.\n");
       free(pieceEntry);
       free(pawnEntry);
+      pieceEntry = NULL;
+      pawnEntry = NULL;
       return false;
     }
   }

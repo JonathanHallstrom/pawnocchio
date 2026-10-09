@@ -20,29 +20,25 @@ const Searcher = root.Searcher;
 const TTCluster = root.TTCluster;
 const history = root.history;
 
-const IS_LINUX_LIBC = @import("builtin").os.tag == .linux and @import("builtin").link_libc;
-const mman_c = if (IS_LINUX_LIBC) @cImport({
-    @cDefine("_GNU_SOURCE", "");
-    @cInclude("sys/mman.h");
-}) else void;
+const IS_LINUX = @import("builtin").target.os.tag == .linux;
 const evaluation = root.evaluation;
 const numa = @import("numa.zig");
 const nnue = root.nnue;
 
-const IS_WINDOWS = @import("builtin").os.tag == .windows;
+const IS_WINDOWS = @import("builtin").target.os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
-pub fn adviseHugePages(p: anytype) !void {
+pub fn adviseHugePages(p: anytype) void {
     const bytes = std.mem.sliceAsBytes(p);
-    if (IS_LINUX_LIBC) {
+    if (IS_LINUX) {
         const ptr = @as([*]align(4096) u8, @alignCast(bytes.ptr));
-        try std.posix.madvise(ptr, bytes.len, @as(u32, @intCast(mman_c.MADV_HUGEPAGE)));
+        std.posix.madvise(ptr, bytes.len, std.posix.MADV.HUGEPAGE) catch {};
     }
 }
 
 pub fn allocTT(allocator: std.mem.Allocator, bytes: usize) ![]align(MAX_ALIGN) TTCluster {
     const slice = try allocator.alignedAlloc(TTCluster, .fromByteUnits(MAX_ALIGN), bytes / @sizeOf(TTCluster));
-    try adviseHugePages(slice);
+    adviseHugePages(slice);
     return slice;
 }
 
@@ -214,8 +210,8 @@ const Thread = struct {
 };
 
 pub const ThreadPool = struct {
-    threads: std.ArrayListUnmanaged(*Thread) = .empty,
-    searchers: std.ArrayListUnmanaged(*Searcher) = .empty,
+    threads: std.ArrayList(*Thread) = .empty,
+    searchers: std.ArrayList(*Searcher) = .empty,
     tt: []align(std.atomic.cache_line) TTCluster = &.{},
     corrhists: SharedStore(history.CorrectionHistoryTable) = .{},
     pawn_histories: SharedStore(history.PawnHistory) = .{},
@@ -256,7 +252,7 @@ pub const ThreadPool = struct {
         } else {
             const ptr = try self.allocator.alignedAlloc(Searcher, .fromByteUnits(MAX_ALIGN), 1);
             searcher = @ptrCast(ptr);
-            try adviseHugePages(ptr);
+            adviseHugePages(ptr);
         }
         const thread = try Thread.init(self.allocator, searcher, self.threads.items.len, self.io);
         thread.tt = self.tt;

@@ -55,12 +55,7 @@ fn printUsageLines(usage: []const []const u8) void {
     }
 }
 
-const CommandSuggestion = struct {
-    name: []const u8,
-    cost: usize,
-};
-
-fn suggestCommand(input: []const u8) ?CommandSuggestion {
+fn suggestCommand(input: []const u8) ?arg_parser.Suggestion {
     const lookup = edit_distance.matchEnum(Command, input, CMD_SUGGEST_BASE, CMD_SUGGEST_EXTRA) orelse {
         const trimmed = std.mem.trim(u8, input, "-");
         if (trimmed.len == 0) {
@@ -81,7 +76,7 @@ fn suggestCommand(input: []const u8) ?CommandSuggestion {
 fn parseOptionName(arg: []const u8) ?[]const u8 {
     if (!std.mem.startsWith(u8, arg, "--")) return null;
     const option = arg[2..];
-    return option[0 .. root.indexOfScalar(u8, option, '=') orelse option.len];
+    return option[0 .. std.mem.findScalar(u8, option, '=') orelse option.len];
 }
 
 fn logUnknownOption(command_name: []const u8, option_name: []const u8, suggestion: ?arg_parser.Suggestion) void {
@@ -105,7 +100,7 @@ fn logUnknownOption(command_name: []const u8, option_name: []const u8, suggestio
     writeLog("invalid {s} arguments: unknown option '--{s}'\n", .{ command_name, option_name });
 }
 
-fn logUnknownCommand(command_token: []const u8, suggestion: ?CommandSuggestion) void {
+fn logUnknownCommand(command_token: []const u8, suggestion: ?arg_parser.Suggestion) void {
     if (suggestion) |s| {
         if (SHOW_SUGGESTION_COST) {
             writeLog("unknown command '{s}'. did you mean '{s}'? cost={d}. pass 'help' for usage\n", .{
@@ -124,15 +119,7 @@ fn logUnknownCommand(command_token: []const u8, suggestion: ?CommandSuggestion) 
     writeLog("unknown command '{s}'. pass 'help' for usage\n", .{command_token});
 }
 
-fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime options: arg_parser.Options, comptime command_name: []const u8, allocator: std.mem.Allocator) !arg_parser.ParsedType(spec_or_type, options) {
-    const parse_options: arg_parser.Options = .{
-        .allow_implied = options.allow_implied,
-        .default_int_type = options.default_int_type,
-        .default_float_type = options.default_float_type,
-        .option_suggest_base = options.option_suggest_base,
-        .option_suggest_extra = options.option_suggest_extra,
-        .usage_descriptions = options.usage_descriptions,
-    };
+fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime options: arg_parser.Options(spec_or_type), comptime command_name: []const u8, allocator: std.mem.Allocator) !arg_parser.ParsedType(spec_or_type, options) {
     const ArgTracker = struct {
         inner: @TypeOf(args),
         last: ?[]const u8 = null,
@@ -145,9 +132,9 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
     };
 
     var tracked_args = ArgTracker{ .inner = args };
-    return arg_parser.parse(&tracked_args, spec_or_type, parse_options, allocator) catch |e| {
+    return arg_parser.parse(&tracked_args, spec_or_type, options, allocator) catch |e| {
         if (e == error.HelpRequested) {
-            const usage = arg_parser.fullUsage(spec_or_type, parse_options);
+            const usage = arg_parser.fullUsage(spec_or_type, options);
             if (usage.len > 0) {
                 writeLog("{s} arguments:\n", .{command_name});
                 printUsageLines(usage);
@@ -157,7 +144,7 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
             return e;
         }
         if (e == error.MissingRequiredOption) {
-            const usage = arg_parser.requiredUsage(spec_or_type, parse_options);
+            const usage = arg_parser.requiredUsage(spec_or_type, options);
             if (usage.len > 0) {
                 writeLog("invalid {s} arguments: missing required arguments:\n", .{command_name});
                 printUsageLines(usage);
@@ -169,7 +156,7 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
         if (e == error.UnknownOption) {
             const option_name = if (tracked_args.last) |arg| parseOptionName(arg) else null;
             if (option_name) |name| {
-                logUnknownOption(command_name, name, arg_parser.suggestOptionWithCost(spec_or_type, parse_options, name));
+                logUnknownOption(command_name, name, arg_parser.suggestOption(spec_or_type, options, name));
                 return e;
             }
         }
@@ -179,12 +166,8 @@ fn parseCommandArgs(args: anytype, comptime spec_or_type: anytype, comptime opti
 }
 
 fn openInputFile(io: std.Io, path: []const u8) !std.Io.File {
-    const open_result = if (std.fs.path.isAbsolute(path))
-        std.Io.Dir.openFileAbsolute(io, path, .{})
-    else
-        std.Io.Dir.cwd().openFile(io, path, .{});
-    return open_result catch |e| {
-        writeLog("opening file '{s}' gave: '{}'\n", .{ path, e });
+    return std.Io.Dir.cwd().openFile(io, path, .{}) catch |e| {
+        writeLog("opening '{s}': {}\n", .{ path, e });
         return e;
     };
 }
@@ -193,27 +176,19 @@ fn createOutputFile(io: std.Io, path: []const u8, allow_overwrite: bool) !std.Io
     const flags: std.Io.Dir.CreateFileOptions = .{
         .exclusive = !allow_overwrite,
     };
-    const create_result = if (std.fs.path.isAbsolute(path))
-        std.Io.Dir.createFileAbsolute(io, path, flags)
-    else
-        std.Io.Dir.cwd().createFile(io, path, flags);
-    return create_result catch |e| {
+    return std.Io.Dir.cwd().createFile(io, path, flags) catch |e| {
         if (e == error.PathAlreadyExists and !allow_overwrite) {
             writeLog("refusing to overwrite existing file '{s}' (pass --allow-overwrite)\n", .{path});
             return e;
         }
-        writeLog("creating file '{s}' gave: '{}'\n", .{ path, e });
+        writeLog("creating '{s}': {}\n", .{ path, e });
         return e;
     };
 }
 
 fn ensureTbPathExists(io: std.Io, tb_path: []const u8) !void {
-    const access_result = if (std.fs.path.isAbsolute(tb_path))
-        std.Io.Dir.accessAbsolute(io, tb_path, .{})
-    else
-        std.Io.Dir.cwd().access(io, tb_path, .{});
-    return access_result catch |e| {
-        writeLog("tb path '{s}' is not accessible: '{}'\n", .{ tb_path, e });
+    return std.Io.Dir.cwd().access(io, tb_path, .{}) catch |e| {
+        writeLog("tb path '{s}' is not accessible: {}\n", .{ tb_path, e });
         return e;
     };
 }
@@ -288,6 +263,7 @@ fn handleHelp(version: []const u8, threads: usize) void {
         \\
         \\USAGE:
         \\  pawnocchio [COMMAND] [ARGUMENTS]
+        \\
     , .{version});
     if (!TOOLS_ONLY) {
         writeLog("  pawnocchio (starts in UCI mode)\n", .{});
@@ -310,6 +286,7 @@ fn handleHelp(version: []const u8, threads: usize) void {
             \\      generate FENs. note: must be enclosed in quotes due to argument parsing
             \\      example: pawnocchio "genfens 100 seed 12345 book book.bin"
             \\
+            \\
         , .{ BENCH_DEPTH_DEFAULT, threads, DATAGEN_NODES_DEFAULT });
     }
     writeLog(
@@ -322,18 +299,21 @@ fn handleHelp(version: []const u8, threads: usize) void {
         \\  vftotxt --input <INPUT.vf> [<INPUT.vf> (positional)]
         \\      convert viriformat binary file to <FEN> | <SCORE> | <WDL>
         \\
-        \\  sanitise --input <INPUT.vf> [<INPUT.vf> (positional)] [--print-errors] [--check-only] [--allow-overwrite] [--output <OUTPUT>]
+        \\  sanitise --input <INPUT.vf> [<INPUT.vf> (positional)] [--print-errors[=off|on|verbose]] [--check-only] [--allow-overwrite] [--output <OUTPUT>]
         \\      sanitise a viriformat file. default output: <INPUT>_sanitised unless --check-only is used
+        \\      --print-errors: off (default), on (one error per corrupt region), verbose (all errors)
         \\
-        \\  analyse --inputs <FILE> [<FILE>...] [--approximate] [--tb-path <TB_PATH>] [--allow-overwrite]
-        \\      analyze one or more dataset files
+        \\  analyse --inputs <FILE> [<FILE>...] [--approximate] [--verbose] [--tb-path <TB_PATH>] [--allow-overwrite] [--format pgn|viriformat] [--skip-broken-games]
+        \\      analyse one or more dataset files
         \\      --approximate: use HyperLogLog for faster unique count
         \\      --tb-path: required for TB statistics
+        \\      --skip-broken-games: pgn only
         \\      score distribution output: score_distribution.txt
         \\
-        \\  fit-wdl --inputs <FILE> [<FILE>...] [--format pgn|viriformat] [--max-eval <centipawns>]
+        \\  fit-wdl --inputs <FILE> [<FILE>...] [--format pgn|viriformat] [--max-eval <centipawns>] [--skip-broken-games]
         \\      fit the WDL model as configured in src/fit_wdl.zig
         \\      default max-eval is 2000
+        \\      --skip-broken-games: pgn only
         \\
         \\  relabel-tb --input <INPUT.vf> --tb-path <TB_PATH> [--allow-overwrite] [--output <OUTPUT>]
         \\      relabel dataset outcomes based on Syzygy tablebases. default output: <INPUT>_relabeled
@@ -437,8 +417,8 @@ fn handlePgntovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         },
         .{
             .allow_implied = true,
-            .usage_descriptions = &.{
-                .{ .field = "output", .default_text = "<INPUT>.vf" },
+            .usage_descriptions = .{
+                .output = .{ .default_text = "<INPUT>.vf" },
             },
         },
         "pgntovf",
@@ -455,14 +435,14 @@ fn handlePgntovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     }
 
     if (!allow_non_pgn_extension and !std.mem.endsWith(u8, input, ".pgn")) {
-        const len = std.mem.lastIndexOf(u8, input, ".") orelse input.len;
+        const len = std.mem.findLast(u8, input, ".") orelse input.len;
         writeLog("extension '{s}' is not allowed without '--allow-non-pgn-extension'\n", .{input[len..]});
         return error.InvalidExtension;
     }
     const output = if (parsed.output) |explicit_output|
         explicit_output
     else
-        try std.fmt.allocPrint(allocator, "{s}.vf", .{input});
+        try allocator.print("{s}.vf", .{input});
     defer if (parsed.output == null) allocator.free(output);
 
     var input_file = try openInputFile(io, input);
@@ -501,8 +481,8 @@ fn handleEpdtovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         },
         .{
             .allow_implied = true,
-            .usage_descriptions = &.{
-                .{ .field = "output", .default_text = "<INPUT>.vf" },
+            .usage_descriptions = .{
+                .output = .{ .default_text = "<INPUT>.vf" },
             },
         },
         "epdtovf",
@@ -521,7 +501,7 @@ fn handleEpdtovf(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     const output = if (parsed.output) |explicit_output|
         explicit_output
     else
-        try std.fmt.allocPrint(allocator, "{s}.vf", .{input});
+        try allocator.print("{s}.vf", .{input});
     defer if (parsed.output == null) allocator.free(output);
 
     var input_file = try openInputFile(io, input);
@@ -586,7 +566,7 @@ fn handleVftotxt(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     var total: u64 = 0;
     var reader = root.viriformat.scoredPlyReader(&br.interface, allocator);
     while (try reader.next()) |game| {
-        const wdl = @as(f64, @floatFromInt(@intFromEnum(game.outcome))) / 2.0;
+        const wdl = @as(f64, @floatFromInt(@backingInt(game.outcome))) / 2.0;
         var it = game.iter();
         while (try it.next()) |ply| {
             const board = ply.board;
@@ -669,10 +649,10 @@ const AnalysisStats = struct {
         self.wins += other.wins;
         self.draws += other.draws;
         self.losses += other.losses;
-        inline for (std.meta.fields(root.WDL)) |gf| {
-            inline for (std.meta.fields(root.WDL)) |tf| {
-                self.tb_results.getPtr(@field(root.WDL, gf.name)).getPtr(@field(root.WDL, tf.name)).* +=
-                    other.tb_results.get(@field(root.WDL, gf.name)).get(@field(root.WDL, tf.name));
+        inline for (@typeInfo(root.WDL).@"enum".field_names) |gf| {
+            inline for (@typeInfo(root.WDL).@"enum".field_names) |tf| {
+                self.tb_results.getPtr(@field(root.WDL, gf)).getPtr(@field(root.WDL, tf)).* +=
+                    other.tb_results.get(@field(root.WDL, gf)).get(@field(root.WDL, tf));
             }
         }
         for (&self.king_pos, other.king_pos) |*dst, src| dst.* += src;
@@ -689,7 +669,7 @@ const AnalysisStats = struct {
 };
 
 const UniqueTracker = union(enum) {
-    exact: std.AutoArrayHashMapUnmanaged(u64, void),
+    exact: std.array_hash_map.Auto(u64, void),
     approx: HyperLogLog,
 
     fn init(approximate: bool, allocator: std.mem.Allocator) !UniqueTracker {
@@ -736,9 +716,11 @@ fn analyseFile(
     io: std.Io,
     allocator: std.mem.Allocator,
     file: std.Io.File,
+    path: []const u8,
     format: root.dataformat.FileFormat,
     use_tbs: bool,
     approximate: bool,
+    skip_broken_games: bool,
     bytes_done: *std.atomic.Value(u64),
 ) !AnalysisStats {
     var stats = try AnalysisStats.init(approximate, allocator);
@@ -758,9 +740,16 @@ fn analyseFile(
         inline else => |fmt| {
             var spr = root.dataformat.readerFor(fmt, &br.interface, allocator);
             defer spr.deinit();
-            while (try spr.next()) |game_view| {
+            games: while (try spr.next()) |game_view| {
+                if (fmt == .pgn and skip_broken_games) {
+                    var check = game_view.iter();
+                    while (check.next() catch |e| {
+                        writeLog("skipping game in '{s}': {}\n", .{ path, e });
+                        continue :games;
+                    }) |_| {}
+                }
                 stats.game_count += 1;
-                switch (@intFromEnum(game_view.outcome)) {
+                switch (@backingInt(game_view.outcome)) {
                     0 => stats.losses += 1,
                     1 => stats.draws += 1,
                     2 => stats.wins += 1,
@@ -858,6 +847,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
             @"tb-path": ?[]const u8 = null,
             @"allow-overwrite": bool = false,
             format: root.dataformat.FileFormat = .viriformat,
+            @"skip-broken-games": bool = false,
         },
         .{ .allow_implied = false },
         "analyse",
@@ -875,7 +865,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         } else |e| switch (e) {
             error.FileNotFound => {},
             else => {
-                writeLog("checking output file 'score_distribution.txt' gave: '{}'\n", .{e});
+                writeLog("checking 'score_distribution.txt': {}\n", .{e});
                 return e;
             },
         }
@@ -884,7 +874,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
     var use_tbs = false;
     if (parsed.@"tb-path") |tb_path| {
         try ensureTbPathExists(io, tb_path);
-        const null_terminated = try allocator.dupeZ(u8, tb_path);
+        const null_terminated = try allocator.dupeSentinel(u8, tb_path, 0);
         defer allocator.free(null_terminated);
         try root.pyrrhic.init(null_terminated);
         use_tbs = true;
@@ -895,7 +885,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         writeLog("not using TBs, if you want TB stats pass --tb-path\n", .{});
     }
     if (approximate) {
-        writeLog("unique count is using HyperLogLog, if you need an exact count at the cost of a serious performance degredation, pass --approximate=false\n", .{});
+        writeLog("unique count uses HyperLogLog, pass --approximate=false for a slower exact count\n", .{});
     }
     var total_size: u64 = 0;
     for (parsed.inputs) |input_path| {
@@ -913,8 +903,8 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
 
     var bytes_done: std.atomic.Value(u64) = .init(0);
     var merge_lock = std.Io.Mutex.init;
-    var futures = std.array_list.Managed(std.Io.Future(anyerror!void)).init(allocator);
-    defer futures.deinit();
+    var futures: std.ArrayList(std.Io.Future(anyerror!void)) = try .initCapacity(allocator, parsed.inputs.len);
+    defer futures.deinit(allocator);
 
     var first_err: ?anyerror = null;
     var done = std.atomic.Value(bool).init(false);
@@ -941,7 +931,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         &done,
     });
     for (parsed.inputs) |input_path| {
-        futures.append(io.async(struct {
+        futures.appendAssumeCapacity(io.async(struct {
             fn impl(
                 input_path_: []const u8,
                 io_: std.Io,
@@ -949,6 +939,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
                 format: root.dataformat.FileFormat,
                 use_tbs_: bool,
                 approximate_: bool,
+                skip_broken_games_: bool,
                 bytes_done_: *std.atomic.Value(u64),
                 combined_: *AnalysisStats,
                 merge_lock_: *std.Io.Mutex,
@@ -956,7 +947,10 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
                 var file = try openInputFile(io_, input_path_);
                 defer file.close(io_);
 
-                var file_stats = try analyseFile(io_, allocator_, file, format, use_tbs_, approximate_, bytes_done_);
+                var file_stats = analyseFile(io_, allocator_, file, input_path_, format, use_tbs_, approximate_, skip_broken_games_, bytes_done_) catch |e| {
+                    writeLog("reading '{s}': {}\n", .{ input_path_, e });
+                    return e;
+                };
                 defer file_stats.deinit(allocator_);
                 try merge_lock_.lock(io_);
                 defer merge_lock_.unlock(io_);
@@ -969,13 +963,11 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
             parsed.format,
             use_tbs,
             approximate,
+            parsed.@"skip-broken-games",
             &bytes_done,
             &combined,
             &merge_lock,
-        })) catch |e| {
-            if (first_err == null) first_err = e;
-            break;
-        };
+        }));
     }
     for (futures.items) |*f| {
         f.await(io) catch |e| {
@@ -1070,7 +1062,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
             formatArrayNewline(@as([8][8]u64, @bitCast(combined.king_pos))),
         });
         if (use_tbs) {
-            write("\ntb results: {f}", .{formatWdlMatrix(combined.tb_results)});
+            write("\ntb results: {f}", .{WdlMatrixFormatter{ .table = combined.tb_results }});
         }
         write("\n", .{});
     }
@@ -1092,6 +1084,7 @@ fn handleFitWdl(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
             inputs: []const []const u8,
             format: ?root.dataformat.FileFormat = null,
             @"max-eval": u16 = 2000,
+            @"skip-broken-games": bool = false,
         },
         .{ .allow_implied = false },
         "fit-wdl",
@@ -1102,6 +1095,7 @@ fn handleFitWdl(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
         .inputs = parsed.inputs,
         .format = parsed.format,
         .max_eval = parsed.@"max-eval",
+        .skip_broken_games = parsed.@"skip-broken-games",
     });
 }
 
@@ -1116,8 +1110,8 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
         },
         .{
             .allow_implied = false,
-            .usage_descriptions = &.{
-                .{ .field = "output", .default_text = "<INPUT>_relabeled" },
+            .usage_descriptions = .{
+                .output = .{ .default_text = "<INPUT>_relabeled" },
             },
         },
         "relabel-tb",
@@ -1125,7 +1119,7 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
     );
     const input = parsed.input;
     try ensureTbPathExists(io, parsed.@"tb-path");
-    const null_terminated = try allocator.dupeZ(u8, parsed.@"tb-path");
+    const null_terminated = try allocator.dupeSentinel(u8, parsed.@"tb-path", 0);
     defer allocator.free(null_terminated);
     try root.pyrrhic.init(null_terminated);
 
@@ -1133,10 +1127,8 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
     defer input_file.close(io);
     const stat = try input_file.stat(io);
 
-    var name_writer = std.Io.Writer.Allocating.init(allocator);
-    defer name_writer.deinit();
-    try name_writer.writer.print("{s}_relabeled", .{input});
-    const output = parsed.output orelse name_writer.written();
+    const output: []const u8 = parsed.output orelse try allocator.print("{s}_relabeled", .{input});
+    defer if (parsed.output == null) allocator.free(output);
     var output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
     defer output_file.close(io);
 
@@ -1196,9 +1188,7 @@ fn handleRelabelTb(io: std.Io, allocator: std.mem.Allocator, args: anytype) !voi
             }
             position_count += 1;
         }
-        if (!skipping) {
-            try record.serializeInto(&bw.interface);
-        }
+        try record.serializeInto(&bw.interface);
     }
     try bw.interface.flush();
 
@@ -1280,8 +1270,8 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
         },
         .{
             .allow_implied = false,
-            .usage_descriptions = &.{
-                .{ .field = "output", .default_text = "<INPUT>_evals_relabeled" },
+            .usage_descriptions = .{
+                .output = .{ .default_text = "<INPUT>_evals_relabeled" },
             },
         },
         "relabel-chonker",
@@ -1293,10 +1283,8 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
     defer input_file.close(io);
     const stat = try input_file.stat(io);
 
-    var name_writer = std.Io.Writer.Allocating.init(allocator);
-    defer name_writer.deinit();
-    try name_writer.writer.print("{s}_evals_relabeled", .{input});
-    const output = parsed.output orelse name_writer.written();
+    const output: []const u8 = parsed.output orelse try allocator.print("{s}_evals_relabeled", .{input});
+    defer if (parsed.output == null) allocator.free(output);
     var output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
     defer output_file.close(io);
 
@@ -1363,11 +1351,12 @@ fn handleRelabelChonker(io: std.Io, allocator: std.mem.Allocator, args: anytype)
 }
 
 fn handleSanitise(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void {
+    const sanitiser = @import("viriformat_sanitiser.zig");
     const parsed = try parseCommandArgs(
         args,
         struct {
             input: []const u8,
-            @"print-errors": bool = false,
+            @"print-errors": sanitiser.PrintErrors = .off,
             @"check-only": bool = false,
             @"allow-overwrite": bool = false,
             output: ?[]const u8 = null,
@@ -1375,8 +1364,12 @@ fn handleSanitise(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void
         },
         .{
             .allow_implied = true,
-            .usage_descriptions = &.{
-                .{ .field = "output", .default_text = "<INPUT>_sanitised" },
+            .usage_descriptions = .{
+                .output = .{ .default_text = "<INPUT>_sanitised" },
+                .@"print-errors" = .{ .default_text = "off, bare: on" },
+            },
+            .bare_values = .{
+                .@"print-errors" = .on,
             },
         },
         "sanitise",
@@ -1387,45 +1380,40 @@ fn handleSanitise(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void
     var input_file = try openInputFile(io, input);
     defer input_file.close(io);
 
-    const mapped = try @import("MappedFile.zig").init(input_file, io);
-    defer mapped.deinit(io);
+    const input_len = try input_file.length(io);
+    if (input_len == 0) return error.EmptyFile;
+    var mapped = try input_file.createMemoryMap(io, .{
+        .len = input_len,
+        .protection = .{ .read = true },
+        .populate = false,
+    });
+    defer mapped.destroy(io);
+    const data: []const u8 = mapped.memory;
 
     const missing_null_terminator =
-        mapped.data.len < 4 or
-        !std.mem.eql(u8, mapped.data[mapped.data.len - 4 ..], &[4]u8{ 0, 0, 0, 0 });
-    if (parsed.@"print-errors" and missing_null_terminator) {
+        data.len < 4 or
+        !std.mem.eql(u8, data[data.len - 4 ..], &[4]u8{ 0, 0, 0, 0 });
+    if (parsed.@"print-errors" != .off and missing_null_terminator) {
         writeLog("warning: file does not end with null terminator\n", .{});
     }
 
-    var output_file: ?std.Io.File = null;
-    defer if (output_file) |*file| file.close(io);
+    const config: sanitiser.Config = .{
+        .print_errors = parsed.@"print-errors",
+        .sp_stalemate_fix = parsed.@"sp-stalemate-fix",
+    };
+    if (parsed.@"check-only") {
+        const skipped: usize = try sanitiser.sanitiseBufferToFile(data, null, allocator, config);
+        if (skipped > 0 or missing_null_terminator) std.process.exit(1);
+        return;
+    }
 
-    var name_writer: ?std.Io.Writer.Allocating = null;
-    defer if (name_writer) |*writer| writer.deinit();
-
+    const output: []const u8 = parsed.output orelse try allocator.print("{s}_sanitised", .{input});
+    defer if (parsed.output == null) allocator.free(output);
+    var output_file: std.Io.File = try createOutputFile(io, output, parsed.@"allow-overwrite");
+    defer output_file.close(io);
     var output_buf: [4096]u8 = undefined;
-    var output_writer: ?std.Io.File.Writer = null;
-    if (!parsed.@"check-only") {
-        name_writer = std.Io.Writer.Allocating.init(allocator);
-        try name_writer.?.writer.print("{s}_sanitised", .{input});
-        const output = parsed.output orelse name_writer.?.written();
-
-        output_file = try createOutputFile(io, output, parsed.@"allow-overwrite");
-        output_writer = output_file.?.writerStreaming(io, &output_buf);
-    }
-
-    const skipped = try @import("viriformat_sanitiser.zig").sanitiseBufferToFile(
-        mapped.data,
-        if (output_writer) |*writer| &writer.interface else null,
-        allocator,
-        .{
-            .print_errors = parsed.@"print-errors",
-            .sp_stalemate_fix = parsed.@"sp-stalemate-fix",
-        },
-    );
-    if (parsed.@"check-only" and (skipped > 0 or missing_null_terminator)) {
-        std.process.exit(1);
-    }
+    var output_writer: std.Io.File.Writer = output_file.writerStreaming(io, &output_buf);
+    _ = try sanitiser.sanitiseBufferToFile(data, &output_writer.interface, allocator, config);
 }
 
 fn runBench(io: std.Io, bench_depth: i32) !void {
@@ -1592,9 +1580,9 @@ fn EnumArrayFormatter(comptime Enum: type, comptime Table: type) type {
             writer: *std.Io.Writer,
         ) std.Io.Writer.Error!void {
             try writer.writeAll("{\n");
-            inline for (std.meta.fields(Enum)) |field| {
-                const tag: Enum = @field(Enum, field.name);
-                try writer.print("\t{s}: {f},\n", .{ field.name, formatValue(self.table.get(tag)) });
+            inline for (@typeInfo(Enum).@"enum".field_names) |field_name| {
+                const tag: Enum = @field(Enum, field_name);
+                try writer.print("\t{s}: {f},\n", .{ field_name, formatValue(self.table.get(tag)) });
             }
             try writer.writeAll("}");
         }
@@ -1608,35 +1596,27 @@ fn formatEnumArray(
     return .{ .table = table };
 }
 
-fn WdlMatrixFormatter() type {
-    return struct {
-        table: std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64)),
-
-        pub fn format(
-            self: @This(),
-            writer: *std.Io.Writer,
-        ) std.Io.Writer.Error!void {
-            try writer.writeAll("{\n");
-            inline for (std.meta.fields(root.WDL)) |game_field| {
-                const outcome: root.WDL = @field(root.WDL, game_field.name);
-                const row = self.table.get(outcome);
-                try writer.print("\t{s}: [", .{game_field.name});
-                inline for (std.meta.fields(root.WDL), 0..) |tb_field, i| {
-                    if (i != 0) try writer.writeAll(", ");
-                    try writer.print("{}", .{row.get(@field(root.WDL, tb_field.name))});
-                }
-                try writer.writeAll("],\n");
-            }
-            try writer.writeAll("}");
-        }
-    };
-}
-
-fn formatWdlMatrix(
+const WdlMatrixFormatter = struct {
     table: std.enums.EnumArray(root.WDL, std.enums.EnumArray(root.WDL, u64)),
-) WdlMatrixFormatter() {
-    return .{ .table = table };
-}
+
+    pub fn format(
+        self: @This(),
+        writer: *std.Io.Writer,
+    ) std.Io.Writer.Error!void {
+        try writer.writeAll("{\n");
+        inline for (@typeInfo(root.WDL).@"enum".field_names) |game_field_name| {
+            const outcome: root.WDL = @field(root.WDL, game_field_name);
+            const row = self.table.get(outcome);
+            try writer.print("\t{s}: [", .{game_field_name});
+            inline for (@typeInfo(root.WDL).@"enum".field_names, 0..) |tb_field_name, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try writer.print("{}", .{row.get(@field(root.WDL, tb_field_name))});
+            }
+            try writer.writeAll("],\n");
+        }
+        try writer.writeAll("}");
+    }
+};
 
 fn PositionCountsFormatter(comptime mirrored: bool) type {
     return struct {

@@ -80,12 +80,7 @@ fn parseUCIBool(value: []const u8) ?bool {
 }
 
 pub fn main(init: std.process.Init) !void {
-    var threaded_io = std.Io.Threaded.init(init.gpa, .{
-        .environ = init.minimal.environ,
-    });
-    defer threaded_io.deinit();
-
-    const io = threaded_io.io();
+    const io = init.io;
 
     root.init(io);
     defer root.deinit();
@@ -107,30 +102,27 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    const line_buf = try allocator.alloc(u8, 1 << 20);
-    defer allocator.free(line_buf);
-    var line_writer = std.Io.Writer.fixed(line_buf);
-
     const is_tty = std.Io.File.stdout().isTty(io) catch false;
     if (is_tty) {
         root.initConsole();
     }
     const ascii_only = root.IS_WINDOWS and !is_tty;
-    var stdin_buf: [4096]u8 = undefined;
+    const stdin_buf = try allocator.alloc(u8, 1 << 20);
+    defer allocator.free(stdin_buf);
     var stdin = std.Io.File.stdin();
     if (root.needsNonBlockingIo(stdin.handle)) {
         stdin.flags.nonblocking = true;
     }
 
-    var reader = stdin.readerStreaming(io, &stdin_buf);
+    var reader = stdin.readerStreaming(io, stdin_buf);
 
-    var previous_positions = std.array_list.Managed(Board).init(allocator);
-    defer previous_positions.deinit();
-    var previous_moves = std.array_list.Managed(Move).init(allocator);
-    defer previous_moves.deinit();
+    var previous_positions: std.ArrayList(Board) = .empty;
+    defer previous_positions.deinit(allocator);
+    var previous_moves: std.ArrayList(Move) = .empty;
+    defer previous_moves.deinit(allocator);
 
     var board = Board.startpos();
-    try previous_positions.append(board);
+    try previous_positions.append(allocator, board);
     var overhead: u64 = std.time.ns_per_ms * 10;
     var syzygy_depth: u8 = 1;
     var min_depth: i32 = 0;
@@ -142,18 +134,21 @@ pub fn main(init: std.process.Init) !void {
     const IS_POTENTIAL_ANDROID_BUILD = comptime blk: {
         const builtin = @import("builtin");
 
-        break :blk builtin.target.os.tag == .linux and builtin.cpu.arch.isAARCH64();
+        break :blk builtin.target.os.tag == .linux and builtin.target.cpu.arch.isAarch64();
     };
 
     var weird_tcs: bool = IS_POTENTIAL_ANDROID_BUILD;
     var show_wdl: bool = true;
-    loop: while (root.streamLine(&reader.interface, &line_writer) catch |e| blk: {
+    loop: while (reader.interface.takeDelimiter('\n') catch |e| blk: {
         std.debug.print("WARNING: encountered '{any}'\n", .{e});
         if (e == error.ReadFailed) return e;
-        break :blk 0;
-    }) |line_len| {
-        defer _ = line_writer.consumeAll();
-        const line = std.mem.trim(u8, line_buf[0..line_len], &std.ascii.whitespace);
+        _ = reader.interface.discardDelimiterInclusive('\n') catch |discard_err| switch (discard_err) {
+            error.ReadFailed => return discard_err,
+            error.EndOfStream => 0,
+        };
+        break :blk "";
+    }) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, &std.ascii.whitespace);
         for (line) |c| {
             if (!std.ascii.isPrint(c)) {
                 continue :loop;
@@ -293,7 +288,7 @@ pub fn main(init: std.process.Init) !void {
 
             if (root.USE_TBS) {
                 if (std.ascii.eqlIgnoreCase("SyzygyPath", option_name) and !std.ascii.eqlIgnoreCase("<empty>", value) and value.len > 0) {
-                    var dir = std.Io.Dir.openDirAbsolute(io, value, .{ .iterate = true }) catch {
+                    var dir = std.Io.Dir.cwd().openDir(io, value, .{ .iterate = true }) catch {
                         write("info string Failed to open specified directory for Syzygy Tablebases '{s}'\n", .{value});
                         continue;
                     };
@@ -307,7 +302,7 @@ pub fn main(init: std.process.Init) !void {
                     if (num_files == 0) {
                         write("info string The directory you specified contains no files, make sure the path is correct", .{});
                     }
-                    const null_terminated = try allocator.dupeZ(u8, value);
+                    const null_terminated = try allocator.dupeSentinel(u8, value, 0);
                     defer allocator.free(null_terminated);
                     try root.pyrrhic.init(null_terminated);
                 }
@@ -428,7 +423,7 @@ pub fn main(init: std.process.Init) !void {
                     for (0..iterations) |i| {
                         const b = &boards[i % boards.len];
                         const acc = cache.refresh(weights, .white, b);
-                        res +%= acc.ptr.data[0];
+                        res +%= acc.ptr.data[0][0];
                         std.mem.doNotOptimizeAway(res);
                     }
                     const elapsed_ns = @as(u64, @intCast(start_time.durationTo(std.Io.Timestamp.now(io, .awake)).nanoseconds));
@@ -437,7 +432,7 @@ pub fn main(init: std.process.Init) !void {
                 }
                 if (std.ascii.eqlIgnoreCase(command_part, "perft_file")) {
                     const file_name = std.mem.trim(u8, parts.next() orelse "", &std.ascii.whitespace);
-                    var epd_parser = root.PerftEPDParser.init(io, file_name, allocator) catch |e| {
+                    var epd_parser = root.PerftEPDParser.init(io, file_name) catch |e| {
                         writeLog("invalid file: '{s}' error: {}\n", .{ file_name, e });
                         continue;
                     };
@@ -447,8 +442,10 @@ pub fn main(init: std.process.Init) !void {
                     var stop_perft = false;
                     var nodes: u64 = 0;
 
-                    while (epd_parser.next() catch continue :loop) |position| {
-                        defer position.deinit();
+                    while (epd_parser.next() catch |e| {
+                        writeLog("reading '{s}': {}\n", .{ file_name, e });
+                        continue :loop;
+                    }) |position| {
                         std.debug.print("{s} {any}\n", .{ position.fen, position.node_counts.slice() });
                         if (stop_perft) continue :loop;
                         const perft_board = Board.parseFen(position.fen, true) catch {
@@ -683,8 +680,6 @@ pub fn main(init: std.process.Init) !void {
 
             var reader_buf: [4096]u8 = undefined;
             var file_reader = file.readerStreaming(io, &reader_buf);
-            var data_buf: [reader_buf.len]u8 = undefined;
-            var data_writer = std.Io.Writer.fixed(&data_buf);
 
             var sum: i64 = 0;
             var abs_sum: i64 = 0;
@@ -692,10 +687,8 @@ pub fn main(init: std.process.Init) !void {
 
             const ctx = root.evaluation.globalCtx.lock();
             defer root.evaluation.globalCtx.release();
-            while (root.streamLine(&file_reader.interface, &data_writer) catch null) |len| {
-                defer _ = data_writer.consumeAll();
-                const data_line = data_buf[0..len];
-                const end = root.indexOfScalar(u8, data_line, '[') orelse data_line.len;
+            while (file_reader.interface.takeDelimiter('\n') catch null) |data_line| {
+                const end = std.mem.findScalar(u8, data_line, '[') orelse data_line.len;
                 const fen = data_line[0..end];
 
                 const b = Board.parseFen(fen, true) catch continue;
@@ -776,13 +769,9 @@ pub fn main(init: std.process.Init) !void {
                     }
                 }
             } else {
-                var data_buf: [reader_buf.len]u8 = undefined;
-                var data_writer = std.Io.Writer.fixed(&data_buf);
-                while (root.streamLine(&file_reader.interface, &data_writer) catch null) |len| {
-                    defer _ = data_writer.consumeAll();
-                    const data_line = data_buf[0..len];
-                    const open = root.indexOfScalar(u8, data_line, '[') orelse continue;
-                    const close = open + (root.indexOfScalar(u8, data_line[open..], ']') orelse continue);
+                while (file_reader.interface.takeDelimiter('\n') catch null) |data_line| {
+                    const open = std.mem.findScalar(u8, data_line, '[') orelse continue;
+                    const close = open + (std.mem.findScalar(u8, data_line[open..], ']') orelse continue);
                     const fen = std.mem.trim(u8, data_line[0..open], &std.ascii.whitespace);
                     const result = std.fmt.parseFloat(f64, data_line[open + 1 .. close]) catch continue;
 
@@ -1016,7 +1005,7 @@ pub fn main(init: std.process.Init) !void {
             if (!can_reuse) {
                 previous_positions.clearRetainingCapacity();
                 previous_moves.clearRetainingCapacity();
-                try previous_positions.append(board);
+                try previous_positions.append(allocator, board);
             }
 
             while (move_iter.next()) |played_move| {
@@ -1042,8 +1031,8 @@ pub fn main(init: std.process.Init) !void {
                     continue;
                 };
                 board.makeMoveSimple(move);
-                try previous_moves.append(move);
-                try previous_positions.append(board);
+                try previous_moves.append(allocator, move);
+                try previous_positions.append(allocator, board);
             }
 
             if (can_reuse) {

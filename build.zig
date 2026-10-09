@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const build_net = @import("build/net.zig");
 const build_release = @import("build/release.zig");
 const build_tuning = @import("build/tuning.zig");
 const EvalMode = @import("src/eval_mode.zig").EvalMode;
@@ -9,12 +8,13 @@ const BASE_VERSION = "3.0";
 const DEFAULT_NET_PATH = "pp_big11.nnue";
 
 fn gitShortHash(b: *std.Build) ?[]const u8 {
-    var exit_code: u8 = undefined;
-    const argv = if (b.build_root.path) |build_root_path|
-        &[_][]const u8{ "git", "-C", build_root_path, "rev-parse", "--short=7", "HEAD" }
-    else
-        &[_][]const u8{ "git", "rev-parse", "--short=7", "HEAD" };
-    const stdout = b.runAllowFail(argv, &exit_code, .ignore) catch return null;
+    b.graph.poisonCache();
+    const build_root_path = b.root.joinString(b.allocator, "") catch @panic("OOM");
+    const argv = &[_][]const u8{ "git", "-C", build_root_path, "rev-parse", "--short=7", "HEAD" };
+    const stdout = switch (b.runFallible(argv, .{ .stderr_behavior = .ignore })) {
+        .success => |stdout| stdout,
+        .spawn_failed, .bad_exit_code, .crashed => return null,
+    };
     const short_sha = std.mem.trim(u8, stdout, &std.ascii.whitespace);
     if (short_sha.len == 0) {
         return null;
@@ -33,9 +33,9 @@ const ExecutableOptions = struct {
     name: []const u8,
     version: []const u8,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     eval_mode: EvalMode,
-    link_mode: ?std.builtin.LinkMode = null,
+    link_mode: ?std.lang.LinkMode = null,
     emit_symbols: bool = false,
     use_tbs: bool = true,
     use_numa: bool = false,
@@ -43,39 +43,42 @@ const ExecutableOptions = struct {
 };
 
 const Inputs = struct {
-    generated_files: *std.Build.Step.WriteFile,
     tuning_generated_file: std.Build.LazyPath,
-    input: build_net.Input,
+    net: ?std.Build.LazyPath,
 };
 
 fn prepareInputs(
     b: *std.Build,
-    transform_tool: *std.Build.Step.Compile,
-    target: std.Build.ResolvedTarget,
     eval_mode: EvalMode,
     net_override: ?std.Build.LazyPath,
 ) !Inputs {
     if (eval_mode != .nnue and net_override != null) {
-        std.log.err("cannot set net when eval mode is not nnue\n", .{});
+        std.log.err("cannot set net when eval mode is not nnue", .{});
         return error.IncompatibleFlags;
     }
 
-    const generated_files = b.addWriteFiles();
-    const tuning_generated_file = try build_tuning.prepareGeneratedTuning(b, generated_files);
-    const input: build_net.Input = if (eval_mode == .nnue)
-        try build_net.prepareNet(
-            b,
-            transform_tool,
-            target.result.cpu,
-            net_override orelse b.path(DEFAULT_NET_PATH),
-        )
+    const net: ?std.Build.LazyPath = if (eval_mode == .nnue)
+        net_override orelse b.path(DEFAULT_NET_PATH)
     else
-        .hce;
+        null;
     return .{
-        .generated_files = generated_files,
-        .tuning_generated_file = tuning_generated_file,
-        .input = input,
+        .tuning_generated_file = try build_tuning.prepareGeneratedTuning(b),
+        .net = net,
     };
+}
+
+fn lazyPathBasename(lazy_path: std.Build.LazyPath) []const u8 {
+    const basename = std.Io.Dir.path.basename(switch (lazy_path) {
+        .src_path => |src_path| src_path.sub_path,
+        .cwd_relative => |cwd_relative| cwd_relative,
+        .dependency => |dependency| dependency.sub_path,
+        .relative => |relative| relative.sub_path,
+        .generated => "",
+    });
+    if (basename.len == 0) {
+        std.process.fatal("net path has no filename: '{f}'", .{lazy_path});
+    }
+    return basename;
 }
 
 fn configureArtifact(
@@ -84,22 +87,16 @@ fn configureArtifact(
     options: ExecutableOptions,
     inputs: Inputs,
 ) void {
-    build_net.configureArtifact(
-        b,
-        artifact,
-        build_net.addOptions(
-            b,
-            options.version,
-            options.use_tbs,
-            options.use_numa,
-            options.tools_only,
-            options.eval_mode,
-            inputs.input,
-        ),
-        inputs.input,
-        inputs.generated_files,
-        inputs.tuning_generated_file,
-    );
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version_string", options.version);
+    build_options.addOption(bool, "use_tbs", options.use_tbs);
+    build_options.addOption(bool, "use_numa", options.use_numa);
+    build_options.addOption(bool, "tools_only", options.tools_only);
+    build_options.addOption([]const u8, "eval", @tagName(options.eval_mode));
+    build_options.addOption([]const u8, "eval_identifier", if (inputs.net) |net| lazyPathBasename(net) else "hce");
+    if (inputs.net) |net| artifact.root_module.addImport("net", b.createModule(.{ .root_source_file = net }));
+    artifact.root_module.addImport("tuning_generated", b.createModule(.{ .root_source_file = inputs.tuning_generated_file }));
+    artifact.root_module.addOptions("build_options", build_options);
 }
 
 fn addExecutable(
@@ -108,8 +105,8 @@ fn addExecutable(
     inputs: Inputs,
 ) !*std.Build.Step.Compile {
     const minimal_executable = switch (options.optimize) {
-        .ReleaseFast, .ReleaseSmall => true,
-        .Debug, .ReleaseSafe => false,
+        .fast, .small => true,
+        .debug, .safe => false,
     } and !options.emit_symbols;
 
     const exe = b.addExecutable(.{
@@ -131,6 +128,12 @@ fn addExecutable(
         exe.root_module.linkSystemLibrary("numa", .{});
     }
     if (options.use_tbs) {
+        const tbprobe = b.addTranslateC(.{
+            .root_source_file = b.path("src/Pyrrhic/tbprobe.h"),
+            .target = options.target,
+            .optimize = options.optimize,
+        });
+        exe.root_module.addImport("tbprobe", tbprobe.createModule());
         exe.root_module.addCSourceFile(.{
             .file = b.path("src/Pyrrhic/tbprobe.c"),
             .flags = &.{
@@ -149,15 +152,14 @@ fn addBuildStep(
     step_name: []const u8,
     description: []const u8,
     version: []const u8,
-    transform_tool: *std.Build.Step.Compile,
     config: build_release.Config,
     tools_only: bool,
     use_numa: bool,
 ) !void {
     const step = b.step(step_name, description);
+    const inputs = try prepareInputs(b, config.eval_mode, null);
     for (config.specs) |spec| {
         const target = try spec.resolveTarget(b);
-        const inputs = try prepareInputs(b, transform_tool, target, config.eval_mode, null);
         const exe = try addExecutable(b, .{
             .name = spec.name(b, version),
             .version = version,
@@ -180,17 +182,16 @@ pub fn build(b: *std.Build) !void {
     const version = b.option([]const u8, "version_string", "set executable version string") orelse defaultVersion(b);
     const eval_mode = b.option(EvalMode, "eval", "which evaluator to use") orelse .nnue;
     const net_override = b.option(std.Build.LazyPath, "net", "use this net");
-    const link_mode = b.option(std.builtin.LinkMode, "link_mode", "set linkage mode");
+    const link_mode = b.option(std.lang.LinkMode, "link_mode", "set linkage mode");
     const emit_symbols = b.option(bool, "emit_symbols", "keep debug symbols") orelse false;
     const use_tbs = b.option(bool, "use_tbs", "enable tablebases") orelse true;
     const use_numa = b.option(bool, "use_numa", "link to libnuma for NUMA aware resource management") orelse false;
     const tools_only = b.option(bool, "tools_only", "disable UCI, datagen, bench, and genfens to minimize tool binaries") orelse false;
     if (use_numa and target.result.os.tag != .linux) {
-        std.log.err("build cannot use numa on non linux targets\n", .{});
+        std.log.err("build cannot use numa on non linux targets", .{});
         return error.IncompatibleFlags;
     }
-    const transform_tool = build_net.addTransformTool(b);
-    const inputs = try prepareInputs(b, transform_tool, target, eval_mode, net_override);
+    const inputs = try prepareInputs(b, eval_mode, net_override);
 
     const exe = try addExecutable(b, .{
         .name = name,
@@ -209,9 +210,7 @@ pub fn build(b: *std.Build) !void {
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "run pawnocchio");
     run_step.dependOn(&run_cmd.step);
@@ -247,6 +246,6 @@ pub fn build(b: *std.Build) !void {
     const check_step = b.step("check", "check if project compiles");
     check_step.dependOn(&exe.step);
 
-    try addBuildStep(b, "tool_builds", "build tool artifacts", version, transform_tool, build_release.TOOLS, tools_only, use_numa);
-    try addBuildStep(b, "release_builds", "build release artifacts", version, transform_tool, build_release.RELEASE, tools_only, use_numa);
+    try addBuildStep(b, "tool_builds", "build tool artifacts", version, build_release.TOOLS, tools_only, use_numa);
+    try addBuildStep(b, "release_builds", "build release artifacts", version, build_release.RELEASE, tools_only, use_numa);
 }

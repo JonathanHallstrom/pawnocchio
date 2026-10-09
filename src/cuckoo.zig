@@ -28,7 +28,7 @@ const Square = root.Square;
 
 const SIZE = 8192;
 var keys: [SIZE]u64 = undefined;
-var moves: [SIZE]Move = .{Move.init()} ** SIZE;
+var moves: [SIZE]Move = @splat(Move.init());
 
 fn h1(x: u64) usize {
     return @intCast(x % SIZE);

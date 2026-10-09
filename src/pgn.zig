@@ -26,7 +26,7 @@ const ScoredPly = dataformat.ScoredPly;
 pub const ScoredPlyReader = struct {
     reader: *std.Io.Reader,
     allocator: std.mem.Allocator,
-    buffer: std.ArrayListUnmanaged(u8),
+    buffer: std.ArrayList(u8),
 
     pub const Iter = struct {
         text: []const u8,
@@ -96,6 +96,11 @@ pub const ScoredPlyReader = struct {
                 var move_text_len: usize = 0;
                 while (move_text_len < remainder.len and !TOKEN_END[remainder[move_text_len]]) move_text_len += 1;
                 if (move_text_len == 0) {
+                    if (remainder[0] == ';') {
+                        while (move_text_len < remainder.len and remainder[move_text_len] != '\n') move_text_len += 1;
+                        self.cursor += move_text_len;
+                        continue;
+                    }
                     self.cursor += 1;
                     continue;
                 }
@@ -103,7 +108,11 @@ pub const ScoredPlyReader = struct {
                 self.cursor += move_text_len;
 
                 const move = self.board.parseSANMove(move_text) orelse {
-                    continue;
+                    if (std.mem.eql(u8, move_text, "*")) {
+                        self.exhausted = true;
+                        return null;
+                    }
+                    return error.InvalidMove;
                 };
 
                 var eval: ?i16 = null;
@@ -145,7 +154,7 @@ pub const ScoredPlyReader = struct {
                 };
                 continue;
             }
-            const non_ws = std.mem.indexOfNone(u8, window, &std.ascii.whitespace) orelse {
+            const non_ws = std.mem.findNone(u8, window, &std.ascii.whitespace) orelse {
                 self.reader.toss(window.len);
                 continue;
             };
@@ -226,7 +235,7 @@ fn byteSet(comptime chars: []const u8) [256]bool {
     return set;
 }
 
-const TOKEN_END = byteSet(std.ascii.whitespace ++ "{(!$?");
+const TOKEN_END = byteSet(std.ascii.whitespace ++ "{(!$?;");
 const EVAL_DELIMS = byteSet(std.ascii.whitespace ++ "/{}");
 
 const TERMINATION_MARKERS = [_][]const u8{ "1-0", "0-1", "1/2-1/2" };
@@ -269,19 +278,19 @@ pub const GameView = struct {
             const remainder = text[move_section_offset..];
             switch (remainder[0]) {
                 '[' => {
-                    if (root.indexOfScalar(u8, remainder, ']')) |end| {
+                    if (std.mem.findScalar(u8, remainder, ']')) |end| {
                         const header = remainder[1..end];
-                        if (std.mem.indexOf(u8, header, "FEN")) |fen_idx| {
-                            if (root.indexOfScalar(u8, header[fen_idx..], '"')) |q1| {
+                        if (std.mem.find(u8, header, "FEN")) |fen_idx| {
+                            if (std.mem.findScalar(u8, header[fen_idx..], '"')) |q1| {
                                 const start = fen_idx + q1 + 1;
-                                if (root.indexOfScalar(u8, header[start..], '"')) |q2| {
+                                if (std.mem.findScalar(u8, header[start..], '"')) |q2| {
                                     fen = header[start .. start + q2];
                                 }
                             }
-                        } else if (std.mem.indexOf(u8, header, "Result")) |res_idx| {
-                            if (root.indexOfScalar(u8, header[res_idx..], '"')) |q1| {
+                        } else if (std.mem.find(u8, header, "Result")) |res_idx| {
+                            if (std.mem.findScalar(u8, header[res_idx..], '"')) |q1| {
                                 const start = res_idx + q1 + 1;
-                                if (root.indexOfScalar(u8, header[start..], '"')) |q2| {
+                                if (std.mem.findScalar(u8, header[start..], '"')) |q2| {
                                     const result_val = header[start .. start + q2];
                                     if (std.mem.eql(u8, result_val, "1-0")) outcome = .win;
                                     if (std.mem.eql(u8, result_val, "0-1")) outcome = .loss;

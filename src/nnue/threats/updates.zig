@@ -13,7 +13,7 @@ pub const ThreatFeature = extern struct {
     to: u8,
 
     comptime {
-        if (@sizeOf(ThreatFeature) != 4) @compileError("ThreatFeatureUpdate must be 4 bytes");
+        if (@sizeOf(ThreatFeature) != 4) @compileError("ThreatFeature must be 4 bytes");
         if (@offsetOf(ThreatFeature, "attacker") != 0) @compileError("bad layout");
         if (@offsetOf(ThreatFeature, "from") != 1) @compileError("bad layout");
         if (@offsetOf(ThreatFeature, "victim") != 2) @compileError("bad layout");
@@ -53,14 +53,6 @@ pub const UpdateBuffer = struct {
         self.add_end = parent.add_end;
         self.sub_start = parent.sub_end;
         self.sub_end = parent.sub_end;
-        self.refresh = .{ false, false };
-    }
-
-    pub fn clearRoot(self: *UpdateBuffer) void {
-        self.add_start = 0;
-        self.add_end = 0;
-        self.sub_start = 0;
-        self.sub_end = 0;
         self.refresh = .{ false, false };
     }
 
@@ -119,7 +111,7 @@ const scalar = struct {
                 var r = rank + dr;
                 var f = file + df;
                 while (r >= 0 and r < 8 and f >= 0 and f < 8) {
-                    entry.squares[entry.len] = @enumFromInt(r * 8 + f);
+                    entry.squares[entry.len] = @fromBackingInt(@intCast(r * 8 + f));
                     entry.len += 1;
                     r += dr;
                     f += df;
@@ -149,7 +141,7 @@ const scalar = struct {
                 const r = rank + dr;
                 const f = file + df;
                 if (r >= 0 and r < 8 and f >= 0 and f < 8) {
-                    entry.squares[entry.len] = @enumFromInt(r * 8 + f);
+                    entry.squares[entry.len] = @fromBackingInt(@intCast(r * 8 + f));
                     entry.len += 1;
                 }
             }
@@ -390,7 +382,7 @@ const builtin = @import("builtin");
 const simd = root.simd;
 const arch = @import("../arch.zig");
 const has_vbmi = simd.TARGET == .avx512vbmi;
-const has_vbmi2 = has_vbmi and builtin.cpu.has(.x86, .avx512vbmi2);
+const has_vbmi2 = has_vbmi and builtin.target.cpu.has(.x86, .avx512vbmi2);
 const has_vec_permute = simd.TARGET == .avx2 or simd.TARGET == .avx512;
 const has_neon = simd.TARGET == .aarch64;
 
@@ -434,7 +426,7 @@ const byte_ray = struct {
     };
 
     const Permutation = struct {
-        indices: Byteboard,
+        indices: [64]u8 align(64),
         valid: u64,
     };
 
@@ -460,7 +452,7 @@ const byte_ray = struct {
     const RAY_ATTACKS: [12]Bitrays = blk: {
         const LANES: Bitrays = 0xFE;
         const PAWN_LANE: Bitrays = 0x02;
-        var m: [12]Bitrays = .{0} ** 12;
+        var m: [12]Bitrays = @splat(0);
         m[0] = PAWN_LANE << 8 | PAWN_LANE << 56;
         m[1] = PAWN_LANE << 24 | PAWN_LANE << 40;
         m[2] = LANE_0_MASK;
@@ -558,13 +550,14 @@ const byte_ray = struct {
 
     inline fn permuteMailboxVec(board: anytype, focus: u8, ignore: ?u8) RayVector {
         const perm = PERMUTATION_TABLE[focus];
+        const indices: Byteboard = perm.indices;
         const mailbox: [2]Half = @bitCast(maskedMailbox(board, ignore));
         const c0 = broadcast16(mailbox[0], false);
         const c1 = broadcast16(mailbox[0], true);
         const c2 = broadcast16(mailbox[1], false);
         const c3 = broadcast16(mailbox[1], true);
         const lut: [2]Half = @bitCast(PIECE_TO_BIT_LUT);
-        const idx: [2]Half = @bitCast(perm.indices);
+        const idx: [2]Half = @bitCast(indices);
 
         var pieces: [2]Half = undefined;
         var bits: [2]Half = undefined;
@@ -579,9 +572,9 @@ const byte_ray = struct {
             bits[h] = simd.pshufb(lut[0], p);
         }
 
-        const invalid: @Vector(64, bool) = (perm.indices & @as(Byteboard, @splat(INVALID_SQ))) != ZERO;
+        const invalid: @Vector(64, bool) = (indices & @as(Byteboard, @splat(INVALID_SQ))) != ZERO;
         return .{
-            .perm = perm.indices,
+            .perm = indices,
             .pieces = @bitCast(pieces),
             .bits = @select(u8, invalid, ZERO, @as(Byteboard, @bitCast(bits))),
         };
@@ -589,31 +582,34 @@ const byte_ray = struct {
 
     inline fn permuteMailboxVbmi(board: anytype, focus: u8, ignore: ?u8) RayVector {
         const perm = PERMUTATION_TABLE[focus];
-        const pieces = simd.vpermb(perm.indices, maskedMailbox(board, ignore));
+        const indices: Byteboard = perm.indices;
+        const pieces = simd.vpermb(indices, maskedMailbox(board, ignore));
         const bits = simd.vpshufbMask(pieces, PIECE_TO_BIT_LUT, perm.valid);
-        return .{ .perm = perm.indices, .pieces = pieces, .bits = bits };
+        return .{ .perm = indices, .pieces = pieces, .bits = bits };
     }
 
     inline fn permuteMailboxNeon(board: anytype, focus: u8, ignore: ?u8) RayVector {
         const Quad = @Vector(16, u8);
         const perm = PERMUTATION_TABLE[focus];
-        const mb: [4]Quad = @bitCast(maskedMailbox(board, ignore));
-        const idx: [4]Quad = @bitCast(perm.indices);
+        const indices: Byteboard = perm.indices;
+        const mb_arr: [64]u8 = maskedMailbox(board, ignore);
+        const mb: [4]Quad = .{ mb_arr[0..16].*, mb_arr[16..32].*, mb_arr[32..48].*, mb_arr[48..64].* };
+        const idx: [4]Quad = .{ perm.indices[0..16].*, perm.indices[16..32].*, perm.indices[32..48].*, perm.indices[48..64].* };
         const lut: Quad = PIECE_TO_BIT;
 
-        var pieces: [4]Quad = undefined;
-        var bits: [4]Quad = undefined;
+        var pieces: [64]u8 = undefined;
+        var bits: [64]u8 = undefined;
         inline for (0..4) |q| {
             const p = simd.tbl4(mb[0], mb[1], mb[2], mb[3], idx[q]);
-            pieces[q] = p;
-            bits[q] = simd.tbl1(lut, p);
+            pieces[q * 16 ..][0..16].* = p;
+            bits[q * 16 ..][0..16].* = simd.tbl1(lut, p);
         }
 
-        const invalid: @Vector(64, bool) = (perm.indices & @as(Byteboard, @splat(INVALID_SQ))) != ZERO;
+        const invalid: @Vector(64, bool) = (indices & @as(Byteboard, @splat(INVALID_SQ))) != ZERO;
         return .{
-            .perm = perm.indices,
-            .pieces = @bitCast(pieces),
-            .bits = @select(u8, invalid, ZERO, @as(Byteboard, @bitCast(bits))),
+            .perm = indices,
+            .pieces = pieces,
+            .bits = @select(u8, invalid, ZERO, @as(Byteboard, bits)),
         };
     }
 

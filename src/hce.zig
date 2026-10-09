@@ -190,7 +190,7 @@ const MAX_PHASE = blk: {
 const MG_TABLE = blk: {
     var res: [12][64]i16 = undefined;
     for (PieceType.all) |pt| {
-        const p: usize = @intFromEnum(pt);
+        const p: usize = @backingInt(pt);
         for (0..64) |sq| {
             res[2 * p + 0][sq] = MG_VALUE[p] + MG_PESTO_TABLE[p][sq ^ 56];
             res[2 * p + 1][sq] = -(MG_VALUE[p] + MG_PESTO_TABLE[p][sq]);
@@ -201,7 +201,7 @@ const MG_TABLE = blk: {
 const EG_TABLE = blk: {
     var res: [12][64]i16 = undefined;
     for (PieceType.all) |pt| {
-        const p: usize = @intFromEnum(pt);
+        const p: usize = @backingInt(pt);
         for (0..64) |sq| {
             res[2 * p + 0][sq] = EG_VALUE[p] + EG_PESTO_TABLE[p][sq ^ 56];
             res[2 * p + 1][sq] = -(EG_VALUE[p] + EG_PESTO_TABLE[p][sq]);
@@ -225,15 +225,15 @@ const Packed = enum(i32) {
     _,
 
     pub fn init(int: i32) Packed {
-        return @enumFromInt(int);
+        return @fromBackingInt(int);
     }
 
     pub fn toInt(self: Packed) i32 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn from(mg: i16, eg: i16) Packed {
-        return @enumFromInt((@as(i32, eg) << 16) + mg);
+        return @fromBackingInt((@as(i32, eg) << 16) + mg);
     }
 
     pub fn midgame(self: Packed) i16 {

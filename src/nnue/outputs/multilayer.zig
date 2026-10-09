@@ -28,14 +28,6 @@ pub const Weights = extern struct {
     l3w: [arch.OUTPUT_BUCKET_COUNT][arch.L3_SIZE]i32 align(ALIGNMENT),
     l3b: [arch.OUTPUT_BUCKET_COUNT]i32 align(ALIGNMENT),
 
-    pub fn byteSwap(self: *Weights) void {
-        arch.endianSwap(&self.l1b);
-        arch.endianSwap(&self.l2w);
-        arch.endianSwap(&self.l2b);
-        arch.endianSwap(&self.l3w);
-        arch.endianSwap(&self.l3b);
-    }
-
     pub fn permuteL1(self: *Weights, order: *const [arch.L1_SIZE]u16) void {
         for (&self.l1w) |*bucket| {
             for (0..arch.L2_SIZE) |j| {
@@ -51,16 +43,13 @@ pub const Weights = extern struct {
     }
 
     pub const SIZE_BYTES = @sizeOf(Weights);
-    pub const WEIGHT_COUNT = blk: {
+    comptime {
         var size = 0;
-        var res = 0;
-        for (std.meta.fields(Weights)) |field| {
-            res += arch.totalElements(field.type);
-            size += arch.totalElements(field.type) * @sizeOf(arch.UltimateChild(field.type));
+        for (@typeInfo(Weights).@"struct".field_types) |field_type| {
+            size += @sizeOf(field_type);
         }
         std.debug.assert(std.mem.alignForward(usize, size, 64) == SIZE_BYTES);
-        break :blk res;
-    };
+    }
 };
 
 const Q_BITS: comptime_int = std.math.log2_int_ceil(u32, arch.Q);
@@ -174,7 +163,7 @@ pub fn forward(
     var l1_intermediate: [L2_UNROLL][arch.L2_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @splat(@splat(@splat(0)));
     {
         const w: [*]const i8 = &ow.l1w[output_bucket];
-        const ft_i32: [*]i32 = @ptrCast(&activated_ft);
+        const ft_groups: [*]const [4]u8 = @ptrCast(&activated_ft);
 
         var nonzero_indices: [arch.L1_SIZE / 4]u16 = undefined;
         const num_nonzero_indices: usize = @import("../sparse.zig").findNonZeroIndices(&activated_ft, &nonzero_indices);
@@ -186,8 +175,8 @@ pub fn forward(
             for (0..L2_UNROLL) |i_inner| {
                 const i_1: u16 = nonzero_indices[i_outer + 2 * i_inner];
                 const i_2: u16 = nonzero_indices[i_outer + 2 * i_inner + 1];
-                const ft_vec_1: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i_1])));
-                const ft_vec_2: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i_2])));
+                const ft_vec_1: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(@bitCast(ft_groups[i_1]))));
+                const ft_vec_2: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(@bitCast(ft_groups[i_2]))));
                 for (0..arch.L2_SIZE / simd.vecSize(i32)) |j| {
                     l1_intermediate[i_inner][j] = simd.dpbusdx2(
                         l1_intermediate[i_inner][j],
@@ -201,7 +190,7 @@ pub fn forward(
         }
         while (i_outer < num_nonzero_indices) : (i_outer += 1) {
             const i = nonzero_indices[i_outer];
-            const ft_vec: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(ft_i32[i])));
+            const ft_vec: simd.Vector(u8) = @bitCast(@as(simd.Vector(i32), @splat(@bitCast(ft_groups[i]))));
 
             for (0..arch.L2_SIZE / simd.vecSize(i32)) |j| {
                 l1_intermediate[0][j] = simd.dpbusd(
@@ -213,9 +202,9 @@ pub fn forward(
         }
     }
 
-    var l1_out_vec: [2 * arch.L2_SIZE / simd.vecSize(i32)]simd.Vector(i32) = undefined;
+    var l1_out: [2 * arch.L2_SIZE]i32 align(64) = undefined;
     {
-        const l1_bias_vec: [*]const simd.Vector(i32) = @ptrCast(@alignCast(&ow.l1b[output_bucket]));
+        const l1_bias = &ow.l1b[output_bucket];
 
         const EXPLICIT_MULHI_SHIFT_UP = 7;
         const IMPLIED_MULHI_SHIFT_DOWN = 16;
@@ -231,41 +220,44 @@ pub fn forward(
                 intermediate += l1_intermediate[j][i];
             }
 
-            const biased = intermediate + l1_bias_vec[i];
+            const bias: simd.Vector(i32) = l1_bias[i * simd.vecSize(i32) ..][0..simd.vecSize(i32)].*;
+            const biased = intermediate + bias;
 
             const crelu = std.math.shr(simd.Vector(i32), std.math.clamp(biased, LO, HI), SHIFT - Q_BITS - PRECISION_MARGIN);
 
             const clamped: simd.Vector(i32) = std.math.clamp(biased, -HI, HI);
             const csrelu = std.math.shr(simd.Vector(i32), clamped * clamped, SHIFT * 2 - PRECISION_MARGIN);
 
-            l1_out_vec[i] = crelu;
-            l1_out_vec[i + arch.L2_SIZE / simd.vecSize(i32)] = csrelu;
+            l1_out[i * simd.vecSize(i32) ..][0..simd.vecSize(i32)].* = crelu;
+            l1_out[arch.L2_SIZE + i * simd.vecSize(i32) ..][0..simd.vecSize(i32)].* = csrelu;
         }
     }
 
     var l2_intermediate: [arch.L3_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @splat(@splat(0));
     {
-        const l1_out: *const [2 * arch.L2_SIZE]i32 = @ptrCast(&l1_out_vec);
-        const l2_weight_vec: *const [2 * arch.L2_SIZE][arch.L3_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @ptrCast(@alignCast(&ow.l2w[output_bucket]));
+        const l2_weights = &ow.l2w[output_bucket];
         for (0..arch.L2_SIZE * 2) |i| {
             const l1_vec: simd.Vector(i32) = @splat(l1_out[i]);
             for (0..arch.L3_SIZE / simd.vecSize(i32)) |j| {
-                l2_intermediate[j] += l1_vec * l2_weight_vec[i][j];
+                const l2_weight: simd.Vector(i32) = l2_weights[i * arch.L3_SIZE + j * simd.vecSize(i32) ..][0..simd.vecSize(i32)].*;
+                l2_intermediate[j] += l1_vec * l2_weight;
             }
         }
     }
 
     var l3_sum: simd.Vector(i32) = @splat(0);
     {
-        const l2_biases: *const [arch.L3_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @ptrCast(&ow.l2b[output_bucket]);
-        const l3_weight_vec: *const [arch.L3_SIZE / simd.vecSize(i32)]simd.Vector(i32) = @ptrCast(&ow.l3w[output_bucket]);
+        const l2_biases = &ow.l2b[output_bucket];
+        const l3_weights = &ow.l3w[output_bucket];
         const LO: simd.Vector(i32) = @splat(0);
         const ONE: simd.Vector(i32) = @splat(1);
         const HI3: simd.Vector(i32) = ONE << @splat(3 * Q_BITS);
         for (0..arch.L3_SIZE / simd.vecSize(i32)) |i| {
-            const shifted = std.math.shr(simd.Vector(i32), l2_intermediate[i], PRECISION_MARGIN) + l2_biases[i];
+            const l2_bias: simd.Vector(i32) = l2_biases[i * simd.vecSize(i32) ..][0..simd.vecSize(i32)].*;
+            const l3_weight: simd.Vector(i32) = l3_weights[i * simd.vecSize(i32) ..][0..simd.vecSize(i32)].*;
+            const shifted = std.math.shr(simd.Vector(i32), l2_intermediate[i], PRECISION_MARGIN) + l2_bias;
             const activated = std.math.clamp(shifted, LO, HI3);
-            l3_sum += activated * l3_weight_vec[i];
+            l3_sum += activated * l3_weight;
         }
     }
 

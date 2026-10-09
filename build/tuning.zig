@@ -22,8 +22,7 @@ fn initFactorizedFamilyValues(
 ) FactorizedFamilyValues(spec, Value) {
     var family: FactorizedFamilyValues(spec, Value) = undefined;
     inline for (0..spec.max_order) |order| {
-        @field(family, tuning_schema.factorizedOrderFieldName(order)) =
-            [_]Value{value} ** tuning_schema.factorizedInteractionCount(spec, order);
+        @field(family, tuning_schema.factorizedOrderFieldName(order)) = @splat(value);
     }
     return family;
 }
@@ -38,8 +37,8 @@ fn getFactorizedFamilyValuePtr(
 
 fn FactorizedResolvedType(comptime Value: type) type {
     comptime var field_count = 0;
-    inline for (std.meta.fields(TuningSchema)) |field| {
-        switch (@field(tuning_schema.SCHEMA, field.name)) {
+    inline for (@typeInfo(TuningSchema).@"struct".field_names) |field_name| {
+        switch (@field(tuning_schema.SCHEMA, field_name)) {
             .Factorized => field_count += 1,
             else => {},
         }
@@ -48,10 +47,10 @@ fn FactorizedResolvedType(comptime Value: type) type {
     comptime var field_names: [field_count][]const u8 = undefined;
     comptime var field_types: [field_count]type = undefined;
     comptime var i = 0;
-    inline for (std.meta.fields(TuningSchema)) |field| {
-        switch (@field(tuning_schema.SCHEMA, field.name)) {
+    inline for (@typeInfo(TuningSchema).@"struct".field_names) |field_name| {
+        switch (@field(tuning_schema.SCHEMA, field_name)) {
             .Factorized => |spec| {
-                field_names[i] = field.name;
+                field_names[i] = field_name;
                 field_types[i] = FactorizedFamilyValues(spec, Value);
                 i += 1;
             },
@@ -276,10 +275,10 @@ const ResolvedTuning = struct {
 
 fn initResolvedFactorizedTunables() ResolvedFactorizedTunables {
     var resolved: ResolvedFactorizedTunables = undefined;
-    inline for (std.meta.fields(TuningSchema)) |field| {
-        switch (@field(tuning_schema.SCHEMA, field.name)) {
+    inline for (@typeInfo(TuningSchema).@"struct".field_names) |field_name| {
+        switch (@field(tuning_schema.SCHEMA, field_name)) {
             .Factorized => |spec| {
-                @field(resolved, field.name) = initFactorizedFamilyValues(spec, i32, 0);
+                @field(resolved, field_name) = initFactorizedFamilyValues(spec, i32, 0);
             },
             else => {},
         }
@@ -288,16 +287,16 @@ fn initResolvedFactorizedTunables() ResolvedFactorizedTunables {
 }
 
 fn trySetFactorizedValue(resolved: *ResolvedFactorizedTunables, line_name: []const u8, value: i32) bool {
-    inline for (std.meta.fields(TuningSchema)) |field| {
-        switch (@field(tuning_schema.SCHEMA, field.name)) {
+    inline for (@typeInfo(TuningSchema).@"struct".field_names) |field_name| {
+        switch (@field(tuning_schema.SCHEMA, field_name)) {
             .Factorized => |spec| {
                 inline for (0..spec.max_order) |order| {
                     const count = comptime tuning_schema.factorizedInteractionCount(spec, order);
                     inline for (0..count) |index| {
-                        var name_buf: [interactionNameMaxLen(field.name, spec)]u8 = undefined;
-                        const name = interactionNameInto(&name_buf, field.name, spec, order, index);
+                        var name_buf: [interactionNameMaxLen(field_name, spec)]u8 = undefined;
+                        const name = interactionNameInto(&name_buf, field_name, spec, order, index);
                         if (std.ascii.eqlIgnoreCase(name, line_name)) {
-                            getFactorizedFamilyValuePtr(&@field(resolved.*, field.name), order, index).* = value;
+                            getFactorizedFamilyValuePtr(&@field(resolved.*, field_name), order, index).* = value;
                             return true;
                         }
                     }
@@ -329,10 +328,10 @@ fn normalizeFactorizedFamily(
 
 fn normalizeResolvedFactorizedTunables(raw_resolved: ResolvedFactorizedTunables) ResolvedFactorizedTunables {
     var normalized: ResolvedFactorizedTunables = undefined;
-    inline for (std.meta.fields(TuningSchema)) |field| {
-        switch (@field(tuning_schema.SCHEMA, field.name)) {
+    inline for (@typeInfo(TuningSchema).@"struct".field_names) |field_name| {
+        switch (@field(tuning_schema.SCHEMA, field_name)) {
             .Factorized => |spec| {
-                @field(normalized, field.name) = normalizeFactorizedFamily(spec, @field(raw_resolved, field.name));
+                @field(normalized, field_name) = normalizeFactorizedFamily(spec, @field(raw_resolved, field_name));
             },
             else => {},
         }
@@ -343,10 +342,10 @@ fn normalizeResolvedFactorizedTunables(raw_resolved: ResolvedFactorizedTunables)
 fn resolveTuning(params_text: []const u8) !ResolvedTuning {
     @setEvalBranchQuota(1 << 24);
     var resolved = ResolvedTunables.initUndefined();
-    inline for (std.meta.fields(TuningSchema)) |field| {
+    inline for (@typeInfo(TuningSchema).@"struct".field_names) |field_name| {
         resolved.set(
-            @field(TuningSchemaField, field.name),
-            @field(tuning_schema.SCHEMA, field.name),
+            @field(TuningSchemaField, field_name),
+            @field(tuning_schema.SCHEMA, field_name),
         );
     }
     var raw_factorized = initResolvedFactorizedTunables();
@@ -412,12 +411,12 @@ fn emitGeneratedFactorizedDefaults(
     writer: anytype,
     resolved_factorized: ResolvedFactorizedTunables,
 ) !void {
-    inline for (std.meta.fields(TuningSchema)) |field| {
-        switch (@field(tuning_schema.SCHEMA, field.name)) {
+    inline for (@typeInfo(TuningSchema).@"struct".field_names) |field_name| {
+        switch (@field(tuning_schema.SCHEMA, field_name)) {
             .Factorized => |spec| {
-                const family = @field(resolved_factorized, field.name);
+                const family = @field(resolved_factorized, field_name);
 
-                try writer.print("pub const {s}_defaults = struct {{\n", .{field.name});
+                try writer.print("pub const {s}_defaults = struct {{\n", .{field_name});
                 inline for (0..spec.max_order) |order| {
                     const order_name = tuning_schema.factorizedOrderFieldName(order);
                     const count = comptime tuning_schema.factorizedInteractionCount(spec, order);
@@ -461,21 +460,21 @@ fn emitGeneratedFactorizedTunables(
         \\
     );
 
-    inline for (std.meta.fields(TuningSchema)) |field| {
-        switch (@field(tuning_schema.SCHEMA, field.name)) {
+    inline for (@typeInfo(TuningSchema).@"struct".field_names) |field_name| {
+        switch (@field(tuning_schema.SCHEMA, field_name)) {
             .Factorized => |spec| {
-                const family = @field(resolved_factorized, field.name);
+                const family = @field(resolved_factorized, field_name);
 
-                try writer.print("pub const {s}_tunables = [_]FactorizedTunable{{\n", .{field.name});
+                try writer.print("pub const {s}_tunables = [_]FactorizedTunable{{\n", .{field_name});
                 inline for (0..spec.max_order) |order| {
                     const count = comptime tuning_schema.factorizedInteractionCount(spec, order);
                     inline for (0..count) |index| {
                         if (comptime !isCanonical(spec, order, index)) continue;
-                        var name_buf: [interactionNameMaxLen(field.name, spec)]u8 = undefined;
+                        var name_buf: [interactionNameMaxLen(field_name, spec)]u8 = undefined;
                         try writer.print(
                             "    .{{ .name = \"{s}\", .default = {}, .min = {}, .max = {}, .c_end = {d}, .order = {}, .index = {} }},\n",
                             .{
-                                interactionNameInto(&name_buf, field.name, spec, order, index),
+                                interactionNameInto(&name_buf, field_name, spec, order, index),
                                 getFactorizedFamilyValuePtr(&family, order, index).*,
                                 spec.min,
                                 spec.max,
@@ -572,17 +571,19 @@ fn generateTuningSource(allocator: std.mem.Allocator, params_text: []const u8) !
     return out.toOwnedSlice();
 }
 
-pub fn prepareGeneratedTuning(
-    b: *std.Build,
-    generated_files: *std.Build.Step.WriteFile,
-) !std.Build.LazyPath {
-    const defaults_path = b.path("src/tuning/defaults.txt").getPath4(b, null) catch @panic("OOM");
+pub fn prepareGeneratedTuning(b: *std.Build) !std.Build.LazyPath {
+    const defaults_sub_path = "src/tuning/defaults.txt";
+    b.dependOnFileContents(b.path(defaults_sub_path));
+    const defaults_path = try b.root.join(b.allocator, defaults_sub_path);
     const params_text = defaults_path.root_dir.handle.readFileAlloc(
         b.graph.io,
         defaults_path.sub_path,
         b.allocator,
         .limited(1 << 20),
-    ) catch "";
+    ) catch |err| switch (err) {
+        error.FileNotFound => "",
+        else => return err,
+    };
     const source = try generateTuningSource(b.allocator, params_text);
-    return generated_files.add("generated.zig", source);
+    return b.addWriteFiles().add("generated.zig", source);
 }

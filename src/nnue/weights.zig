@@ -5,9 +5,14 @@ const arch = @import("arch.zig");
 const numa = root.numa;
 
 const build_options = @import("build_options");
-const use_numa = build_options.use_numa and builtin.os.tag == .linux and builtin.link_libc;
+const use_numa = build_options.use_numa and builtin.target.os.tag == .linux and builtin.link_libc;
 
 const net = @embedFile("net");
+comptime {
+    if (net.len != @sizeOf(arch.Weights)) {
+        @compileError(std.fmt.comptimePrint("net is {} bytes, expected {} bytes", .{ net.len, @sizeOf(arch.Weights) }));
+    }
+}
 const verbatim_backing: [net.len:0]u8 align(64) = net.*;
 
 pub var verbatim_weights: *const arch.Weights = @ptrCast(&verbatim_backing);

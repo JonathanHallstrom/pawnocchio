@@ -43,9 +43,9 @@ pub const SCALAR_RESERVOIR_SIZE = 16384;
 pub const P2Quantile = struct {
     percentile: f64,
     initialized: bool = false,
-    heights: [5]f64 = .{0} ** 5,
-    positions: [5]i64 = .{0} ** 5,
-    desired_positions: [5]f64 = .{0} ** 5,
+    heights: [5]f64 = @splat(0),
+    positions: [5]i64 = @splat(0),
+    desired_positions: [5]f64 = @splat(0),
     desired_position_increments: [5]f64,
 
     const Self = @This();
@@ -65,7 +65,7 @@ pub const P2Quantile = struct {
 
     pub fn initFromSamples(self: *Self, samples: *const [5]i64) void {
         var sorted = samples.*;
-        std.sort.pdq(i64, &sorted, void{}, std.sort.asc(i64));
+        std.sort.pdq(i64, &sorted, {}, std.sort.asc(i64));
 
         const p = self.percentile / 100.0;
         inline for (0..5) |i| {
@@ -161,7 +161,7 @@ fn initP2Quantiles() [PERCENTILES.len]P2Quantile {
 const ReservoirSample = struct {
     seen: u64 = 0,
     len: usize = 0,
-    data: [SCALAR_RESERVOIR_SIZE]i64 = .{0} ** SCALAR_RESERVOIR_SIZE,
+    data: [SCALAR_RESERVOIR_SIZE]i64 = @splat(0),
 
     const Self = @This();
 
@@ -462,7 +462,7 @@ pub const Correlation = struct {
 
     fn writeIndexCell(self: *const Self, writer: *std.Io.Writer, idx: usize) std.Io.Writer.Error!void {
         var buffer: [32]u8 = undefined;
-        const text = std.fmt.bufPrint(&buffer, "{d}", .{idx}) catch unreachable;
+        const text = std.mem.print(&buffer, "{d}", .{idx}) catch unreachable;
         try self.writeCell(writer, text);
     }
 
@@ -480,12 +480,12 @@ pub const Correlation = struct {
 
     fn writeCorrelationCell(self: *const Self, writer: *std.Io.Writer, lhs: usize, rhs: usize) std.Io.Writer.Error!void {
         var buffer: [32]u8 = undefined;
-        const text = std.fmt.bufPrint(&buffer, "{d:.4}", .{self.correlationAt(lhs, rhs)}) catch unreachable;
+        const text = std.mem.print(&buffer, "{d:.4}", .{self.correlationAt(lhs, rhs)}) catch unreachable;
         try self.writeCell(writer, text);
     }
 
     fn formatTopCorrelations(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        var correlations: std.ArrayListUnmanaged(struct { f64, usize, usize }) = .empty;
+        var correlations: std.ArrayList(struct { f64, usize, usize }) = .empty;
         defer correlations.deinit(self.allocator);
 
         for (0..self.names.len) |i| {
@@ -497,7 +497,7 @@ pub const Correlation = struct {
         if (correlations.items.len == 0) return;
 
         const Entry = @TypeOf(correlations.items[0]);
-        std.sort.pdq(Entry, correlations.items, void{}, struct {
+        std.sort.pdq(Entry, correlations.items, {}, struct {
             fn lessThan(_: void, lhs: Entry, rhs: Entry) bool {
                 return @abs(lhs.@"0") > @abs(rhs.@"0");
             }
@@ -527,11 +527,11 @@ fn exactPercentile(sorted: []const i64, pct: f64) f64 {
     if (sorted.len == 0) return 0;
 
     const position = pct / 100.0 * @as(f64, @floatFromInt(sorted.len - 1));
-    return @floatFromInt(sorted[@intFromFloat(position)]);
+    return @floatFromInt(sorted[@trunc(position)]);
 }
 
 fn computePercentilesFromSamples(samples: []const i64) [PERCENTILES.len]f64 {
-    if (samples.len == 0) return .{0} ** PERCENTILES.len;
+    if (samples.len == 0) return @splat(0);
 
     const allocator = std.heap.page_allocator;
 
@@ -540,7 +540,7 @@ fn computePercentilesFromSamples(samples: []const i64) [PERCENTILES.len]f64 {
     defer allocator.free(sorted);
 
     @memcpy(sorted, samples);
-    std.sort.pdq(i64, sorted, void{}, std.sort.asc(i64));
+    std.sort.pdq(i64, sorted, {}, std.sort.asc(i64));
 
     var percentiles: [PERCENTILES.len]f64 = undefined;
     inline for (PERCENTILES, 0..) |pct, i| {
@@ -580,7 +580,7 @@ fn formatPrecisePercentiles(
 }
 
 const ScalarValidation = if (SCALAR_VALIDATION) struct {
-    samples: std.ArrayListUnmanaged(i64) = .empty,
+    samples: std.ArrayList(i64) = .empty,
 
     const Self = @This();
 
@@ -715,8 +715,8 @@ pub const BoolStat = struct {
 
 const RangeScalar = struct {
     basic: BasicStats = .{},
-    percentiles: [PERCENTILES.len]f64 = .{0} ** PERCENTILES.len,
-    bootstrap_samples: [5]i64 = .{0} ** 5,
+    percentiles: [PERCENTILES.len]f64 = @splat(0),
+    bootstrap_samples: [5]i64 = @splat(0),
     estimators: [PERCENTILES.len]P2Quantile = initP2Quantiles(),
 
     const Self = @This();

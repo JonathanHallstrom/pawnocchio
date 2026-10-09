@@ -17,7 +17,7 @@ jobs:
 
       - uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - run: zig build tool_builds --prefix dist
 

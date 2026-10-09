@@ -18,17 +18,28 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const root = @import("root.zig");
 
-pub const enabled = build_options.use_numa and builtin.os.tag == .linux and builtin.link_libc;
+pub const enabled = build_options.use_numa and builtin.target.os.tag == .linux and builtin.link_libc;
 
-const c = if (enabled) @cImport({
-    @cDefine("_GNU_SOURCE", "");
-    @cInclude("numa.h");
-}) else struct {};
+const c = if (enabled) struct {
+    const bitmask = extern struct {
+        size: c_ulong,
+        maskp: ?[*]c_ulong,
+    };
+
+    extern fn numa_available() c_int;
+    extern fn numa_max_node() c_int;
+    extern fn numa_alloc_onnode(size: usize, node: c_int) ?*anyopaque;
+    extern fn numa_free(mem: ?*anyopaque, size: usize) void;
+    extern fn numa_allocate_cpumask() ?*bitmask;
+    extern fn numa_bitmask_free(bmp: *bitmask) void;
+    extern fn numa_node_to_cpus(node: c_int, mask: *bitmask) c_int;
+    extern fn numa_bitmask_isbitset(bmp: *const bitmask, n: c_uint) c_int;
+} else struct {};
 
 const metadata_allocator = std.heap.smp_allocator;
 
-var cpu_masks: std.ArrayListUnmanaged(std.os.linux.cpu_set_t) = .empty;
-var node_ids: std.ArrayListUnmanaged(usize) = .empty;
+var cpu_masks: std.ArrayList(std.os.linux.cpu_set_t) = .empty;
+var node_ids: std.ArrayList(usize) = .empty;
 var active = false;
 
 fn allocOnNode(comptime T: type, node: usize) !*T {
@@ -50,7 +61,7 @@ fn freeOnNode(comptime T: type, ptr: *T) void {
 
 pub fn PerNode(comptime T: type) type {
     return struct {
-        items: std.ArrayListUnmanaged(*T) = .empty,
+        items: std.ArrayList(*T) = .empty,
 
         const Self = @This();
 
@@ -156,7 +167,7 @@ pub fn init() !void {
 
     for (0..@intCast(max_node + 1)) |node| {
         const cpu_mask = c.numa_allocate_cpumask() orelse return error.OutOfMemory;
-        defer c.numa_free_cpumask(cpu_mask);
+        defer c.numa_bitmask_free(cpu_mask);
 
         if (c.numa_node_to_cpus(@intCast(node), cpu_mask) != 0) {
             return error.NumaCpuQueryFailed;
@@ -169,9 +180,12 @@ pub fn init() !void {
                 continue;
             }
 
-            has_cpus = true;
             const word_bits = @bitSizeOf(usize);
             const idx = cpu / word_bits;
+            if (idx >= set.len) {
+                continue;
+            }
+            has_cpus = true;
             const bit = cpu % word_bits;
             set[idx] |= @as(usize, 1) << @intCast(bit);
         }

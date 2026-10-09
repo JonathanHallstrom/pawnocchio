@@ -18,20 +18,17 @@ const std = @import("std");
 const root = @import("root.zig");
 
 const PerftEPDParser = @This();
-const Allocator = std.mem.Allocator;
 
 io: std.Io,
 file: std.Io.File,
-allocator: Allocator,
 buf: [4096]u8 = undefined,
 reader: ?std.Io.File.Reader = null,
 
-pub fn init(io: std.Io, name: []const u8, alloc: Allocator) !PerftEPDParser {
+pub fn init(io: std.Io, name: []const u8) !PerftEPDParser {
     const file = try std.Io.Dir.cwd().openFile(io, name, .{});
     return .{
         .io = io,
         .file = file,
-        .allocator = alloc,
     };
 }
 
@@ -47,11 +44,6 @@ pub const NodeCount = struct {
 pub const PerftPosition = struct {
     fen: []const u8,
     node_counts: root.BoundedArray(NodeCount, 128) = .{},
-    allocator: Allocator,
-
-    pub fn deinit(self: PerftPosition) void {
-        self.allocator.free(self.fen);
-    }
 };
 
 pub fn next(self: *PerftEPDParser) !?PerftPosition {
@@ -59,24 +51,17 @@ pub fn next(self: *PerftEPDParser) !?PerftPosition {
         self.reader = self.file.readerStreaming(self.io, &self.buf);
     }
 
-    var w = std.Io.Writer.Allocating.init(self.allocator);
-    defer w.deinit();
-
-    while (true) {
-        _ = (try root.streamLine(&self.reader.?.interface, &w.writer)) orelse return null;
-        if (std.mem.trim(u8, w.written(), &std.ascii.whitespace).len != 0) break;
-        w.clearRetainingCapacity();
-    }
-    const read = w.written();
+    const read = while (true) {
+        const line = (try self.reader.?.interface.takeDelimiter('\n')) orelse return null;
+        if (std.mem.trim(u8, line, &std.ascii.whitespace).len != 0) break line;
+    };
     var iter = std.mem.tokenizeSequence(u8, read, ";D");
     var res: PerftPosition = .{
-        .fen = try self.allocator.dupe(u8, iter.next() orelse return null),
-        .allocator = self.allocator,
+        .fen = iter.next() orelse return null,
     };
-    errdefer self.allocator.free(res.fen);
     while (iter.next()) |part| {
         const stripped = std.mem.trim(u8, part, &std.ascii.whitespace);
-        const depth_end = root.indexOfScalar(u8, stripped, ' ') orelse 0;
+        const depth_end = std.mem.findScalar(u8, stripped, ' ') orelse 0;
         const depth = try std.fmt.parseInt(u31, stripped[0..depth_end], 10);
         const nodes = try std.fmt.parseInt(
             u64,

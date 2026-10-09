@@ -22,6 +22,9 @@ test {
 }
 
 comptime {
+    if (builtin.target.cpu.arch.endian() != .little) {
+        @compileError("big-endian targets are not supported");
+    }
     if (USE_TBS) {
         _ = pyrrhic;
     }
@@ -81,10 +84,10 @@ pub const WDL = enum(u8) {
     loss = 0,
 
     pub inline fn toInt(self: WDL) u8 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
     pub inline fn flipped(self: WDL) WDL {
-        return @enumFromInt(2 - self.toInt());
+        return @fromBackingInt(2 - self.toInt());
     }
 };
 
@@ -93,7 +96,7 @@ pub const Colour = enum(u8) {
     black = 1,
 
     pub inline fn fromInt(i: u8) Colour {
-        return @enumFromInt(i);
+        return @fromBackingInt(i);
     }
 
     pub inline fn toInt(self: Colour) u8 {
@@ -107,13 +110,12 @@ pub const Colour = enum(u8) {
 
 fn initImpl(io_init: std.Io) void {
     io = io_init;
-    stdout = std.Io.File.stdout();
+    var stdout = std.Io.File.stdout();
     if (needsNonBlockingIo(stdout.handle)) {
         stdout.flags.nonblocking = true;
     }
 
     stdout_wrapper = stdout.writerStreaming(io, &stdout_buf);
-    stdout_writer = &stdout_wrapper.interface;
     attacks.init();
     cuckoo.init();
     numa.init() catch |e| std.debug.panic("Fatal: couldn't initialize NUMA support, error: {}\n", .{e});
@@ -170,11 +172,11 @@ pub const Square = enum(u8) {
     // zig fmt: on
 
     pub inline fn fromInt(int: u8) Square {
-        return @enumFromInt(int);
+        return @fromBackingInt(int);
     }
 
     pub inline fn toInt(self: Square) u8 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn getFile(self: Square) File {
@@ -209,7 +211,7 @@ pub const Square = enum(u8) {
         if (rank > 7) return error.InvalidRank;
         const file = std.ascii.toLower(square[0]) -% 'a';
         if (file > 7) return error.InvalidFile;
-        return @enumFromInt(rank * 8 + file);
+        return @fromBackingInt(rank * 8 + file);
     }
 
     pub fn flipRank(self: Square) Square {
@@ -236,21 +238,21 @@ pub const File = enum {
     h,
 
     pub fn fromInt(int: u8) File {
-        return @enumFromInt(int);
+        return @fromBackingInt(@intCast(int));
     }
 
     pub fn toInt(self: File) u8 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn parse(file: u8) !File {
         const idx = std.ascii.toLower(file) -% 'a';
         if (idx >= 8) return error.InvalidFile;
-        return @enumFromInt(idx);
+        return @fromBackingInt(@intCast(idx));
     }
 
     pub fn cmp(_: void, lhs: File, rhs: File) bool {
-        return @intFromEnum(lhs) < @intFromEnum(rhs);
+        return @backingInt(lhs) < @backingInt(rhs);
     }
 
     pub fn toAsciiLetter(self: File) u8 {
@@ -275,21 +277,21 @@ pub const Rank = enum {
     eighth,
 
     pub fn fromInt(int: u8) Rank {
-        return @enumFromInt(int);
+        return @fromBackingInt(@intCast(int));
     }
 
     pub fn toInt(self: Rank) u8 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn parse(rank: u8) !Rank {
         const idx = rank -% '1';
         if (idx >= 8) return error.InvalidRank;
-        return @enumFromInt(idx);
+        return @fromBackingInt(@intCast(idx));
     }
 
     pub fn cmp(_: void, lhs: Rank, rhs: Rank) bool {
-        return @intFromEnum(lhs) < @intFromEnum(rhs);
+        return @backingInt(lhs) < @backingInt(rhs);
     }
 
     pub fn absDiff(self: Rank, other: Rank) u8 {
@@ -317,11 +319,11 @@ pub const PieceType = enum(u8) {
     };
 
     pub inline fn fromInt(i: u8) PieceType {
-        return @enumFromInt(i);
+        return @fromBackingInt(i);
     }
 
     pub inline fn toInt(self: PieceType) u8 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn toAsciiLetter(self: PieceType) u8 {
@@ -374,11 +376,11 @@ pub const ColouredPieceType = enum(u8) {
     none = 12,
 
     pub inline fn fromInt(i: u8) ColouredPieceType {
-        return @enumFromInt(i);
+        return @fromBackingInt(i);
     }
 
     pub inline fn toInt(self: ColouredPieceType) u8 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub inline fn fromPieceType(pt: PieceType, col: Colour) ColouredPieceType {
@@ -422,13 +424,13 @@ pub const ScoredMove = packed struct {
 
     pub fn toScoreU64(self: ScoredMove) u64 {
         var res: u64 = @bitCast(self);
-        res &= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 });
-        res ^= @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = @bitCast(@as(u32, 0x80000000)) });
+        res &= @bitCast(ScoredMove{ .move = .init(), .score = -1 });
+        res ^= @bitCast(ScoredMove{ .move = .init(), .score = @bitCast(@as(u32, 0x80000000)) });
         return res << comptime scoreShift();
     }
 
     fn scoreShift() comptime_int {
-        comptime return @clz(@as(u64, @bitCast(ScoredMove{ .move = @enumFromInt(0), .score = -1 })));
+        comptime return @clz(@as(u64, @bitCast(ScoredMove{ .move = .init(), .score = -1 })));
     }
 
     // comptime {
@@ -468,10 +470,10 @@ pub const ScoreType = enum(u8) {
     exact = 3,
 
     pub fn givesLowerBound(self: ScoreType) bool {
-        return @intFromEnum(self) & 1 != 0;
+        return @backingInt(self) & 1 != 0;
     }
     pub fn givesUpperBound(self: ScoreType) bool {
-        return @intFromEnum(self) & 2 != 0;
+        return @backingInt(self) & 2 != 0;
     }
 };
 
@@ -490,7 +492,7 @@ pub const TTFlags = packed struct(u8) {
         is_pv: bool,
         age: u8,
     ) TTFlags {
-        const score: u8 = @intFromEnum(score_type);
+        const score: u8 = @backingInt(score_type);
         const pv: u8 = if (is_pv) PV_MASK else 0;
         return .{
             .raw = score | pv | age << 3,
@@ -506,7 +508,7 @@ pub const TTFlags = packed struct(u8) {
     }
 
     pub fn getScoreType(self: TTFlags) ScoreType {
-        return @enumFromInt(self.raw & SCORE_MASK);
+        return @fromBackingInt(self.raw & SCORE_MASK);
     }
 
     pub fn getAge(self: TTFlags) u8 {
@@ -550,7 +552,7 @@ pub const TTEntry = packed struct(u64) {
         const depth_val = TUNABLE_CONSTANTS.ttpick_depth_weight * self.depth;
         const age_val = TUNABLE_CONSTANTS.ttpick_age_weight * (cur_age - self.flags.getAge() & 31);
         const pv_val = TUNABLE_CONSTANTS.ttpick_pv_weight * @intFromBool(self.flags.getPV());
-        const type_val = TTPICK_TYPE_VALS[@intFromEnum(self.flags.getScoreType())];
+        const type_val = TTPICK_TYPE_VALS[@backingInt(self.flags.getScoreType())];
         const move_val = TUNABLE_CONSTANTS.ttpick_move_weight * @intFromBool(!self.move.isNull());
         return depth_val - age_val + pv_val + type_val + move_val;
     }
@@ -605,7 +607,7 @@ pub const TTCluster = extern struct {
         const BITS = @bitSizeOf(@FieldType(TTEntry, name));
         comptime assert(BIT_OFFSET + BITS <= 32);
 
-        const mask: @Vector(4, u32) = @splat(std.math.maxInt(std.meta.Int(.unsigned, BITS)));
+        const mask: @Vector(4, u32) = @splat(std.math.maxInt(@Int(.unsigned, BITS)));
         return low >> @splat(BIT_OFFSET) & mask;
     }
 
@@ -615,7 +617,7 @@ pub const TTCluster = extern struct {
 
         const AGE_MASK: V = @splat(TTFlags.AGE_MASK);
         const SCORE_MASK: U = @splat(TTFlags.SCORE_MASK);
-        const NULL_MOVE: U = @splat(@intFromEnum(Move.init()));
+        const NULL_MOVE: U = @splat(@backingInt(Move.init()));
         const ONE: U = @splat(1);
 
         const raw_vec: @Vector(4, u64) = self.raw;
@@ -658,15 +660,12 @@ pub const TTCluster = extern struct {
     }
 
     inline fn idxEqualHashEntry(noalias self: *const TTCluster, hash: u16) usize {
-        const swap = @import("builtin").cpu.arch.endian() == .big;
-        const key: u16 = if (swap) @byteSwap(hash) else hash;
-
-        var haystack: u64 = if (swap) @byteSwap(self.raw[3]) else self.raw[3];
-        haystack |= @as(u64, key) << 48;
+        var haystack: u64 = self.raw[3];
+        haystack |= @as(u64, hash) << 48;
 
         const low_bits: u64 = 0x0001000100010001;
         const high_bits: u64 = 0x8000800080008000;
-        const needle = key * low_bits;
+        const needle = hash * low_bits;
         const zeroes = haystack ^ needle;
         const matches = zeroes -% low_bits & ~zeroes & high_bits;
 
@@ -736,13 +735,30 @@ comptime {
 
 pub var io: std.Io = undefined;
 var stdout_wrapper: std.Io.File.Writer = undefined;
-pub var stdout_writer: *std.Io.Writer = undefined;
+pub const stdout_writer: *std.Io.Writer = &stdout_wrapper.interface;
 var stdout_buf: [4096]u8 = undefined;
-var stdout: std.Io.File = undefined;
 var write_mutex: std.Io.Mutex = .init;
 
-pub const IS_WINDOWS = @import("builtin").os.tag == .windows;
-const windows_h = @cImport(@cInclude("windows.h"));
+pub const IS_WINDOWS = @import("builtin").target.os.tag == .windows;
+const windows_h = struct {
+    const DWORD = c_ulong;
+    const HANDLE = ?*anyopaque;
+
+    const CP_UTF8 = 65001;
+    const STD_OUTPUT_HANDLE: DWORD = @bitCast(@as(c_long, -11));
+
+    extern "kernel32" fn SetConsoleCP(code_page_id: c_uint) callconv(.winapi) c_int;
+    extern "kernel32" fn SetConsoleOutputCP(code_page_id: c_uint) callconv(.winapi) c_int;
+    extern "kernel32" fn GetStdHandle(std_handle: DWORD) callconv(.winapi) HANDLE;
+    extern "kernel32" fn GetConsoleMode(console_handle: HANDLE, mode: *DWORD) callconv(.winapi) c_int;
+    extern "kernel32" fn WriteConsoleW(
+        console_output: HANDLE,
+        buffer: ?*const anyopaque,
+        number_of_chars_to_write: DWORD,
+        number_of_chars_written: ?*DWORD,
+        reserved: ?*anyopaque,
+    ) callconv(.winapi) c_int;
+};
 
 pub fn initConsole() void {
     if (IS_WINDOWS) {
@@ -756,24 +772,22 @@ pub fn initConsole() void {
 }
 
 pub fn needsNonBlockingIo(handle: std.posix.fd_t) bool {
-    if (@import("builtin").os.tag != .windows) {
+    if (!IS_WINDOWS) {
         return false;
     }
 
     const windows = std.os.windows;
 
     var iosb: windows.IO_STATUS_BLOCK = undefined;
-    var mode: windows.ULONG = 0;
+    var mode: windows.FILE.MODE = undefined;
 
-    const rc = windows.ntdll.NtQueryInformationFile(handle, &iosb, &mode, @sizeOf(windows.ULONG), .Mode);
+    const rc = windows.ntdll.NtQueryInformationFile(handle, &iosb, &mode, @sizeOf(windows.FILE.MODE), .Mode);
 
     if (rc != .SUCCESS) {
         return false;
     }
 
-    const flags = windows_h.FILE_SYNCHRONOUS_IO_ALERT | windows_h.FILE_SYNCHRONOUS_IO_NONALERT;
-
-    return mode & flags == 0;
+    return mode.IO == .ASYNCHRONOUS;
 }
 
 pub fn writeUnicode(
@@ -820,61 +834,11 @@ pub fn write(comptime fmt: []const u8, args: anytype) void {
     stdout_writer.flush() catch |e| std.debug.panic("flushing stdout failed! Error: {}\n", .{e});
 }
 
-pub fn streamLine(reader: *std.Io.Reader, writer: *std.Io.Writer) std.Io.Reader.StreamRemainingError!?usize {
-    var len: usize = 0;
-    while (true) {
-        const byte = reader.takeByte() catch |e| switch (e) {
-            error.EndOfStream => return if (len > 0) len else null,
-            error.ReadFailed => |err| return err,
-        };
-        if (byte == '\n') return len;
-        writer.writeByte(byte) catch |e| {
-            while (true) {
-                const rest = reader.takeByte() catch break;
-                if (rest == '\n') break;
-            }
-            return e;
-        };
-        len += 1;
-    }
-}
-
-pub fn indexOfScalar(comptime T: type, slice: []const T, value: T) ?usize {
-    return switch (builtin.cpu.arch.endian()) {
-        .little => std.mem.indexOfScalar(T, slice, value),
-        .big => std.mem.indexOfAny(T, slice, &.{value}),
-    };
-}
-
-pub fn isConstPointer(comptime T: type) bool {
-    if (@typeInfo(T) == .pointer) {
-        return @typeInfo(T).pointer.is_const;
-    }
-    return false;
-}
-
 pub fn InheritConstness(comptime Base: type, comptime Pointer: type) type {
     const info = @typeInfo(Pointer).pointer;
-    const is_const = if (@typeInfo(Base) == .pointer) @typeInfo(Base).pointer.is_const else false;
-    return @Pointer(info.size, .{
-        .@"const" = is_const,
-        .@"volatile" = info.is_volatile,
-        .@"allowzero" = info.is_allowzero,
-        .@"align" = info.alignment,
-        .@"addrspace" = info.address_space,
-    }, info.child, info.sentinel());
-}
-
-inline fn ValueTypeOf(x: anytype) type {
-    comptime {
-        if (@TypeOf(x) != type) {
-            return ValueTypeOf(@TypeOf(x));
-        }
-        if (@typeInfo(x) == .pointer) {
-            return ValueTypeOf(@typeInfo(x).pointer.child);
-        }
-        return x;
-    }
+    var attrs = info.attrs;
+    attrs.@"const" = @typeInfo(Base) == .pointer and @typeInfo(Base).pointer.attrs.@"const";
+    return @Pointer(info.size, attrs, info.child, info.sentinel());
 }
 
 pub fn bytesOf(value: anytype) [@divExact(@bitSizeOf(@TypeOf(value)), 8)]u8 {
@@ -1008,7 +972,7 @@ pub fn AsBytes(comptime T: type) type {
         T,
         switch (info.size) {
             .slice => []u8,
-            else => *[@divExact(@bitSizeOf(info.child), 8)]u8,
+            else => *[@sizeOf(info.child)]u8,
         },
     );
 }

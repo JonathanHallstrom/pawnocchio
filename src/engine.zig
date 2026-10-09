@@ -22,7 +22,7 @@ const debug_stats_mod = @import("debug_stats.zig");
 const numa = @import("numa.zig");
 const nnue = root.nnue;
 
-const IS_WINDOWS = @import("builtin").os.tag == .windows;
+const IS_WINDOWS = @import("builtin").target.os.tag == .windows;
 const MAX_ALIGN = if (IS_WINDOWS) std.atomic.cache_line else 2 << 20;
 
 pub var thread_pool: ThreadPool = undefined;
@@ -83,10 +83,10 @@ fn fillDebugCorrValues(comptime expected_len: usize, values: anytype, out: *[exp
                 @compileError("dbgCorr values must be a tuple, array, or pointer to either");
             }
             comptime {
-                std.debug.assert(struct_info.fields.len == expected_len);
+                std.debug.assert(struct_info.field_names.len == expected_len);
             }
-            inline for (struct_info.fields, 0..) |field, i| {
-                out[i] = castDebugFloat(@field(values, field.name));
+            inline for (struct_info.field_names, 0..) |field_name, i| {
+                out[i] = castDebugFloat(@field(values, field_name));
             }
         },
         else => @compileError("dbgCorr values must be a tuple, array, or pointer to either"),
@@ -212,7 +212,7 @@ inline fn timerHash(name: []const u8) u64 {
 }
 
 inline fn rdtscp() u64 {
-    const arch = @import("builtin").cpu.arch;
+    const arch = @import("builtin").target.cpu.arch;
     if (comptime arch.isX86()) {
         var hi: u32 = undefined;
         var lo: u32 = undefined;
@@ -313,7 +313,7 @@ fn printTimers(writer: *std.Io.Writer) void {
         const e = info.slot;
         var name_buf: [64]u8 = undefined;
         const sep: []const u8 = if (e.part.len > 0) " " else "";
-        const label = std.fmt.bufPrint(&name_buf, "{s}{s}{s}", .{ e.group, sep, e.part }) catch "[?]";
+        const label = std.mem.print(&name_buf, "{s}{s}{s}", .{ e.group, sep, e.part }) catch "[?]";
         writer.print("  {s: <26} cyc={d: >14} hits={d: >12} cyc/hit={d: >8.2}\n", .{ label, e.cycles, e.hits, e.cost() }) catch unreachable;
     }
 
@@ -534,7 +534,7 @@ fn datagenWorker(
     min_depth: i32,
     node_count: u64,
     writer_wrapper: *std.Io.File.Writer,
-    update_mutex: *std.atomic.Mutex,
+    update_mutex: *std.Io.Mutex,
     stats: *DatagenStats,
 ) void {
     numa.bindCurrentThread(i) catch |err| {
@@ -547,11 +547,11 @@ fn datagenWorker(
     root.memzero(searcher);
 
     searcher.correction_histories = std.heap.page_allocator.create(root.history.CorrectionHistoryTable) catch std.debug.panic("allocation failed\n", .{});
-    @import("ThreadPool.zig").adviseHugePages(searcher.correction_histories[0..1]) catch {};
+    @import("ThreadPool.zig").adviseHugePages(searcher.correction_histories[0..1]);
     defer std.heap.page_allocator.destroy(searcher.correction_histories);
 
     searcher.histories.pawn = std.heap.page_allocator.create(root.history.PawnHistory) catch std.debug.panic("allocation failed\n", .{});
-    @import("ThreadPool.zig").adviseHugePages(searcher.histories.pawn[0..1]) catch {};
+    @import("ThreadPool.zig").adviseHugePages(searcher.histories.pawn[0..1]);
     defer std.heap.page_allocator.destroy(searcher.histories.pawn);
 
     searcher.eval_context.initForThread(i);
@@ -728,9 +728,7 @@ fn datagenWorker(
         _ = stats.games.fetchAdd(1, .seq_cst);
         num_positions_written += game.moves.items.len;
 
-        while (!update_mutex.tryLock()) {
-            std.Thread.yield() catch {};
-        }
+        update_mutex.lockUncancelable(io);
         switch (game.initial_position.wdl) {
             0 => {
                 _ = stats.losses.fetchAdd(1, .seq_cst);
@@ -748,7 +746,7 @@ fn datagenWorker(
         }
         game.serializeInto(&writer_wrapper.interface) catch @panic("failed to write game");
 
-        update_mutex.unlock();
+        update_mutex.unlock(io);
     }
 }
 
@@ -757,7 +755,7 @@ fn getFileName(io: std.Io, nodes: u64, buf: []u8) ![]const u8 {
 
     const build_options = @import("build_options");
     var eval_identifier = build_options.eval_identifier;
-    if (std.mem.lastIndexOfAny(u8, eval_identifier, ".")) |separator| {
+    if (std.mem.findLastAny(u8, eval_identifier, ".")) |separator| {
         eval_identifier = eval_identifier[0..separator];
     }
 
@@ -774,7 +772,7 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
     var writer_wrapper = out_file.writerStreaming(io, &buf);
     var writer = &writer_wrapper.interface;
 
-    var update_mutex = std.atomic.Mutex.unlocked;
+    var update_mutex: std.Io.Mutex = .init;
     var stats = DatagenStats{};
 
     var threads = try std.ArrayList(std.Thread).initCapacity(std.heap.page_allocator, thread_pool.threads.items.len);
@@ -810,8 +808,8 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
             std.Io.sleep(io, std.Io.Duration.fromNanoseconds(std.time.ns_per_ms), .awake) catch {};
             continue;
         }
+        defer update_mutex.unlock(io);
         try writer.flush();
-        defer update_mutex.unlock();
         const cur_positions = stats.positions.load(.seq_cst);
         if (cur_positions >= positions) {
             printDebugStats();
@@ -863,8 +861,8 @@ pub fn datagen(io: std.Io, num_nodes: u64, positions: u64) !void {
 
 pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: anytype, allocator: std.mem.Allocator) !void {
     var rng = std.Random.DefaultPrng.init(seed);
-    var fens = std.array_list.Managed([]const u8).init(allocator);
-    defer fens.deinit();
+    var fens: std.ArrayList([]const u8) = .empty;
+    defer fens.deinit(allocator);
     defer for (fens.items) |fen| {
         allocator.free(fen);
     };
@@ -878,11 +876,11 @@ pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: a
     root.memzero(searcher.tt);
 
     searcher.correction_histories = try std.heap.page_allocator.create(root.history.CorrectionHistoryTable);
-    @import("ThreadPool.zig").adviseHugePages(searcher.correction_histories[0..1]) catch {};
+    @import("ThreadPool.zig").adviseHugePages(searcher.correction_histories[0..1]);
     defer std.heap.page_allocator.destroy(searcher.correction_histories);
 
     searcher.histories.pawn = try std.heap.page_allocator.create(root.history.PawnHistory);
-    @import("ThreadPool.zig").adviseHugePages(searcher.histories.pawn[0..1]) catch {};
+    @import("ThreadPool.zig").adviseHugePages(searcher.histories.pawn[0..1]);
     defer std.heap.page_allocator.destroy(searcher.histories.pawn);
 
     searcher.eval_context.initForThread(0);
@@ -893,17 +891,15 @@ pub fn genfens(io: std.Io, path: ?[]const u8, count: usize, seed: u64, writer: a
         var reader_buf: [4096]u8 = undefined;
         var reader = f.readerStreaming(io, &reader_buf);
 
-        var line_buf: [128]u8 = undefined;
-        var line_writer = std.Io.Writer.fixed(&line_buf);
-
-        while (root.streamLine(&reader.interface, &line_writer) catch null) |fen_size| {
-            std.debug.assert(line_writer.end == fen_size);
-
-            try fens.append(try allocator.dupe(u8, line_writer.buffer[0..line_writer.end]));
-            _ = line_writer.consumeAll();
+        while (reader.interface.takeDelimiter('\n') catch null) |fen| {
+            const owned = try allocator.dupe(u8, fen);
+            errdefer allocator.free(owned);
+            try fens.append(allocator, owned);
         }
     } else {
-        try fens.append(try allocator.dupe(u8, root.Board.startpos().toFen().slice()));
+        const owned = try allocator.dupe(u8, root.Board.startpos().toFen().slice());
+        errdefer allocator.free(owned);
+        try fens.append(allocator, owned);
     }
     if (fens.items.len == 0) return error.EmptyBook;
     rng.random().shuffle([]const u8, fens.items);

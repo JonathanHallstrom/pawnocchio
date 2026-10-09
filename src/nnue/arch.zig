@@ -24,7 +24,7 @@ pub const TOTAL_THREATS = if (PAWN_PAIR_INPUTS) 59808 else 60144;
 pub const TOTAL_PAWN_PAIRS = if (PAWN_PAIR_INPUTS) 96 * 95 / 2 else 0;
 
 // [0..8) and [56..64) must be zero, cant have pawns there
-pub const PP_MASK_BAND: [64]u64 = blk: {
+pub const PP_MASK: [64]u64 = blk: {
     const A: u64 = 0x0101_0101_0101_0101;
     var table: [64]u64 = @splat(0);
     for (8..56) |sq| {
@@ -37,16 +37,9 @@ pub const PP_MASK_BAND: [64]u64 = blk: {
     break :blk table;
 };
 
-pub const PP_MASK: [64]u64 = PP_MASK_BAND;
-
 pub const Weights = extern struct {
     input: inputs.Weights,
     output: outputs.Weights,
-
-    pub fn byteSwap(self: *Weights) void {
-        self.input.byteSwap();
-        self.output.byteSwap();
-    }
 
     pub fn permuteL1(self: *Weights, pair_order: *const [L1_PAIR_COUNT]u16) void {
         var neuron_order: [L1_SIZE]u16 = undefined;
@@ -61,21 +54,11 @@ pub const Weights = extern struct {
     }
 
     pub const SIZE_BYTES = inputs.Weights.SIZE_BYTES + outputs.Weights.SIZE_BYTES;
-    pub const WEIGHT_COUNT = inputs.Weights.WEIGHT_COUNT + outputs.Weights.WEIGHT_COUNT;
 
     comptime {
         if (@sizeOf(Weights) != SIZE_BYTES) @compileError("unexpected padding in Weights");
     }
 };
-
-pub fn endianSwap(field: anytype) void {
-    const T = UltimateChild(@TypeOf(field.*));
-    const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
-    const p: *[totalElements(@TypeOf(field.*))]T = @ptrCast(field);
-    for (p) |*e| {
-        e.* = @bitCast(@byteSwap(@as(Int, @bitCast(e.*))));
-    }
-}
 
 pub fn UltimateChild(comptime T: type) type {
     const info = @typeInfo(T);
@@ -90,25 +73,7 @@ pub fn UltimateChild(comptime T: type) type {
     }
 }
 
-pub fn totalElements(comptime T: type) comptime_int {
-    const info = @typeInfo(T);
-
-    switch (info) {
-        inline .array, .vector => |i| {
-            return i.len * totalElements(i.child);
-        },
-        inline else => |i| {
-            if (!@hasField(@TypeOf(i), "child")) {
-                return 1;
-            }
-            return totalElements(i.child);
-        },
-    }
-}
-
 pub const AccumulatorVec = @Vector(simd.vecSize(i16), i16);
-pub const PSQTWeightVec = AccumulatorVec;
-pub const ThreatWeightVec = @Vector(simd.vecSize(i16), i8);
 pub const ACCUMULATOR_VECTOR_COUNT = L1_SIZE / simd.vecSize(i16);
 
 pub const ACCUMULATOR_TILE = @min(ACCUMULATOR_VECTOR_COUNT, switch (simd.TARGET) {
@@ -116,9 +81,9 @@ pub const ACCUMULATOR_TILE = @min(ACCUMULATOR_VECTOR_COUNT, switch (simd.TARGET)
     else => 8,
 });
 
-pub const RawAccumulator = [ACCUMULATOR_VECTOR_COUNT]AccumulatorVec;
+pub const RawAccumulator = [ACCUMULATOR_VECTOR_COUNT][simd.vecSize(i16)]i16;
 pub const PSQTWeight = RawAccumulator;
-pub const ThreatWeight = [ACCUMULATOR_VECTOR_COUNT]ThreatWeightVec;
+pub const ThreatWeight = [ACCUMULATOR_VECTOR_COUNT][simd.vecSize(i16)]i8;
 
 pub const HORIZONTAL_MIRRORING = true;
 pub const MERGED_KINGS = true;

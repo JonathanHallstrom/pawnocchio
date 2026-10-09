@@ -174,7 +174,7 @@ pub fn rankBB(rank: root.Rank) u64 {
     return first_rank << @intCast(rank.toInt() * 8);
 }
 
-const HAS_BMI2 = std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2);
+const HAS_BMI2 = @import("builtin").target.cpu.has(.x86, .bmi2);
 pub fn pext(src: u64, mask: u64) u64 {
     if (@inComptime() or !HAS_BMI2) {
         var res: u64 = 0;
@@ -238,7 +238,7 @@ pub fn rayArrayPtr(d_rank: anytype, d_file: anytype) *const [64]u64 {
 
 pub fn attackArray(d_ranks: anytype, d_files: anytype) [64]u64 {
     @setEvalBranchQuota(1 << 30);
-    var res: [64]u64 = .{0} ** 64;
+    var res: [64]u64 = @splat(0);
     inline for (0..64) |i| {
         for (d_ranks, d_files) |d_rank, d_file| {
             res[i] |= ray(1 << i, d_rank, d_file);

@@ -128,7 +128,7 @@ pub inline fn wrapHandle(inner: anytype) Handle(@TypeOf(inner)) {
 pub const NullHandle = Handle(void);
 
 pub inline fn noHandle() NullHandle {
-    return .{ .inner = void{} };
+    return .{ .inner = {} };
 }
 
 pub fn evalPosition(board: *const Board) i16 {
@@ -218,10 +218,10 @@ pub fn formatScore(score: i16) root.BoundedArray(u8, 15) {
         res.appendSliceAssumeCapacity("mate ");
         if (score < 0)
             res.appendAssumeCapacity('-');
-        res.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{moves_to_mate}) catch unreachable);
+        res.appendSliceAssumeCapacity(std.mem.print(&print_buf, "{}", .{moves_to_mate}) catch unreachable);
     } else {
         res.appendSliceAssumeCapacity("cp ");
-        res.appendSliceAssumeCapacity(std.fmt.bufPrint(&print_buf, "{}", .{score}) catch unreachable);
+        res.appendSliceAssumeCapacity(std.mem.print(&print_buf, "{}", .{score}) catch unreachable);
     }
     return res;
 }

@@ -42,7 +42,7 @@ pub fn matchEnum(
         @compileError("matchEnum expects an enum type");
     };
 
-    if (exactEnumMatch(Enum, input)) |tag| {
+    if (std.meta.stringToEnum(Enum, input)) |tag| {
         return .{ .match = tag };
     }
 
@@ -75,10 +75,6 @@ pub fn matchEnum(
     return null;
 }
 
-fn exactEnumMatch(comptime Enum: type, input: []const u8) ?Enum {
-    return std.meta.stringToEnum(Enum, input);
-}
-
 fn maxNameDistance(base_cost: usize, percent: usize, name_len: usize) usize {
     return base_cost + name_len * percent;
 }
@@ -86,8 +82,8 @@ fn maxNameDistance(base_cost: usize, percent: usize, name_len: usize) usize {
 inline fn maxEnumNameLen(comptime Enum: type) usize {
     return comptime blk: {
         var max_len: usize = 0;
-        for (std.meta.fields(Enum)) |field| {
-            max_len = @max(max_len, field.name.len);
+        for (@typeInfo(Enum).@"enum".field_names) |field_name| {
+            max_len = @max(max_len, field_name.len);
         }
         break :blk max_len;
     };
@@ -358,7 +354,7 @@ fn qwertyPos(char: u8) ?KeyPos {
 
 const QWERTY_CONTAINED_CHARS = blk: {
     @setEvalBranchQuota(1 << 20);
-    var res: std.StaticBitSet(256) = .initEmpty();
+    var res: std.bit_set.Static(256) = .empty;
     for (0..256) |char| {
         res.setValue(char, qwertyPos(char) != null);
     }
