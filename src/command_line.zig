@@ -618,6 +618,7 @@ const AnalysisStats = struct {
     game_count: u64 = 0,
     position_count: u64 = 0,
     mse_sum: f64 = 0,
+    flipped_mse_sum: f64 = 0,
     mse_count: u64 = 0,
     wins: u64 = 0,
     draws: u64 = 0,
@@ -649,6 +650,7 @@ const AnalysisStats = struct {
         self.game_count += other.game_count;
         self.position_count += other.position_count;
         self.mse_sum += other.mse_sum;
+        self.flipped_mse_sum += other.flipped_mse_sum;
         self.mse_count += other.mse_count;
         self.wins += other.wins;
         self.draws += other.draws;
@@ -777,7 +779,10 @@ fn analyseFile(
                         if (!ply.board.isNoisy(ply.move) and !ply.board.givesCheck(ply.move)) {
                             const pred = root.fastmath.sigmoidScaled(ev, eval_scale);
                             const err = pred - target;
+                            const flipped_pred = root.fastmath.sigmoidScaled(ply.stmEval().?, eval_scale);
+                            const flipped_err = flipped_pred - target;
                             stats.mse_sum += err * err;
+                            stats.flipped_mse_sum += flipped_err * flipped_err;
                             stats.mse_count += 1;
                         }
                     }
@@ -1011,6 +1016,14 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         combined.tb_results.get(.win).get(.win);
     const incorrect_tb = total_tb - correct_tb;
     const positions_per_game = @as(f64, @floatFromInt(combined.position_count)) / @as(f64, @floatFromInt(@max(combined.game_count, 1)));
+
+    if (combined.flipped_mse_sum < combined.mse_sum) {
+        write("WARNING: your scores might be stm relative, when taken to be stm relative the scores predict the outcome better (white relative MSE: {d:.6}, stm relative MSE: {d:.6})\n", .{
+            combined.mse_sum / @as(f64, @floatFromInt(@max(combined.mse_count, 1))),
+            combined.flipped_mse_sum / @as(f64, @floatFromInt(@max(combined.mse_count, 1))),
+        });
+    }
+
     write(
         \\
         \\games: {}
