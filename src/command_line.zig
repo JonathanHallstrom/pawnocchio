@@ -617,6 +617,8 @@ const AnalysisStats = struct {
     sum_exits: i64 = 0,
     game_count: u64 = 0,
     position_count: u64 = 0,
+    mse_sum: f64 = 0,
+    mse_count: u64 = 0,
     wins: u64 = 0,
     draws: u64 = 0,
     losses: u64 = 0,
@@ -646,6 +648,8 @@ const AnalysisStats = struct {
         self.sum_exits += other.sum_exits;
         self.game_count += other.game_count;
         self.position_count += other.position_count;
+        self.mse_sum += other.mse_sum;
+        self.mse_count += other.mse_count;
         self.wins += other.wins;
         self.draws += other.draws;
         self.losses += other.losses;
@@ -721,6 +725,7 @@ fn analyseFile(
     use_tbs: bool,
     approximate: bool,
     skip_broken_games: bool,
+    eval_scale: f32,
     bytes_done: *std.atomic.Value(u64),
 ) !AnalysisStats {
     var stats = try AnalysisStats.init(approximate, allocator);
@@ -764,9 +769,18 @@ fn analyseFile(
 
                 var tb_flags: TbFlags = .{};
                 var it = game_view.iter();
+                const target = @as(f64, @floatFromInt(game_view.outcome.toInt())) / 2.0;
                 var move_idx: usize = 0;
                 while (try it.next()) |ply| : (move_idx += 1) {
                     try accumulatePlyStats(&stats, allocator, ply.board, ply.whiteEval(), ply.stmEval(), move_idx == 0, use_tbs, &tb_flags);
+                    if (ply.whiteEval()) |ev| {
+                        if (!ply.board.isNoisy(ply.move) and !ply.board.givesCheck(ply.move)) {
+                            const pred = root.fastmath.sigmoidScaled(ev, eval_scale);
+                            const err = pred - target;
+                            stats.mse_sum += err * err;
+                            stats.mse_count += 1;
+                        }
+                    }
                 }
                 recordTbResults(&stats, game_view.outcome, tb_flags);
             }
@@ -848,6 +862,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
             @"allow-overwrite": bool = false,
             format: root.dataformat.FileFormat = .viriformat,
             @"skip-broken-games": bool = false,
+            @"eval-scale": i16 = 400,
         },
         .{ .allow_implied = false },
         "analyse",
@@ -940,6 +955,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
                 use_tbs_: bool,
                 approximate_: bool,
                 skip_broken_games_: bool,
+                eval_scale_: f32,
                 bytes_done_: *std.atomic.Value(u64),
                 combined_: *AnalysisStats,
                 merge_lock_: *std.Io.Mutex,
@@ -947,7 +963,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
                 var file = try openInputFile(io_, input_path_);
                 defer file.close(io_);
 
-                var file_stats = analyseFile(io_, allocator_, file, input_path_, format, use_tbs_, approximate_, skip_broken_games_, bytes_done_) catch |e| {
+                var file_stats = analyseFile(io_, allocator_, file, input_path_, format, use_tbs_, approximate_, skip_broken_games_, eval_scale_, bytes_done_) catch |e| {
                     writeLog("reading '{s}': {}\n", .{ input_path_, e });
                     return e;
                 };
@@ -964,6 +980,7 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
             use_tbs,
             approximate,
             parsed.@"skip-broken-games",
+            @floatFromInt(parsed.@"eval-scale"),
             &bytes_done,
             &combined,
             &merge_lock,
@@ -993,22 +1010,25 @@ fn handleAnalyse(io: std.Io, allocator: std.mem.Allocator, args: anytype) !void 
         combined.tb_results.get(.draw).get(.draw) +
         combined.tb_results.get(.win).get(.win);
     const incorrect_tb = total_tb - correct_tb;
-    const positions_per_game = @as(f64, @floatFromInt(combined.position_count)) / @as(f64, @floatFromInt(@max(@as(u64, 1), combined.game_count)));
+    const positions_per_game = @as(f64, @floatFromInt(combined.position_count)) / @as(f64, @floatFromInt(@max(combined.game_count, 1)));
     write(
         \\
         \\games: {}
         \\positions: {}
         \\positions/game: {d:.2}
         \\average exit: {d:.2}
+        \\MSE: {d:.6} (count: {})
         \\unique positions: {}/{} ({}%)
     , .{
         combined.game_count,
         combined.position_count,
         positions_per_game,
-        @as(f64, @floatFromInt(combined.sum_exits)) / @as(f64, @floatFromInt(@max(@as(u64, 1), combined.game_count))),
+        @as(f64, @floatFromInt(combined.sum_exits)) / @as(f64, @floatFromInt(@max(combined.game_count, 1))),
+        combined.mse_sum / @as(f64, @floatFromInt(@max(combined.mse_count, 1))),
+        combined.mse_count,
         unique_count,
         combined.position_count,
-        @as(u64, unique_count) * 100 / @max(@as(u64, 1), combined.position_count),
+        @as(u64, unique_count) * 100 / @max(combined.position_count, 1),
     });
 
     if (use_tbs) {
