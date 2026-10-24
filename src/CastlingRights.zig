@@ -28,19 +28,22 @@ raw: u16,
 
 const CastlingRights = @This();
 
-pub const WHITE_KINGSIDE_CASTLE: u8 = 1;
-pub const BLACK_KINGSIDE_CASTLE: u8 = 2;
-pub const WHITE_QUEENSIDE_CASTLE: u8 = 4;
-pub const BLACK_QUEENSIDE_CASTLE: u8 = 8;
-
 pub const KINGSIDE_KING_FILE = File.g;
 pub const QUEENSIDE_KING_FILE = File.c;
 pub const KINGSIDE_ROOK_FILE = File.f;
 pub const QUEENSIDE_ROOK_FILE = File.d;
 
-const KINGSIDE_MASK: u16 = 0b0011;
-const QUEENSIDE_MASK: u16 = 0b1100;
-const BOTH_MASK: u16 = 0b0101;
+pub const Side = enum {
+    king,
+    queen,
+
+    pub fn toAsciiLetter(self: Side) u8 {
+        return switch (self) {
+            .king => 'k',
+            .queen => 'q',
+        };
+    }
+};
 
 pub fn init() CastlingRights {
     return .{
@@ -48,66 +51,59 @@ pub fn init() CastlingRights {
     };
 }
 pub fn initFromParts(
-    castling_rights: u8,
+    raw_availability: u8,
     white_kingside_rook_file: File,
     black_kingside_rook_file: File,
     white_queenside_rook_file: File,
     black_queenside_rook_file: File,
 ) CastlingRights {
-    return .{
-        .raw = (castling_rights & 0b1111) |
-            @as(u16, white_kingside_rook_file.toInt()) << 4 |
-            @as(u16, black_kingside_rook_file.toInt()) << 7 |
-            @as(u16, white_queenside_rook_file.toInt()) << 10 |
-            @as(u16, black_queenside_rook_file.toInt()) << 13,
-    };
+    var res: CastlingRights = .{ .raw = raw_availability & 0b1111 };
+    res.setRookFile(.white, .king, white_kingside_rook_file);
+    res.setRookFile(.black, .king, black_kingside_rook_file);
+    res.setRookFile(.white, .queen, white_queenside_rook_file);
+    res.setRookFile(.black, .queen, black_queenside_rook_file);
+    return res;
 }
 
 pub fn rawCastlingAvailability(self: CastlingRights) u8 {
     return @intCast(self.raw & 0b1111);
 }
 
-pub fn getWhiteKingsideRookFile(self: CastlingRights) File {
-    return File.fromInt(@intCast(self.raw >> 4 & 0b111));
-}
-pub fn getBlackKingsideRookFile(self: CastlingRights) File {
-    return File.fromInt(@intCast(self.raw >> 7 & 0b111));
-}
-pub fn getWhiteQueensideRookFile(self: CastlingRights) File {
-    return File.fromInt(@intCast(self.raw >> 10 & 0b111));
-}
-pub fn getBlackQueensideRookFile(self: CastlingRights) File {
-    return File.fromInt(@intCast(self.raw >> 13 & 0b111));
+fn sideIndex(col: Colour, side: Side) u2 {
+    var id: u2 = 0;
+    if (col == .black) id += 1;
+    if (side == .queen) id += 2;
+    return id;
 }
 
-pub fn kingsideCastlingFor(self: CastlingRights, col: Colour) bool {
-    if (col == .white) {
-        return self.raw & WHITE_KINGSIDE_CASTLE != 0;
-    } else {
-        return self.raw & BLACK_KINGSIDE_CASTLE != 0;
-    }
-}
-pub fn queensideCastlingFor(self: CastlingRights, col: Colour) bool {
-    if (col == .white) {
-        return self.raw & WHITE_QUEENSIDE_CASTLE != 0;
-    } else {
-        return self.raw & BLACK_QUEENSIDE_CASTLE != 0;
-    }
+fn availability(col: Colour, side: Side) u16 {
+    return @as(u16, 1) << sideIndex(col, side);
 }
 
-pub fn kingsideRookFileFor(self: CastlingRights, col: Colour) File {
-    if (col == .white) {
-        return self.getWhiteKingsideRookFile();
-    } else {
-        return self.getBlackKingsideRookFile();
-    }
+fn rookFileShift(col: Colour, side: Side) u4 {
+    return 4 + 3 * @as(u4, sideIndex(col, side));
 }
-pub fn queensideRookFileFor(self: CastlingRights, col: Colour) File {
-    if (col == .white) {
-        return self.getWhiteQueensideRookFile();
-    } else {
-        return self.getBlackQueensideRookFile();
-    }
+
+pub fn getRookFile(self: CastlingRights, col: Colour, side: Side) File {
+    return File.fromInt(@intCast(self.raw >> rookFileShift(col, side) & 0b111));
+}
+
+pub fn setRookFile(self: *CastlingRights, col: Colour, side: Side, file: File) void {
+    const shift = rookFileShift(col, side);
+    self.raw = (self.raw & ~(@as(u16, 0b111) << shift)) | @as(u16, file.toInt()) << shift;
+}
+
+pub fn getRookSquare(self: CastlingRights, col: Colour, side: Side) Square {
+    return Square.fromRankFile(startingRankFor(col), self.getRookFile(col, side));
+}
+
+pub fn isAvailable(self: CastlingRights, col: Colour, side: Side) bool {
+    return self.raw & availability(col, side) != 0;
+}
+
+pub fn setAvailable(self: *CastlingRights, col: Colour, side: Side, available: bool) void {
+    const bit = availability(col, side);
+    self.raw = (self.raw & ~bit) | @intFromBool(available) * bit;
 }
 
 pub inline fn startingRankFor(col: Colour) Rank {
@@ -115,7 +111,7 @@ pub inline fn startingRankFor(col: Colour) Rank {
 }
 
 pub inline fn kingMoved(self: *CastlingRights, col: Colour) void {
-    self.raw &= ~(@as(u16, BOTH_MASK) << @intCast(col.toInt()));
+    self.raw &= ~(availability(col, .king) | availability(col, .queen));
 }
 
 pub inline fn updateSquare(
@@ -123,14 +119,14 @@ pub inline fn updateSquare(
     sq: Square,
     col: Colour,
 ) void {
-    const queenside_rook_sq = Square.fromRankFile(startingRankFor(col), self.queensideRookFileFor(col));
-    const kingside_rook_sq = Square.fromRankFile(startingRankFor(col), self.kingsideRookFileFor(col));
+    const queenside_rook_sq = self.getRookSquare(col, .queen);
+    const kingside_rook_sq = self.getRookSquare(col, .king);
 
     var kingside_rook_mask: u16 = @intFromBool(sq == kingside_rook_sq);
-    kingside_rook_mask <<= @intCast(col.toInt());
+    kingside_rook_mask <<= sideIndex(col, .king);
 
     var queenside_rook_mask: u16 = @intFromBool(sq == queenside_rook_sq);
-    queenside_rook_mask <<= @intCast(col.toInt() + 2);
+    queenside_rook_mask <<= sideIndex(col, .queen);
 
     self.raw &= ~(kingside_rook_mask | queenside_rook_mask);
 }

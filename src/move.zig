@@ -44,10 +44,14 @@ pub const Move = enum(u16) {
     pub const promotion_flag: u16 = 0b1100;
 
     fn initFromParts(from_: u16, to_: u16, flag_: u16) Move {
-        return @fromBackingInt(from_ | to_ << 6 | flag_ << 12);
+        return fromInt(from_ | to_ << 6 | flag_ << 12);
     }
 
-    fn toInt(self: Move) u16 {
+    pub fn fromInt(i: u16) Move {
+        return @fromBackingInt(i);
+    }
+
+    pub fn toInt(self: Move) u16 {
         return @backingInt(self);
     }
 
@@ -76,7 +80,7 @@ pub const Move = enum(u16) {
     }
 
     pub fn init() Move {
-        return @fromBackingInt(0);
+        return fromInt(0);
     }
 
     pub fn isNull(self: Move) bool {
@@ -100,12 +104,17 @@ pub const Move = enum(u16) {
         return initFromParts(from_.toInt(), to_.toInt(), promotion_flag | tp_.toInt() - 1);
     }
 
-    pub fn castlingKingside(col: Colour, from_: Square, to_: Square) Move {
-        return initFromParts(from_.toInt(), to_.toInt(), castling_flag | col.toInt());
+    pub fn castling(col: Colour, side: CastlingRights.Side, from_: Square, to_: Square) Move {
+        const side_bit: u16 = if (side == .queen) 2 else 0;
+        return initFromParts(from_.toInt(), to_.toInt(), castling_flag | side_bit + col.toInt());
     }
 
-    pub fn castlingQueenside(col: Colour, from_: Square, to_: Square) Move {
-        return initFromParts(from_.toInt(), to_.toInt(), castling_flag | 2 + col.toInt());
+    pub fn castlingColour(self: Move) Colour {
+        return Colour.fromInt(self.extra() & 1);
+    }
+
+    pub fn castlingSide(self: Move) CastlingRights.Side {
+        return if (self.extra() & 2 == 0) .king else .queen;
     }
 
     pub fn isMoveLeft(self: Move) bool {

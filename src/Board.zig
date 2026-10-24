@@ -270,10 +270,6 @@ pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
         ranks[i] = iter.next().?;
     }
 
-    var white_king_square: ?Square = null;
-    var black_king_square: ?Square = null;
-    var white_rooks_on_first_rank = try BoundedArray(File, 64).init(0);
-    var black_rooks_on_last_rank = try BoundedArray(File, 64).init(0);
     var self: T = .{};
     for (0..8) |r| {
         var c: usize = 0;
@@ -283,13 +279,9 @@ pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
             const pt = PieceType.fromAsciiLetter(ch);
             if (std.ascii.isLower(ch)) {
                 self.addPiece(.black, pt.?, current_square);
-                if (ch == 'k') black_king_square = current_square;
-                if (ch == 'r' and current_square.getRank() == .eighth) black_rooks_on_last_rank.append(current_square.getFile()) catch return error.TooManyRooks;
                 c += 1;
             } else if (std.ascii.isUpper(ch)) {
                 self.addPiece(.white, pt.?, current_square);
-                if (ch == 'K') white_king_square = current_square;
-                if (ch == 'R' and current_square.getRank() == .first) white_rooks_on_first_rank.append(current_square.getFile()) catch return error.TooManyRooks;
                 c += 1;
             } else switch (ch) {
                 '1'...'8' => |n| c += n - '0',
@@ -299,7 +291,7 @@ pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
         if (c > 8) return error.TooManyPiecesOnRank;
     }
 
-    if (white_king_square == null or black_king_square == null) return error.MissingKing;
+    if (@popCount(self.kingFor(.white)) != 1 or @popCount(self.kingFor(.black)) != 1) return error.MissingKing;
 
     const turn_str = iter.next() orelse return error.MissingTurn;
     assert(turn_str.len > 0); // tokenize should only return non-empty strings
@@ -316,128 +308,52 @@ pub fn parseFenAs(comptime T: type, ifen: []const u8, permissive: bool) !T {
     const castling_string = iter.next() orelse return error.MissingCastling;
     if (castling_string.len > 4) return error.CastlingStringTooBig;
     if (!std.mem.eql(u8, "-", castling_string)) {
-        var white_queenside_file: ?File = null;
-        var white_kingside_file: ?File = null;
-        var black_queenside_file: ?File = null;
-        var black_kingside_file: ?File = null;
-        var raw_castling_rights: u8 = 0;
+        for ([_]Colour{ .white, .black }) |col| {
+            const king_file = Square.fromBitboard(self.kingFor(col)).getFile();
+            self.castling_rights.setRookFile(col, .king, king_file);
+            self.castling_rights.setRookFile(col, .queen, king_file);
+        }
         for (castling_string) |castle_ch| {
-            raw_castling_rights |= switch (castle_ch) {
-                'K' => CastlingRights.WHITE_KINGSIDE_CASTLE,
-                'k' => CastlingRights.BLACK_KINGSIDE_CASTLE,
-                'Q' => CastlingRights.WHITE_QUEENSIDE_CASTLE,
-                'q' => CastlingRights.BLACK_QUEENSIDE_CASTLE,
+            const col: Colour = if (std.ascii.isUpper(castle_ch)) .white else .black;
+            const side: CastlingRights.Side = switch (std.ascii.toLower(castle_ch)) {
+                'k' => .king,
+                'q' => .queen,
                 else => blk: {
                     self.frc = true;
                     const file = File.parse(castle_ch) catch return error.InvalidCharacter;
-                    const king_square, const kingside_castle, const queenside_castle, const rook_array = if (std.ascii.isUpper(castle_ch)) .{
-                        white_king_square.?,
-                        CastlingRights.WHITE_KINGSIDE_CASTLE,
-                        CastlingRights.WHITE_QUEENSIDE_CASTLE,
-                        &white_rooks_on_first_rank,
-                    } else .{
-                        black_king_square.?,
-                        CastlingRights.BLACK_KINGSIDE_CASTLE,
-                        CastlingRights.BLACK_QUEENSIDE_CASTLE,
-                        &black_rooks_on_last_rank,
-                    };
+                    const king_file = Square.fromBitboard(self.kingFor(col)).getFile();
 
-                    if (!permissive and std.mem.count(File, rook_array.slice(), &.{file}) == 0)
+                    if (!permissive and self.rooksFor(col) & CastlingRights.startingRankSquare(col, file).toBitboard() == 0)
                         return error.NoRookForCastling;
 
-                    if (@backingInt(file) > @backingInt(king_square.getFile())) {
-                        if (std.ascii.isUpper(castle_ch)) {
-                            white_kingside_file = file;
-                        } else {
-                            black_kingside_file = file;
-                        }
-                        break :blk kingside_castle;
-                    }
-                    if (@backingInt(file) < @backingInt(king_square.getFile())) {
-                        if (std.ascii.isUpper(castle_ch)) {
-                            white_queenside_file = file;
-                        } else {
-                            black_queenside_file = file;
-                        }
-                        break :blk queenside_castle;
-                    }
-                    return error.CastlingRightsOverLapKing;
+                    if (file == king_file) return error.CastlingRightsOverLapKing;
+                    const file_side: CastlingRights.Side = if (file.toInt() > king_file.toInt()) .king else .queen;
+                    self.castling_rights.setRookFile(col, file_side, file);
+                    break :blk file_side;
                 },
             };
-        }
-        self.castling_rights = CastlingRights.initFromParts(
-            raw_castling_rights,
-            white_kingside_file orelse white_king_square.?.getFile(),
-            black_kingside_file orelse black_king_square.?.getFile(),
-            white_queenside_file orelse white_king_square.?.getFile(),
-            black_queenside_file orelse black_king_square.?.getFile(),
-        );
-
-        // determine the white queenside castling file
-        if (self.castling_rights.queensideCastlingFor(.white) and white_queenside_file == null) {
-            const king_file = white_king_square.?.getFile();
-            var candidate_rook: File = .h;
-            var num_candidates: usize = 0;
-            for (white_rooks_on_first_rank.slice()) |rook| {
-                if (rook.toInt() < king_file.toInt()) {
-                    num_candidates += 1;
-                    candidate_rook = File.fromInt(@min(candidate_rook.toInt(), rook.toInt()));
-                }
-            }
-            if (num_candidates == 0) return error.NoRookForCastling;
-            if (num_candidates > 1 and candidate_rook != .a) return error.AmbiguousRookCastlingFile;
-            white_queenside_file = candidate_rook;
-        }
-        if (self.castling_rights.kingsideCastlingFor(.white) and white_kingside_file == null) {
-            const king_file = white_king_square.?.getFile();
-            var candidate_rook: File = .a;
-            var num_candidates: usize = 0;
-            for (white_rooks_on_first_rank.slice()) |rook| {
-                if (rook.toInt() > king_file.toInt()) {
-                    num_candidates += 1;
-                    candidate_rook = File.fromInt(@max(candidate_rook.toInt(), rook.toInt()));
-                }
-            }
-            if (num_candidates == 0) return error.NoRookForCastling;
-            if (num_candidates > 1 and candidate_rook != .h) return error.AmbiguousRookCastlingFile;
-            white_kingside_file = candidate_rook;
+            self.castling_rights.setAvailable(col, side, true);
         }
 
-        if (self.castling_rights.queensideCastlingFor(.black) and black_queenside_file == null) {
-            const king_file = black_king_square.?.getFile();
-            var candidate_rook: File = .h;
-            var num_candidates: usize = 0;
-            for (black_rooks_on_last_rank.slice()) |rook| {
-                if (rook.toInt() < king_file.toInt()) {
-                    num_candidates += 1;
-                    candidate_rook = File.fromInt(@min(candidate_rook.toInt(), rook.toInt()));
+        for ([_]Colour{ .white, .black }) |col| {
+            const king_file = Square.fromBitboard(self.kingFor(col)).getFile();
+            const home_rooks = self.rooksFor(col) & Bitboard.rankBB(CastlingRights.startingRankFor(col));
+            for ([_]CastlingRights.Side{ .king, .queen }) |side| {
+                if (!self.castling_rights.isAvailable(col, side) or self.castling_rights.getRookFile(col, side) != king_file) continue;
+                var candidate_rook: File = king_file;
+                var rook_iter = Bitboard.iterator(home_rooks);
+                while (rook_iter.next()) |rook_sq| {
+                    const rook = rook_sq.getFile();
+                    const on_side = if (side == .king) rook.toInt() > king_file.toInt() else rook.toInt() < king_file.toInt();
+                    if (!on_side)
+                        continue;
+                    if (rook.absDiff(king_file) > candidate_rook.absDiff(king_file))
+                        candidate_rook = rook;
                 }
+                if (candidate_rook == king_file) return error.NoRookForCastling;
+                self.castling_rights.setRookFile(col, side, candidate_rook);
             }
-            if (num_candidates == 0) return error.NoRookForCastling;
-            if (num_candidates > 1 and candidate_rook != .a) return error.AmbiguousRookCastlingFile;
-            black_queenside_file = candidate_rook;
         }
-        if (self.castling_rights.kingsideCastlingFor(.black) and black_kingside_file == null) {
-            const king_file = black_king_square.?.getFile();
-            var candidate_rook: File = .a;
-            var num_candidates: usize = 0;
-            for (black_rooks_on_last_rank.slice()) |rook| {
-                if (rook.toInt() > king_file.toInt()) {
-                    num_candidates += 1;
-                    candidate_rook = File.fromInt(@max(candidate_rook.toInt(), rook.toInt()));
-                }
-            }
-            if (num_candidates == 0) return error.NoRookForCastling;
-            if (num_candidates > 1 and candidate_rook != .h) return error.AmbiguousRookCastlingFile;
-            black_kingside_file = candidate_rook;
-        }
-        self.castling_rights = CastlingRights.initFromParts(
-            raw_castling_rights,
-            white_kingside_file orelse white_king_square.?.getFile(),
-            black_kingside_file orelse black_king_square.?.getFile(),
-            white_queenside_file orelse white_king_square.?.getFile(),
-            black_queenside_file orelse black_king_square.?.getFile(),
-        );
     }
 
     const ep_target_square_string = iter.next() orelse return error.MissingEnPassantTarget;
@@ -524,17 +440,12 @@ pub fn computeFen(self: anytype) BoundedArray(u8, 128) {
     if (self.castling_rights.rawCastlingAvailability() == 0) {
         out.appendAssumeCapacity('-');
     } else {
-        if (self.castling_rights.kingsideCastlingFor(.white)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.kingsideRookFileFor(.white).toAsciiLetter()) else 'K');
-        }
-        if (self.castling_rights.queensideCastlingFor(.white)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toUpper(self.castling_rights.queensideRookFileFor(.white).toAsciiLetter()) else 'Q');
-        }
-        if (self.castling_rights.kingsideCastlingFor(.black)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.kingsideRookFileFor(.black).toAsciiLetter()) else 'k');
-        }
-        if (self.castling_rights.queensideCastlingFor(.black)) {
-            out.appendAssumeCapacity(if (self.frc) std.ascii.toLower(self.castling_rights.queensideRookFileFor(.black).toAsciiLetter()) else 'q');
+        for ([_]Colour{ .white, .black }) |col| {
+            for ([_]CastlingRights.Side{ .king, .queen }) |side| {
+                if (!self.castling_rights.isAvailable(col, side)) continue;
+                const ch: u8 = if (self.frc) self.castling_rights.getRookFile(col, side).toAsciiLetter() else side.toAsciiLetter();
+                out.appendAssumeCapacity(if (col == .white) std.ascii.toUpper(ch) else ch);
+            }
         }
     }
     out.appendAssumeCapacity(' ');
@@ -1433,17 +1344,15 @@ pub inline fn makeMoveFromStr(self: *Board, str: []const u8) !void {
     self.makeMove(move, root.evaluation.noHandle());
 }
 
-fn parseSANCastling(self: anytype, queenside: bool) ?Move {
+fn parseSANCastling(self: anytype, side: CastlingRights.Side) ?Move {
     const stm = self.stm;
     const cr = self.castling_rights;
-    const has_rights = if (queenside) cr.queensideCastlingFor(stm) else cr.kingsideCastlingFor(stm);
-    if (!has_rights) return null;
+    if (!cr.isAvailable(stm, side)) return null;
     if (@popCount(self.kingFor(stm)) != 1) return null;
     const king_sq: Square = .fromBitboard(self.kingFor(stm));
-    const rook_file = if (queenside) cr.queensideRookFileFor(stm) else cr.kingsideRookFileFor(stm);
-    const rook_from = CastlingRights.startingRankSquare(stm, rook_file);
+    const rook_from = cr.getRookSquare(stm, side);
     if (self.rooksFor(stm) & rook_from.toBitboard() == 0) return null;
-    return if (queenside) Move.castlingQueenside(stm, king_sq, rook_from) else Move.castlingKingside(stm, king_sq, rook_from);
+    return Move.castling(stm, side, king_sq, rook_from);
 }
 
 const SANParts = struct {
@@ -1522,7 +1431,7 @@ pub fn parseSANMove(self: anytype, san_move_inp: []const u8) ?Move {
     const stm = self.stm;
     if (san_move_inp[0] == 'O' or san_move_inp[0] == '0') {
         const queenside = std.mem.startsWith(u8, san_move_inp, "O-O-O") or std.mem.startsWith(u8, san_move_inp, "0-0-0");
-        return parseSANCastling(self, queenside);
+        return parseSANCastling(self, if (queenside) .queen else .king);
     }
     if (@popCount(self.kingFor(stm)) != 1) return null;
 
@@ -1692,9 +1601,12 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
             return false;
         }
 
-        const raw: u16 = self.castling_rights.rawCastlingAvailability();
-        const extra: u16 = move.extra();
-        if (raw & (@as(u8, 1) << @intCast(extra)) == 0) {
+        if (move.castlingColour() != stm) {
+            return false;
+        }
+
+        const side = move.castlingSide();
+        if (!self.castling_rights.isAvailable(stm, side)) {
             return false;
         }
 
@@ -1705,11 +1617,7 @@ pub fn isLegal(self: *const Board, comptime stm: Colour, move: Move) bool {
             return false;
         }
 
-        if (extra & 1 != stm.toInt()) {
-            return false;
-        }
-        const is_kingside = extra & 2 == 0;
-        if (is_kingside != (to.getFile().toInt() > from.getFile().toInt())) {
+        if (to != self.castling_rights.getRookSquare(stm, side)) {
             return false;
         }
 
@@ -1914,8 +1822,8 @@ fn computePlausibleMoves() BoundedArray(Move, 8192) {
 
             if ((from_rank == 0 and to_rank == 0) or (from_rank == 7 and to_rank == 7)) {
                 const col: Colour = if (from_rank == 7) .black else .white;
-                const ks = Move.castlingKingside(col, from, to);
-                const qs = Move.castlingQueenside(col, from, to);
+                const ks = Move.castling(col, .king, from, to);
+                const qs = Move.castling(col, .queen, from, to);
                 result.appendAssumeCapacity(ks);
                 if (ks != qs) {
                     result.appendAssumeCapacity(qs);
@@ -2055,4 +1963,40 @@ test "basic makemove" {
     try std.testing.expectEqual(@as(u8, ColouredPieceType.white_pawn.toInt()), board.mailbox[Square.e4.toInt()]);
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e4.toBitboard(), Square.e4.toBitboard());
     try std.testing.expectEqual(board.pawnsFor(.white) & Square.e2.toBitboard(), 0);
+}
+
+test isLegal {
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    const r = prng.random();
+
+    const PLIES_PER_POSITION = 32;
+
+    for (@import("bench_fens.zig").FENS) |fen| {
+        var board = try parseFen(fen, false);
+        for (0..PLIES_PER_POSITION) |_| {
+            if (!board.hasLegalMove() or board.halfmove >= 50) break;
+            const legal = movegen.legalMoveList(&board);
+            var legal_bitset = std.bit_set.Array(u64, 65536).empty;
+            for (legal.vals.slice()) |m|
+                legal_bitset.set(m.toInt());
+
+            for (0..65536) |i| {
+                const m: Move = .fromInt(@intCast(i));
+
+                std.testing.expectEqual(
+                    legal_bitset.isSet(i),
+                    board.isLegalSimple(m),
+                ) catch |e| {
+                    std.log.err("mismatch for '{s}' in '{s}'", .{
+                        m.toString(&board).slice(),
+                        board.toFen().slice(),
+                    });
+                    return e;
+                };
+            }
+
+            const m = legal.vals.slice()[r.uintLessThan(usize, legal.vals.len)];
+            board.makeMoveSimple(m);
+        }
+    }
 }

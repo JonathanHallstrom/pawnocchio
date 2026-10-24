@@ -29,7 +29,6 @@ const LeanBoard = root.LeanBoard;
 const Move = root.Move;
 const Colour = root.Colour;
 const Rank = root.Rank;
-const File = root.File;
 const WDL = root.WDL;
 const dataformat = root.dataformat;
 const CastlingRights = root.CastlingRights;
@@ -118,51 +117,18 @@ pub const MarlinPackedBoard = extern struct {
             return error.PawnsOnFirstLastRank;
         }
 
-        var white_queenside_file: ?File = null;
-        var white_kingside_file: ?File = null;
-        const white_castling_rooks = castling_rooks & 0b1111_1111;
-        var black_queenside_file: ?File = null;
-        var black_kingside_file: ?File = null;
-        const black_castling_rooks = castling_rooks >> 56;
-
-        iter = Bitboard.iterator(white_castling_rooks);
-        var rights_flag: u8 = 0;
-        while (iter.next()) |sq| {
-            const king = Square.fromBitboard(res.kingFor(.white));
-
-            if (king.getFile().toInt() < sq.getFile().toInt()) {
-                white_kingside_file = sq.getFile();
-                rights_flag |= CastlingRights.WHITE_KINGSIDE_CASTLE;
-            } else {
-                white_queenside_file = sq.getFile();
-                rights_flag |= CastlingRights.WHITE_QUEENSIDE_CASTLE;
+        res.castling_rights = .initFromParts(0, .a, .a, .h, .h);
+        for ([_]Colour{ .white, .black }) |col| {
+            const king_file = Square.fromBitboard(res.kingFor(col)).getFile();
+            iter = Bitboard.iterator(castling_rooks & Bitboard.rankBB(CastlingRights.startingRankFor(col)));
+            while (iter.next()) |sq| {
+                const side: CastlingRights.Side = if (king_file.toInt() < sq.getFile().toInt()) .king else .queen;
+                res.castling_rights.setAvailable(col, side, true);
+                res.castling_rights.setRookFile(col, side, sq.getFile());
             }
-        }
-        iter = Bitboard.iterator(black_castling_rooks);
-        while (iter.next()) |sq| {
-            const king = Square.fromBitboard(res.kingFor(.black));
-
-            if (king.getFile().toInt() < sq.getFile().toInt()) {
-                black_kingside_file = sq.getFile();
-                rights_flag |= CastlingRights.BLACK_KINGSIDE_CASTLE;
-            } else {
-                black_queenside_file = sq.getFile();
-                rights_flag |= CastlingRights.BLACK_QUEENSIDE_CASTLE;
+            if (res.kingFor(col) & first_last == 0 and (res.castling_rights.isAvailable(col, .king) or res.castling_rights.isAvailable(col, .queen))) {
+                return error.KingOnWrongRankAndCanCastle;
             }
-        }
-
-        res.castling_rights = .initFromParts(
-            rights_flag,
-            white_kingside_file orelse .a,
-            black_kingside_file orelse .a,
-            white_queenside_file orelse .h,
-            black_queenside_file orelse .h,
-        );
-        if (res.kingFor(.white) & first_last == 0 and rights_flag & (CastlingRights.WHITE_KINGSIDE_CASTLE | CastlingRights.WHITE_QUEENSIDE_CASTLE) != 0) {
-            return error.KingOnWrongRankAndCanCastle;
-        }
-        if (res.kingFor(.black) & first_last == 0 and rights_flag & (CastlingRights.BLACK_KINGSIDE_CASTLE | CastlingRights.BLACK_QUEENSIDE_CASTLE) != 0) {
-            return error.KingOnWrongRankAndCanCastle;
         }
 
         const ep_target = self.stm_ep_square & 0b0111_1111;
@@ -197,25 +163,21 @@ pub const MarlinPackedBoard = extern struct {
             while (iter.next()) |sq| : (i += 1) {
                 const cpt = board.colouredPieceOn(sq).?;
                 const piece_type = cpt.toPieceType();
-                const side: Colour = cpt.toColour();
-                const starting_rank: Rank = if (side == .white) .first else .eighth;
+                const col: Colour = cpt.toColour();
+                const starting_rank: Rank = if (col == .white) .first else .eighth;
 
                 var piece_code: u4 = @intCast(piece_type.toInt());
 
                 // if yoinking and not doing FRC u can skip this
                 if (piece_type == .rook and sq.getRank() == starting_rank) {
-                    const can_kingside_castle = board.castling_rights.kingsideCastlingFor(side);
-                    const can_queenside_castle = board.castling_rights.queensideCastlingFor(side);
-                    const kingside_file = board.castling_rights.kingsideRookFileFor(side);
-                    const queenside_file = board.castling_rights.queensideRookFileFor(side);
-                    if ((sq.getFile() == kingside_file and can_kingside_castle) or
-                        (sq.getFile() == queenside_file and can_queenside_castle))
-                    {
-                        piece_code = unmoved_rook;
+                    for ([_]CastlingRights.Side{ .king, .queen }) |side| {
+                        if (board.castling_rights.isAvailable(col, side) and sq.getFile() == board.castling_rights.getRookFile(col, side)) {
+                            piece_code = unmoved_rook;
+                        }
                     }
                 }
 
-                const val: u8 = piece_code | @as(u4, if (side == .black) 1 << 3 else 0);
+                const val: u8 = piece_code | @as(u4, if (col == .black) 1 << 3 else 0);
                 pieces[i / 2] |= val << if (i % 2 == 0) 0 else 4;
             }
         }
@@ -297,11 +259,8 @@ pub const ViriMove = extern struct {
             return Move.promo(self.from(), self.to(), promo_type);
         }
         if (self.isCastle()) {
-            if (self.from().toInt() < self.to().toInt()) {
-                return Move.castlingKingside(board.stm, self.from(), self.to());
-            } else {
-                return Move.castlingQueenside(board.stm, self.from(), self.to());
-            }
+            const side: CastlingRights.Side = if (self.from().toInt() < self.to().toInt()) .king else .queen;
+            return Move.castling(board.stm, side, self.from(), self.to());
         }
         if (self.isEp()) {
             return Move.enPassant(self.from(), self.to());

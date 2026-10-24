@@ -106,7 +106,7 @@ inline fn emitTemplateBB(template: *const [64]u16, bb: u64, receiver: anytype) v
     } else {
         var it = Bitboard.iterator(bb);
         while (it.next()) |to| {
-            receiver.receive(@as(Move, @fromBackingInt(template[to.toInt()])));
+            receiver.receive(Move.fromInt(template[to.toInt()]));
         }
     }
 }
@@ -383,24 +383,12 @@ pub inline fn generateKingQuiets(comptime stm: Colour, noalias board: *const Boa
     emitBB(king_sq, Bitboard.kingMoves(king_sq) & ~occ & ~their_threats, move_receiver);
 
     if (board.checkers() == 0) {
-        const home_rank: Rank = CastlingRights.startingRankFor(stm);
-
-        const kingside_rook_file = board.castling_rights.kingsideRookFileFor(stm);
-        const queenside_rook_file = board.castling_rights.queensideRookFileFor(stm);
-
-        const kingside_rook_square = Square.fromRankFile(home_rank, kingside_rook_file);
-        const queenside_rook_square = Square.fromRankFile(home_rank, queenside_rook_file);
-
-        if (board.castling_rights.kingsideCastlingFor(stm)) {
-            const castle_move = Move.castlingKingside(stm, king_sq, kingside_rook_square);
-            if (board.isCastlingMoveLegal(stm, castle_move)) {
-                move_receiver.receive(castle_move);
-            }
-        }
-        if (board.castling_rights.queensideCastlingFor(stm)) {
-            const castle_move = Move.castlingQueenside(stm, king_sq, queenside_rook_square);
-            if (board.isCastlingMoveLegal(stm, castle_move)) {
-                move_receiver.receive(castle_move);
+        inline for ([_]CastlingRights.Side{ .king, .queen }) |side| {
+            if (board.castling_rights.isAvailable(stm, side)) {
+                const castle_move = Move.castling(stm, side, king_sq, board.castling_rights.getRookSquare(stm, side));
+                if (board.isCastlingMoveLegal(stm, castle_move)) {
+                    move_receiver.receive(castle_move);
+                }
             }
         }
     }
