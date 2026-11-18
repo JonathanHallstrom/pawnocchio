@@ -303,7 +303,7 @@ fn handleHelp(version: []const u8, threads: usize) void {
         \\      sanitise a viriformat file. default output: <INPUT>_sanitised unless --check-only is used
         \\      --print-errors: off (default), on (one error per corrupt region), verbose (all errors)
         \\
-        \\  analyse --inputs <FILE> [<FILE>...] [--approximate] [--verbose] [--tb-path <TB_PATH>] [--allow-overwrite] [--format pgn|viriformat] [--skip-broken-games]
+        \\  analyse --inputs <FILE> [<FILE>...] [--approximate] [--verbose] [--tb-path <TB_PATH>] [--allow-overwrite] [--format pgn|viriformat|text] [--skip-broken-games]
         \\      analyse one or more dataset files
         \\      --approximate: use HyperLogLog for faster unique count
         \\      --tb-path: required for TB statistics
@@ -776,7 +776,7 @@ fn analyseFile(
                 while (try it.next()) |ply| : (move_idx += 1) {
                     try accumulatePlyStats(&stats, allocator, ply.board, ply.whiteEval(), ply.stmEval(), move_idx == 0, use_tbs, &tb_flags);
                     if (ply.whiteEval()) |ev| {
-                        if (!ply.board.isNoisy(ply.move) and !ply.board.givesCheck(ply.move)) {
+                        if (fmt == .text or !ply.board.isNoisy(ply.move) and !ply.board.givesCheck(ply.move)) {
                             const pred = root.fastmath.sigmoidScaled(ev, eval_scale);
                             const err = pred - target;
                             const flipped_pred = root.fastmath.sigmoidScaled(ply.stmEval().?, eval_scale);

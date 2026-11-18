@@ -22,6 +22,7 @@ const Move = root.Move;
 pub const FileFormat = enum {
     pgn,
     viriformat,
+    text,
 
     pub fn fromPath(path: []const u8) ?FileFormat {
         if (std.mem.endsWith(u8, path, ".pgn")) return .pgn;
@@ -34,6 +35,7 @@ pub fn ReaderFor(comptime format: FileFormat) type {
     return switch (format) {
         .viriformat => root.viriformat.ScoredPlyReader,
         .pgn => root.pgn.ScoredPlyReader,
+        .text => TextReader,
     };
 }
 
@@ -41,6 +43,7 @@ pub fn readerFor(comptime format: FileFormat, reader: *std.Io.Reader, allocator:
     return switch (format) {
         .viriformat => root.viriformat.scoredPlyReader(reader, allocator),
         .pgn => root.pgn.scoredPlyReader(reader, allocator),
+        .text => .{ .reader = reader },
     };
 }
 
@@ -71,4 +74,44 @@ pub const ScoredPly = struct {
         const ev = self._eval orelse return null;
         return if (self.board.stm == .white) ev else -ev;
     }
+};
+
+pub const TextReader = struct {
+    reader: *std.Io.Reader,
+
+    pub const GameView = struct {
+        board: LeanBoard,
+        outcome: root.WDL,
+        eval: i16,
+        done: bool = false,
+
+        pub fn iter(self: GameView) GameView {
+            return self;
+        }
+
+        pub fn next(self: *GameView) !?ScoredPly {
+            if (self.done) return null;
+            self.done = true;
+            return .{ .board = &self.board, .move = .init(), ._eval = self.eval };
+        }
+    };
+
+    pub fn next(self: *TextReader) !?GameView {
+        while (try self.reader.takeDelimiter('\n')) |line| {
+            if (std.mem.trim(u8, line, &std.ascii.whitespace).len == 0) continue;
+            var parts = std.mem.splitScalar(u8, line, '|');
+            const fen = parts.first();
+            const score = std.mem.trim(u8, parts.next() orelse return error.InvalidLine, &std.ascii.whitespace);
+            const wdl = std.mem.trim(u8, parts.next() orelse return error.InvalidLine, &std.ascii.whitespace);
+            const result = try std.fmt.parseFloat(f32, wdl);
+            return .{
+                .board = try LeanBoard.parseFen(fen, true),
+                .outcome = if (result == 0) .loss else if (result == 0.5) .draw else if (result == 1) .win else return error.InvalidWdl,
+                .eval = try std.fmt.parseInt(i16, score, 10),
+            };
+        }
+        return null;
+    }
+
+    pub fn deinit(_: *TextReader) void {}
 };
